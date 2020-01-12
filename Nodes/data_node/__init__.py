@@ -1,9 +1,9 @@
 # coding=utf-8
 from collections import namedtuple
 
-conn_info_tuple = namedtuple('db_info', ['db_type', 'db_para_dict'])
-
 from Nodes.utils.MySQLConn_v004_node import MySQLNode, cls_name as MySQLNodeName
+
+conn_info_tuple = namedtuple('db_info', ['db_type', 'db_para_dict'])
 
 connect_func = {'MySQL': (MySQLNode, MySQLNodeName)}
 
