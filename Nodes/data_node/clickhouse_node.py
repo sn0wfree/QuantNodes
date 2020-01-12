@@ -1,13 +1,4 @@
 # coding=utf-8
-"""
-data (table) node require following methods：
-
-__getitem__
-__setitem__
-query
-
-
-"""
 import pandas as pd
 
 from Nodes.basic.basic_node import BasicNode
@@ -16,7 +7,7 @@ from Nodes.data_node import ConnectionParser
 upload_code = 'ol.p;/'
 
 
-class MySQLTableBaseNode(BasicNode):
+class ClickHouseTableBaseNode(BasicNode):
     def __init__(self, table, conn):
         """
 
@@ -24,29 +15,25 @@ class MySQLTableBaseNode(BasicNode):
         :param table:
         :param db:
         """
-        super(MySQLTableBaseNode, self).__init__(table)
+        super(ClickHouseTableBaseNode, self).__init__(table)
         self.conn = conn
         self.db = conn._para.db
         self.table = table
 
     def query(self, sql):
-        return self.conn.sql2data(sql)
+        if sql.strip(' \n\t').lower()[:4] in ['sele', 'desc']:
+            return self.conn.get(sql)
+        else:
+            return self.conn.insert(sql)
 
     @property
     def columns(self):
         table = self.table
         db = self.db
         # sql = f'select * from  {db}.{table} limit 1'
-        sql = f'desc  {db}.{table} '
-        cols = self.query(sql)['Field'].to_list()  # .columns.values.tolist()
+        sql = f'describe {db}.{table} '
+        cols = self.query(sql)['name'].to_list()  # .columns.values.tolist()
         return cols
-
-    # def get_data(self, cols: (list, tuple)):
-    #     table = self.table
-    #     db = self.db
-    #     columns = ','.join(cols)
-    #     sql = f"select {columns} from {db}.{table}"
-    #     return self.__query__(sql)
 
     def __getitem__(self, item: (list, tuple, str)):
         table = self.table
@@ -59,38 +46,43 @@ class MySQLTableBaseNode(BasicNode):
         return self.query(sql)
 
     def __setitem__(self, upload_key: str, df: pd.DataFrame):
+        """
+
+        :param key:  upload_code
+        :param df:
+        :return:
+        """
         if upload_key != upload_code:
             raise KeyError('upload key invalid! insert method require checksum key for the safety consideration!')
         else:
-            self.conn.df2sql(df, self.table, db=self.db, csv_store_path='/tmp/', auto_incre_col=False, rm_csv=True)
+            self.conn.insert(df, self.table, db=self.db)
 
 
-class MySQLTableNode(MySQLTableBaseNode):
+class ClickHouseTableNode(ClickHouseTableBaseNode):
     def __init__(self, table, settings, ):
         """
 
         :param settings:
         :param table:
-        :param db:
         """
-        settings, conn = ConnectionParser.checker_multi_and_create(table, settings, target_db_type='MySQL')
+        settings, conn = ConnectionParser.checker_multi_and_create(table, settings, target_db_type='ClickHouse')
         # conn = MysqlConnEnforcePandas('test_clickhouse', **settings)
         # db = settings['db'] if db is None else db
-        super(MySQLTableNode, self).__init__(table, conn, )
+        super(ClickHouseTableNode, self).__init__(table, conn, )
         self._para = settings
         self.table_name = table
         self.db = settings['db']
 
 
-class MySQLDBPool(BasicNode):
+class ClickHouseDBPool(BasicNode):
     def __init__(self, db: str, settings: (str, dict, object)):
-        super(MySQLDBPool, self).__init__(db)
+        super(ClickHouseDBPool, self).__init__(db)
         self.db = db
-        settings, conn = ConnectionParser.checker_multi_and_create(db, settings, target_db_type='MySQL')
+        settings, conn = ConnectionParser.checker_multi_and_create(db, settings, target_db_type='ClickHouse')
         self._settings = settings
         self._conn = conn
         for table in self.tables:
-            setattr(self, table, MySQLTableNode(table, self._conn))
+            setattr(self, table, ClickHouseTableNode(table, self._conn))
         # conn = MysqlConnEnforcePandas('test_clickhouse', **settings)
 
     @property
@@ -100,11 +92,8 @@ class MySQLDBPool(BasicNode):
 
 
 if __name__ == '__main__':
-    db = 'test_clickhouse'
-    mysql_test = dict(host='***REMOVED***', port=3306, user='linlu', passwd='***REMOVED***', db='test_clickhouse')
-    # conn = MysqlConnEnforcePandas('test_clickhouse', **mysql_test)
-    # print(conn.DetectConnectStatus())
-    test_clickhouse = MySQLDBPool(db, mysql_test)
-    print(test_clickhouse.user_test)
-
+    db = 'default'
+    ch_test = dict(host='***REMOVED***', port=8123, user='default', passwd='***REMOVED***', db='default')
+    test_clickhouse = ClickHouseDBPool(db, ch_test)
+    print(test_clickhouse.user_test.query('select * from user_test limit 100'))
     pass

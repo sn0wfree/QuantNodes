@@ -1,17 +1,18 @@
 # coding=utf-8
 from collections import namedtuple
 
-from Nodes.utils.MySQLConn_v004_node import MySQLNode, cls_name as MySQLNodeName
+from Nodes.utils.MySQLConn_v004_node import MySQLNode, MySQLNodeName
+from Nodes.utils.ch2pandas_node import ClickHouseNode, ClickHouseNodeName
 
 conn_info_tuple = namedtuple('db_info', ['db_type', 'db_para_dict'])
 
-connect_func = {'MySQL': (MySQLNode, MySQLNodeName)}
+connect_func = {'MySQL': (MySQLNode, MySQLNodeName),'ClickHouse': (ClickHouseNode, ClickHouseNodeName)}
 
 
 class ConnectionParser(object):
     @staticmethod
     def head():
-        return ['MySQL://', 'ClickHouse']
+        return ['MySQL://', 'ClickHouse://']
 
     @staticmethod
     def detect_db_type(url_str):
@@ -65,7 +66,7 @@ class ConnectionParser(object):
             create_func, func_name = connect_func[target_db_type]
             conn = create_func(name, **settings)
 
-        elif isinstance(settings, (MySQLNode,)):
+        elif isinstance(settings, (MySQLNode,ClickHouseNode)):
             conn = settings
             settings = settings._para._asdict()
         else:
@@ -74,6 +75,6 @@ class ConnectionParser(object):
 
 
 if __name__ == '__main__':
-    url_str = "MySQL://{user}:{passwd}@{host}:1000/{db}"
+    url_str = "ClickHouse://{user}:{passwd}@{host}:1000/{db}"
     print(ConnectionParser.parser(url_str))
     pass

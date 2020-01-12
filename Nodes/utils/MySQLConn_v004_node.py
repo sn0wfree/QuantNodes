@@ -456,7 +456,7 @@ class MySQLNode(MysqlConnEnforcePandas):
     pass
 
 
-cls_name = 'MySQLNode'
+MySQLNodeName = 'MySQLNode'
 if __name__ == "__main__":
     hs = MysqlConnEnforcePandas('hs')
     s = dict(hs.sql2data('select * from C_ED_IDXSystemConst where LB = 17')[['DM', 'MS']].values)
