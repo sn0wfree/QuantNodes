@@ -33,6 +33,13 @@ class BasicNode(LazyInit):
             pass
         else:
             return self
+    def __detect_mode__(self,raw_obj):
+        pass
+    
+    def __check_instance_status__(cls,obj1):
+        pass
+    
+    
         
 
     def __run__(self):
