@@ -25,6 +25,15 @@ class BasicNode(object):
     def __setup__(self, method, *args, **kwargs):
         self._node_args = (method, args, kwargs)
         self._node_setup = True
+        
+    def update(self,all_args,replace=False):
+        method, args, kwargs = all_args['method'],all_args['args'],all_args['kwargs']
+        self.__setup__( method, *args, **kwargs)
+        if replace:
+            pass
+        else:
+            return self
+        
 
     def __run__(self):
         if self._node_setup:
