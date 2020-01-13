@@ -16,7 +16,7 @@ from Nodes.data_node import ConnectionParser
 upload_code = 'ol.p;/'
 
 
-class MySQLTableBaseNode(BasicNode):
+class _MySQLTableBaseNode(BasicNode):
     def __init__(self, table, conn):
         """
 
@@ -24,7 +24,7 @@ class MySQLTableBaseNode(BasicNode):
         :param table:
         :param db:
         """
-        super(MySQLTableBaseNode, self).__init__(table)
+        super(_MySQLTableBaseNode, self).__init__(table)
         self.conn = conn
         self.db = conn._para.db
         self.table = table
@@ -41,21 +41,21 @@ class MySQLTableBaseNode(BasicNode):
         cols = self.query(sql)['Field'].to_list()  # .columns.values.tolist()
         return cols
 
-    # def get_data(self, cols: (list, tuple)):
-    #     table = self.table
-    #     db = self.db
-    #     columns = ','.join(cols)
-    #     sql = f"select {columns} from {db}.{table}"
-    #     return self.__query__(sql)
-
-    def __getitem__(self, item: (list, tuple, str)):
+    def _get_data(self, cols: (list, tuple)):
         table = self.table
         db = self.db
-        if item != '*':
-            columns = ','.join(item)
-        else:
-            columns = item
+        columns = ','.join(cols)
         sql = f"select {columns} from {db}.{table}"
+        return self.query(sql)
+
+    def __getitem__(self, sql: (list, tuple, str)):
+        # table = self.table
+        # db = self.db
+        # if item != '*':
+        #     columns = ','.join(item)
+        # else:
+        #     columns = item
+        # sql = f"select {columns} from {db}.{table}"
         return self.query(sql)
 
     def __setitem__(self, upload_key: str, df: pd.DataFrame):
@@ -65,7 +65,7 @@ class MySQLTableBaseNode(BasicNode):
             self.conn.df2sql(df, self.table, db=self.db, csv_store_path='/tmp/', auto_incre_col=False, rm_csv=True)
 
 
-class MySQLTableNode(MySQLTableBaseNode):
+class MySQLTableNode(_MySQLTableBaseNode):
     def __init__(self, table, settings, ):
         """
 
@@ -80,6 +80,9 @@ class MySQLTableNode(MySQLTableBaseNode):
         self._para = settings
         self.table_name = table
         self.db = settings['db']
+
+    # def __run__(self, sql):
+    #     return self.query(sql)
 
 
 class MySQLDBPool(BasicNode):
@@ -97,6 +100,21 @@ class MySQLDBPool(BasicNode):
     def tables(self):
         tables = [table[0] for table in self._conn.SHOWTABLES()]
         return tables
+
+    # def __run__(self, table, sql):
+    #     return getattr(self, table).query(sql)
+    def __getitem__(self, table: str):
+        # table = self.table
+        # db = self.db
+        # if item != '*':
+        #     columns = ','.join(item)
+        # else:
+        #     columns = item
+        # sql = f"select {columns} from {db}.{table}"
+        return getattr(self, table)
+
+    def __setitem__(self, table: str, table_obj):
+        setattr(self, table, table_obj)
 
 
 if __name__ == '__main__':

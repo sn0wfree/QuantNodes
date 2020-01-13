@@ -35,7 +35,8 @@ class ClickHouseTableBaseNode(BasicNode):
         cols = self.query(sql)['name'].to_list()  # .columns.values.tolist()
         return cols
 
-    def __getitem__(self, item: (list, tuple, str)):
+    def _get_data(self, item: (list, tuple, str)):
+
         table = self.table
         db = self.db
         if item != '*':
@@ -43,6 +44,10 @@ class ClickHouseTableBaseNode(BasicNode):
         else:
             columns = item
         sql = f"select {columns} from {db}.{table}"
+        return self.query(sql)
+
+    def __getitem__(self, sql: str):
+
         return self.query(sql)
 
     def __setitem__(self, upload_key: str, df: pd.DataFrame):
@@ -59,7 +64,7 @@ class ClickHouseTableBaseNode(BasicNode):
 
 
 class ClickHouseTableNode(ClickHouseTableBaseNode):
-    def __init__(self, table, settings, ):
+    def __init__(self, table: str, settings):
         """
 
         :param settings:
@@ -72,6 +77,9 @@ class ClickHouseTableNode(ClickHouseTableBaseNode):
         self._para = settings
         self.table_name = table
         self.db = settings['db']
+
+    # def __run__(self, sql):
+    #     return self.query(sql)
 
 
 class ClickHouseDBPool(BasicNode):
@@ -89,6 +97,12 @@ class ClickHouseDBPool(BasicNode):
     def tables(self):
         tables = [table[0] for table in self._conn.SHOWTABLES()]
         return tables
+
+    def __getitem__(self, table: str):
+        return getattr(self, table)
+
+    def __setitem__(self, table: str, table_obj):
+        setattr(self, table, table_obj)
 
 
 if __name__ == '__main__':

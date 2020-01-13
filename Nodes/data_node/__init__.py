@@ -1,8 +1,8 @@
 # coding=utf-8
 from collections import namedtuple
 
-from Nodes.utils.MySQLConn_v004_node import MySQLNode, MySQLNodeName
-from Nodes.utils.ch2pandas_node import ClickHouseNode, ClickHouseNodeName
+from Nodes.utils_node.MySQLConn_v004_node import MySQLNode, MySQLNodeName
+from Nodes.utils_node.ch2pandas_node import ClickHouseNode, ClickHouseNodeName
 
 conn_info_tuple = namedtuple('db_info', ['db_type', 'db_para_dict'])
 
