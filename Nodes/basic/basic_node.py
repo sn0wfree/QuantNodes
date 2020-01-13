@@ -2,9 +2,9 @@
 import time
 
 from Nodes.utils_node.generate_str_node import random_str
+from  Nodes.utils_node.lazy_node import LazyInit
 
-
-class BasicNode(object):
+class BasicNode(LazyInit):
     def __init__(self, name, random_task_id=False):
         if random_task_id:
             random_task_id = random_str() + "_" + str(int(time.time()))
