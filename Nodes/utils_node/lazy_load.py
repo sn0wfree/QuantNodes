@@ -21,6 +21,6 @@ class LazyProxy(object):
         self.__dict__['_obj'] = object.__new__(self.__dict__['_cls'], )
         self.__dict__['_obj'].__init__(*self.__dict__['_params'], **self.__dict__['kwargs'])
 
-    class LazyInit(object):
-        def __new__(cls, *args, **kwargs):
-            return LazyProxy(cls, *args, **kwargs)
+class LazyInit(object):
+    def __new__(cls, *args, **kwargs):
+        return LazyProxy(cls, *args, **kwargs)
