@@ -2,7 +2,8 @@
 import time
 
 from Nodes.utils_node.generate_str_node import random_str
-from  Nodes.utils_node.lazy_node import LazyInit
+from Nodes.utils_node.lazy_load import LazyInit
+
 
 class BasicNode(LazyInit):
     def __init__(self, name, random_task_id=False):
@@ -25,22 +26,20 @@ class BasicNode(LazyInit):
     def __setup__(self, method, *args, **kwargs):
         self._node_args = (method, args, kwargs)
         self._node_setup = True
-        
-    def update(self,all_args,replace=False):
-        method, args, kwargs = all_args['method'],all_args['args'],all_args['kwargs']
-        self.__setup__( method, *args, **kwargs)
+
+    def update(self, all_args, replace=False):
+        method, args, kwargs = all_args['method'], all_args['args'], all_args['kwargs']
+        self.__setup__(method, *args, **kwargs)
         if replace:
             pass
         else:
             return self
-    def __detect_mode__(self,raw_obj):
+
+    def __detect_mode__(self, raw_obj):
         pass
-    
-    def __check_instance_status__(cls,obj1):
+
+    def __check_instance_status__(cls, obj1):
         pass
-    
-    
-        
 
     def __run__(self):
         if self._node_setup:

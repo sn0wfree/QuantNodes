@@ -11,6 +11,7 @@ query
 import pandas as pd
 
 from Nodes.basic.basic_node import BasicNode
+from Nodes.conf_node.load_settings_node import MySQLSettings
 from Nodes.data_node import ConnectionParser
 
 upload_code = 'ol.p;/'
@@ -86,9 +87,11 @@ class MySQLTableNode(_MySQLTableBaseNode):
 
 
 class MySQLDBPool(BasicNode):
-    def __init__(self, db: str, settings: (str, dict, object)):
+    def __init__(self, db: str, settings: (str, dict, object) = None):
         super(MySQLDBPool, self).__init__(db)
         self.db = db
+        if settings is None:
+            settings = MySQLSettings().get()
         settings, conn = ConnectionParser.checker_multi_and_create(db, settings, target_db_type='MySQL')
         self._settings = settings
         self._conn = conn
@@ -119,7 +122,7 @@ class MySQLDBPool(BasicNode):
 
 if __name__ == '__main__':
     db = 'test_clickhouse'
-    mysql_test = dict(host='***REMOVED***', port=3306, user='linlu', passwd='***REMOVED***', db='test_clickhouse')
+    mysql_test = None  #
     # conn = MysqlConnEnforcePandas('test_clickhouse', **mysql_test)
     # print(conn.DetectConnectStatus())
     test_clickhouse = MySQLDBPool(db, mysql_test)

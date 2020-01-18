@@ -2,6 +2,7 @@
 import configparser
 
 from Nodes.basic.basic_node import BasicNode
+from Nodes.utils_node.detect_file_path import detect_file_full_path
 
 
 class SettingsLoader(object):
@@ -24,30 +25,48 @@ class SettingsBaseNodes(BasicNode):
         self.operator = operator
 
 
-class ConfigparserConfNode(SettingsBaseNodes):
+class ConfigparserConfNode(BasicNode):
     def __init__(self, file_path, section):
+        super(ConfigparserConfNode, self).__init__(file_path)
         self.config = configparser.ConfigParser()
         self.config.read(file_path)
-        super(ConfigparserConfNode, self).__init__(file_path, self.config)
         self.section = section
 
-    def __getitem__(self, key):
-        return self.operator.get(self.section, key)
+    def get(self):
+        return dict(self.config.items(self.section))
 
-    def __setitem__(self, key, value):
-        self.operator.set(self.section, key, value)
-
-    def items(self):
-        return dict(self.operator.items(self.section))
-
-    def keys(self):
-        return self.operator.options(self.section)
+    # def __getitem__(self, key):
+    #     return self.config.get(self.section, key)
+    #
+    # def __setitem__(self, key, value):
+    #     self.config.set(self.section, key, value)
 
 
+class ClickHouseSettings(ConfigparserConfNode):
+    def __init__(self, file_path='conn.ini', section='ClickHouse'):
+        file_path = detect_file_full_path(file_path)
+        super(ClickHouseSettings, self).__init__(file_path, section)
+
+    def get(self):
+        res = dict(self.config.items(self.section))
+        res['port'] = int(res['port'])
+        return res
+
+
+class MySQLSettings(ConfigparserConfNode):
+    def __init__(self, file_path='conn.ini', section='MySQL'):
+        file_path = detect_file_full_path(file_path)
+        super(MySQLSettings, self).__init__(file_path, section)
+
+    def get(self):
+        res = dict(self.config.items(self.section))
+        res['port'] = int(res['port'])
+        return res
 
 
 if __name__ == '__main__':
-    cpc = ConfigparserConfNode('/Users/sn0wfree/PycharmProjects/Nodes/Nodes/test/test.ini', 'test')
-    print(cpc.keys())
+    cpc = ClickHouseSettings()
+    print(dict(cpc.get()))
+    print(1)
 
     pass

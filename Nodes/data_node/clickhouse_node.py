@@ -3,7 +3,7 @@ import pandas as pd
 
 from Nodes.basic.basic_node import BasicNode
 from Nodes.data_node import ConnectionParser
-
+from Nodes.conf_node.load_settings_node import ClickHouseSettings
 upload_code = 'ol.p;/'
 
 
@@ -83,9 +83,11 @@ class ClickHouseTableNode(ClickHouseTableBaseNode):
 
 
 class ClickHouseDBPool(BasicNode):
-    def __init__(self, db: str, settings: (str, dict, object)):
+    def __init__(self, db: str = 'default', settings: (str, dict, object, None) = None):
         super(ClickHouseDBPool, self).__init__(db)
         self.db = db
+        if settings is None:
+            settings = ClickHouseSettings().get()
         settings, conn = ConnectionParser.checker_multi_and_create(db, settings, target_db_type='ClickHouse')
         self._settings = settings
         self._conn = conn
@@ -107,7 +109,7 @@ class ClickHouseDBPool(BasicNode):
 
 if __name__ == '__main__':
     db = 'default'
-    ch_test = dict(host='***REMOVED***', port=8123, user='default', passwd='***REMOVED***', db='default')
+    ch_test = None
     test_clickhouse = ClickHouseDBPool(db, ch_test)
     print(test_clickhouse.user_test.query('select * from user_test limit 100'))
     pass
