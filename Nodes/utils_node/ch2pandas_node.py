@@ -132,6 +132,19 @@ class CHBase(object):
             ret_value = dataframe
         return ret_value
 
+    def query(self, sql):
+        """
+        this is a overall query function which can support insert select show and optimize query.
+        :param sql:
+        :return:
+        """
+        if sql.lower().startswith('select') or sql.lower().startswith('show'):
+            self.get(sql)
+        elif sql.lower().endswith('insert') or sql.lower().endswith('optimize'):
+            self.insert_query(sql)
+        else:
+            raise ValueError('Unknown sql! current only accept select, insert, show, optimize')
+
     def get(self, sql, convert_to='DataFrame', auto_close=True):
         conn = self._create_conn()
         self._test_connection(conn)

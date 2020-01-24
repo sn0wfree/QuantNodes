@@ -30,8 +30,13 @@ class _MySQLTableBaseNode(BasicNode):
         self.db = conn._para.db
         self.table = table
 
-    def query(self, sql):
-        return self.conn.sql2data(sql)
+    def query(self, sql, approach='strict'):
+        if sql.lower().startswith('select') or sql.lower().startswith('show'):
+            return self.conn.sql2data(sql)
+        elif sql.lower().startswith('insert') and approach == 'strict':
+            return self.conn.Excutesql(sql)
+        else:
+            return self.conn.sql2data(sql)
 
     @property
     def columns(self):
