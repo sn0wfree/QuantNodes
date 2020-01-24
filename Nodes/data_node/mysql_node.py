@@ -12,7 +12,7 @@ import pandas as pd
 
 from Nodes.basic.basic_node import BasicNode
 from Nodes.conf_node.load_settings_node import MySQLSettings
-from Nodes.data_node import ConnectionParser
+from Nodes.data_node._ConnectionParser import ConnectionParser
 
 upload_code = 'ol.p;/'
 

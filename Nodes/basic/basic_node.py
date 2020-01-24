@@ -5,7 +5,7 @@ from Nodes.utils_node.generate_str_node import random_str
 from Nodes.utils_node.lazy_load import LazyInit
 
 
-class BasicNode(LazyInit):
+class BasicNode(object):
     def __init__(self, name, random_task_id=False):
         if random_task_id:
             random_task_id = random_str() + "_" + str(int(time.time()))

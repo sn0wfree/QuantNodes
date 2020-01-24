@@ -272,32 +272,7 @@ class CHBase(object):
             yield json.dumps(row, ensure_ascii=False)
         # return df_columns, each_row
 
-    # @classmethod
-    # def check_and_dump(cls, df, describe_table, db, table):
-    #     # db_table = '{}.{}'.format(db, table)
-    #     # df_columns = list(df.columns)
-    #
-    #     # df_columns, each_row = cls._check_df(df, describe_table)
-    #     # json_each_row = '\n'.join([json.dumps(i, ensure_ascii=False) for i in cls._check_df(df, describe_table)])
-    #     # json_each_row = '\n'.join([i for i in cls._check_df(df, describe_table)])
-    #     # del each_row
-    #
-    #     query_with_format = 'insert into {0} format JSONEachRow \n{1}'.format('{}.{}'.format(db, table), '\n'.join(
-    #         [i for i in cls._check_df_and_dump(df, describe_table)]))
-    #     # del json_each_row
-    #     return query_with_format
-
-    def insert(self, df: pd.DataFrame, db: str, table: str):
-
-        describe_table = self.get_describe_table(db, table)
-        # df_columns, each_row = self._check_df(df, describe_table)
-        query_with_format = 'insert into {0} format JSONEachRow \n{1}'.format('{}.{}'.format(db, table), '\n'.join(
-            [i for i in self._check_df_and_dump(df, describe_table)]))
-        # json_each_row = '\n'.join([json.dumps(i, ensure_ascii=False) for i in each_row])
-        # del each_row
-        #
-        # query_with_format = 'insert into {0} format JSONEachRow \n{1}'.format(db_table, json_each_row)
-        # del json_each_row
+    def insert_query(self, query_with_format: str):
 
         conn = self._create_conn()
         self._test_connection(conn)
@@ -328,6 +303,66 @@ class CHBase(object):
 
         conn.close()
         print('Done.')
+
+        pass
+
+    # @classmethod
+    # def check_and_dump(cls, df, describe_table, db, table):
+    #     # db_table = '{}.{}'.format(db, table)
+    #     # df_columns = list(df.columns)
+    #
+    #     # df_columns, each_row = cls._check_df(df, describe_table)
+    #     # json_each_row = '\n'.join([json.dumps(i, ensure_ascii=False) for i in cls._check_df(df, describe_table)])
+    #     # json_each_row = '\n'.join([i for i in cls._check_df(df, describe_table)])
+    #     # del each_row
+    #
+    #     query_with_format = 'insert into {0} format JSONEachRow \n{1}'.format('{}.{}'.format(db, table), '\n'.join(
+    #         [i for i in cls._check_df_and_dump(df, describe_table)]))
+    #     # del json_each_row
+    #     return query_with_format
+
+    def insert(self, df: pd.DataFrame, db: str, table: str):
+
+        describe_table = self.get_describe_table(db, table)
+        # df_columns, each_row = self._check_df(df, describe_table)
+        query_with_format = 'insert into {0} format JSONEachRow \n{1}'.format('{}.{}'.format(db, table), '\n'.join(
+            [i for i in self._check_df_and_dump(df, describe_table)]))
+        # json_each_row = '\n'.join([json.dumps(i, ensure_ascii=False) for i in each_row])
+        # del each_row
+        #
+        # query_with_format = 'insert into {0} format JSONEachRow \n{1}'.format(db_table, json_each_row)
+        # del json_each_row
+        self.insert_query(query_with_format)
+
+        # conn = self._create_conn()
+        # self._test_connection(conn)
+        # # self._check_sql_select_only(sql)
+        #
+        # updated_settings = self.settings
+        #
+        # # http_get_params = {'user': components.username, 'password': components.password}
+        # # http_get_params.update(updated_settings)
+        # # conn = http.client.HTTPConnection(components.hostname, port=components.port)
+        #
+        # conn = self._compression_switched_request(query_with_format, conn, updated_settings, self.http_get_params)
+        #
+        # # if updated_settings['enable_http_compression'] == 1:
+        # #     conn.request('POST', '/?' + urllib.parse.urlencode(http_get_params),
+        # #                  body=gzip.compress(query_with_format.encode()),
+        # #                  headers={'Content-Encoding': 'gzip', 'Accept-Encoding': 'gzip'})
+        # # else:
+        # #     conn.request('POST', '/?' + urllib.parse.urlencode(http_get_params), body=query_with_format.encode())
+        # resp = conn.getresponse()
+        #
+        # if resp.status != 200:
+        #     error_message = gzip.decompress(resp.read()).decode() if updated_settings['enable_http_compression'] == 1 \
+        #         else resp.read().decode()
+        #     conn.close()
+        #     raise NotImplementedError('Unknown Error: status: {0}, reason: {1}, message: {2}'.format(
+        #         resp.status, resp.reason, error_message))
+        #
+        # conn.close()
+        # print('Done.')
 
 
 class ClickHouseNode(CHBase):
