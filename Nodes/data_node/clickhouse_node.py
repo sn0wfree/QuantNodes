@@ -4,11 +4,12 @@ import pandas as pd
 from Nodes.basic.basic_node import BasicNode
 from Nodes.conf_node.load_settings_node import ClickHouseSettings
 from Nodes.data_node._ConnectionParser import ConnectionParser
+from Nodes.utils_node.lazy_load import LazyInit
 
 upload_code = 'ol.p;/'
 
 
-class ClickHouseTableBaseNode(BasicNode):
+class _ClickHouseTableBaseNode(BasicNode):
     def __init__(self, table, conn):
         """
 
@@ -16,25 +17,26 @@ class ClickHouseTableBaseNode(BasicNode):
         :param table:
         :param db:
         """
-        super(ClickHouseTableBaseNode, self).__init__(table)
+        super(_ClickHouseTableBaseNode, self).__init__(table)
         self.conn = conn
         self.db = conn._para.db
         self.table = table
 
     def query(self, sql):
-        if sql.strip(' \n\t').lower()[:4] in ['sele', 'desc']:
+        if sql.strip(' \n\t').lower()[:4] in ['sele', 'desc', 'show']:
             return self.conn.get(sql)
-        else:
-            return self.conn.insert(sql)
 
-    @property
-    def columns(self):
-        table = self.table
-        db = self.db
-        # sql = f'select * from  {db}.{table} limit 1'
-        sql = f'describe {db}.{table} '
-        cols = self.query(sql)['name'].to_list()  # .columns.values.tolist()
-        return cols
+        else:
+            return self.conn.insert_query(sql)
+
+    # @property
+    # def columns(self):
+    #     table = self.table
+    #     db = self.db
+    #     # sql = f'select * from  {db}.{table} limit 1'
+    #     sql = f'describe {db}.{table} '
+    #     cols = self.query(sql)['name'].to_list()  # .columns.values.tolist()
+    #     return cols
 
     def _get_data(self, item: (list, tuple, str)):
 
@@ -64,13 +66,15 @@ class ClickHouseTableBaseNode(BasicNode):
             self.conn.insert(df, self.table, db=self.db)
 
 
-class ClickHouseTableNode(ClickHouseTableBaseNode):
+class ClickHouseTableNode(_ClickHouseTableBaseNode):
     def __init__(self, table: str, settings):
         """
 
         :param settings:
         :param table:
         """
+        if settings is None:
+            settings = ClickHouseSettings().get()
         settings, conn = ConnectionParser.checker_multi_and_create(table, settings, target_db_type='ClickHouse')
         # conn = MysqlConnEnforcePandas('test_clickhouse', **settings)
         # db = settings['db'] if db is None else db
@@ -83,9 +87,9 @@ class ClickHouseTableNode(ClickHouseTableBaseNode):
     #     return self.query(sql)
 
 
-class ClickHouseDBPool(BasicNode):
+class ClickHouseDBPool(LazyInit):  # lazy load to improve loading speed
     def __init__(self, db: str = 'default', settings: (str, dict, object, None) = None):
-        super(ClickHouseDBPool, self).__init__(db)
+        super(ClickHouseDBPool, self).__init__()
 
         if settings is None:
             settings = ClickHouseSettings().get()
@@ -98,8 +102,12 @@ class ClickHouseDBPool(BasicNode):
         self._settings = settings
         self._conn = conn
         for table in self.tables:
-            setattr(self, table, ClickHouseTableNode(table, self._conn))
-        # conn = MysqlConnEnforcePandas('test_clickhouse', **settings)
+            if table != 'tables':
+                try:
+                    setattr(self, table, ClickHouseTableNode(table, self._conn))
+                except Exception as e:
+                    print(str(e))
+                    pass
 
     @property
     def tables(self):

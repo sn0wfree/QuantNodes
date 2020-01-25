@@ -39,7 +39,7 @@ class CHBase(object):
         self.http_get_params = http_get_params
 
     def SHOWTABLES(self):
-        res = self.get('SHOW TABLES').values
+        res = self.get('SHOW TABLES FROM {db}'.format(db=self._para.db)).values
         return res
 
     def _create_conn(self):
@@ -51,8 +51,8 @@ class CHBase(object):
 
     @staticmethod
     def _check_sql_select_only(sql):
-        if sql.strip(' \n\t').lower()[:6] not in ['select', 'descri', 'show t']:
-            raise ValueError('"query" should start with "select" or "describe" or show, ' + \
+        if sql.strip(' \n\t').lower()[:6] not in ['select', 'descri', 'show t', 'show d']:
+            raise ValueError('"query" should start with "select" or "describe" or "show", ' + \
                              'while the provided "query" starts with "{0}"'.format(sql.strip(' \n\t').split(' ')[0]))
 
     @staticmethod

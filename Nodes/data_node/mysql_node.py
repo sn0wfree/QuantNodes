@@ -9,7 +9,7 @@ query
 
 """
 import pandas as pd
-
+from Nodes.utils_node.lazy_load import LazyInit
 from Nodes.basic.basic_node import BasicNode
 from Nodes.conf_node.load_settings_node import MySQLSettings
 from Nodes.data_node._ConnectionParser import ConnectionParser
@@ -79,6 +79,8 @@ class MySQLTableNode(_MySQLTableBaseNode):
         :param table:
         :param db:
         """
+        if settings is None:
+            settings = MySQLSettings().get()
         settings, conn = ConnectionParser.checker_multi_and_create(table, settings, target_db_type='MySQL')
         # conn = MysqlConnEnforcePandas('test_clickhouse', **settings)
         # db = settings['db'] if db is None else db
@@ -91,9 +93,9 @@ class MySQLTableNode(_MySQLTableBaseNode):
     #     return self.query(sql)
 
 
-class MySQLDBPool(BasicNode):
+class MySQLDBPool(LazyInit): # lazy load to improve loading speed
     def __init__(self, db: str, settings: (str, dict, object) = None):
-        super(MySQLDBPool, self).__init__(db)
+        super(MySQLDBPool, self).__init__()
         self.db = db
         if settings is None:
             settings = MySQLSettings().get()
@@ -101,7 +103,12 @@ class MySQLDBPool(BasicNode):
         self._settings = settings
         self._conn = conn
         for table in self.tables:
-            setattr(self, table, MySQLTableNode(table, self._conn))
+            if table != 'tables':
+                try:
+                    setattr(self, table, MySQLTableNode(table, self._conn))
+                except Exception as e:
+                    print(str(e))
+                    pass
         # conn = MysqlConnEnforcePandas('test_clickhouse', **settings)
 
     @property
