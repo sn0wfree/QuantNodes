@@ -9,10 +9,11 @@ query
 
 """
 import pandas as pd
-from Nodes.utils_node.lazy_load import LazyInit
+from functools import wraps
 from Nodes.basic.basic_node import BasicNode
 from Nodes.conf_node.load_settings_node import MySQLSettings
 from Nodes.data_node._ConnectionParser import ConnectionParser
+from Nodes.utils_node.lazy_load import LazyInit
 
 upload_code = 'ol.p;/'
 
@@ -37,6 +38,19 @@ class _MySQLTableBaseNode(BasicNode):
         #     return self.conn.Excutesql(sql)
         else:
             return self.conn.sql2data(sql)
+
+    def __call__(self, func):
+        @wraps(func)
+        def add_conn(*args, **kwargs):
+            if 'conn' in kwargs.keys():
+                if kwargs.get('conn') is None:
+                    kwargs['conn'] = self
+                else:
+                    pass
+            else:
+                pass
+            return func(*args, **kwargs)
+        return add_conn
 
     @property
     def columns(self):
@@ -93,7 +107,7 @@ class MySQLTableNode(_MySQLTableBaseNode):
     #     return self.query(sql)
 
 
-class MySQLDBPool(LazyInit): # lazy load to improve loading speed
+class MySQLDBPool(LazyInit):  # lazy load to improve loading speed
     def __init__(self, db: str, settings: (str, dict, object) = None):
         super(MySQLDBPool, self).__init__()
         self.db = db

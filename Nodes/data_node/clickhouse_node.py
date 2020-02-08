@@ -1,4 +1,6 @@
 # coding=utf-8
+from functools import wraps
+
 import pandas as pd
 
 from Nodes.basic.basic_node import BasicNode
@@ -24,10 +26,24 @@ class _ClickHouseTableBaseNode(BasicNode):
 
     def query(self, sql):
         if sql.strip(' \n\t').lower()[:4] in ['sele', 'desc', 'show']:
-            return self.conn.get(sql)
+            return self.conn.get(sql, )
 
         else:
             return self.conn.insert_query(sql)
+
+    def __call__(self, func):
+        @wraps(func)
+        def add_conn(*args, **kwargs):
+            if 'conn' in kwargs.keys():
+                if kwargs.get('conn') is None:
+                    kwargs['conn'] = self
+                else:
+                    pass
+            else:
+                pass
+            return func(*args, **kwargs)
+
+        return add_conn
 
     # @property
     # def columns(self):
