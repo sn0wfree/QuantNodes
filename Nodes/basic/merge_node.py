@@ -1,4 +1,5 @@
 # coding=utf-8
+test1 = 29
 
 
 class MergeNode(object):

@@ -106,11 +106,11 @@ def insert(connection_url, db_table, df, settings):
     conn = http.client.HTTPConnection(components.hostname, port=components.port)
 
     if updated_settings['enable_http_compression'] == 1:
-        conn.request('POST', '/?' + urllib.parse.urlencode(http_get_params),
-                     body=gzip.compress(query_with_format.encode()),
-                     headers={'Content-Encoding': 'gzip', 'Accept-Encoding': 'gzip'})
+        conn._request('POST', '/?' + urllib.parse.urlencode(http_get_params),
+                      body=gzip.compress(query_with_format.encode()),
+                      headers={'Content-Encoding': 'gzip', 'Accept-Encoding': 'gzip'})
     else:
-        conn.request('POST', '/?' + urllib.parse.urlencode(http_get_params), body=query_with_format.encode())
+        conn._request('POST', '/?' + urllib.parse.urlencode(http_get_params), body=query_with_format.encode())
 
     resp = conn.getresponse()
 
@@ -132,7 +132,7 @@ def select(connection_url, query=None, convert_to='DataFrame', settings=None):
 
     if query is None:
         conn = http.client.HTTPConnection(components.hostname, port=components.port)
-        conn.request('GET', '/')
+        conn._request('GET', '/')
         ret_value = conn.getresponse().read().decode().replace('\n', '')
     else:
         if query.strip(' \n\t').lower()[:6] not in ['select', 'descri']:
@@ -157,11 +157,11 @@ def select(connection_url, query=None, convert_to='DataFrame', settings=None):
     conn = http.client.HTTPConnection(components.hostname, port=components.port)
 
     if updated_settings['enable_http_compression'] == 1:
-        conn.request('POST', '/?' + urllib.parse.urlencode(http_get_params),
-                     body=gzip.compress(query_with_format.encode()),
-                     headers={'Content-Encoding': 'gzip', 'Accept-Encoding': 'gzip'})
+        conn._request('POST', '/?' + urllib.parse.urlencode(http_get_params),
+                      body=gzip.compress(query_with_format.encode()),
+                      headers={'Content-Encoding': 'gzip', 'Accept-Encoding': 'gzip'})
     else:
-        conn.request('POST', '/?' + urllib.parse.urlencode(http_get_params), body=query_with_format.encode())
+        conn._request('POST', '/?' + urllib.parse.urlencode(http_get_params), body=query_with_format.encode())
 
     resp = conn.getresponse()
 

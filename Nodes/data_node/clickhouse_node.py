@@ -1,4 +1,5 @@
 # coding=utf-8
+import inspect
 from functools import wraps
 
 import pandas as pd
@@ -27,23 +28,26 @@ class _ClickHouseTableBaseNode(BasicNode):
     def query(self, sql):
         if sql.strip(' \n\t').lower()[:4] in ['sele', 'desc', 'show']:
             return self.conn.get(sql, )
-
         else:
             return self.conn.insert_query(sql)
 
     def __call__(self, func):
+        if 'conn' in inspect.getfullargspec(func).args:
+            pass
+        else:
+            raise TypeError('conn arguments not exists!')
+        conn_decorator = self
+
         @wraps(func)
-        def add_conn(*args, **kwargs):
-            if 'conn' in kwargs.keys():
-                if kwargs.get('conn') is None:
-                    kwargs['conn'] = self
-                else:
-                    pass
+        def wrapper(*args, **kwargs):
+            if kwargs.get('conn') is None:
+                kwargs['conn'] = conn_decorator
             else:
                 pass
             return func(*args, **kwargs)
+        return wrapper
 
-        return add_conn
+
 
     # @property
     # def columns(self):
@@ -99,6 +103,8 @@ class ClickHouseTableNode(_ClickHouseTableBaseNode):
         self.table_name = table
         self.db = settings['db']
 
+
+
     # def __run__(self, sql):
     #     return self.query(sql)
 
@@ -141,5 +147,5 @@ if __name__ == '__main__':
     db = 'default'
     ch_test = None
     test_clickhouse = ClickHouseDBPool(db, ch_test)
-    print(test_clickhouse.user_test.query('select * from user_test limit 100'))
+    print(test_clickhouse.user_test.execute('select * from user_test limit 100'))
     pass

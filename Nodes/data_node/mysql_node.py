@@ -8,8 +8,11 @@ query
 
 
 """
-import pandas as pd
+import inspect
 from functools import wraps
+
+import pandas as pd
+
 from Nodes.basic.basic_node import BasicNode
 from Nodes.conf_node.load_settings_node import MySQLSettings
 from Nodes.data_node._ConnectionParser import ConnectionParser
@@ -40,17 +43,21 @@ class _MySQLTableBaseNode(BasicNode):
             return self.conn.sql2data(sql)
 
     def __call__(self, func):
+        if 'conn' in inspect.getfullargspec(func).args:
+            pass
+        else:
+            raise TypeError('conn arguments not exists!')
+        conn_decorator = self
+
         @wraps(func)
-        def add_conn(*args, **kwargs):
-            if 'conn' in kwargs.keys():
-                if kwargs.get('conn') is None:
-                    kwargs['conn'] = self
-                else:
-                    pass
+        def wrapper(*args, **kwargs):
+            if kwargs.get('conn') is None:
+                kwargs['conn'] = conn_decorator
             else:
                 pass
             return func(*args, **kwargs)
-        return add_conn
+
+        return wrapper
 
     @property
     def columns(self):

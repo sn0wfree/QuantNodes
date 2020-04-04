@@ -23,11 +23,7 @@ ch_conn_tuple = namedtuple('clickhouse_params', ['host', 'port', 'user', 'passwd
 class CHBase(object):
     def __init__(self, name: str, user='default', passwd='123456', host='0.0.0.0', port=8123, db='default'):
         self.name = name
-
         self._para = ch_conn_tuple(host, port, user, passwd, db)
-
-        # sample  ='http://user:password@clickhouse_host:8123'
-
         self.accepted_formats = ['DataFrame', 'TabSeparated', 'TabSeparatedRaw', 'TabSeparatedWithNames',
                                  'TabSeparatedWithNamesAndTypes', 'CSV', 'CSVWithNames', 'Values', 'Vertical', 'JSON',
                                  'JSONCompact', 'JSONEachRow', 'TSKV', 'Pretty', 'PrettyCompact',
@@ -43,7 +39,6 @@ class CHBase(object):
         return res
 
     def _create_conn(self):
-        print()
         url_str = "http://{user}:{passwd}@{host}:{port}".format(host=self._para.host, port=int(self._para.port),
                                                                 user=self._para.user, passwd=self._para.passwd)
         components = urllib.parse.urlparse(url_str)
@@ -319,21 +314,6 @@ class CHBase(object):
 
         pass
 
-    # @classmethod
-    # def check_and_dump(cls, df, describe_table, db, table):
-    #     # db_table = '{}.{}'.format(db, table)
-    #     # df_columns = list(df.columns)
-    #
-    #     # df_columns, each_row = cls._check_df(df, describe_table)
-    #     # json_each_row = '\n'.join([json.dumps(i, ensure_ascii=False) for i in cls._check_df(df, describe_table)])
-    #     # json_each_row = '\n'.join([i for i in cls._check_df(df, describe_table)])
-    #     # del each_row
-    #
-    #     query_with_format = 'insert into {0} format JSONEachRow \n{1}'.format('{}.{}'.format(db, table), '\n'.join(
-    #         [i for i in cls._check_df_and_dump(df, describe_table)]))
-    #     # del json_each_row
-    #     return query_with_format
-
     def insert(self, df: pd.DataFrame, db: str, table: str):
 
         describe_table = self.get_describe_table(db, table)
@@ -382,13 +362,6 @@ class ClickHouseNode(CHBase):
     pass
 
 
-# class ClickHouseTableBaseNode(BasicNode):
-#     def __init__(self, table: str, conn):
-#         super(ClickHouseTableBaseNode, self).__init__(table)
-#         pass
-#
-#     def query(self, sql):
-#         pass
 ClickHouseNodeName = 'ClickHouseNode'
 
 if __name__ == '__main__':
