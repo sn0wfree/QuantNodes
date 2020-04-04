@@ -51,7 +51,7 @@ class BasicNode(object):
             else:
                 raise ValueError('unknown method')
         else:
-            raise ValueError('setup incompleted!')
+            raise ValueError('setup incomplete!')
 
     def __enter__(self):
         return self

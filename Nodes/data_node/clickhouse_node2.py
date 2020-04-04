@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import requests
 
+from Nodes.utils_node.lazy_load import LazyInit
 from Nodes.utils_node.timer import timer
 
 
@@ -72,9 +73,7 @@ class ClickHouseNodeBaseTool(object):
         if settings is not None:
             cls._check_settings(settings, updated_settings)
             updated_settings.update(settings)
-
         else:
-
             pass
 
         return {k: v * 1 if isinstance(v, bool) else v for k, v in updated_settings.items()}
@@ -107,7 +106,7 @@ class ClickHouseNodeBaseTool(object):
         return ret_value
 
 
-class CHNode(ClickHouseNodeBaseTool):
+class _ClickHouseBaseNode(ClickHouseNodeBaseTool):
     def __init__(self, name, **db_settings):
         self.name = name
         self._db_settings = db_settings
@@ -135,6 +134,18 @@ class CHNode(ClickHouseNodeBaseTool):
 
     def __exit__(self):
         self.session.close()
+
+    def _describe(self, db, table):
+        describe_sql = 'describe table {}.{}'.format(db, table)
+        describe_table = self._request(describe_sql)
+        # non_nullable_columns = list(describe_table[~describe_table['type'].str.startswith('Nullable')]['name'])
+        # integer_columns = list(describe_table[describe_table['type'].str.contains('Int', regex=False)]['name'])
+        # missing_in_df = {i: np.where(df[i].isnull(), 1, 0).sum() for i in non_nullable_columns}
+        #
+        # df_columns = list(df.columns)
+        # each_row = df.to_dict(orient='records')
+        # del df
+        return describe_table  # , integer_columns, non_nullable_columns
 
     @property
     def _para(self):
@@ -182,8 +193,8 @@ class CHNode(ClickHouseNodeBaseTool):
                  sql_list)
         if return_sql:
             res_list = zip(sql_list,
-                                 self.session.map(tasks, exception_handler=exception_handler),
-                                 size=self.max_async_query_once)
+                           self.session.map(tasks, exception_handler=exception_handler),
+                           size=self.max_async_query_once)
             for sql, resp in res_list:
                 if todf:
                     d = self._load_into_pd(resp.content, convert_to)
@@ -239,60 +250,6 @@ class CHNode(ClickHouseNodeBaseTool):
         else:
             return resp.content
 
-
-class ClickHouseNode(CHNode):
-    def __init__(self, name, **settings):
-        super(ClickHouseNode, self).__init__(name, **settings)
-
-    @property
-    def tables(self):
-        sql = 'SHOW TABLES FROM {db}'.format(db=self._para.db)
-        res = self._request(sql).values.tolist().ravels()
-        return res
-
-    @property
-    def databases(self):
-        sql = 'SHOW DATABASES'
-        res = self._request(sql).values.tolist().ravels()
-        return res
-
-    def _describe(self, db, table):
-        describe_sql = 'describe table {}.{}'.format(db, table)
-        describe_table = self._request(describe_sql)
-        # non_nullable_columns = list(describe_table[~describe_table['type'].str.startswith('Nullable')]['name'])
-        # integer_columns = list(describe_table[describe_table['type'].str.contains('Int', regex=False)]['name'])
-        # missing_in_df = {i: np.where(df[i].isnull(), 1, 0).sum() for i in non_nullable_columns}
-        #
-        # df_columns = list(df.columns)
-        # each_row = df.to_dict(orient='records')
-        # del df
-        return describe_table  # , integer_columns, non_nullable_columns
-
-    def execute(self, sql):
-        if isinstance(sql, str):
-            return self._execute(sql)
-        elif isinstance(sql, (list, tuple)):
-            max_queries = self.max_async_query_once * 2
-            if len(sql) > max_queries:
-                raise ValueError(f'too many queries,please reduce to less than {max_queries}!')
-            self.session = True
-            return self._async_query(sql)
-        else:
-            raise ValueError('sql must be str or list or tuple')
-
-    def _execute(self, sql):
-
-        if sql.lower().startswith('select') or sql.lower().startswith('show') or sql.lower().startswith('desc'):
-            todf = True
-            # res = self._request(sql, convert_to='dataframe', todf=True)
-        elif sql.lower().startswith('insert') or sql.lower().startswith('optimize') or sql.lower().startswith('create'):
-            todf = False
-            # res = self._request(sql, convert_to='dataframe', todf=False)
-        else:
-            raise ValueError('Unknown sql! current only accept select, insert, show, optimize')
-        res = self._request(sql, convert_to='dataframe', todf=todf)
-        return res
-
     @timer
     def _async_query(self, sql_list):
         get_query = all(map(
@@ -319,15 +276,106 @@ class ClickHouseNode(CHNode):
             [i for i in self._check_df_and_dump(df, describe_table)]))
         self._request(query_with_format, convert_to='dataframe', todf=False, transfer_sql_format=False)
 
+    def query(self, sql):
+        if isinstance(sql, str):
+            return self._execute(sql)
+        elif isinstance(sql, (list, tuple)):
+            max_queries = self.max_async_query_once * 2
+            if len(sql) > max_queries:
+                raise ValueError(f'too many queries,please reduce to less than {max_queries}!')
+            self.session = True
+            return self._async_query(sql)
+        else:
+            raise ValueError('sql must be str or list or tuple')
+
+    def _execute(self, sql):
+
+        if sql.lower().startswith('select') or sql.lower().startswith('show') or sql.lower().startswith('desc'):
+            todf = True
+            # res = self._request(sql, convert_to='dataframe', todf=True)
+        elif sql.lower().startswith('insert') or sql.lower().startswith('optimize') or sql.lower().startswith('create'):
+            todf = False
+            # res = self._request(sql, convert_to='dataframe', todf=False)
+        else:
+            raise ValueError('Unknown sql! current only accept select, insert, show, optimize')
+        res = self._request(sql, convert_to='dataframe', todf=todf)
+        return res
+
+
+class ClickHouseTableNode(_ClickHouseBaseNode):
+    def __init__(self, table_name, settings):
+        super(ClickHouseTableNode, self).__init__(table_name, **settings)
+        self.table_name = table_name
+        self.db_name = self._para.db
+
+    @property
+    def _exist_status(self):
+        return self.table_name in self.tables
+
+    @property
+    def _table_structure(self):
+        return self._describe(self.db_name, self.table_name)
+
+    @property
+    def tables(self):
+        sql = 'SHOW TABLES FROM {db}'.format(db=self._para.db)
+        res = self.query(sql).values.ravel().tolist()
+        return res
+
+    @property
+    def databases(self):
+        sql = 'SHOW DATABASES'
+        res = self.query(sql).values.ravel().tolist()
+        return res
+
+    @property
+    def columns(self):
+        if self._exist_status:
+            return self._table_structure['name'].values.tolist()
+        else:
+            raise ValueError(f'table: {self.table_name} may not be exists!')
+
     def __getitem__(self, item):
-        return self._request(sql, convert_to='dataframe', todf=True)
+        return self._request(item, convert_to='dataframe', todf=True)
 
     def __setitem__(self, key, value):
         db, table = key.split('.')
         self._df_insert_(db, table, value)
 
 
-ClickHouseNodeName = 'ClickHouseNode'
+class ClickHouseDBPool(LazyInit):  # lazy load to improve loading speed
+    def __init__(self, db: str = 'default', settings: (str, dict, object, None) = None):
+        super(ClickHouseDBPool, self).__init__()
+
+        if settings is None:
+            settings = ClickHouseSettings().get()
+        if db is not None:
+            settings['db'] = db
+        else:
+            db = settings['db']
+        self.db = db
+        settings, conn = ConnectionParser.checker_multi_and_create(db, settings, target_db_type='ClickHouse')
+        self._settings = settings
+        self._conn = conn
+        for table in self.tables:
+            if table != 'tables':
+                try:
+                    setattr(self, table, ClickHouseTableNode(table, self._conn))
+                except Exception as e:
+                    print(str(e))
+                    pass
+
+    @property
+    def tables(self):
+        tables = [table[0] for table in self._conn.SHOWTABLES()]
+        return tables
+
+    def __getitem__(self, table: str):
+        return getattr(self, table)
+
+    def __setitem__(self, table: str, table_obj):
+        setattr(self, table, table_obj)
+
 
 if __name__ == '__main__':
     # test = "ClickHouse://{user}:{passwd}@{host}:0001/None"
@@ -337,10 +385,11 @@ if __name__ == '__main__':
     p = {'host': '***REMOVED***', 'port': 8123, 'user': 'default', 'password': '***REMOVED***', 'db': 'default'}
 
     sql = 'select * from default.user_test limit 10000 '
-    r2 = ClickHouseNode('2', **p)
-    r2.session = True
+    r2 = ClickHouseBaseNode('user_test', **p)
 
-    res = r2.execute([sql, sql] * 4)
+    ff = r2._describe('default', 'user_test')
+
+    # res = r2.query(sql)
 
     # c = r2.query(sql)
     # for i in range(120):

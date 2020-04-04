@@ -147,5 +147,5 @@ if __name__ == '__main__':
     db = 'default'
     ch_test = None
     test_clickhouse = ClickHouseDBPool(db, ch_test)
-    print(test_clickhouse.user_test.execute('select * from user_test limit 100'))
+    print(test_clickhouse.user_test.query('select * from user_test limit 100'))
     pass
