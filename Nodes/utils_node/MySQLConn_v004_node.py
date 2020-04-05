@@ -104,7 +104,7 @@ class DfSave(object):
                 columns=col)
 
         # 生成engine 插入数据
-        if engine.query(sql_get_existing_tables).fetchall():
+        if engine.execute(sql_get_existing_tables).fetchall():
             pass  # 已经有这个table了 是向相应表中增加数据
         else:
             if not exampletable:
@@ -117,16 +117,16 @@ class DfSave(object):
                                                                                                          table=table,
                                                                                                          exampledb=exampledb,
                                                                                                          exampletable=exampletable)
-                if engine.query(sql_check_sample_db).fetchall():
-                    engine.query(sql1)  # 没有这个table 但是有exampletable 创建exampletable
+                if engine.execute(sql_check_sample_db).fetchall():
+                    engine.execute(sql1)  # 没有这个table 但是有exampletable 创建exampletable
                 else:
                     raise ValueError(" No sample table {} in sample db {}".format(exampletable, exampledb))
         if auto_incre_col:
-            engine.query(
+            engine.execute(
                 "alter table {} add id BIGINT(255) NOT NULL AUTO_INCREMENT, add primary key (id)".format(table))
         else:
             pass
-        engine.query(sql2)
+        engine.execute(sql2)
         t2 = time.time() - t
         print('The insertion of table {} costs '.format(table) + str(t2) + 'seconds')
 
@@ -277,7 +277,7 @@ class ConnectMysql(object):
         """
         conn = self._SelfConnect()
         cur = conn.cursor()
-        cur.query(sql)
+        cur.execute(sql)
         result = cur.fetchall()
         cur.close()
         conn.commit()
@@ -305,7 +305,7 @@ class ConnectMysql(object):
             filepath=filepath, table=table, columns=','.join(columns))
         # sql3="ALTER IGNORE TABLE {table_name} ADD UNIQUE INDEX( {unique_index_columns} );".format(table_name=table,unique_index_columns=index)
         # 生成engine 插入数据
-        engine.query(sql2)
+        engine.execute(sql2)
         print('The insertion of data {} costs {} seconds'.format(table, str(time.time() - t)))
         engine.dispose()
 

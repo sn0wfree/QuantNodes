@@ -31,7 +31,7 @@ class ConnectionParser(object):
         user, passwd = user_info.split(':')
         host_port, db = host_info.split('/')
         host, port = host_port.split(':')
-        db_dict = dict(host=host, port=int(port), db=db, user=user, passwd=passwd)
+        db_dict = dict(host=host, port=int(port), db=db, user=user, password=passwd)
         return conn_info_tuple(db_type, db_dict)
 
     @classmethod
