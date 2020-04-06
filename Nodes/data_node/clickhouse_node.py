@@ -233,8 +233,103 @@ class _ClickHouseNodeBaseTool(object):
         return ret_value
 
 
+class _CreateTableTools(object):
+    @staticmethod
+    def _check_table_exists(db, table, obj):
+        """
+
+        :param db:
+        :param table:
+        :param obj:
+        :return: exists =true not exists = False
+        """
+        sql = f"show tables from {db} like '{table}' "
+        res = obj.query(sql)
+        if res.empty:
+            return False
+        else:
+            return True
+
+    @staticmethod
+    def _translate_dtype(sdf):
+        if 'type' in sdf.columns and 'name' in sdf.columns:
+            dtypes_series = sdf.set_index('name')['type']
+            # df_type = 'type'
+            return dtypes_series.replace('object', 'String').replace('datetime64[ns]', 'Datetime').map(lambda x: str(x))
+        else:
+            dtypes_series = sdf.dtypes
+            # df_type ='data'
+
+            return dtypes_series.replace('object', 'String').replace('datetime64[ns]', 'Datetime').map(
+                lambda x: str(x).capitalize())
+
+    @classmethod
+    def _create_table_dtype(cls, db, table, sdf, key_cols, engine_type='ReplacingMergeTree', extra_format_dict=None):
+        if extra_format_dict is None:
+            extra_format_dict = {}
+        dtypes_df = cls._translate_dtype(sdf)
+        cols_def = ','.join([f"{name} {dtype}" if name not in extra_format_dict.keys() else "{}.{}".format(name, str(
+            extra_format_dict.get(name))) for name, dtype in dtypes_df.to_dict().items()])
+        order_by_cols = ','.join(key_cols)
+
+        DB_TABLE = f"{db}.{table}"
+
+        ORDER_BY_CLAUSE = f"ORDER BY ( {order_by_cols} )"
+
+        base = SQLBuilder.raw_create_ReplacingMergeTree_table_sql(DB_TABLE, cols_def, ORDER_BY_CLAUSE,
+                                                                  ENGINE_TYPE=engine_type)
+
+        # base = f"CREATE TABLE IF NOT EXISTS {db}.{table} ( {cols_def} ) ENGINE = {engine_type} ORDER BY ({order_by_cols}) SETTINGS index_granularity = 8192 "
+        return base
+
+    @classmethod
+    def _create_table(cls, obj: object, db: str, table: str, sql: str, key_cols: list,
+                      engine_type: str = 'ReplacingMergeTree',
+                      extra_format_dict: (dict, None) = None) -> str:
+        """
+
+        :param obj:
+        :param db:
+        :param table:
+        :param sql:
+        :param key_cols:
+        :param engine_type:
+        :param extra_format_dict:
+        :return:
+        """
+
+        if extra_format_dict is None:
+            extra_format_dict = {}
+
+        if isinstance(obj, ClickHouseDBNode):
+            if len(obj.tables) == 0:
+                warnings.warn('new database! it is no safe to create table!')
+            query_func = obj.query
+        elif isinstance(obj, ClickHouseDBPool):
+            query_func = obj.query
+        else:
+            query_func = obj.query
+
+        describe_sql = f'describe ( {sql} limit 1)'
+
+        exist_status = cls._check_table_exists(db, table, obj)
+        if exist_status:
+            print('table:{table} already exists!')
+        else:
+            print('will create {table} at {db}')
+            dtypes_df = query_func(describe_sql)
+            cls._create_table_dtype(db, table, dtypes_df, key_cols, engine_type=engine_type,
+                                    extra_format_dict=extra_format_dict)
+        return exist_status
+
+
 class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
-    def __init__(self, name, **db_settings):
+    def __init__(self, name, **db_settings: dict):
+        """
+
+        :param name:
+        :param db_settings:
+        """
 
         self._db_settings = db_settings
 
@@ -265,11 +360,15 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
 
         # components = urllib.parse.urlparse(url_str)
 
-    def __getitem__(self, sql):
+    def __getitem__(self, sql: str):
         return self.query(sql)
 
-    def __setitem__(self, db_table, df):
-        db, table = db_table.split('.')
+    def __setitem__(self, db_table: str, df):
+        if '.' in db_table:
+            pass
+            db, table = db_table.split('.')
+        else:
+            raise ValueError(f'get unknown db_table : {db_table}')
         self._df_insert_(db, table, df)
 
     @property
@@ -295,7 +394,7 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
     def __exit__(self):
         self.close()
 
-    def _describe(self, db, table):
+    def _describe(self, db: str, table: str):
         describe_sql = 'describe table {}.{}'.format(db, table)
         describe_table = self._request(describe_sql)
         # non_nullable_columns = list(describe_table[~describe_table['type'].str.startswith('Nullable')]['name'])
@@ -366,7 +465,7 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
         if auto_switch:
             self._async = False
 
-    def _request_unit_(self, sql, convert_to='dataframe', transfer_sql_format=True):
+    def _request_unit_(self, sql: str, convert_to: str = 'dataframe', transfer_sql_format: bool = True):
         sql2 = self._transfer_sql_format(sql, convert_to=convert_to, transfer_sql_format=transfer_sql_format)
 
         if self.http_settings['enable_http_compression'] == 1:
@@ -383,7 +482,7 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
 
     # @timer
     @lru_cache(maxsize=10)
-    def _request(self, sql, convert_to='dataframe', todf=True, transfer_sql_format=True):
+    def _request(self, sql: str, convert_to: str = 'dataframe', todf: bool = True, transfer_sql_format: bool = True):
         if self._async:
             raise ValueError('current async mode will disable sync mode!')
         # sql2 = self._transfer_sql_format(sql, convert_to=convert_to, transfer_sql_format=transfer_sql_format)
@@ -406,7 +505,7 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
             return resp.content
 
     # @timer
-    def _async_query(self, sql_list):
+    def _async_query(self, sql_list: (str, list)):
         get_query = all(map(
             lambda sql: sql.lower().startswith('select') or sql.lower().startswith('show') or sql.lower().startswith(
                 'desc'), sql_list))
@@ -424,14 +523,14 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
         res = list(self._async_request(sql_list, convert_to='dataframe', todf=todf, return_sql=False))
         return res
 
-    def _df_insert_(self, db, table, df):
+    def _df_insert_(self, db: str, table: str, df: pd.DataFrame):
         describe_table = self._describe(db, table)
 
         query_with_format = 'insert into {0} format JSONEachRow \n{1}'.format('{}.{}'.format(db, table), '\n'.join(
             [i for i in self._check_df_and_dump(df, describe_table)]))
         self._request(query_with_format, convert_to='dataframe', todf=False, transfer_sql_format=False)
 
-    def execute(self, sql):
+    def execute(self, sql: str):
         if isinstance(sql, str):
             return self._execute(sql)
         elif isinstance(sql, (list, tuple)):
@@ -443,7 +542,7 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
         else:
             raise ValueError('sql must be str or list or tuple')
 
-    def _execute(self, sql):
+    def _execute(self, sql: str):
 
         if sql.lower().startswith('select') or sql.lower().startswith('show') or sql.lower().startswith('desc'):
             todf = True
@@ -459,9 +558,15 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
         res = self._request(sql, convert_to='dataframe', todf=todf, transfer_sql_format=transfer_sql_format)
         return res
 
-    def query(self, sql, optimize=False):
+    def query(self, sql: str, optimize: bool = False):
+        """
+
+        :param sql:
+        :param optimize:
+        :return:
+        """
         if isinstance(sql, str) and sql.lower().startswith('insert into'):
-            db_table = sql.lower().split('insert into')[-1].split(' ')[0]
+            db_table = sql.lower().split('insert into ')[-1].split(' ')[0]
         else:
             db_table = 'no'
 
@@ -478,12 +583,32 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
             return res
 
 
-class ClickHouseBaseNode(_ClickHouseBaseNode):
+class ClickHouseBaseNode(_ClickHouseBaseNode, _CreateTableTools):
     def __init__(self, name, **settings):
         super(ClickHouseBaseNode, self).__init__(name, **settings)
 
-    def _create_table(self, db, table, select_sql, keys_cols, table_engine='ReplacingMergeTree'):
-        pass
+    def create_table(self, db: str, table: str, select_sql: str, keys_cols: list,
+                     table_engine: str = 'ReplacingMergeTree', extra_format_dict: bool = None,
+                     return_status: bool = True):
+        status = self._create_table(obj=self, db=db, table=table, sql=select_sql, keys_cols=keys_cols,
+                                    table_engine=table_engine, extra_format_dict=extra_format_dict)
+        if return_status:
+            return status
+
+    def check_table_exists(self, db: str, table: str):
+        """
+
+        :param db:
+        :param table:
+        :param obj:
+        :return: exists =true not exists = False
+        """
+        sql = f"show tables from {db} like '{table}' "
+        res = self.query(sql)
+        if res.empty:
+            return False
+        else:
+            return True
 
 
 class ClickHouseTableNode(ClickHouseBaseNode):
@@ -511,73 +636,249 @@ class ClickHouseTableNode(ClickHouseBaseNode):
         return self.execute(sql)
 
 
-class CreateTableTools(object):
+class TableEngineCreator(object):
     @staticmethod
-    def check_table_exists(db, table, obj):
-        """
-
-        :param db:
-        :param table:
-        :param obj:
-        :return: exists =true not exists = False
-        """
-        sql = f"show tables from {db} like '{table}' "
-        res = obj.qeury(sql)
-        if res.empty:
-            return False
+    def _assemble_cols_2_clause(prefix, cols, default=''):
+        if cols is None:
+            return default
         else:
-            return True
-
-    @staticmethod
-    def translate_dtype(sdf):
-        if 'type' in sdf.columns and 'name' in sdf.columns:
-            dtypes_series = sdf.set_index('name')['type']
-            # df_type = 'type'
-            return dtypes_series.replace('object', 'String').replace('datetime64[ns]', 'Datetime').map(lambda x: str(x))
-        else:
-            dtypes_series = sdf.dtypes
-            # df_type ='data'
-
-            return dtypes_series.replace('object', 'String').replace('datetime64[ns]', 'Datetime').map(
-                lambda x: str(x).capitalize())
+            cols_str = ','.join(cols)
+            return f"{prefix} ( {cols_str} ) "
 
     @classmethod
-    def create_table_dtype(cls, db, table, sdf, key_cols, engine_type='ReplacingMergeTree', extra_format_dict=None):
-        if extra_format_dict is None:
-            extra_format_dict = {}
-        dtypes_df = cls.translate_dtype(sdf)
-        cols_def = ','.join([f"{name} {dtype}" if name not in extra_format_dict.keys() else "{}.{}".format(name, str(
-            extra_format_dict.get(name))) for name, dtype in dtypes_df.to_dict().items()])
-        order_by_cols = ','.join(key_cols)
+    def ReplacingMergeTree_creator(cls, DB_TABLE, cols_def, order_by_cols,
+                                   sample_by_cols=None,
+                                   ON_CLUSTER='', partition_by_cols=None, primary_by_cols=None):
 
-        base = f"CREATE TABLE IF NOT EXISTS {db}.{table} ( {cols_def} ) ENGINE = {engine_type} ORDER BY ({order_by_cols}) SETTINGS index_granularity = 8192 "
+        order_by_cols_str = ','.join(order_by_cols)
+        ORDER_BY_CLAUSE = f'ORDER BY ( {order_by_cols_str} )'
+
+        SAMPLE_CLAUSE = cls._assemble_cols_2_clause('SAMPLE BY', sample_by_cols, default='')
+
+        PRIMARY_BY_CLAUSE = cls._assemble_cols_2_clause('PRIMARY BY', primary_by_cols, default='')
+        # if primary_by_cols is not None:
+        #     primary_by_cols_str = ','.join(primary_by_cols)
+        #     PRIMARY_BY_CLAUSE = f'PRIMARY BY ( {primary_by_cols_str} )'
+        # else:
+        #     PRIMARY_BY_CLAUSE = ''
+
+        PARTITION_by_CLAUSE = cls._assemble_cols_2_clause('PARTITION BY', partition_by_cols, default='')
+
+        # if partition_by_cols is not None:
+        #     partition_by_cols_str = ','.join(partition_by_cols)
+        #     PARTITION_by_CLAUSE = f'PARTITION BY ( {partition_by_cols_str} )'
+        # else:
+        #     PARTITION_by_CLAUSE = ''
+
+        return cls.raw_create_ReplacingMergeTree_table_sql(DB_TABLE, cols_def, ORDER_BY_CLAUSE,
+                                                           PRIMARY_BY_CLAUSE=PRIMARY_BY_CLAUSE,
+                                                           SAMPLE_CLAUSE=SAMPLE_CLAUSE,
+                                                           ENGINE_TYPE='ReplacingMergeTree', ON_CLUSTER=ON_CLUSTER,
+                                                           PARTITION_by_CLAUSE=PARTITION_by_CLAUSE)
+
+    @staticmethod
+    def raw_create_ReplacingMergeTree_table_sql(DB_TABLE, cols_def, ORDER_BY_CLAUSE,
+                                                PRIMARY_BY_CLAUSE='', SAMPLE_CLAUSE='',
+                                                ENGINE_TYPE='ReplacingMergeTree', ON_CLUSTER='', PARTITION_by_CLAUSE='',
+                                                TTL=''
+                                                ):
+        ## TODO add ttl expr at future
+        """
+
+        :param ON_CLUSTER:
+        :param SAMPLE_CLAUSE:
+        :param PRIMARY_BY_CLAUSE:
+        :param PARTITION_by_CLAUSE:
+        :param DB_TABLE:
+        :param cols_def:
+        :param ORDER_BY_CLAUSE:
+        :param ENGINE_TYPE:
+        :return:
+        """
+        """CREATE TABLE [IF NOT EXISTS] [db.]table_name [ON CLUSTER cluster]
+            (
+                name1 [type1] [DEFAULT|MATERIALIZED|ALIAS expr1],
+                name2 [type2] [DEFAULT|MATERIALIZED|ALIAS expr2],
+                ...
+            ) ENGINE = ReplacingMergeTree([ver])
+            [PARTITION BY expr]
+            [ORDER BY expr]
+            [PRIMARY KEY expr]
+            [SAMPLE BY expr]
+            [SETTINGS name=value, ...]"""
+
+        maid_body = f"CREATE TABLE IF NOT EXISTS {DB_TABLE} {ON_CLUSTER} ( {cols_def} ) ENGINE = {ENGINE_TYPE}"
+
+        settings = "SETTINGS index_granularity = 8192"
+        conds = f"{PARTITION_by_CLAUSE} {ORDER_BY_CLAUSE} {PRIMARY_BY_CLAUSE} {SAMPLE_CLAUSE}"
+
+        base = f"{maid_body} {conds}  {settings}"
         return base
 
+
+class SQLBuilder(TableEngineCreator):
+    @staticmethod
+    def _assemble_sample(sample=None):
+        if sample is None:
+            SAMPLE_CLAUSE = ''
+        else:
+            SAMPLE_CLAUSE = f'SAMPLE BY {sample}'
+        return SAMPLE_CLAUSE
+
+    @staticmethod
+    def _assemble_array_join(array_join_list=None):
+        if array_join_list is None:
+            ARRAY_JOIN_CLAUSE = ''
+        else:
+            array_join = ','.join(array_join_list)
+            ARRAY_JOIN_CLAUSE = f'ARRAY JOIN {array_join}'
+        return ARRAY_JOIN_CLAUSE
+
+    @staticmethod
+    def _assemble_join(join_info_dict=None):
+
+        if join_info_dict is None:
+            JOIN_CLAUSE = ''
+        else:
+            join_type = join_info_dict.get('type')
+            on_ = join_info_dict.get('ON')
+            using_ = join_info_dict.get('USING')
+
+            if join_type is None:
+                raise ValueError('join_info_dict cannot locate join_type condition')
+
+            if on_ is None:
+                if using_ is None:
+                    raise ValueError('join_info_dict cannot locate ON or USING condition')
+                else:
+                    JOIN_CLAUSE = f'{join_type} USING {using_}'
+            else:
+                JOIN_CLAUSE = f'{join_type} ON {on_}'
+        return JOIN_CLAUSE
+
+    @staticmethod
+    def _assemble_where_like(a_str, prefix='WHERE'):
+        if a_str is None:
+            SAMPLE_CLAUSE = ''
+        else:
+            SAMPLE_CLAUSE = f'{prefix} {a_str}'
+        return SAMPLE_CLAUSE
+
+    @staticmethod
+    def _assemble_group_by(group_by_cols=None):
+        if group_by_cols is None:
+            SAMPLE_CLAUSE = ''
+        else:
+            group_by_cols_str = ','.join(group_by_cols)
+            SAMPLE_CLAUSE = f'GROUP BY ({group_by_cols_str})'
+        return SAMPLE_CLAUSE
+
+    @staticmethod
+    def _assemble_order_by(order_by_cols=None):
+        if order_by_cols is None:
+            SAMPLE_CLAUSE = ''
+        else:
+            order_by_cols_str = ','.join(order_by_cols)
+            SAMPLE_CLAUSE = f'ORDER BY ({order_by_cols_str})'
+        return SAMPLE_CLAUSE
+
+    @staticmethod
+    def _assemble_limit_by(limit_n_by_dict=None):
+
+        if limit_n_by_dict is None:
+            SAMPLE_CLAUSE = ''
+        else:
+            N = limit_n_by_dict['N']
+            limit_by_cols = limit_n_by_dict['limit_by_cols']
+            order_by_cols_str = ','.join(limit_by_cols)
+            SAMPLE_CLAUSE = f'LIMIT {N} BY ({order_by_cols_str})'
+        return SAMPLE_CLAUSE
+
+    @staticmethod
+    def _assemble_limit(limit_n=None):
+
+        if limit_n is None:
+            SAMPLE_CLAUSE = ''
+        else:
+            SAMPLE_CLAUSE = f'LIMIT {limit_n} '
+        return SAMPLE_CLAUSE
+
     @classmethod
-    def create_table_sql(cls, obj, db, table, sql, key_cols, engine_type='ReplacingMergeTree', extra_format_dict=None):
+    def create_select_sql(cls, DB_TABLE, cols, sample: str = None, array_join_list: list = None, join_info_dict=None,
+                          prewhere_clause_str: str = None, where_clause_str: str = None, group_by_cols: list = None,
+                          order_by_cols: list = None,
+                          limit_n_by_dict=None, limit_n=None
+                          ):
 
-        if extra_format_dict is None:
-            extra_format_dict = {}
+        SELECT_CLAUSE = ','.join(cols)
 
-        if isinstance(obj, ClickHouseDBNode):
-            if len(obj.tables) == 0:
-                warnings.warn('new database! it is no safe to create table!')
-            query_func = obj.query
-        elif isinstance(obj, ClickHouseDBPool):
-            query_func = obj.query
-        else:
-            query_func = obj.query
+        SAMPLE_CLAUSE = cls._assemble_sample(sample=sample)
 
-        describe_sql = f'describe ( {sql} limit 1)'
+        ARRAY_JOIN_CLAUSE = cls._assemble_array_join(array_join_list=array_join_list)
 
-        exist_status = cls.check_table_exists(db, table, obj)
-        if exist_status:
-            print('table:{table} already exists!')
-        else:
-            print('will create {table} at {db}')
-            dtypes_df = query_func(describe_sql)
-            cls.create_table_dtype(db, table, dtypes_df, key_cols, engine_type=engine_type,
-                                   extra_format_dict=extra_format_dict)
+        JOIN_CLAUSE = cls._assemble_join(join_info_dict)
+
+        PREWHERE_CLAUSE = cls._assemble_where_like(prewhere_clause_str, prefix='PREWHERE')
+
+        WHERE_CLAUSE = cls._assemble_where_like(where_clause_str, prefix='WHERE')
+
+        HAVING_CLAUSE = cls._assemble_where_like(where_clause_str, prefix='HAVING')
+
+        GROUP_BY_CLAUSE = cls._assemble_group_by(group_by_cols)
+
+        ORDER_BY_CLAUSE = cls._assemble_group_by(order_by_cols)
+
+        LIMIT_N_CLAUSE = cls._assemble_limit_by(limit_n_by_dict)
+
+        LIMIT_CLAUSE = cls._assemble_limit(limit_n)
+
+        return cls.raw_create_select_sql(SELECT_CLAUSE, DB_TABLE, SAMPLE_CLAUSE, ARRAY_JOIN_CLAUSE, JOIN_CLAUSE,
+                                         PREWHERE_CLAUSE, WHERE_CLAUSE, GROUP_BY_CLAUSE, HAVING_CLAUSE, ORDER_BY_CLAUSE,
+                                         LIMIT_N_CLAUSE, LIMIT_CLAUSE)
+
+    @staticmethod
+    def raw_create_select_sql(SELECT_CLAUSE, DB_TABLE, SAMPLE_CLAUSE, ARRAY_JOIN_CLAUSE, JOIN_CLAUSE,
+                              PREWHERE_CLAUSE, WHERE_CLAUSE, GROUP_BY_CLAUSE, HAVING_CLAUSE, ORDER_BY_CLAUSE,
+                              LIMIT_N_CLAUSE, LIMIT_CLAUSE
+                              ):
+        """
+
+        :param SELECT_CLAUSE:
+        :param DB_TABLE:
+        :param SAMPLE_CLAUSE:
+        :param ARRAY_JOIN_CLAUSE:
+        :param JOIN_CLAUSE:
+        :param PREWHERE_CLAUSE:
+        :param WHERE_CLAUSE:
+        :param GROUP_BY_CLAUSE:
+        :param HAVING_CLAUSE:
+        :param ORDER_BY_CLAUSE:
+        :param LIMIT_N_CLAUSE:
+        :param LIMIT_CLAUSE:
+        :return:
+        """
+        """SELECT [DISTINCT] expr_list
+                    [FROM [db.]table | (subquery) | table_function] [FINAL]
+                    [SAMPLE sample_coeff]
+                    [ARRAY JOIN ...]
+                    [GLOBAL] ANY|ALL INNER|LEFT JOIN (subquery)|table USING columns_list
+                    [PREWHERE expr]
+                    [WHERE expr]
+                    [GROUP BY expr_list] [WITH TOTALS]
+                    [HAVING expr]
+                    [ORDER BY expr_list]
+                    [LIMIT n BY columns]
+                    [LIMIT [n, ]m]
+                    [UNION ALL ...]
+                    [INTO OUTFILE filename]
+                    [FORMAT format]"""
+
+        main_body = f"SELECT {SELECT_CLAUSE} FROM {DB_TABLE} {SAMPLE_CLAUSE}"
+        join = f"{ARRAY_JOIN_CLAUSE} {JOIN_CLAUSE}"
+        where_conds = f"{PREWHERE_CLAUSE} {WHERE_CLAUSE} {GROUP_BY_CLAUSE} {HAVING_CLAUSE} "
+        order_limit = f"{ORDER_BY_CLAUSE} {LIMIT_N_CLAUSE} {LIMIT_CLAUSE}"
+        sql = f"{main_body} {join} {where_conds} {order_limit}"
+        return sql
 
 
 if __name__ == '__main__':
