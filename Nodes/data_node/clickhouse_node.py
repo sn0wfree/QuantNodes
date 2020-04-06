@@ -973,9 +973,9 @@ if __name__ == '__main__':
     # table_node['default.user_test'] = table_node.query(sql3)
     # print(df)
     # print(df2)
-    sql = Groupby._group_by('default.test2', by=['user_name'], agg_cols=['sum(r1)'], limit=10)
-    print(sql)
-    df = table_node.query(sql)
+    # sql = Groupby._group_by('default.test2', by=['user_name'], agg_cols=['sum(r1)'], limit=10)
+    # print(sql)
+    # df = table_node.query(sql)
 
     print(1)
 
