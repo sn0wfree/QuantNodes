@@ -11,6 +11,7 @@ import gzip
 import json
 import urllib
 import warnings
+from collections import ChainMap
 from collections import namedtuple
 from functools import lru_cache
 
@@ -285,7 +286,7 @@ class _CreateTableTools(object):
     @classmethod
     def _create_table(cls, obj: object, db: str, table: str, sql: str, key_cols: list,
                       engine_type: str = 'ReplacingMergeTree',
-                      extra_format_dict: (dict, None) = None) -> str:
+                      extra_format_dict: (dict, None) = None) -> bool:
         """
 
         :param obj:
@@ -312,7 +313,7 @@ class _CreateTableTools(object):
 
         describe_sql = f'describe ( {sql} limit 1)'
 
-        exist_status = cls._check_table_exists(db, table, obj)
+        exist_status: bool = cls._check_table_exists(db, table, obj)
         if exist_status:
             print('table:{table} already exists!')
         else:
@@ -323,8 +324,59 @@ class _CreateTableTools(object):
         return exist_status
 
 
+# class _ClickHouseBaseNodeAsyncExt(object):
+#
+#
+#     def _async_request(self, sql_list, convert_to='dataframe', todf=True, transfer_sql_format=True, return_sql=True,
+#                        auto_switch=True,max_async_query_once=5):
+#
+#         def exception_handler(request, exception):
+#             print("Request failed")
+#
+#         if not self._async:
+#             raise ValueError("must manually switch to async mode")
+#         tasks = (self._request_unit_(sql, convert_to=convert_to, transfer_sql_format=transfer_sql_format) for sql in
+#                  sql_list)
+#         if return_sql:
+#             res_list = zip(sql_list,
+#                            grequests.map(tasks, exception_handler=exception_handler),
+#                            size=max_async_query_once)
+#             for sql, resp in res_list:
+#                 if todf:
+#                     d = self._load_into_pd(resp.content, convert_to)
+#                     yield sql, d
+#                 else:
+#                     yield sql, resp.content
+#         else:
+#             for resp in grequests.map(tasks, exception_handler=exception_handler, size=max_async_query_once):
+#                 if todf:
+#                     d = self._load_into_pd(resp.content, convert_to)
+#                     yield d
+#                 else:
+#                     yield resp.content
+#         if auto_switch:
+#             self._async = False
+#
+#     # @timer
+#     def _async_query(self, sql_list: (str, list)):
+#         get_query = all(map(
+#             lambda sql: sql.lower().startswith('select') or sql.lower().startswith('show') or sql.lower().startswith(
+#                 'desc'), sql_list))
+#         insert_query = all(map(lambda sql: sql.lower().startswith('insert') or sql.lower().startswith(
+#             'optimize') or sql.lower().startswith('create'), sql_list))
+#
+#         if get_query:
+#             todf = True
+#         elif insert_query:
+#             todf = False
+#         else:
+#             raise ValueError('Unknown sql! current only accept select, insert, show, optimize')
+#         res = list(self._async_request(sql_list, convert_to='dataframe', todf=todf, return_sql=False))
+#         return res
+#
+
 class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
-    def __init__(self, name, **db_settings: dict):
+    def __init__(self, name, **db_settings):
         """
 
         :param name:
@@ -333,10 +385,12 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
 
         self._db_settings = db_settings
 
-        self.db_name = self._db_settings['db']
+        self.db_name: str = db_settings['db']
 
-        self._para = node(self._db_settings['host'], self._db_settings['port'], self._db_settings['user'],
-                          self._db_settings['password'], self._db_settings['db'])
+        self._para = node(db_settings['host'], db_settings['port'], db_settings['user'],
+                          db_settings['password'], db_settings['db'])
+
+        self._base_url = "http://{host}:{port}/?".format(host=self._para.host, port=int(self._para.port))
 
         self._default_settings = {'enable_http_compression': 1, 'send_progress_in_http_headers': 0,
                                   'log_queries': 1, 'connect_timeout': 10, 'receive_timeout': 300,
@@ -356,9 +410,27 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
         self._session = None
         self.max_async_query_once = 5
         self.is_closed = False
-        self._test_connection()
+        self._test_connection_()
 
-        # components = urllib.parse.urlparse(url_str)
+    def _test_connection_(self):
+        ret_value = self.session.get(self._base_url)
+
+        print('test_connection: ', ret_value.text.strip())
+
+    # @property
+    # def __coroutine_session__(self):
+    #     return grequests
+
+    @property
+    def session(self):
+        if self._session is None:
+            self._session = requests.Session()
+        else:
+            if self.is_closed:
+                raise ValueError('session is closed!')
+            else:
+                pass
+        return self._session  # grequests.AsyncRequest
 
     def __getitem__(self, sql: str):
         return self.query(sql)
@@ -371,30 +443,14 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
             raise ValueError(f'get unknown db_table : {db_table}')
         self._df_insert_(db, table, df)
 
-    @property
-    def _database_exist_status(self):
-        return self.db_name in self.databases
-
-    @property
-    def tables(self):
-        sql = 'SHOW TABLES FROM {db}'.format(db=self._para.db)
-        res = self.execute(sql).values.ravel().tolist()
-        return res
-
-    @property
-    def databases(self):
-        sql = 'SHOW DATABASES'
-        res = self.execute(sql).values.ravel().tolist()
-        return res
-
     def close(self):
         self.session.close()
-        self.is_closed = True
+        self.is_closed = True  # self._session.is_closed()
 
     def __exit__(self):
         self.close()
 
-    def _describe(self, db: str, table: str):
+    def _describe_(self, db: str, table: str):
         describe_sql = 'describe table {}.{}'.format(db, table)
         describe_table = self._request(describe_sql)
         # non_nullable_columns = list(describe_table[~describe_table['type'].str.startswith('Nullable')]['name'])
@@ -406,85 +462,33 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
         # del df
         return describe_table  # , integer_columns, non_nullable_columns
 
-    @property
-    def session(self):
-        # url_str = "http://{user}:{passwd}@{host}:{port}".format(host=self._para.host, port=int(self._para.port),
-        #                                                         user=self._para.user, passwd=self._para.password)
-        if not self._async:
-
-            self._session = requests.sessions.Session()
-
-            return self._session  # grequests.AsyncRequest
-        else:
-            return grequests
-
-    @session.setter
-    def session(self, value: bool):
-        self._async = value
-
-    def _test_connection(self):
-        ret_value = self.session.get(self._base_url)
-
-        print(ret_value.text)
-
-    @property
-    def _base_url(self):
-        _base_url = "http://{host}:{port}/?".format(host=self._para.host, port=int(self._para.port),
-                                                    user=self._para.user, passwd=self._para.password)
-        # params = urllib.parse.urlencode(self.http_settings)
-        return _base_url  # , params
-
-    def _async_request(self, sql_list, convert_to='dataframe', todf=True, transfer_sql_format=True, return_sql=True,
-                       auto_switch=True):
-
-        def exception_handler(request, exception):
-            print("Request failed")
-
-        if not self._async:
-            raise ValueError("must manually switch to async mode")
-        tasks = (self._request_unit_(sql, convert_to=convert_to, transfer_sql_format=transfer_sql_format) for sql in
-                 sql_list)
-        if return_sql:
-            res_list = zip(sql_list,
-                           self.session.map(tasks, exception_handler=exception_handler),
-                           size=self.max_async_query_once)
-            for sql, resp in res_list:
-                if todf:
-                    d = self._load_into_pd(resp.content, convert_to)
-                    yield sql, d
-                else:
-                    yield resp.content
-        else:
-            for resp in self.session.map(tasks, exception_handler=exception_handler, size=self.max_async_query_once):
-                if todf:
-                    d = self._load_into_pd(resp.content, convert_to)
-
-                    yield d
-                else:
-                    yield resp.content
-        if auto_switch:
-            self._async = False
-
     def _request_unit_(self, sql: str, convert_to: str = 'dataframe', transfer_sql_format: bool = True):
         sql2 = self._transfer_sql_format(sql, convert_to=convert_to, transfer_sql_format=transfer_sql_format)
 
+        if self._async:
+            session = grequests
+        else:
+            session = self.session
+
         if self.http_settings['enable_http_compression'] == 1:
             url = self._base_url + urllib.parse.urlencode(self.http_settings)
-            resp = self.session.post(url,
-                                     data=gzip.compress(sql2.encode()),
-                                     headers={'Content-Encoding': 'gzip', 'Accept-Encoding': 'gzip'})
+            resp = session.post(url,
+                                data=gzip.compress(sql2.encode()),
+                                headers={'Content-Encoding': 'gzip', 'Accept-Encoding': 'gzip'})
         else:
-            settings = self.http_settings.copy()
-            settings.update({'query': sql2})
-            url = self._base_url + urllib.parse.urlencode(settings)
-            resp = self.session.post(url)
+            # settings = self.http_settings.copy()
+            # settings.update({'query': sql2})
+            url = self._base_url + urllib.parse.urlencode(ChainMap(self.http_settings, {'query': sql2}))
+            resp = session.post(url)
         return resp
 
     # @timer
     @lru_cache(maxsize=10)
     def _request(self, sql: str, convert_to: str = 'dataframe', todf: bool = True, transfer_sql_format: bool = True):
         if self._async:
-            raise ValueError('current async mode will disable sync mode!')
+            self._async = False
+
+        #     raise ValueError('current async mode will disable sync mode!')
         # sql2 = self._transfer_sql_format(sql, convert_to=convert_to, transfer_sql_format=transfer_sql_format)
         #
         # if self.http_settings['enable_http_compression'] == 1:
@@ -504,8 +508,30 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
         else:
             return resp.content
 
+    def _async_request(self, sql_list, convert_to='dataframe', todf=True, transfer_sql_format=True, auto_switch=True):
+
+        def exception_handler(request, exception):
+            print("Request failed")
+
+        if not self._async:
+            if auto_switch:
+                self._async = True
+            else:
+                raise ValueError("must manually switch to async mode")
+        tasks = (self._request_unit_(sql, convert_to=convert_to, transfer_sql_format=transfer_sql_format) for sql in
+                 sql_list)
+
+        for resp in grequests.map(tasks, exception_handler=exception_handler, size=self.max_async_query_once):
+            if todf:
+                d = self._load_into_pd(resp.content, convert_to)
+                yield d
+            else:
+                yield resp.content
+        if auto_switch:
+            self._async = False
+
     # @timer
-    def _async_query(self, sql_list: (str, list)):
+    def _async_query(self, sql_list: (list,)):
         get_query = all(map(
             lambda sql: sql.lower().startswith('select') or sql.lower().startswith('show') or sql.lower().startswith(
                 'desc'), sql_list))
@@ -520,14 +546,13 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
             # res = self._request(sql, convert_to='dataframe', todf=False)
         else:
             raise ValueError('Unknown sql! current only accept select, insert, show, optimize')
-        res = list(self._async_request(sql_list, convert_to='dataframe', todf=todf, return_sql=False))
+        res = list(self._async_request(sql_list, convert_to='dataframe', todf=todf))
         return res
 
     def _df_insert_(self, db: str, table: str, df: pd.DataFrame):
-        describe_table = self._describe(db, table)
-
+        describe_table = self._describe_(db, table)
         query_with_format = 'insert into {0} format JSONEachRow \n{1}'.format('{}.{}'.format(db, table), '\n'.join(
-            [i for i in self._check_df_and_dump(df, describe_table)]))
+            self._check_df_and_dump(df, describe_table)))
         self._request(query_with_format, convert_to='dataframe', todf=False, transfer_sql_format=False)
 
     def execute(self, sql: str):
@@ -537,7 +562,6 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
             max_queries = self.max_async_query_once * 2
             if len(sql) > max_queries:
                 raise ValueError(f'too many queries,please reduce to less than {max_queries}!')
-            self.session = True
             return self._async_query(sql)
         else:
             raise ValueError('sql must be str or list or tuple')
@@ -587,10 +611,27 @@ class ClickHouseBaseNode(_ClickHouseBaseNode, _CreateTableTools):
     def __init__(self, name, **settings):
         super(ClickHouseBaseNode, self).__init__(name, **settings)
 
+    @property
+    def tables(self):
+        sql = 'SHOW TABLES FROM {db}'.format(db=self._para.db)
+        res = self.execute(sql).values.ravel().tolist()
+        return res
+
+    @property
+    def databases(self):
+        sql = 'SHOW DATABASES'
+        res = self.execute(sql).values.ravel().tolist()
+        return res
+
+    @property
+    def _database_exist_status(self):
+        return self.db_name in self.databases
+
     def create_table(self, db: str, table: str, select_sql: str, keys_cols: list,
                      table_engine: str = 'ReplacingMergeTree', extra_format_dict: bool = None,
                      return_status: bool = True):
-        status = self._create_table(obj=self, db=db, table=table, sql=select_sql, keys_cols=keys_cols,
+        status = self._create_table(obj=self, db=db, table=table, sql=select_sql,
+                                    keys_cols=keys_cols,
                                     table_engine=table_engine, extra_format_dict=extra_format_dict)
         if return_status:
             return status
@@ -622,7 +663,10 @@ class ClickHouseTableNode(ClickHouseBaseNode):
 
     @property
     def table_structure(self):
-        return self._describe(self.db_name, self.table_name)
+        if self._table_exist_status:
+            return self._describe_(self.db_name, self.table_name)
+        else:
+            raise ValueError(f'table: {self.table_name} may not be exists!')
 
     @property
     def columns(self):
@@ -722,7 +766,7 @@ class SQLBuilder(TableEngineCreator):
         if sample is None:
             SAMPLE_CLAUSE = ''
         else:
-            SAMPLE_CLAUSE = f'SAMPLE BY {sample}'
+            SAMPLE_CLAUSE = f'SAMPLE {sample}'
         return SAMPLE_CLAUSE
 
     @staticmethod
@@ -751,17 +795,18 @@ class SQLBuilder(TableEngineCreator):
                 if using_ is None:
                     raise ValueError('join_info_dict cannot locate ON or USING condition')
                 else:
-                    JOIN_CLAUSE = f'{join_type} USING {using_}'
+                    JOIN_CLAUSE = f'{join_type} USING ({using_})'
             else:
                 JOIN_CLAUSE = f'{join_type} ON {on_}'
         return JOIN_CLAUSE
 
     @staticmethod
-    def _assemble_where_like(a_str, prefix='WHERE'):
-        if a_str is None:
+    def _assemble_where_like(a_list, prefix='WHERE'):
+        if a_list is None:
             SAMPLE_CLAUSE = ''
         else:
-            SAMPLE_CLAUSE = f'{prefix} {a_str}'
+            a_list_str = 'and'.join(a_list)
+            SAMPLE_CLAUSE = f'{prefix} {a_list_str}'
         return SAMPLE_CLAUSE
 
     @staticmethod
@@ -789,8 +834,7 @@ class SQLBuilder(TableEngineCreator):
             SAMPLE_CLAUSE = ''
         else:
             N = limit_n_by_dict['N']
-            limit_by_cols = limit_n_by_dict['limit_by_cols']
-            order_by_cols_str = ','.join(limit_by_cols)
+            order_by_cols_str = ','.join(limit_n_by_dict['limit_by_cols'])
             SAMPLE_CLAUSE = f'LIMIT {N} BY ({order_by_cols_str})'
         return SAMPLE_CLAUSE
 
@@ -804,43 +848,50 @@ class SQLBuilder(TableEngineCreator):
         return SAMPLE_CLAUSE
 
     @classmethod
-    def create_select_sql(cls, DB_TABLE, cols, sample: str = None, array_join_list: list = None, join_info_dict=None,
-                          prewhere_clause_str: str = None, where_clause_str: str = None, group_by_cols: list = None,
-                          order_by_cols: list = None,
-                          limit_n_by_dict=None, limit_n=None
-                          ):
+    def create_select_sql(cls, DB_TABLE: str, cols: list,
+                          sample: (int, float, None) = None,
+                          array_join: (list, None) = None, join: (dict, None) = None,
+                          prewhere: (list, None) = None, where: (list, None) = None, having: (list, None) = None,
+                          group_by: (list, None) = None,
+                          order_by: (list, None) = None, limit_by: (dict, None) = None,
+                          limit: (int, None) = None) -> str:
+        """
+
+        :param having: str ["r1 >1 and r2 <2"]
+        :param DB_TABLE: str default.test
+        :param cols: list [ r1,r2,r3 ]
+        :param sample: str 0.1 or 1000
+        :param array_join: list ['arrayA as a','arrayB as b']
+        :param join: dict {'type':'all left join','USING' : "r1,r2"}
+        :param prewhere: str ["r1 >1 and r2 <2"]
+        :param where: str ["r1 >1.5 and r2 <1.3"]
+        :param group_by: list ['r1','r2']
+        :param order_by: list ['r1 desc','r2 desc']
+        :param limit_by: dict {'N':10,'limit_by_cols':['r1','r2']}
+        :param limit: int 100
+        :return:  str
+        """
 
         SELECT_CLAUSE = ','.join(cols)
-
         SAMPLE_CLAUSE = cls._assemble_sample(sample=sample)
-
-        ARRAY_JOIN_CLAUSE = cls._assemble_array_join(array_join_list=array_join_list)
-
-        JOIN_CLAUSE = cls._assemble_join(join_info_dict)
-
-        PREWHERE_CLAUSE = cls._assemble_where_like(prewhere_clause_str, prefix='PREWHERE')
-
-        WHERE_CLAUSE = cls._assemble_where_like(where_clause_str, prefix='WHERE')
-
-        HAVING_CLAUSE = cls._assemble_where_like(where_clause_str, prefix='HAVING')
-
-        GROUP_BY_CLAUSE = cls._assemble_group_by(group_by_cols)
-
-        ORDER_BY_CLAUSE = cls._assemble_group_by(order_by_cols)
-
-        LIMIT_N_CLAUSE = cls._assemble_limit_by(limit_n_by_dict)
-
-        LIMIT_CLAUSE = cls._assemble_limit(limit_n)
+        ARRAY_JOIN_CLAUSE = cls._assemble_array_join(array_join_list=array_join)
+        JOIN_CLAUSE = cls._assemble_join(join)
+        PREWHERE_CLAUSE = cls._assemble_where_like(prewhere, prefix='PREWHERE')
+        WHERE_CLAUSE = cls._assemble_where_like(where, prefix='WHERE')
+        HAVING_CLAUSE = cls._assemble_where_like(having, prefix='HAVING')
+        GROUP_BY_CLAUSE = cls._assemble_group_by(group_by)
+        ORDER_BY_CLAUSE = cls._assemble_order_by(order_by)
+        LIMIT_N_CLAUSE = cls._assemble_limit_by(limit_by)
+        LIMIT_CLAUSE = cls._assemble_limit(limit)
 
         return cls.raw_create_select_sql(SELECT_CLAUSE, DB_TABLE, SAMPLE_CLAUSE, ARRAY_JOIN_CLAUSE, JOIN_CLAUSE,
                                          PREWHERE_CLAUSE, WHERE_CLAUSE, GROUP_BY_CLAUSE, HAVING_CLAUSE, ORDER_BY_CLAUSE,
                                          LIMIT_N_CLAUSE, LIMIT_CLAUSE)
 
     @staticmethod
-    def raw_create_select_sql(SELECT_CLAUSE, DB_TABLE, SAMPLE_CLAUSE, ARRAY_JOIN_CLAUSE, JOIN_CLAUSE,
-                              PREWHERE_CLAUSE, WHERE_CLAUSE, GROUP_BY_CLAUSE, HAVING_CLAUSE, ORDER_BY_CLAUSE,
-                              LIMIT_N_CLAUSE, LIMIT_CLAUSE
-                              ):
+    def raw_create_select_sql(SELECT_CLAUSE: str, DB_TABLE: str, SAMPLE_CLAUSE: str, ARRAY_JOIN_CLAUSE: str,
+                              JOIN_CLAUSE: str, PREWHERE_CLAUSE: str, WHERE_CLAUSE: str, GROUP_BY_CLAUSE: str,
+                              HAVING_CLAUSE: str, ORDER_BY_CLAUSE: str, LIMIT_N_CLAUSE: str, LIMIT_CLAUSE: str):
         """
 
         :param SELECT_CLAUSE:
@@ -872,12 +923,27 @@ class SQLBuilder(TableEngineCreator):
                     [UNION ALL ...]
                     [INTO OUTFILE filename]
                     [FORMAT format]"""
-
+        if DB_TABLE.lower().startswith('select '):
+            DB_TABLE = f"( {DB_TABLE} )"
+        else:
+            pass
         main_body = f"SELECT {SELECT_CLAUSE} FROM {DB_TABLE} {SAMPLE_CLAUSE}"
         join = f"{ARRAY_JOIN_CLAUSE} {JOIN_CLAUSE}"
         where_conds = f"{PREWHERE_CLAUSE} {WHERE_CLAUSE} {GROUP_BY_CLAUSE} {HAVING_CLAUSE} "
         order_limit = f"{ORDER_BY_CLAUSE} {LIMIT_N_CLAUSE} {LIMIT_CLAUSE}"
         sql = f"{main_body} {join} {where_conds} {order_limit}"
+        return sql
+
+    @classmethod
+    def _group_by(cls, base_sql: str, by: list, agg_cols: list, where: list = None, having: list = None, order_by=None,
+                  limit_by=None, limit=None):
+        sql = cls.create_select_sql(DB_TABLE=base_sql, cols=by + agg_cols,
+                                    sample=None,
+                                    array_join=None, join=None,
+                                    prewhere=None, where=where, having=having,
+                                    group_by=by,
+                                    order_by=order_by, limit_by=limit_by, limit=limit)
+
         return sql
 
 
@@ -899,7 +965,16 @@ if __name__ == '__main__':
     # sql = 'select *, today() as today2,rand64(1) as r1,randConstant(2) as r2,rand64(3) as r3,randConstant(4) as r4 from default.user_test'
     # t = f'create view if not exists default.test2 as {sql}'
     # df = table_node.query(t)
-    sql = 'select user_name, count(1) from default.test2 group by user_name limit 19'
+    # sql = 'select user_name, count(1) from default.test2 group by user_name limit 19'
+    # sql3 = 'select * from default.test2 limit 19'
+    # df = table_node.query(sql)
+    # sql2 = SQLBuilder.create_select_sql('default.test2', ['user_name', 'count(1)'], group_by=['user_name'], limit=19)
+    # df2 = table_node.query(sql)
+    # table_node['default.user_test'] = table_node.query(sql3)
+    # print(df)
+    # print(df2)
+    sql = Groupby._group_by('default.test2', by=['user_name'], agg_cols=['sum(r1)'], limit=10)
+    print(sql)
     df = table_node.query(sql)
 
     print(1)
