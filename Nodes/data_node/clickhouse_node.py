@@ -4,15 +4,14 @@
 """
 Created on Sun Aug 18 12:17:40 2019
 
-@author: lee1984
+@author: lee1984 & snowfree
 """
 
 import gzip
 import json
 import urllib
 import warnings
-from collections import ChainMap
-from collections import namedtuple
+from collections import ChainMap, namedtuple
 from functools import lru_cache
 
 import grequests
@@ -20,8 +19,8 @@ import numpy as np
 import pandas as pd
 import requests
 
-from Nodes.data_node.TableOperator import SQLBuilder
 from Nodes.data_node._ConnectionParser import ConnectionParser
+from Nodes.data_node.TableOperator import SQLBuilder
 from Nodes.utils_node.lazy_load import LazyInit
 
 # from Nodes.utils_node.timer import timer
@@ -61,7 +60,7 @@ class ClickHouseDBNode(LazyInit):  # lazy load to improve loading speed
         self._conn.close()
         self.is_closed = True
 
-    def __exit__(self):
+    def __exit__(self,):
         self.close()
 
     @property
@@ -74,9 +73,7 @@ class ClickHouseDBNode(LazyInit):  # lazy load to improve loading speed
             if table not in dir(self):
                 try:
                     table_node = ClickHouseTableNode(table, **self._settings)
-
                     self.__setitem__(table, table_node)
-
                     # setattr(self, table, ClickHouseTableNode(table, **self._settings))
                 except Exception as e:
                     print(str(e))
@@ -684,14 +681,52 @@ class ClickHouseOperatorNode(object):
         table_name = self._conn.table_name
         db_name = self._conn.db_name
         # self._sql = f'select * from {db_name}.{table_name}'
+        self._db_table =f'{db_name}.{table_name}'
+        self._sql = None
+        #self.columns = columns
+    
+    def _check_columns_(self, column:(str,list)):
+        return self.__check_columns__(column,self.columns)
 
-    def groupby(self, by:str):
+    @staticmethod
+    def __check_columns__(column:(str,list),columns:(list,tuple)):
+        if isinstance(column,list):
+            for col in column:
+                if col in columns:
+                    pass
+                else:
+                    raise ValueError(f'{col} not at columns')
+            return column
+        elif isinstance(column,str):
+            if column in columns:
+                pass
+            else:
+                raise ValueError(f'{column} not at columns')
+            return [column]
+        else:
+            raise ValueError(f'unsopported by type: {column}')
 
-        pass
+
+    def groupby_without_check(self,by:(list,str)):
+        # cols = self._check_columns_(by)
+        if isinstance(by,list):
+            group_by_str = ','.join(by)
+        elif isinstance(by,str):
+            group_by_str = by
+        else:
+            raise ValueError(f'unsopported by type: {by}')
+        db_table = self._db_table
+        if self._sql is None:
+            self._sql =   f"select {group_by_str},{groupbyoperator} from {db_table} group by ({group_by_str})"
+        else:
+            _sql =   f"select {group_by_str},{groupbyoperator} from {self._sql} group by ({group_by_str})"
 
 
-class GroupBy(object):
-    def __init__(self,by:list):
+        
+
+    
+    
+
 
 
 
@@ -701,15 +736,17 @@ if __name__ == '__main__':
     # test = "ClickHouse://{user}:{passwd}@{host}:0001/None"
     # ch = CH(test)
     # print(1)larity
+    import pandas as pd
+    df = pd.DataFrame([[1],[2]]*100)
 
-    p = {'host': '***REMOVED***', 'port': 8123, 'user': 'default', 'password': '***REMOVED***', 'db': 'default'}
+    # p = {'host': '***REMOVED***', 'port': 8123, 'user': 'default', 'password': '***REMOVED***', 'db': 'default'}
 
-    sql = 'select * from default.user_test limit 10000 '
-    r2 = ClickHouseDBPool(settings=p)
-    table_node = r2.default.test2
+    # sql = 'select * from default.user_test limit 10000 '
+    # r2 = ClickHouseDBPool(settings=p)
+    # table_node = r2.default.test2
 
-    columns = table_node.columns
+    # columns = table_node.columns
 
-    print(1)
+    # print(1)
 
     pass
