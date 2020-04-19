@@ -19,13 +19,8 @@ import numpy as np
 import pandas as pd
 import requests
 
-<< << << < HEAD
-from Nodes.operator_node.SQLUtils import SQLBuilder
-== == == =
->> >> >> > 5
-acb74c89621f5efd432f288bfad892c1a006f22
 from Nodes.data_node._ConnectionParser import ConnectionParser
-from Nodes.data_node.TableOperator import SQLBuilder
+from Nodes.operator_node.SQLUtils import SQLBuilder
 from Nodes.utils_node.lazy_load import LazyInit
 
 # from Nodes.utils_node.timer import timer
