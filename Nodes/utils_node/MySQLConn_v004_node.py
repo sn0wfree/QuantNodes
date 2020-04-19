@@ -36,7 +36,7 @@ class DfSave(object):
         else:
             # filepath = '{}.csv'.format(path + tablename)
             df.to_csv(filepath, index=False, header=False, **kwargs)
-        return tablename, filepath, df.columns.values.tolist()
+        return tablename, filepath, df._columns_.values.tolist()
 
     @staticmethod
     def df2hdf5(df, tablename, required_cols=None, path='', **kwargs):
@@ -47,7 +47,7 @@ class DfSave(object):
         else:
             filepath = '{}.h5'.format(path + tablename, key='df', **kwargs)
             df.to_hdf(filepath, key='df', **kwargs)
-        return tablename, filepath, df.columns.values.tolist()
+        return tablename, filepath, df._columns_.values.tolist()
 
     @staticmethod
     def clear_dir(csv_folder):
@@ -310,7 +310,7 @@ class ConnectMysql(object):
         engine.dispose()
 
     def updateinsert(self, data, db, table):
-        columns = data.columns
+        columns = data._columns_
 
         sql = "INSERT IGNORE INTO {}.{} ({}) VALUES ({})  ".format(db, table, ','.join(columns),
                                                                    ','.join(['%s'] * data.shape[1]))

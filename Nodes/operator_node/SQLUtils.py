@@ -1,6 +1,4 @@
 # coding=utf-8
-import pandas as pd
-import numpy as np
 
 class TableEngineCreator(object):
     @staticmethod
@@ -127,7 +125,7 @@ class SQLBuilder(TableEngineCreator):
         if a_list is None:
             SAMPLE_CLAUSE = ''
         else:
-            a_list_str = 'and'.join(a_list)
+            a_list_str = ' and '.join(a_list)
             SAMPLE_CLAUSE = f'{prefix} {a_list_str}'
         return SAMPLE_CLAUSE
 
@@ -231,8 +229,8 @@ class SQLBuilder(TableEngineCreator):
         :param sample: str 0.1 or 1000
         :param array_join: list ['arrayA as a','arrayB as b']
         :param join: dict {'type':'all left join','USING' : "r1,r2"}
-        :param prewhere: str ["r1 >1 and r2 <2"]
-        :param where: str ["r1 >1.5 and r2 <1.3"]
+        :param prewhere: str ["r1 >1" , "r2 <2"]
+        :param where: str ["r1 >1.5" , "r2 <1.3"]
         :param group_by: list ['r1','r2']
         :param order_by: list ['r1 desc','r2 desc']
         :param limit_by: dict {'N':10,'limit_by_cols':['r1','r2']}
@@ -256,20 +254,16 @@ class SQLBuilder(TableEngineCreator):
                                          PREWHERE_CLAUSE, WHERE_CLAUSE, GROUP_BY_CLAUSE, HAVING_CLAUSE, ORDER_BY_CLAUSE,
                                          LIMIT_N_CLAUSE, LIMIT_CLAUSE)
 
-
-
-    @classmethod
-    def group_by(cls, base_sql: str, by: list, agg_cols: list, where: list = None, having: list = None, order_by=None,
-                  limit_by=None, limit=None):
-        sql = cls.create_select_sql(DB_TABLE=base_sql, cols=by + agg_cols,
-                                    sample=None, array_join=None, join=None,
-                                    prewhere=None, where=where, having=having,
-                                    group_by=by, order_by=order_by, limit_by=limit_by, limit=limit)
-
-        return sql
+    # @classmethod
+    # def group_by(cls, base_sql: str, by: list, agg_cols: list, where: list = None, having: list = None, order_by=None,
+    #              limit_by=None, limit=None):
+    #     sql = cls.create_select_sql(DB_TABLE=base_sql, cols=by + agg_cols,
+    #                                 sample=None, array_join=None, join=None,
+    #                                 prewhere=None, where=where, having=having,
+    #                                 group_by=by, order_by=order_by, limit_by=limit_by, limit=limit)
+    #
+    #     return sql
 
 
 if __name__ == '__main__':
     pass
-
-

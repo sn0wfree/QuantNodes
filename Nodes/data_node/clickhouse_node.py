@@ -10,7 +10,6 @@ Created on Sun Aug 18 12:17:40 2019
 import gzip
 import json
 import urllib
-import warnings
 from collections import ChainMap
 from collections import namedtuple
 from functools import lru_cache
@@ -19,8 +18,9 @@ import grequests
 import numpy as np
 import pandas as pd
 import requests
+import warnings
 
-from Nodes.data_node.TableOperator import SQLBuilder
+from Nodes.operator_node.SQLUtils import SQLBuilder
 from Nodes.data_node._ConnectionParser import ConnectionParser
 from Nodes.utils_node.lazy_load import LazyInit
 
@@ -29,32 +29,116 @@ from Nodes.utils_node.lazy_load import LazyInit
 node = namedtuple('clickhouse', ['host', 'port', 'user', 'password', 'db'])
 
 
-class ClickHouseDBNode(LazyInit):  # lazy load to improve loading speed
-    def __init__(self, settings: (str, dict) = None):
-        super(ClickHouseDBNode, self).__init__()
+class _CreateTableTools(object):
+    @staticmethod
+    def _check_table_exists(db, table, obj):
+        """
+
+        :param db:
+        :param table:
+        :param obj:
+        :return: exists =true not exists = False
+        """
+        sql = f"show tables from {db} like '{table}' "
+        res = obj.query(sql)
+        if res.empty:
+            return False
+        else:
+            return True
+
+    @staticmethod
+    def _translate_dtypes(sdf):
+        if 'type' in sdf._columns_ and 'name' in sdf._columns_:
+            dtypes_series = sdf.set_index('name')['type']
+            return dtypes_series.replace('object', 'String').replace('datetime64[ns]', 'Datetime').map(lambda x: str(x))
+        else:
+            dtypes_series = sdf.dtypes
+            return dtypes_series.replace('object', 'String').replace('datetime64[ns]', 'Datetime').map(
+                lambda x: str(x).capitalize())
+
+    @classmethod
+    def _create_table_dtypes(cls, db, table, sdf, key_cols, engine_type='ReplacingMergeTree', extra_format_dict=None):
+        if extra_format_dict is None:
+            extra_format_dict = {}
+        dtypes_df = cls._translate_dtypes(sdf)
+        cols_def = ','.join([f"{name} {dtype}" if name not in extra_format_dict.keys() else "{}.{}".format(name, str(
+            extra_format_dict.get(name))) for name, dtype in dtypes_df.to_dict().items()])
+
+        order_by_cols = ','.join(key_cols)
+
+        DB_TABLE = f"{db}.{table}"
+
+        ORDER_BY_CLAUSE = f"ORDER BY ( {order_by_cols} )"
+
+        base = SQLBuilder.raw_create_ReplacingMergeTree_table_sql(DB_TABLE, cols_def, ORDER_BY_CLAUSE,
+                                                                  ENGINE_TYPE=engine_type)
+
+        # base = f"CREATE TABLE IF NOT EXISTS {db}.{table} ( {cols_def} ) ENGINE = {engine_type} ORDER BY ({order_by_cols}) SETTINGS index_granularity = 8192 "
+        return base
+
+    @classmethod
+    def _create_table(cls, obj: object, db: str, table: str, sql: str, key_cols: list,
+                      engine_type: str = 'ReplacingMergeTree',
+                      extra_format_dict: (dict, None) = None) -> bool:
+        """
+
+        :param obj:
+        :param db:
+        :param table:
+        :param sql:
+        :param key_cols:
+        :param engine_type:
+        :param extra_format_dict:
+        :return:
+        """
+
+        if extra_format_dict is None:
+            extra_format_dict = {}
+
+        if isinstance(obj, ClickHouseDBNode):
+            if len(obj.tables) == 0:
+                warnings.warn('new database! it is no safe to create table!')
+            query_func = obj.query
+        elif isinstance(obj, ClickHouseDBPool):
+            query_func = obj.query
+        else:
+            query_func = obj.query
+
+        describe_sql = f'describe ( {sql} limit 1)'
+
+        exist_status: bool = cls._check_table_exists(db, table, obj)
+        if exist_status:
+            print('table:{table} already exists!')
+        else:
+            print('will create {table} at {db}')
+            dtypes_df = query_func(describe_sql)
+            cls._create_table_dtypes(db, table, dtypes_df, key_cols, engine_type=engine_type,
+                                     extra_format_dict=extra_format_dict)
+        return exist_status
+
+    @staticmethod
+    def check_db_settings(settings):
         if isinstance(settings, str):
             db_type, settings = ConnectionParser.parser(settings)
             if db_type.lower() != 'clickhouse':
                 raise ValueError('settings is not for clickhouse!')
         elif isinstance(settings, dict):
-            pass
+            db_type = 'Clickhouse'
         else:
             raise ValueError('settings must be str or dict')
+        return db_type, settings
+
+
+class ClickHouseDBNode(LazyInit):  # lazy load to improve loading speed
+    def __init__(self, settings: (str, dict) = None):
+        super(ClickHouseDBNode, self).__init__()
+        db_type, settings = _CreateTableTools.check_db_settings(settings)
 
         self.db_name = settings['db']
-        # settings, conn = ConnectionParser.checker_multi_and_create(db, settings, target_db_type='ClickHouse')
         self._settings = settings
         self._conn = ClickHouseBaseNode(settings['db'], **settings)
         self.is_closed = False
-        # for table in self.tables:
-        #     if table != 'tables':
-        #         try:
-        #             setattr(self, table, ClickHouseTableNode(table, self._conn))
-        #         except Exception as e:
-        #             print(str(e))
-        #             pass
         self._setup_()
-
         self._query = self._conn.query
 
     def close(self):
@@ -73,13 +157,10 @@ class ClickHouseDBNode(LazyInit):  # lazy load to improve loading speed
         for table in self.tables:
             if table not in dir(self):
                 try:
-                    table_node = ClickHouseTableNode(table, **self._settings)
-
-                    self.__setitem__(table, table_node)
-
+                    self.__setitem__(table, ClickHouseTableNode(table, **self._settings))
                     # setattr(self, table, ClickHouseTableNode(table, **self._settings))
                 except Exception as e:
-                    print(str(e))
+                    warnings.warn(str(e))
                     pass
             else:
                 raise ValueError(f'found a table named {table} which is a method or attribute, please rename it')
@@ -90,29 +171,19 @@ class ClickHouseDBNode(LazyInit):  # lazy load to improve loading speed
     def __setitem__(self, table: str, table_obj):
         setattr(self, table, table_obj)
 
+    @property
+    def settings(self):
+        return self._settings
+
 
 class ClickHouseDBPool(LazyInit):  # lazy load to improve loading speed
     def __init__(self, settings: (str, dict) = None):
         super(ClickHouseDBPool, self).__init__()
-        if isinstance(settings, str):
-            db_type, settings = ConnectionParser.parser(settings)
-            if db_type.lower() != 'clickhouse':
-                raise ValueError('settings is not for clickhouse!')
-        elif isinstance(settings, dict):
-            pass
-        else:
-            raise ValueError('settings must be str or dict')
-        # settings, conn = ConnectionParser.checker_multi_and_create(db, settings, target_db_type='ClickHouse')
+
+        db_type, settings = _CreateTableTools.check_db_settings(settings)
         self._settings = settings
         self._conn = ClickHouseBaseNode(settings['db'], **settings)
         self.is_closed = False
-        # for table in self.tables:
-        #     if table != 'tables':
-        #         try:
-        #             setattr(self, table, ClickHouseTableNode(table, self._conn))
-        #         except Exception as e:
-        #             print(str(e))
-        #             pass
         self._setup_()
         self._query = self._conn.query
 
@@ -158,7 +229,7 @@ class _ClickHouseNodeBaseTool(object):
         integer_columns = list(describe_table[describe_table['type'].str.contains('Int', regex=False)]['name'])
         missing_in_df = {i: np.where(df[i].isnull(), 1, 0).sum() for i in non_nullable_columns}
 
-        df_columns = list(df.columns)
+        df_columns = list(df._columns_)
         each_row = df.to_dict(orient='records')
         for i in missing_in_df:
             if missing_in_df[i] > 0:
@@ -233,96 +304,6 @@ class _ClickHouseNodeBaseTool(object):
                     dataframe[i['name']] = pd.to_datetime(dataframe[i['name']])
             ret_value = dataframe
         return ret_value
-
-
-class _CreateTableTools(object):
-    @staticmethod
-    def _check_table_exists(db, table, obj):
-        """
-
-        :param db:
-        :param table:
-        :param obj:
-        :return: exists =true not exists = False
-        """
-        sql = f"show tables from {db} like '{table}' "
-        res = obj.query(sql)
-        if res.empty:
-            return False
-        else:
-            return True
-
-    @staticmethod
-    def _translate_dtype(sdf):
-        if 'type' in sdf.columns and 'name' in sdf.columns:
-            dtypes_series = sdf.set_index('name')['type']
-            # df_type = 'type'
-            return dtypes_series.replace('object', 'String').replace('datetime64[ns]', 'Datetime').map(lambda x: str(x))
-        else:
-            dtypes_series = sdf.dtypes
-            # df_type ='data'
-
-            return dtypes_series.replace('object', 'String').replace('datetime64[ns]', 'Datetime').map(
-                lambda x: str(x).capitalize())
-
-    @classmethod
-    def _create_table_dtype(cls, db, table, sdf, key_cols, engine_type='ReplacingMergeTree', extra_format_dict=None):
-        if extra_format_dict is None:
-            extra_format_dict = {}
-        dtypes_df = cls._translate_dtype(sdf)
-        cols_def = ','.join([f"{name} {dtype}" if name not in extra_format_dict.keys() else "{}.{}".format(name, str(
-            extra_format_dict.get(name))) for name, dtype in dtypes_df.to_dict().items()])
-        order_by_cols = ','.join(key_cols)
-
-        DB_TABLE = f"{db}.{table}"
-
-        ORDER_BY_CLAUSE = f"ORDER BY ( {order_by_cols} )"
-
-        base = SQLBuilder.raw_create_ReplacingMergeTree_table_sql(DB_TABLE, cols_def, ORDER_BY_CLAUSE,
-                                                                  ENGINE_TYPE=engine_type)
-
-        # base = f"CREATE TABLE IF NOT EXISTS {db}.{table} ( {cols_def} ) ENGINE = {engine_type} ORDER BY ({order_by_cols}) SETTINGS index_granularity = 8192 "
-        return base
-
-    @classmethod
-    def _create_table(cls, obj: object, db: str, table: str, sql: str, key_cols: list,
-                      engine_type: str = 'ReplacingMergeTree',
-                      extra_format_dict: (dict, None) = None) -> bool:
-        """
-
-        :param obj:
-        :param db:
-        :param table:
-        :param sql:
-        :param key_cols:
-        :param engine_type:
-        :param extra_format_dict:
-        :return:
-        """
-
-        if extra_format_dict is None:
-            extra_format_dict = {}
-
-        if isinstance(obj, ClickHouseDBNode):
-            if len(obj.tables) == 0:
-                warnings.warn('new database! it is no safe to create table!')
-            query_func = obj.query
-        elif isinstance(obj, ClickHouseDBPool):
-            query_func = obj.query
-        else:
-            query_func = obj.query
-
-        describe_sql = f'describe ( {sql} limit 1)'
-
-        exist_status: bool = cls._check_table_exists(db, table, obj)
-        if exist_status:
-            print('table:{table} already exists!')
-        else:
-            print('will create {table} at {db}')
-            dtypes_df = query_func(describe_sql)
-            cls._create_table_dtype(db, table, dtypes_df, key_cols, engine_type=engine_type,
-                                    extra_format_dict=extra_format_dict)
-        return exist_status
 
 
 # class _ClickHouseBaseNodeAsyncExt(object):
@@ -433,8 +414,8 @@ class _ClickHouseBaseNode(_ClickHouseNodeBaseTool):
                 pass
         return self._session  # grequests.AsyncRequest
 
-    def __getitem__(self, sql: str):
-        return self.query(sql)
+    # def __getitem__(self, sql: str):
+    #     return self.query(sql)
 
     def __setitem__(self, db_table: str, df):
         if '.' in db_table:
@@ -677,6 +658,7 @@ class ClickHouseTableNode(ClickHouseBaseNode):
         sql = f'select * from {self.db_name}.{self.table_name} limit {top}'
         return self.execute(sql)
 
+
 class ClickHouseOperatorNode(object):
     def __init__(self, table_name, **settings):
         self._conn = ClickHouseTableNode(table_name, **settings)
@@ -685,16 +667,13 @@ class ClickHouseOperatorNode(object):
         db_name = self._conn.db_name
         # self._sql = f'select * from {db_name}.{table_name}'
 
-    def groupby(self, by:str):
-
+    def groupby(self, by: str):
         pass
 
 
 class GroupBy(object):
-    def __init__(self,by:list):
-
-
-
+    def __init__(self, by: list):
+        pass
 
 
 if __name__ == '__main__':
@@ -708,7 +687,7 @@ if __name__ == '__main__':
     r2 = ClickHouseDBPool(settings=p)
     table_node = r2.default.test2
 
-    columns = table_node.columns
+    columns = table_node._columns_
 
     print(1)
 

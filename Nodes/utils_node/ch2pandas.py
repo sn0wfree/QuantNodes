@@ -72,7 +72,7 @@ def insert(connection_url, db_table, df, settings):
     integer_colomns = list(describe_table[describe_table['type'].str.contains('Int', regex=False)]['name'])
     missing_in_df = {i: np.where(df[i].isnull(), 1, 0).sum() for i in non_nullable_colomns}
 
-    df_columns = list(df.columns)
+    df_columns = list(df._columns_)
     each_row = df.to_dict(orient='records')
     del df
 

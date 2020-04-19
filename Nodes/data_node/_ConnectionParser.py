@@ -10,13 +10,11 @@ connect_func = {'MySQL': (MySQLNode, MySQLNodeName), 'ClickHouse': (ClickHouseNo
 
 
 class ConnectionParser(object):
-    @staticmethod
-    def head():
-        return ['MySQL://', 'ClickHouse://']
+    available_head = ['MySQL://', 'ClickHouse://']
 
     @classmethod
     def detect_db_type(cls, url_str):
-        for head in cls.head():
+        for head in cls.available_head:
             if url_str.startswith(head):
                 return head[:-3], url_str.split(head)[-1]
             else:
@@ -69,8 +67,6 @@ class ConnectionParser(object):
         else:
             raise ValueError('unsupported settings format! please use str dict or instanced object!')
         return settings, conn
-
-
 
 
 if __name__ == '__main__':
