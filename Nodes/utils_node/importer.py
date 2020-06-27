@@ -1,5 +1,8 @@
 # coding=utf-8
-# my_importer.py
+"""
+提供远程导入包的功能，只能导入简单的py文件，工具类的函数，不能提供复杂的函数服务以及大型服务
+
+"""
 import sys
 import urllib.request as urllib2
 from importlib import abc

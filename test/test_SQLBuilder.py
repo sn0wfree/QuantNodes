@@ -1,6 +1,7 @@
+#coding=utf-8
 import unittest
 
-from Nodes.data_node.clickhouse_node import SQLBuilder, ClickHouseDBPool
+from Nodes.database_node.clickhouse_node import SQLBuilder, ClickHouseDBPool
 
 
 class MyTestCase(unittest.TestCase):
