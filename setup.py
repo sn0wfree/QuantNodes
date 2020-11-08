@@ -8,22 +8,15 @@ setup(
     version=__version__,
     keywords=("Node", "Databases"),
     description="node programming",
-    long_description=open('README.md', 'r'),
+    long_description="node databases",
     license="MIT Licence",
 
-    url="http://github.com/sn0wfree",
+    url="http://www.github.com/sn0wfree",
     author=__author__,
     author_email="snowfreedom0815@gmail.com",
 
     packages=find_packages(),
-    include_package_data=True,
-    platforms="any",
-    install_requires=['numpy==1.16.4', 'pandas==0.25.1', 'PyMySQL==0.9.2', 'SQLAlchemy==1.2.16'],
+    include_package_data=True
 
-    scripts=[],
-    # entry_points={
-    #     'console_scripts': [
-    #         'test = test.help:main'
-    #     ]
-    # }
+
 )

@@ -6,6 +6,8 @@ class LazyProxy(object):
         self.__dict__['_params'] = args
         self.__dict__['_kwargs'] = kwargs
         self.__dict__['_obj'] = None
+        self.__name__ = cls.__name__
+        self.__doc__ = cls.__doc__
 
     def __getattr__(self, item):
         if self.__dict__['_obj'] is None:

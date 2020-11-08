@@ -8,3 +8,4 @@ grequests==0.4.0
 requests_cache==0.5.2
 SQLAlchemy==1.3.13
 requests==2.22.0
+ClickSQL>=0.1.5

@@ -3,6 +3,8 @@
 # from collections import namedtuple
 #
 # import redis
+# from Nodes.basic.basic_node import BasicNode
+#
 # ## todo uncompletd
 # redis_conn_tuple = namedtuple('redis_conn', ['host', 'port', 'user', 'passwd', 'charset', 'db'])
 #
@@ -22,8 +24,6 @@
 #         charset = 'utf-8'
 #         self._para = redis_conn_tuple(host, port, user, passwd, charset, db)
 #
-#
-# from Nodes.basic.basic_node import BasicNode
 #
 # operators = {'strings': {'GET': 'get', 'SET': 'set'},
 #              'lists': {'GET': 'lindex', 'SET': 'lpush'},
