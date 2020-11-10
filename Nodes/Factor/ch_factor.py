@@ -146,8 +146,11 @@ class BaseSingleFactorNode(object):
         """
 
         # sql = f"-- select count(1) as row_count from {self.db_table}"
-        row_count = self.__system_tables__['total_rows'].values[0]
-        return row_count
+        temp = self.__system_tables__
+        if not temp.empty:
+            return temp['total_rows'].values[0]
+        else:
+            raise ValueError(f'{self.db_table} is not exists!')
 
     @property
     def __system_tables__(self):
@@ -228,30 +231,63 @@ class UpdateSQLUtils(object):
                            fid_ck: str, dt_max_1st=True, **kwargs):
         # src_db_table = src_table.db_table
         src_table_type = src_db_table.table_engine
-        dst_db_table = dst_db_table.db_table
+        dst_db_table_str = dst_db_table.db_table
         if dt_max_1st:
             order_asc = ' desc'
         else:
             order_asc = ' asc'
         if src_table_type != 'View':
-            sql = f'select max({fid_ck}) as {fid_ck} from {dst_db_table}'
+            sql = f'select max({fid_ck}) as {fid_ck} from {dst_db_table_str}'
         else:
-            sql = f" select distinct {fid_ck} from {dst_db_table} order by {fid_ck} {order_asc} limit 1 "
+            sql = f" select distinct {fid_ck} from {dst_db_table_str} order by {fid_ck} {order_asc} limit 1 "
         fid_ck_values = dst_db_table.operator(sql).values[0]
         src_db_table.update(**{f'{fid_ck} as src_{fid_ck}': f' {fid_ck} > {fid_ck_values}'})
 
-        insert_sql = f"insert into {dst_db_table} {src_db_table}"
+        insert_sql = f"insert into {dst_db_table_str} {src_db_table}"
         return insert_sql
 
 
 class BaseSingleFactorTableNode(BaseSingleFactorNode):
+
+    def __lshift__(self,
+                   src_db_table: (BaseSingleFactorNode, str),
+                   ):
+        print('lshift')
+        fid_ck: str = 'fid'
+        dt_max_1st: bool = True
+        execute: bool = False
+        no_self_update: bool = True
+
+        if isinstance(src_db_table, str):
+            src_conn = copy.deepcopy(self.operator._src).replace(self.db_table, src_db_table)
+            src_db_table = BaseSingleFactorNode(src_conn, cols=['*'])
+        elif isinstance(src_db_table, BaseSingleFactorNode):
+            pass
+        else:
+            raise ValueError('src_db_table is not valid! please check!')
+
+        if src_db_table.empty:
+            raise ValueError(f'{src_db_table.db_table} is empty')
+        # check two table are same
+        if no_self_update and self.db_table == src_db_table.db_table and self.__factor_id__ == src_db_table.__factor_id__:
+            dst = src_db_table.db_table
+            src = self.db_table
+            raise ValueError(
+                f'Detect self-update process! these operator attempts to update data from {src} to {dst}')
+
+        update_status = 'full' if self.empty else 'incremental'
+
+        func = getattr(UpdateSQLUtils, f'{update_status}_update')
+        sql = func(src_db_table, self, fid_ck, dt_max_1st=dt_max_1st)
+        if execute:
+            self.operator(sql)
+        return sql, update_status
+
     # update table
-    def to(self,
-           dst_db_table: (BaseSingleFactorNode, str),
-           fid_ck: str = 'fid',
-           dt_max_1st: bool = True,
-           execute: bool = True,
-           no_self_update: bool = True):
+    def __rshift__(self,
+                   dst_db_table: (BaseSingleFactorNode, str),
+
+                   ) -> object:
         """
 
         UpdateSQLUtils
@@ -263,6 +299,11 @@ class BaseSingleFactorTableNode(BaseSingleFactorNode):
         :param no_self_update:
         :return:
         """
+        # print('rshift')
+        fid_ck: str = 'fid'
+        dt_max_1st: bool = True
+        execute: bool = False
+        no_self_update: bool = True
         if self.empty:
             raise ValueError(f'{self.db_table} is empty')
 
@@ -302,14 +343,16 @@ class BaseSingleFactorTableNode(BaseSingleFactorNode):
 
 # group table
 if __name__ == '__main__':
-    factor = BaseSingleFactorNode(
-        'clickhouse://default:***REMOVED***@***REMOVED***:8123/raws.std',
+    factor = BaseSingleFactorTableNode(
+        'clickhouse://default:***REMOVED***@***REMOVED***:8123/test.test4',
         cols=['test1']
     )
-    # print(factor.empty)
-    # print(factor.table_engine)
-    # print(f"{factor}")
-    # c = hash('sdhushdu'.replace('s', 't'))
-    # print('sdhushdu'.replace('s', 't'))
-    print(factor.table_exists)
+    factor2 = BaseSingleFactorTableNode(
+        'clickhouse://default:***REMOVED***@***REMOVED***:8123/test.test',
+        cols=['test1']
+    )
+    factor >> factor2
+    print()
+
+    # print(1 >> 2)
     pass
