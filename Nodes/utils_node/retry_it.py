@@ -19,7 +19,7 @@ def conn_try_again(max_retries=5, default_retry_delay=1, expect_error=Exception)
                 else:
                     status = 'Error'
                     sel = 'Error'
-                    raise Exception(err)
+                    raise err
 
         return wrapped
 
