@@ -16,7 +16,7 @@ setup(
     author_email="snowfreedom0815@gmail.com",
 
     packages=find_packages(),
-    include_package_data=True
+    include_package_data=True,
 
 
 )
