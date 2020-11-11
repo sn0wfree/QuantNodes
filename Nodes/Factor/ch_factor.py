@@ -201,57 +201,62 @@ class BaseSingleFactorNode(object):
 
         return self.operator(self.__sql__)
 
-    def __call__(self, **kwargs):
-        """
-
-        :param kwargs:
-        :return:
-        """
-        self.update(**kwargs)
-        if self.status == 'SQL':
-            return self.__sql__
-        elif self.status == 'SQL:fetch':
-            return self.fetch()
-        elif self.status == 'SQL:fetch_all':
-            return self.fetch_all()
-        else:
-            raise ValueError('status code is not supported!')
+    # def __call__(self, **kwargs):
+    #     """
+    #
+    #     :param kwargs:
+    #     :return:
+    #     """
+    #     self.update(**kwargs)
+    #     if self.status == 'SQL':
+    #         return self.__sql__
+    #     elif self.status == 'SQL:fetch':
+    #         return self.fetch()
+    #     elif self.status == 'SQL:fetch_all':
+    #         return self.fetch_all()
+    #     else:
+    #         raise ValueError('status code is not supported!')
 
 
 class UpdateSQLUtils(object):
 
     @staticmethod
     def full_update(src_db_table: BaseSingleFactorNode, dst_db_table: BaseSingleFactorNode, **kwargs):
-        dst_db_table = dst_db_table.db_table
-        insert_sql = f"insert into {dst_db_table} {src_db_table}"
+        # dst_db_table = dst_db_table.db_table
+        # dst_db, dst_table = dst_db_table.db, dst_db_table.table
+        dst_table_type = dst_db_table.table_engine
+        dst = dst_db_table.db_table
+        if dst_table_type == 'View':
+            raise ValueError(f'{dst} is View ! cannot be updated!')
+        insert_sql = f"insert into {dst} {src_db_table}"
         return insert_sql
 
     @staticmethod
     def incremental_update(src_db_table: BaseSingleFactorNode, dst_db_table: BaseSingleFactorNode,
                            fid_ck: str, dt_max_1st=True, **kwargs):
         # src_db_table = src_table.db_table
-        src_table_type = src_db_table.table_engine
-        dst_db_table_str = dst_db_table.db_table
+        # src_table_type = src_db_table.table_engine
+        dst_table_type = dst_db_table.table_engine
+        dst = dst_db_table.db_table
+        if dst_table_type == 'View':
+            raise ValueError(f'{dst} is View ! cannot be updated!')
         if dt_max_1st:
             order_asc = ' desc'
         else:
             order_asc = ' asc'
-        if src_table_type != 'View':
-            sql = f'select max({fid_ck}) as {fid_ck} from {dst_db_table_str}'
-        else:
-            sql = f" select distinct {fid_ck} from {dst_db_table_str} order by {fid_ck} {order_asc} limit 1 "
-        fid_ck_values = dst_db_table.operator(sql).values[0]
+        sql = f" select distinct {fid_ck} from {dst} order by {fid_ck} {order_asc} limit 1 "
+        fid_ck_values = src_db_table.operator(sql).values.ravel().tolist()[0]
         src_db_table.update(**{f'{fid_ck} as src_{fid_ck}': f' {fid_ck} > {fid_ck_values}'})
-
-        insert_sql = f"insert into {dst_db_table_str} {src_db_table}"
+        insert_sql = f"insert into {dst} {src_db_table}"
         return insert_sql
 
 
 class BaseSingleFactorTableNode(BaseSingleFactorNode):
 
-    def __lshift__(self,
-                   src_db_table: (BaseSingleFactorNode, str),
-                   ):
+    def __call__(self, sql, **kwargs):
+        return self.operator(sql, **kwargs)
+
+    def __lshift__(self, src_db_table: BaseSingleFactorNode):
         print('lshift')
         fid_ck: str = 'fid'
         dt_max_1st: bool = True
@@ -278,16 +283,13 @@ class BaseSingleFactorTableNode(BaseSingleFactorNode):
         update_status = 'full' if self.empty else 'incremental'
 
         func = getattr(UpdateSQLUtils, f'{update_status}_update')
-        sql = func(src_db_table, self, fid_ck, dt_max_1st=dt_max_1st)
+        sql = func(src_db_table, self.db_table, fid_ck, dt_max_1st=dt_max_1st)
         if execute:
             self.operator(sql)
         return sql, update_status
 
     # update table
-    def __rshift__(self,
-                   dst_db_table: (BaseSingleFactorNode, str),
-
-                   ) -> object:
+    def __rshift__(self, dst_db_table: str):
         """
 
         UpdateSQLUtils
@@ -345,14 +347,18 @@ class BaseSingleFactorTableNode(BaseSingleFactorNode):
 if __name__ == '__main__':
     factor = BaseSingleFactorTableNode(
         'clickhouse://default:***REMOVED***@***REMOVED***:8123/test.test4',
-        cols=['test1']
+        cols=['test1'], data_filter={'test': 'test > 2'}
     )
     factor2 = BaseSingleFactorTableNode(
         'clickhouse://default:***REMOVED***@***REMOVED***:8123/test.test',
         cols=['test1']
     )
-    factor >> factor2
+    factor >> 'test.test'
     print()
+    c = factor.operator('show tables from raw')
+    print(c)
+    c2 = factor('show tables from raw')
+    print(c2)
 
     # print(1 >> 2)
     pass
