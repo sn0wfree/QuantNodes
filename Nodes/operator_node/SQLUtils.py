@@ -74,7 +74,7 @@ class TableEngineCreator(object):
         maid_body = f"CREATE TABLE IF NOT EXISTS {DB_TABLE} {ON_CLUSTER} ( {cols_def} ) ENGINE = {ENGINE_TYPE}"
 
         settings = "SETTINGS index_granularity = 8192"
-        conds = f"{PARTITION_by_CLAUSE} {ORDER_BY_CLAUSE} {PRIMARY_BY_CLAUSE} {SAMPLE_CLAUSE}"
+        conds = f"{PARTITION_by_CLAUSE} {ORDER_BY_CLAUSE} {PRIMARY_BY_CLAUSE} {SAMPLE_CLAUSE} {TTL}"
 
         base = f"{maid_body} {conds}  {settings}"
         return base

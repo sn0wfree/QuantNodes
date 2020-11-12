@@ -18,7 +18,7 @@ class MyTestCase(unittest.TestCase):
     def base_equal_test(self, sql, others):
         nodes = self.nodes
         df = nodes.query(sql)
-        sql2 = SQLBuilder.create_select_sql(**others)
+        sql2 = SQLBuilder.selector(**others)
         df2 = nodes.query(sql2)
         print(sql, '\n', sql2)
         self.assertEqual(True, (df == df2).all().all())

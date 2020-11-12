@@ -10,10 +10,10 @@ def query(obj):
 
 def groupby(base_sql, by: list, agg_cols: list, where: list = None, having: list = None, order_by=None,
              limit_by=None, limit=None):
-    sql = base_sql.create_select_sql(DB_TABLE=base_sql, cols=by + agg_cols,
-                                     sample=None, array_join=None, join=None,
-                                     prewhere=None, where=where, having=having,
-                                     group_by=by, order_by=order_by, limit_by=limit_by, limit=limit)
+    sql = base_sql.selector(db_table=base_sql, cols=by + agg_cols,
+                            sample=None, array_join=None, join=None,
+                            prewhere=None, where=where, having=having,
+                            group_by=by, order_by=order_by, limit_by=limit_by, limit=limit)
 
     return sql
 
