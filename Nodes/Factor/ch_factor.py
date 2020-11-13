@@ -50,7 +50,9 @@ class FactorBackendCH(object):
                 raise ValueError('filter settings get wrong type! only accept string and tuple of string')
 
     @classmethod
-    def _get_sql(cls, db_table: str, cols: (tuple, None, list) = None, data_filter: dict = {}, include_filter=True,
+    def _get_sql(cls, db_table: str, cols: (tuple, None, list) = None,
+                 order_by_cols: (list, tuple, None) = None,
+                 data_filter: dict = {}, include_filter=True,
                  **other_filters):
         """
 
@@ -58,6 +60,7 @@ class FactorBackendCH(object):
         :param cols:
         :param include_filter:
         :param other_filters:
+        :param order_by_cols: ['test1 asc','test2 desc']
         :return:
         """
         if cols is None:
@@ -70,7 +73,11 @@ class FactorBackendCH(object):
             cols = set(list(cols) + list(conditions.keys()))
         else:
             cols = set(cols)
-        sql = f"select {','.join(cols)} from {db_table} where {' and '.join(sorted(set(['1'] + list(filter_yield))))} "
+        if order_by_cols is None:
+            order_by_clause = ''
+        else:
+            order_by_clause = f" order by ({','.join(order_by_cols)})"
+        sql = f"select {','.join(cols)} from {db_table} where {' and '.join(sorted(set(['1'] + list(filter_yield))))} {order_by_clause}"
         return sql
 
     def _execute(self, sql: str, **kwargs):
@@ -86,12 +93,21 @@ class FactorBackendCH(object):
             return True
 
 
+"add auto-increment col by materialized bitOr(bitShiftLeft(toUInt64(now64()),24), rowNumberInAllBlocks()) "
+
+
 class BaseSingleFactorNode(object):
     __Name__ = "基础因子库单因子基类"
     __slots__ = (
-        'operator', 'db', 'table', 'db_table', '_kwargs', '_raw_kwargs', 'status', '_INFO', 'depend_tables')
+        'operator', 'db', 'table', 'db_table', '_kwargs', '_raw_kwargs', 'status', '_INFO', 'depend_tables',
+        '_fid_ck', '_dt_max_1st', '_execute', '_no_self_update'
+    )
 
-    def __init__(self, src: str, db_table: (None, str) = None, info=None, **kwargs):
+    def __init__(self, src: str, db_table: (None, str) = None, info=None,
+                 fid_ck: str = 'fid',
+                 dt_max_1st: bool = True,
+                 execute: bool = False,
+                 no_self_update: bool = True, **kwargs):
         """
 
         :type kwargs: object
@@ -102,6 +118,10 @@ class BaseSingleFactorNode(object):
         """
 
         self.operator = FactorBackendCH(src)
+        self._fid_ck = fid_ck
+        self._dt_max_1st = dt_max_1st
+        self._execute = execute
+        self._no_self_update = no_self_update
 
         # self._execute = self._operator._execute
 
@@ -123,6 +143,35 @@ class BaseSingleFactorNode(object):
         self._raw_kwargs = kwargs
         self.status = 'SQL'
         self._INFO = info
+
+    def groupby(self, by: (str, list, tuple), apply_func: (list,), having: (list, tuple, None) = None, execute=False):
+
+        if isinstance(by, str):
+            by = [by]
+            group_by_clause = f"group by {by}"
+        elif isinstance(by, (list, tuple)):
+            group_by_clause = f"group by ({','.join(by)})"
+        else:
+            raise ValueError(f'by only accept str list tuple! but get {type(by)}')
+
+        db_table_or_sql = self.__sql__
+
+        if having is None:
+            having_clause = ''
+        elif isinstance(having, (list, tuple)):
+            having_clause = 'having ' + " and ".join(having)
+        else:
+            raise ValueError(f'having only accept list,tuple,None! but get {type(having)}')
+
+        sql = f"select  {','.join(by + apply_func)}  from ({db_table_or_sql}) {group_by_clause} {having_clause} "
+        if execute:
+            self.operator(sql)
+        else:
+            return sql
+
+    # create table
+    def create(self, *args, **kwargs):
+        return self.operator.node.create(*args, **kwargs)
 
     def update(self, **kwargs):
         self._kwargs.update(kwargs)
@@ -233,7 +282,7 @@ class UpdateSQLUtils(object):
 
     @staticmethod
     def incremental_update(src_db_table: BaseSingleFactorNode, dst_db_table: BaseSingleFactorNode,
-                           fid_ck: str, dt_max_1st=True, **kwargs):
+                           fid_ck: str, dt_max_1st=True, inplace=False, **kwargs):
         # src_db_table = src_table.db_table
         # src_table_type = src_db_table.table_engine
         dst_table_type = dst_db_table.table_engine
@@ -246,8 +295,14 @@ class UpdateSQLUtils(object):
             order_asc = ' asc'
         sql = f" select distinct {fid_ck} from {dst} order by {fid_ck} {order_asc} limit 1 "
         fid_ck_values = src_db_table.operator(sql).values.ravel().tolist()[0]
-        src_db_table.update(**{f'{fid_ck} as src_{fid_ck}': f' {fid_ck} > {fid_ck_values}'})
-        insert_sql = f"insert into {dst} {src_db_table}"
+        if inplace:
+            src_db_table.update(**{f'{fid_ck} as src_{fid_ck}': f' {fid_ck} > {fid_ck_values}'})
+            insert_sql = f"insert into {dst} {src_db_table}"
+        else:
+            src_db_table_copy = copy.deepcopy(src_db_table)
+            src_db_table_copy.update(**{f'{fid_ck} as src_{fid_ck}': f' {fid_ck} > {fid_ck_values}'})
+            insert_sql = f"insert into {dst} {src_db_table_copy}"
+
         return insert_sql
 
 
@@ -256,12 +311,13 @@ class BaseSingleFactorTableNode(BaseSingleFactorNode):
     def __call__(self, sql, **kwargs):
         return self.operator(sql, **kwargs)
 
+    # update table
     def __lshift__(self, src_db_table: BaseSingleFactorNode):
         print('lshift')
-        fid_ck: str = 'fid'
-        dt_max_1st: bool = True
-        execute: bool = False
-        no_self_update: bool = True
+        fid_ck = self._fid_ck
+        dt_max_1st = self._dt_max_1st
+        execute = self._execute
+        no_self_update = self._no_self_update
 
         if isinstance(src_db_table, str):
             src_conn = copy.deepcopy(self.operator._src).replace(self.db_table, src_db_table)
@@ -302,10 +358,10 @@ class BaseSingleFactorTableNode(BaseSingleFactorNode):
         :return:
         """
         # print('rshift')
-        fid_ck: str = 'fid'
-        dt_max_1st: bool = True
-        execute: bool = False
-        no_self_update: bool = True
+        fid_ck = self._fid_ck
+        dt_max_1st = self._dt_max_1st
+        execute = self._execute
+        no_self_update = self._no_self_update
         if self.empty:
             raise ValueError(f'{self.db_table} is empty')
 
@@ -336,11 +392,6 @@ class BaseSingleFactorTableNode(BaseSingleFactorNode):
         return sql, update_status
 
 
-"add auto-increment col by materialized bitOr(bitShiftLeft(toUInt64(now64()),24), rowNumberInAllBlocks()) "
-
-# create table
-
-
 # merge table
 
 # group table
@@ -354,11 +405,12 @@ if __name__ == '__main__':
         cols=['test1']
     )
     factor >> 'test.test'
-    print()
-    c = factor.operator('show tables from raw')
-    print(c)
-    c2 = factor('show tables from raw')
-    print(c2)
+    # print(factor)
+    print(factor)
+
+    # c = factor('show tables from raw')
+    # c2 = factor.groupby(['test2'], apply_func=['sum(fid)'])
+    # print(c2)
 
     # print(1 >> 2)
     pass
