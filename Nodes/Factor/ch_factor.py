@@ -144,31 +144,6 @@ class BaseSingleFactorNode(object):
         self.status = 'SQL'
         self._INFO = info
 
-    def groupby(self, by: (str, list, tuple), apply_func: (list,), having: (list, tuple, None) = None, execute=False):
-
-        if isinstance(by, str):
-            by = [by]
-            group_by_clause = f"group by {by}"
-        elif isinstance(by, (list, tuple)):
-            group_by_clause = f"group by ({','.join(by)})"
-        else:
-            raise ValueError(f'by only accept str list tuple! but get {type(by)}')
-
-        db_table_or_sql = self.__sql__
-
-        if having is None:
-            having_clause = ''
-        elif isinstance(having, (list, tuple)):
-            having_clause = 'having ' + " and ".join(having)
-        else:
-            raise ValueError(f'having only accept list,tuple,None! but get {type(having)}')
-
-        sql = f"select  {','.join(by + apply_func)}  from ({db_table_or_sql}) {group_by_clause} {having_clause} "
-        if execute:
-            self.operator(sql)
-        else:
-            return sql
-
     # create table
     def create(self, *args, **kwargs):
         return self.operator.node.create(*args, **kwargs)
@@ -183,9 +158,46 @@ class BaseSingleFactorNode(object):
     def __sql__(self):
         return self.operator._get_sql(db_table=self.db_table, **self._kwargs)
 
+    def __len__(self) -> int:
+        """
+        Returns length of info axis, but here we use the index.
+        """
+        return self.rows
+
+    def __getitem__(self, key: (list, str)):
+        if isinstance(key, list):
+            sql = f"select {','.join(key)} from ({self.__sql__})"
+            return self.operator(sql)
+        elif isinstance(key, str):
+            sql = f"select {key} from ({self.__sql__})"
+            return self.operator(sql)
+        else:
+            raise ValueError('key only accept list or str')
+
+    @property
+    def shape(self):
+
+        return self.rows, self.cols
+
     @property
     def __factor_id__(self):  # add iid function get factor table id
         return hash(self.__sql__)
+
+    @property
+    def dtypes(self):
+        sql = f"desc ({self.__sql__})"
+        dtypes = self.operator(sql)
+        return dtypes
+
+    @property
+    def cols(self):
+        return self.dtypes.shape[0]
+
+    @property
+    def rows(self):
+        sql = f"select count(1) as rows from ({self.__sql__})"
+        rows = self.operator(sql)['rows'].values[0]
+        return rows
 
     @property
     def total_rows(self):
@@ -391,23 +403,73 @@ class BaseSingleFactorTableNode(BaseSingleFactorNode):
             self.operator(sql)
         return sql, update_status
 
+    # group table
+    def groupby(obj, by: (str, list, tuple), apply_func: (list,),
+                having: (list, tuple, None) = None, execute=False):
+        if isinstance(by, str):
+            by = [by]
+            group_by_clause = f"group by {by}"
+        elif isinstance(by, (list, tuple)):
+            group_by_clause = f"group by ({','.join(by)})"
+        else:
+            raise ValueError(f'by only accept str list tuple! but get {type(by)}')
+        db_table_or_sql = obj.__sql__
+        if having is None:
+            having_clause = ''
+        elif isinstance(having, (list, tuple)):
+            having_clause = 'having ' + " and ".join(having)
+        else:
+            raise ValueError(f'having only accept list,tuple,None! but get {type(having)}')
 
-# merge table
+        sql = f"select  {','.join(by + apply_func)}  from ({db_table_or_sql}) {group_by_clause} {having_clause} "
+        if execute:
+            obj.operator(sql)
+        else:
+            return sql
 
-# group table
+    # merge table
+    def merge(self, db_table: (str, BaseSingleFactorNode),
+              using: (list, str, tuple),
+              cols: (list, str, None) = None,
+              join_type='all full join',
+              execute=False
+
+              # cols: list,
+              #  sample: (int, float, None) = None,
+              #  array_join: (list, None) = None,
+              #  join: (dict, None) = None,
+              #  prewhere: (list, None) = None,
+              #  where: (list, None) = None,
+              #  having: (list, None) = None,
+              #  group_by: (list, None) = None,
+              #  order_by: (list, None) = None,
+              #  limit_by: (dict, None) = None,
+              #  limit: (int, None) = None
+              ) -> str:
+        if isinstance(using, (list, tuple)):
+            using = ','.join(using)
+
+        join = {'type': join_type, 'USING': using, 'sql': str(db_table)}
+        sql = self.operator.node.select(str(self), cols, join=join, limit=None)
+        if execute:
+            return self.operator(sql)
+        else:
+            return sql
+
+
+## https://zhuanlan.zhihu.com/p/297623539
+
+
 if __name__ == '__main__':
     factor = BaseSingleFactorTableNode(
         'clickhouse://default:***REMOVED***@***REMOVED***:8123/test.test4',
-        cols=['test1'], data_filter={'test': 'test > 2'}
-    )
-    factor2 = BaseSingleFactorTableNode(
-        'clickhouse://default:***REMOVED***@***REMOVED***:8123/test.test',
         cols=['test1']
     )
-    factor >> 'test.test'
-    # print(factor)
-    print(factor)
 
+    # factor >> 'test.test'
+    # print(factor)
+    c = factor['test1']
+    print(c)
     # c = factor('show tables from raw')
     # c2 = factor.groupby(['test2'], apply_func=['sum(fid)'])
     # print(c2)
