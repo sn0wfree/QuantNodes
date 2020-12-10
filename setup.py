@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 from Nodes import __version__, __author__
 
 setup(
-    name="Nodes",
+    name="nodes",
     version=__version__,
     keywords=("Node", "Databases"),
     description="node programming",

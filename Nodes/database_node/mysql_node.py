@@ -13,10 +13,10 @@
 #
 # import pandas as pd
 #
-# from Nodes.basic.basic_node import BasicNode
-# from Nodes.conf_node.load_settings_node import MySQLSettings
-# from Nodes.conf_node.ConnectionParser import ConnectionParser
-# from Nodes.utils_node.lazy_load import LazyInit
+# from nodes.basic.basic_node import BasicNode
+# from nodes.conf_node.load_settings_node import MySQLSettings
+# from nodes.conf_node.ConnectionParser import ConnectionParser
+# from nodes.utils_node.lazy_load import LazyInit
 #
 # upload_code = 'ol.p;/'
 #

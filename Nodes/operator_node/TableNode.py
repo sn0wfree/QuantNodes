@@ -1,7 +1,7 @@
 # coding=utf-8
 import copy
 
-# from Nodes.clickhouse_node import ClickHouseDBNode
+# from nodes.clickhouse_node import ClickHouseDBNode
 from Nodes.operator_node.SQLUtils import SQLBuilder
 
 

@@ -1,8 +1,8 @@
 # # coding=utf-8
 # from collections import namedtuple
 #
-# from Nodes.utils_node.MySQLConn_v004_node import MySQLNode, MySQLNodeName
-# from Nodes.utils_node.ch2pandas_node import ClickHouseNode, ClickHouseNodeName
+# from nodes.utils_node.MySQLConn_v004_node import MySQLNode, MySQLNodeName
+# from nodes.utils_node.ch2pandas_node import ClickHouseNode, ClickHouseNodeName
 #
 # conn_info_tuple = namedtuple('db_info', ['db_type', 'db_para_dict'])
 #
@@ -24,7 +24,7 @@
 #
 #     @classmethod
 #     def parser(cls, url_str):
-#         from Nodes.conf_node.parse_rfc_1738_args import _parse_rfc1738_args
+#         from nodes.conf_node.parse_rfc_1738_args import _parse_rfc1738_args
 #         d = _parse_rfc1738_args(url_str)
 #         name = d.pop('name')
 #         db_dict = d

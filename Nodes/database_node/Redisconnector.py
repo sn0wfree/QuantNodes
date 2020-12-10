@@ -3,7 +3,7 @@
 # from collections import namedtuple
 #
 # import redis
-# from Nodes.basic.basic_node import BasicNode
+# from nodes.basic.basic_node import BasicNode
 #
 # ## todo uncompletd
 # redis_conn_tuple = namedtuple('redis_conn', ['host', 'port', 'user', 'passwd', 'charset', 'db'])

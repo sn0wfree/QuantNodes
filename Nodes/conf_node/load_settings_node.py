@@ -1,8 +1,8 @@
 # # coding=utf-8
 # import configparser
 #
-# from Nodes.basic.basic_node import BasicNode
-# from Nodes.utils_node.detect_file_path import detect_file_full_path
+# from nodes.basic.basic_node import BasicNode
+# from nodes.utils_node.detect_file_path import detect_file_full_path
 #
 #
 # class SettingsLoader(object):

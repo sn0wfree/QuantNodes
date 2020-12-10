@@ -12,7 +12,7 @@ def get_node(p={'host': '***REMOVED***', 'port': 8123, 'user': 'default', 'passw
 
 
 #
-# def load_sp500(path='/Users/sn0wfree/PycharmProjects/Nodes/Nodes/test/sp500.xlsx'):
+# def load_sp500(path='/Users/sn0wfree/PycharmProjects/nodes/nodes/test/sp500.xlsx'):
 #     sp500 = pd.read_excel(path).dropna()
 #     sp500['date'] = sp500['date'].astype('int')
 #     return sp500
