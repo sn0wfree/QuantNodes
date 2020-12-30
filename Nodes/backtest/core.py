@@ -7,6 +7,8 @@ import datetime
 import pandas as pd
 from functools import lru_cache
 import numpy as np
+import random
+import uuid
 
 OHLCV_AGG = OrderedDict((
     ('Open', 'first'),
@@ -15,9 +17,6 @@ OHLCV_AGG = OrderedDict((
     ('Close', 'last'),
     ('Volume', 'sum'),
 ))
-
-import random
-import uuid
 
 
 def random_str(num=6):
@@ -51,7 +50,7 @@ class QuoteData(object):
         self._setup()
 
     def shape(self):
-        return self._data
+        return self._data.shape
 
     def length(self):
         return len(self._data[self._general_cols[0]].unique())
@@ -145,13 +144,50 @@ class Broker(object):
 
         pass
 
-    def sell(self, orders):
-        pass
+    def create_orders(self, scripts: pd.DataFrame,
+                      default_limit=None,
+                      default_stop=-np.inf, default_sl=-np.inf,
+                      default_tp=np.inf, ):
+        default_dict = {'limit': default_limit, 'stop': default_stop, 'sl': default_sl, 'tp': default_tp}
+        cols = scripts.columns.tolist()
+        must = ['date', 'code', 'size']
+        reqired = ['limit', 'stop', 'sl', 'tp']
 
-    pass
+        missed = set(must) - set(cols)
+        if len(missed) != 0:
+            raise ValueError(f"{','.join(missed)} are missing")
+
+        for c in filter(lambda x: x in cols, reqired):
+            scripts[c] = default_dict[c]
+
+        for dt, df in scripts.sort_values(must[0]).groupby(must[0]):
+            day = []
+            for code, size_df in df.groupby(must[1]):
+                date, code, size, limit, stop, sl, tp = size_df[must + reqired].values.tolist()
+                order = Order(self._commission, size, code,
+                              limit_price=limit,
+                              stop_price=stop,
+                              sl_price=sl,
+                              tp_price=tp,
+                              order_id=None,
+                              create_date=date,
+                              parent_trade=None)
+                day.append(order)
+                yield day
 
 
 class BackTest(object):
+    def __init__(self, scripts, data, cash, commission, margin, trade_on_close, hedging, exclusive_orders,
+                 default_limit=None,
+                 default_stop=-np.inf, default_sl=-np.inf,
+                 default_tp=np.inf,
+                 ):
+        self.scripts = scripts
+        self.broker = Broker(data, cash, commission, margin, trade_on_close, hedging, exclusive_orders)
+        self.orders = list(self.broker.create_orders(scripts, default_limit=default_limit,
+                                                     default_stop=default_stop, default_sl=default_sl,
+                                                     default_tp=default_tp))
+
     """
     主程序, run
     """
@@ -161,6 +197,15 @@ class BackTest(object):
         the run function to begin back testing
         :return:
         """
+        for ords in self.orders:
+            for o in ords:
+                if o._is_cancel:
+                    pass
+                else:
+                    dt = o.create_date
+                    price = self.broker._data[self.broker._data['date'] == dt]['price']
+                    o.oper(None, price)
+
         pass
 
     @staticmethod
@@ -177,6 +222,9 @@ class BackTest(object):
 
 
 class Orders(object):
+    def __init__(self, *order):
+        self._orders = order
+
     @staticmethod
     def set_order(size: float,
                   limit_price: float = None,
@@ -193,26 +241,6 @@ class Orders(object):
                      order_id=order_id,
                      parent_trade=parent_trade)
 
-    @classmethod
-    def create_orders(cls, scripts,
-
-                      default_limit=None,
-                      default_stop=-np.inf, default_sl=-np.inf,
-                      default_tp=np.inf):
-        default_dict = {'limit': default_limit, 'stop': default_stop, 'sl': default_sl, 'tp': default_tp}
-        cols = scripts.columns
-        must = ['date', 'code', 'size']
-        reqired = ['limit', 'stop', 'sl', 'tp']
-        missed = set(must) - set(cols)
-        if len(missed) != 0:
-            raise ValueError(f"{','.join(missed)} are missing")
-
-        for c in reqired:
-            if c in cols:
-                pass
-            else:
-                scripts[c] = default_dict[c]
-
 
 class Order(object):
     """
@@ -220,6 +248,7 @@ class Order(object):
     """
 
     def __init__(self,
+                 commission,
                  size: float,
                  code: str,
                  limit_price: float = None,
@@ -228,13 +257,18 @@ class Order(object):
                  tp_price: float = None,
                  order_id=None,
                  create_date=None,
-                 parent_trade=None):
+                 parent_trade=None, ):
+        self.commission = commission
         ORDERSCreator = namedtuple("ORDER",
                                    ('order_id', 'code', 'size', 'limit_price', 'stop_price', 'sl_price', 'tp_price'))
         self.create_date = create_date
         self._order_id = _order_id = order_id if order_id is not None else 'order_' + random_str(num=19)
         self._parent_trade = parent_trade
         self._attr = ORDERSCreator(_order_id, code, size, limit_price, stop_price, sl_price, tp_price)
+        self._is_cancel = False
+
+    def cancel(self):
+        self._is_cancel = True
 
     def __repr__(self):
         attr = (('order_id', self._order_id),
@@ -249,33 +283,33 @@ class Order(object):
 
         return f'<Order {settings}>'
 
-
-    def _adjusted_price(self,size, commission, size, price) -> float:
+    def _adjusted_price(self, last_price, price) -> float:
         """
         Long/short `price`, adjusted for commisions.
         In long positions, the adjusted price is a fraction higher, and vice versa.
         """
-        return (price or self.last_price) * (1 + copysign(self._commission, size))
+        return (price or last_price) * (1 + np.copysign(self.commission, self.size))  # price * commission fee
 
-    def oper(self, quotedata):
-        code_data = quotedata[quotedata['code'] == self._attr.code]
+    def oper(self, last_price, price):
+        # code_data = quotedata[quotedata['code'] == self._attr.code]
 
         """
         default_stop=-np.inf, default_sl=-np.inf,default_tp=np.inf
         """
-
+        adjusted_price = self._adjusted_price(last_price, price)
         if self.is_long:
 
-            if not (self.sl_price or -np.inf) < (self.limit_price or self.stop_price or adjusted_price) < (self.tp_price or np.inf):
+            if not (self.sl_price or -np.inf) < (self.limit_price or self.stop_price or adjusted_price) < (
+                    self.tp_price or np.inf):
                 raise ValueError(
                     "Long orders require: "
                     f"SL ({self.sl_price}) < LIMIT ({self.limit_price or self.stop_price or adjusted_price}) < TP ({self.tp_price})")
         else:
-            if not (self.tp_price or -np.inf) < (self.limit_price or self.stop_price or adjusted_price) < (self.sl_price or np.inf):
+            if not (self.tp_price or -np.inf) < (self.limit_price or self.stop_price or adjusted_price) < (
+                    self.sl_price or np.inf):
                 raise ValueError(
                     "Short orders require: "
                     f"TP ({self.tp_price}) < LIMIT ({self.limit_price or self.stop_price or adjusted_price}) < SL ({self.sl_price})")
-
 
     @property
     def size(self):
