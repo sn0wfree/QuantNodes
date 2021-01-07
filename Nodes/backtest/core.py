@@ -9,6 +9,8 @@ import numpy as np
 # import random
 import uuid
 
+# from Nodes.utils_node.file_cache import file_cache
+
 # from collections import OrderedDict
 
 
@@ -19,7 +21,6 @@ OHLCV_AGG = OrderedDict((
     ('Close', 'last'),
     ('Volume', 'sum'),
 ))
-element_creator = namedtuple('element', ['code', 'value', 'cost'])
 
 
 def random_str(num=6):
@@ -29,6 +30,17 @@ def random_str(num=6):
     a = uuid.uuid1()  # 根据 时间戳生成 uuid , 保证全球唯一
     b = rs + a.hex  # 生成将随机字符串 与 uuid拼接
     return b  # 返回随机字符串
+
+
+# @file_cache
+def create_quote(data):
+    if isinstance(data, pd.DataFrame):
+        QD = QuoteData(data)
+        return QD
+    elif isinstance(data, QuoteData):
+        return data
+    else:
+        raise ValueError('quote data is not pd.DataFrame or QuoteData!')
 
 
 class Order(object):
@@ -212,15 +224,20 @@ class QuoteData(object):
             self._general_cols = [date, code]
         else:
             raise AttributeError(f'Column {code} or {date} not in data')
-        self.__slots__ = ['_start', '_end', '_data', '_length', '_data_cols', '_general_cols',
-                          'target_cols'] + self._data_cols
+        # self.__slots__ = ['_start', '_end', '_data', '_length', '_data_cols', '_general_cols', 'date_list', 'shape',
+        #                   'length',  'target_cols'] + self._data_cols
         self._setup()
 
+    # def date_list(self):
+    #     return getattr(self, self._general_cols[0]).unique()
+
+    @property
     def shape(self):
         return self._data.shape
 
+    @property
     def length(self):
-        return len(self._data[self._general_cols[0]].unique())
+        return self.shape[0]
 
     def __len__(self):
         return self._length
@@ -276,6 +293,38 @@ class Positions(object):
     计算每个时间点的仓位信息
     """
 
+    def last_position(self, dt, code):
+        last_dt = self.get_last_dt(dt, self.dt_list)
+        return self.current_position(last_dt, code)
+
+    def current_position(self, dt, code):
+        exists = self.__getitem__(dt)
+        res = list(filter(lambda x: x.code == code, exists))
+        length = len(res)
+        if length == 0:
+            return 0
+        elif length == 1:
+            return res[0].value
+        else:
+            raise ValueError('POSITION HOLD MULTI VALUE FOR SAME CODE！')
+
+    def get_last_dt(self, dt, dt_list):
+        # dt_list = self.date_list()
+        if dt in dt_list:
+            index_code = dt_list.index(dt)
+            if index_code == 0:
+                return dt
+            else:
+                return dt_list[index_code - 1]
+        else:
+            raise ValueError(f'cannot found {dt}')
+
+    def date_list(self):
+        return sorted(self._obj.keys())
+
+    def sorted(self):
+        return OrderedDict(sorted(self._obj.items(), key=lambda x: x[0]))
+
     def __init__(self, dt_list):
         self._obj = {}
         # self.traded = {dt: [] for dt in dt_list}
@@ -314,6 +363,7 @@ class Positions(object):
         # filter(lambda x: x.code ,exists)
 
     def raw_append(self, dt, code: str, value: float, cost: float):
+        element_creator = namedtuple('element', ['code', 'value', 'cost'])
         ele = element_creator(code, value, cost)
         self.__setitem__(dt, ele)
 
@@ -360,16 +410,6 @@ class Strategy(metaclass=ABCMeta):
         pass
 
 
-def create_quote(data):
-    if isinstance(data, pd.DataFrame):
-        QD = QuoteData(data)
-        return QD
-    elif isinstance(data, QuoteData):
-        return data
-    else:
-        raise ValueError('quote data is not pd.DataFrame or QuoteData!')
-
-
 class Broker(object):
     """
     提供用户策略和Orders转换工具,不提供存储功能
@@ -392,16 +432,6 @@ class Broker(object):
         # self.orders = []
         # self.trades = []
         # self.closed_trades = []
-
-    # @staticmethod
-    # def create_quote(data):
-    #     if isinstance(data, pd.DataFrame):
-    #         QD = QuoteData(data)
-    #         return QD
-    #     elif isinstance(data, QuoteData):
-    #         return data
-    #     else:
-    #         raise ValueError('quote data is not pd.DataFrame or QuoteData!')
 
     def create_orders(self, scripts: pd.DataFrame, default_limit=None,
                       default_stop=-np.inf, default_sl=-np.inf, default_tp=np.inf, ):
@@ -455,30 +485,39 @@ class Broker(object):
 
 
 class BackTest(object):
-    __slots__ = ['scripts', 'broker', 'orders', 'quote', 'trades', 'closed_trades']
+    __slots__ = ['scripts', 'broker', 'orders', 'quote', 'trades', 'closed_trades', 'positions']
 
     def __init__(self, scripts, data, cash, commission, margin, trade_on_close, hedging, exclusive_orders,
                  default_limit=None, default_stop=-np.inf, default_sl=-np.inf, default_tp=np.inf):
         self.scripts = scripts
         self.quote = create_quote(data)
         self.broker = Broker(self.quote, cash, commission, margin, trade_on_close, hedging, exclusive_orders)
-        self.orders = self.broker.create_orders(scripts, default_limit=default_limit,
-                                                default_stop=default_stop, default_sl=default_sl,
-                                                default_tp=default_tp)
-        self.position = None
+        self.orders = self.broker.create_orders(scripts, default_limit=default_limit, default_stop=default_stop,
+                                                default_sl=default_sl, default_tp=default_tp)
+        dt_list = sorted(self.quote.date.unique())
+        self.positions = Positions(dt_list)
 
     """
     主程序, run
     """
+
+    @staticmethod
+    def operate(order, quote, current_position):
+        return order, quote
 
     def run(self):
         """
         the run function to begin back testing
         :return:
         """
+
         for dt, single_dt_quote, order_list in self.broker(self.orders):
             for o in order_list:
-                raise ValueError()
+                code = o._attr.code
+
+                last_position = self.positions.last_position(dt, code)
+                current_position = self.positions.current_position(dt, code)
+                res = self.operate(o, single_dt_quote, current_position)
 
                 # else:
                 #     dt = o.create_date
@@ -559,7 +598,7 @@ if __name__ == '__main__':
     exclusive_orders = []
     # quote_data = GOOG
     bt = BackTest(scripts, QD, cash, commission, margin, trade_on_close, hedging, exclusive_orders)
-    bt.broker.execute(QD, bt.orders)
+    bt.run()
     print(1)
 
 pass
