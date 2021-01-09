@@ -1,17 +1,21 @@
 # coding=utf-8
 from abc import abstractmethod, ABCMeta
-from collections import OrderedDict, namedtuple, Iterable
+from collections import OrderedDict, namedtuple, Iterable, deque
 # from Nodes.test import GOOG
 import datetime
 import pandas as pd
 from functools import lru_cache
 import numpy as np
 # import random
-import uuid
+import uuid, warnings
+
 
 # from Nodes.utils_node.file_cache import file_cache
 
 # from collections import OrderedDict
+
+class EmptyPositions(Exception):
+    pass
 
 
 OHLCV_AGG = OrderedDict((
@@ -43,6 +47,59 @@ def create_quote(data):
         raise ValueError('quote data is not pd.DataFrame or QuoteData!')
 
 
+class Trade(object):
+    def __init__(self, order, deal_price, adjusted_price):
+        self.order = order
+        self.deal_price = deal_price
+        self.adjusted_price = adjusted_price
+
+    @property
+    def trade_result(self):
+        return None
+
+    # def check(self, current_position, last_position):
+    #     if current_position == self.order.size:
+    #         msg = 'have some order traded before, status has been completed! will do nothing!'
+    #         print(msg)
+    #         return self.trade(0, 0, 0, self.order)
+    #     else:
+    #         if current_position > self.order.size:
+    #             msg = f'will sell {self.order.size - current_position}'
+
+    # @classmethod
+    # def _detect_trade_side_valid(cls, size, sl_price, limit_price, stop_price, tp_price, adjusted_price):
+    #     """
+    #     detect trade side whether valid
+    #     :param adjusted_price:
+    #     :return:
+    #     """
+    #     # adjusted_price = cls._adjusted_price(last_price, price, commission, size)
+    #     is_long = size > 0
+    #     if is_long:
+    #         if not (sl_price or -np.inf) < (limit_price or stop_price or adjusted_price) < (
+    #                 tp_price or np.inf):
+    #             raise ValueError(
+    #                 "Long orders require: "
+    #                 f"SL ({sl_price}) < LIMIT ({limit_price or stop_price or adjusted_price}) < TP ({tp_price})")
+    #
+    #     else:
+    #         if not (tp_price or -np.inf) < (limit_price or stop_price or adjusted_price) < (
+    #                 sl_price or np.inf):
+    #             raise ValueError(
+    #                 "Short orders require: "
+    #                 f"TP ({tp_price}) < LIMIT ({limit_price or stop_price or adjusted_price}) < SL ({sl_price})")
+
+    # @classmethod
+    # def trade(cls, share, price, last_price, order):
+    #     buy_sell = share > 0
+    #
+    #     adjusted_price = cls._adjusted_price(last_price, price, order.commission, share)
+    #     cls._detect_trade_side_valid(share, order.sl_price, order.limit_price, order.stop_price, order.tp_price,
+    #                                  adjusted_price)
+    #
+    #     return buy_sell, adjusted_price * share, price
+
+
 class Order(object):
     """
     订单执行系统
@@ -51,12 +108,12 @@ class Order(object):
 
     def __init__(self,
                  commission: float,
-                 size: float,
-                 code: str,
-                 limit_price: float = None,
-                 stop_price: float = None,
-                 sl_price: float = None,
-                 tp_price: float = None,
+                 size: float,  # 买入份数
+                 code: str,  # 证券code
+                 limit_price: float = None,  # 限价单或者市场单
+                 stop_price: float = None,  # 止盈止损市场单
+                 sl_price: float = None,  # 止损限价单
+                 tp_price: float = None,  # 止盈限价单
                  order_id=None,
                  create_date=None,
                  parent_trade=None, ):
@@ -75,7 +132,7 @@ class Order(object):
     def __repr__(self):
         attr = (('order_id', self._order_id),
                 ('code', self._attr.code),  # 证券code
-                ('size', self._attr.size),  # 买入金额
+                ('size', self._attr.size),  # 买入份数
                 ('limit', self._attr.limit_price),  # 限价单或者市场单
                 ('stop', self._attr.stop_price),  # 止盈止损市场单
                 ('sl', self._attr.sl_price),  # 止损限价单
@@ -85,41 +142,119 @@ class Order(object):
 
         return f'<Order {settings}>'
 
-    def _adjusted_price(self, last_price, price) -> float:
+    def check_buy(self, adjusted_price, raiseError=False):
+        """
+
+        :param adjusted_price:
+        :param raiseError:
+        :return:
+        """
+        if not (self._attr.sl_price or -np.inf) < (
+                self._attr.limit_price or self._attr.stop_price or adjusted_price) < (
+                       self.tp_price or np.inf):
+            msg = f"Long orders require: SL ({self._attr.sl_price}) < LIMIT ({self._attr.limit_price or self._attr.stop_price or adjusted_price}) < TP ({self._attr.tp_price})"
+            if raiseError:
+                raise ValueError(msg)
+            else:
+                warnings.warn(msg)
+                return False
+        else:
+            return True
+
+    def check_sell(self, adjusted_price, raiseError=False):
+        if not (self._attr.tp_price or -np.inf) < (
+                self._attr.limit_price or self._attr.stop_price or adjusted_price) < (
+                       self._attr.sl_price or np.inf):
+            msg = f"Short orders require: TP ({self._attr.tp_price}) < LIMIT ({self._attr.limit_price or self._attr.stop_price or adjusted_price}) < SL ({self._attr.sl_price})"
+            if raiseError:
+                raise ValueError(msg)
+            else:
+                warnings.warn(msg)
+                return False
+        else:
+            return True
+
+    def check_available(self, adjusted_price, raiseError=False):
+        if self.is_long:
+            return self.check_buy(adjusted_price, raiseError=raiseError),'buy'
+        else:
+            return self.check_sell(adjusted_price, raiseError=raiseError),'sell'
+
+    @staticmethod
+    def _adjusted_price(last_price, price, commission, size) -> float:
         """
         Long/short `price`, adjusted for commisions.
         In long positions, the adjusted price is a fraction higher, and vice versa.
         """
-        return (price or last_price) * (1 + np.copysign(self.commission, self.size))  # price * commission fee
+        return (price or last_price) * (1 + np.copysign(commission, size))  # price * commission fee
 
-    def operate(self, quote, code_col='Code', last_price=None):
-        code = self._attr.code
-
-        price = quote[(quote[code_col] == code)]['Close'].values[0]
-        adjusted_price = self._adjusted_price(last_price, price)
-        self._detect_trade_side_valid(adjusted_price)
-
-        return
-
-    def _detect_trade_side_valid(self, adjusted_price):
+    @classmethod
+    def _detect_trade_side_valid(cls, size, sl_price, limit_price, stop_price, tp_price, adjusted_price):
         """
         detect trade side whether valid
         :param adjusted_price:
         :return:
         """
-        if self.is_long:
-            if not (self.sl_price or -np.inf) < (self.limit_price or self.stop_price or adjusted_price) < (
-                    self.tp_price or np.inf):
+        # adjusted_price = cls._adjusted_price(last_price, price, commission, size)
+        is_long = size > 0
+        if is_long:
+            if not (sl_price or -np.inf) < (limit_price or stop_price or adjusted_price) < (
+                    tp_price or np.inf):
                 raise ValueError(
                     "Long orders require: "
-                    f"SL ({self.sl_price}) < LIMIT ({self.limit_price or self.stop_price or adjusted_price}) < TP ({self.tp_price})")
+                    f"SL ({sl_price}) < LIMIT ({limit_price or stop_price or adjusted_price}) < TP ({tp_price})")
 
         else:
-            if not (self.tp_price or -np.inf) < (self.limit_price or self.stop_price or adjusted_price) < (
-                    self.sl_price or np.inf):
+            if not (tp_price or -np.inf) < (limit_price or stop_price or adjusted_price) < (
+                    sl_price or np.inf):
                 raise ValueError(
                     "Short orders require: "
-                    f"TP ({self.tp_price}) < LIMIT ({self.limit_price or self.stop_price or adjusted_price}) < SL ({self.sl_price})")
+                    f"TP ({tp_price}) < LIMIT ({limit_price or stop_price or adjusted_price}) < SL ({sl_price})")
+
+    def order2trade(self, quote):
+        """
+        清算order 然后决定是否能够成交
+        :param quote:
+        :return:
+        """
+
+        price = quote.filter(self).close.values[0]
+        adjusted_price = self._adjusted_price(None, price, self.commission, self.size)
+
+        available,side = self.check_available(adjusted_price)
+
+        # if self.is_long:
+        #     self.check_buy(adjusted_price)
+        # else:
+        #     self.check_sell(adjusted_price)
+        return Trade(self, price, adjusted_price)
+
+        #     # msg = 'status completed! will do nothing!'
+        #     # print(msg)
+        #     # return current_p
+        #     else:
+        #         if current_p >
+        #
+        #     return order, quote
+        #
+        # price = quote['Close'].values[0]
+        #
+        # if current_position == self.size:
+        #     msg = 'have some order traded before, status has been completed! will do nothing!'
+        #     print(msg)
+        #     return Trade()
+        # else:
+        #     if current_position > self.size:
+        #         msg = f'will sell {self.size - current_position}'
+
+    # def operate(self, quote, code_col='Code', last_price=None):
+    #     code = self._attr.code
+    #
+    #     price = quote[(quote[code_col] == code)]['Close'].values[0]
+    #     adjusted_price = self._adjusted_price(last_price, price)
+    #     self._detect_trade_side_valid(adjusted_price)
+    #
+    #     return
 
     # def oper(self, last_price, price):
     #     # code_data = quotedata[quotedata['code'] == self._attr.code]
@@ -258,20 +393,23 @@ class QuoteData(object):
 
         return self._data[indexer]
 
-    def where(self, dt: (str, list), col=None):
+    def filter(self, order):
+        code = [order._attr.code]
+        dt = [order._attr.create_date]
+        data = self._data[(self._data[self._general_cols[1]].isin(code)) & (self._data[self._general_cols[0]].isin(dt))]
+        return QuoteData(data, code=self._general_cols[1], date=self._general_cols[1], target_cols=self.target_cols,
+                         start=self._start, end=self._end)
+
+    def __getitem__(self, dt):
+        col = self._general_cols[0]
         if isinstance(dt, str):
             dt = [dt]
         elif isinstance(dt, list):
             pass
         else:
             raise ValueError('dt must be str or list')
-        if col is None:
-            col = self._general_cols[0]
         indexer = self._data[col].isin(dt)
         return self._getitem_bool_array(indexer)
-
-    def __getitem__(self, key):
-        return self._obtain_data(key)
 
     def __getattr__(self, key):
         try:
@@ -288,13 +426,20 @@ class QuoteData(object):
             setattr(self, col, self._obtain_data(col))
 
 
+class PositionSection(deque):
+    def __init__(self, dt, *orders, maxlen=100000):
+        super(PositionSection, self).__init__(orders, maxlen=maxlen)
+        self.dt = dt
+        # self.traded = {dt: [] for dt in dt_list}
+
+
 class Positions(object):
     """
     计算每个时间点的仓位信息
     """
 
     def last_position(self, dt, code):
-        last_dt = self.get_last_dt(dt, self.dt_list)
+        last_dt = self.get_last_dt(dt, self.dt_list, raiseerror=False)
         return self.current_position(last_dt, code)
 
     def current_position(self, dt, code):
@@ -308,7 +453,8 @@ class Positions(object):
         else:
             raise ValueError('POSITION HOLD MULTI VALUE FOR SAME CODE！')
 
-    def get_last_dt(self, dt, dt_list):
+    @staticmethod
+    def get_last_dt(dt, dt_list, raiseerror=True):
         # dt_list = self.date_list()
         if dt in dt_list:
             index_code = dt_list.index(dt)
@@ -317,18 +463,30 @@ class Positions(object):
             else:
                 return dt_list[index_code - 1]
         else:
-            raise ValueError(f'cannot found {dt}')
+            msg = f'cannot found {dt}'
+            if raiseerror:
+                raise EmptyPositions(msg)
+            else:
+                print(msg)
+                return None
 
-    def date_list(self):
-        return sorted(self._obj.keys())
+    def keys(self):
+        return self._obj.keys()
+
+    def values(self):
+        return self._obj.values()
+
+    def items(self):
+        return self._obj.items()
 
     def sorted(self):
-        return OrderedDict(sorted(self._obj.items(), key=lambda x: x[0]))
+        return OrderedDict(sorted(self.items(), key=lambda x: x[0]))
 
     def __init__(self, dt_list):
         self._obj = {}
         # self.traded = {dt: [] for dt in dt_list}
         self.dt_list = dt_list
+        self._position_sign_ = 'position'
 
     def __setitem__(self, key, value):
         exists = self.__getitem__(key)
@@ -344,7 +502,15 @@ class Positions(object):
         self._obj[key] = exists
 
     def __getitem__(self, key):
-        return self._obj.get(key, default=[])
+        return self._obj.get(key, PositionSection(key))
+
+    def update(self, item):
+        if hasattr(self, '_position_sign_') and self._position_sign_ == 'position':
+            # keys = self.keys()
+            for dt, ele in item.items():
+                self.__setitem__(dt, ele)
+        else:
+            raise ValueError(f'update function only accept position sign class to update!')
 
     #     if item not in self._obj.keys():
     #         return []
@@ -472,12 +638,13 @@ class Broker(object):
                     day.append(order)
             yield dt.strftime('%Y-%m-%d'), day
 
-    def __call__(self, orders: Orders, date_col='date'):
-        dt_list = list(orders.keys())
-        filtered_quote = self._data.where(dt_list)
+    def __call__(self, orders: Orders):
+        # dt_list =
+        dt_col = self._data._general_cols[0]
+        filtered_quote = self._data[list(orders.keys())]  # reduce quote data by select required date only
         # h = []
         for dt, order_list in orders.items():
-            single_dt_quote = filtered_quote[filtered_quote[date_col] == dt]
+            single_dt_quote = filtered_quote[filtered_quote[dt_col] == dt]
             # res = list(map(lambda x: x.operate(single_dt_quote), order_list))
             # h.append(res)
             yield dt, single_dt_quote, order_list
@@ -501,13 +668,12 @@ class BackTest(object):
     主程序, run
     """
 
-    @staticmethod
-    def operate(order, quote, current_position):
-        return order, quote
-
     def run(self):
         """
         the run function to begin back testing
+
+
+
         :return:
         """
 
@@ -517,7 +683,8 @@ class BackTest(object):
 
                 last_position = self.positions.last_position(dt, code)
                 current_position = self.positions.current_position(dt, code)
-                res = self.operate(o, single_dt_quote, current_position)
+                res = self.operate(o, single_dt_quote, current_position, last_position)
+                print(1)
 
                 # else:
                 #     dt = o.create_date
@@ -573,7 +740,7 @@ if __name__ == '__main__':
     # print(len(QD))
     np.random.seed(1)
     price = pd.DataFrame(np.random.random(size=(GOOG.shape[0], 1)), columns=['GOOG'])
-    orders_df = (price > 0.5) * 1
+    orders_df = (price > 0.75) * 1
     orders_df['date'] = GOOG.index
     scripts = orders_df.set_index('date').stack().reset_index()
     scripts.columns = ['date', 'code', 'size']

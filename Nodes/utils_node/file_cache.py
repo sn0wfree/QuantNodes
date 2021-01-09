@@ -5,14 +5,22 @@ import os
 import pickle
 from collections import OrderedDict
 from functools import wraps
-
+from platform import platform
 
 def get_cache_path(fmt="%Y-%m-%d"):
     __cache__path = '/tmp/{}/'.format(datetime.datetime.now().strftime(format=fmt))
     if not os.path.exists(__cache__path):
-        os.mkdir(__cache__path)
+        try:
+            os.mkdir(__cache__path)
+        except Exception as e:
+            __cache__path = get_cache_path_windows()
     return __cache__path
 
+def get_cache_path_windows(fmt="%Y-%m-%d"):
+    __cache__path = './{}/'.format(datetime.datetime.now().strftime(format=fmt))
+    if not os.path.exists(__cache__path):
+        os.mkdir(__cache__path)
+    return __cache__path
 
 def prepare_args(func, arg, kwargs, time_format_dimension='%Y-%m-%d'):
     kwargs = OrderedDict(sorted(kwargs.items(), key=lambda t: t[0]))  # sort kwargs to fix hashcode if sample input
