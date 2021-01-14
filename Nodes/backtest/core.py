@@ -1,13 +1,16 @@
 # coding=utf-8
 from abc import abstractmethod, ABCMeta
 from collections import OrderedDict, namedtuple, Iterable, deque
+from functools import singledispatch
+# import random
+import copy
 # from Nodes.test import GOOG
 import datetime
-import pandas as pd
-from functools import lru_cache
 import numpy as np
-# import random
-import uuid, warnings
+import pandas as pd
+import uuid
+import warnings
+from functools import lru_cache
 
 
 # from Nodes.utils_node.file_cache import file_cache
@@ -48,56 +51,51 @@ def create_quote(data):
 
 
 class Trade(object):
-    def __init__(self, order, deal_price, adjusted_price):
-        self.order = order
+    def __init__(self, order, deal_price, adjusted_price, side, status='completed'):
+        self.correspond_order = order
+        self.side = side
         self.deal_price = deal_price
         self.adjusted_price = adjusted_price
+        self._status = status
 
     @property
-    def trade_result(self):
-        return None
+    def code(self):
+        return self.correspond_order._attr.code
 
-    # def check(self, current_position, last_position):
-    #     if current_position == self.order.size:
-    #         msg = 'have some order traded before, status has been completed! will do nothing!'
-    #         print(msg)
-    #         return self.trade(0, 0, 0, self.order)
-    #     else:
-    #         if current_position > self.order.size:
-    #             msg = f'will sell {self.order.size - current_position}'
+    @property
+    def dt(self):
+        return self.correspond_order.create_date
 
-    # @classmethod
-    # def _detect_trade_side_valid(cls, size, sl_price, limit_price, stop_price, tp_price, adjusted_price):
-    #     """
-    #     detect trade side whether valid
-    #     :param adjusted_price:
-    #     :return:
-    #     """
-    #     # adjusted_price = cls._adjusted_price(last_price, price, commission, size)
-    #     is_long = size > 0
-    #     if is_long:
-    #         if not (sl_price or -np.inf) < (limit_price or stop_price or adjusted_price) < (
-    #                 tp_price or np.inf):
-    #             raise ValueError(
-    #                 "Long orders require: "
-    #                 f"SL ({sl_price}) < LIMIT ({limit_price or stop_price or adjusted_price}) < TP ({tp_price})")
-    #
-    #     else:
-    #         if not (tp_price or -np.inf) < (limit_price or stop_price or adjusted_price) < (
-    #                 sl_price or np.inf):
-    #             raise ValueError(
-    #                 "Short orders require: "
-    #                 f"TP ({tp_price}) < LIMIT ({limit_price or stop_price or adjusted_price}) < SL ({sl_price})")
+    @property
+    def status(self):
+        return self._status
 
-    # @classmethod
-    # def trade(cls, share, price, last_price, order):
-    #     buy_sell = share > 0
-    #
-    #     adjusted_price = cls._adjusted_price(last_price, price, order.commission, share)
-    #     cls._detect_trade_side_valid(share, order.sl_price, order.limit_price, order.stop_price, order.tp_price,
-    #                                  adjusted_price)
-    #
-    #     return buy_sell, adjusted_price * share, price
+    @status.setter
+    def status(self, stau):
+        self._status = stau
+
+    @property
+    def order_size(self):
+        return self.correspond_order._attr.size
+
+    @property
+    def traded_size(self):
+        if self.status == 'completed':
+            return self.order_size
+        else:
+            return 0
+
+    @property
+    def trade_result_cost_side(self):
+        return self.adjusted_price * self.traded_size
+
+    @property
+    def trade_result_trade_side(self):
+        return self.deal_price * self.traded_size
+
+    @property
+    def fee(self):
+        return abs(self.trade_result_trade_side - self.trade_result_cost_side)
 
 
 class Order(object):
@@ -117,12 +115,17 @@ class Order(object):
                  order_id=None,
                  create_date=None,
                  parent_trade=None, ):
-        self.commission = commission
+        self.commission = commission  ## TODO 通过创建float类进行分析commission多样化计算
         ORDERSCreator = namedtuple("ORDER",
                                    ('order_id', 'code', 'size', 'limit_price', 'stop_price', 'sl_price', 'tp_price'))
         self.create_date = create_date
         self._order_id = _order_id = order_id if order_id is not None else 'order_' + random_str(num=6)
         self._parent_trade = parent_trade
+        adj_is_long = -1 ** (size <= 0) * 1
+        if sl_price is None:
+            sl_price = -np.inf * adj_is_long
+        if tp_price is None:
+            tp_price = np.inf * adj_is_long
         self._attr = ORDERSCreator(_order_id, code, size, limit_price, stop_price, sl_price, tp_price)
         self._is_cancel = False
 
@@ -141,6 +144,10 @@ class Order(object):
         settings = ','.join([f'{name}={value}' for name, value in attr])
 
         return f'<Order {settings}>'
+
+    def copy(self):
+        new_order = copy.deepcopy(self)
+        return new_order
 
     def check_buy(self, adjusted_price, raiseError=False):
         """
@@ -175,10 +182,11 @@ class Order(object):
             return True
 
     def check_available(self, adjusted_price, raiseError=False):
+        ## TODO not consider situation when size > volume
         if self.is_long:
-            return self.check_buy(adjusted_price, raiseError=raiseError),'buy'
+            return self.check_buy(adjusted_price, raiseError=raiseError), 'buy'
         else:
-            return self.check_sell(adjusted_price, raiseError=raiseError),'sell'
+            return self.check_sell(adjusted_price, raiseError=raiseError), 'sell'
 
     @staticmethod
     def _adjusted_price(last_price, price, commission, size) -> float:
@@ -211,23 +219,25 @@ class Order(object):
                     "Short orders require: "
                     f"TP ({tp_price}) < LIMIT ({limit_price or stop_price or adjusted_price}) < SL ({sl_price})")
 
-    def order2trade(self, quote):
+    def deal(self, quote):
         """
         清算order 然后决定是否能够成交
-        :param quote:
+        :param quote: QuotaData
         :return:
         """
 
-        price = quote.filter(self).close.values[0]
+        price = quote.filter(self).Close.values.ravel()[0]
         adjusted_price = self._adjusted_price(None, price, self.commission, self.size)
 
-        available,side = self.check_available(adjusted_price)
-
+        available, side = self.check_available(adjusted_price, raiseError=True)
+        ## todo consider connot deal situation
+        ## TODO not consider situation when size > volume
         # if self.is_long:
         #     self.check_buy(adjusted_price)
         # else:
         #     self.check_sell(adjusted_price)
-        return Trade(self, price, adjusted_price)
+
+        return Trade(self.copy(), price, adjusted_price, side, status='completed')
 
         #     # msg = 'status completed! will do nothing!'
         #     # print(msg)
@@ -350,8 +360,8 @@ class QuoteData(object):
         self._end = end
         if target_cols is None:
             target_cols = list(OHLCV_AGG.keys())
-        self._data = df[(df[date] >= self._start) & (df[date] <= self._end)].sort_values(date, ascending=True)
         self.target_cols = target_cols
+        self._data = df[(df[date] >= self._start) & (df[date] <= self._end)].sort_values(date, ascending=True)
 
         self._length = len(self._data)
         self._data_cols = self._data.columns.tolist()
@@ -395,10 +405,12 @@ class QuoteData(object):
 
     def filter(self, order):
         code = [order._attr.code]
-        dt = [order._attr.create_date]
+        dt = [order.create_date]
         data = self._data[(self._data[self._general_cols[1]].isin(code)) & (self._data[self._general_cols[0]].isin(dt))]
-        return QuoteData(data, code=self._general_cols[1], date=self._general_cols[1], target_cols=self.target_cols,
+
+        temp = QuoteData(data, code=self._general_cols[1], date=self._general_cols[0], target_cols=self.target_cols,
                          start=self._start, end=self._end)
+        return temp
 
     def __getitem__(self, dt):
         col = self._general_cols[0]
@@ -487,6 +499,7 @@ class Positions(object):
         # self.traded = {dt: [] for dt in dt_list}
         self.dt_list = dt_list
         self._position_sign_ = 'position'
+        self.raw = {}
 
     def __setitem__(self, key, value):
         exists = self.__getitem__(key)
@@ -517,20 +530,47 @@ class Positions(object):
     #     else:
     #         return self._obj[item]
 
-    def append(self, dt, code: str, value: float, cost: float):
+    @singledispatch
+    def trade_append(self, trade: Trade):
+        dt = trade.dt
+        dt_trade = self.raw.get(dt, PositionSection(dt))
+        dt_trade.append(trade)
+        self.raw[dt] = dt_trade
+        cost_price = trade.deal_price
+        code = trade.code
+        value = trade.trade_result_trade_side  # 交易金额
+        fee = trade.fee
+        self.append(dt, code, value, cost_price, fee)
+
+    # @trade_append.register(Iterable)
+    # @trade_append.register(tuple)
+    # @trade_append.register(list)
+    def trade_extend(self, trades):
+        for trade in trades:
+            dt = trade.dt
+            dt_trade = self.raw.get(dt, PositionSection(dt))
+            dt_trade.append(trade)
+            self.raw[dt] = dt_trade
+            cost_price = trade.deal_price
+            code = trade.code
+            value = trade.trade_result_trade_side  # 交易金额
+            fee = trade.fee
+            self.append(dt, code, value, cost_price, fee)
+
+    def append(self, dt, code: str, value: float, cost: float, fee: float):
         # exists = False
         for exists in self.__getitem__(dt):
             for e in exists:
                 if e.code == code:
                     raise ValueError(f'detect duplicates code:{code}')
         else:
-            self.raw_append(dt, code, value, cost)
+            self.raw_append(dt, code, value, cost, fee)
 
         # filter(lambda x: x.code ,exists)
 
-    def raw_append(self, dt, code: str, value: float, cost: float):
-        element_creator = namedtuple('element', ['code', 'value', 'cost'])
-        ele = element_creator(code, value, cost)
+    def raw_append(self, dt, code: str, value: float, cost: float, fee: float):
+        element_creator = namedtuple('element', ['code', 'value', 'cost_price', 'fee'])  # 股票代码, 交易金额，  交易价格 ，交易费用
+        ele = element_creator(code, value, cost, fee)
         self.__setitem__(dt, ele)
 
     # def create_element(self, element_code: str, value: float, cost_price: float):
@@ -599,22 +639,35 @@ class Broker(object):
         # self.trades = []
         # self.closed_trades = []
 
-    def create_orders(self, scripts: pd.DataFrame, default_limit=None,
-                      default_stop=-np.inf, default_sl=-np.inf, default_tp=np.inf, ):
+    def create_orders(self, scripts: pd.DataFrame, quote,
+                      default_stop=-np.inf, default_sl=None, default_tp=None, ):
         """create all orders at begin"""
-        a = list(self._create_orders(scripts, self._commission, default_limit=default_limit, default_stop=default_stop,
+        ## TODO limit price should be set!!!
+
+        a = list(self._create_orders(scripts, self._commission, quote, self._trade_on_close, default_stop=default_stop,
                                      default_sl=default_sl, default_tp=default_tp))
 
         return Orders(*a)
 
     @staticmethod
-    def _create_orders(scripts: pd.DataFrame, _commission, default_limit=None,
-                       default_stop=-np.inf, default_sl=-np.inf, default_tp=np.inf, ):
-        default_dict = {'limit': default_limit, 'stop': default_stop, 'sl': default_sl, 'tp': default_tp}
+    def _create_orders(scripts: pd.DataFrame, _commission, quota, trade_on_close, default_stop=-np.inf, default_sl=None,
+                       default_tp=None):
+        default_dict = {'stop': default_stop, 'sl': default_sl, 'tp': default_tp}
         cols = scripts.columns.tolist()
-        must = ['date', 'code', 'size']
-        reqired = ['limit', 'stop', 'sl', 'tp']
+        must = ['date', 'code', 'size', 'limit']
+        reqired = ['stop', 'sl', 'tp']
 
+        if 'limit' in cols:
+            pass
+        else:
+            if trade_on_close:
+                col = 'Close'
+            else:
+                col = 'Open'
+            scripts = scripts.merge(
+                quota._data[['date', 'Code', col]].rename(columns={col: 'limit', 'Code': 'code'}),
+                on=['date', 'code'])
+            cols = scripts.columns.tolist()
         missed = set(must) - set(cols)
         if len(missed) != 0:
             raise ValueError(f"{','.join(missed)} are missing")
@@ -644,7 +697,7 @@ class Broker(object):
         filtered_quote = self._data[list(orders.keys())]  # reduce quote data by select required date only
         # h = []
         for dt, order_list in orders.items():
-            single_dt_quote = filtered_quote[filtered_quote[dt_col] == dt]
+            single_dt_quote = create_quote(filtered_quote[filtered_quote[dt_col] == dt])
             # res = list(map(lambda x: x.operate(single_dt_quote), order_list))
             # h.append(res)
             yield dt, single_dt_quote, order_list
@@ -655,11 +708,12 @@ class BackTest(object):
     __slots__ = ['scripts', 'broker', 'orders', 'quote', 'trades', 'closed_trades', 'positions']
 
     def __init__(self, scripts, data, cash, commission, margin, trade_on_close, hedging, exclusive_orders,
-                 default_limit=None, default_stop=-np.inf, default_sl=-np.inf, default_tp=np.inf):
+                 default_limit=None, default_stop=-np.inf, default_sl=None, default_tp=None):
         self.scripts = scripts
         self.quote = create_quote(data)
         self.broker = Broker(self.quote, cash, commission, margin, trade_on_close, hedging, exclusive_orders)
-        self.orders = self.broker.create_orders(scripts, default_limit=default_limit, default_stop=default_stop,
+
+        self.orders = self.broker.create_orders(scripts, self.quote, default_stop=default_stop,
                                                 default_sl=default_sl, default_tp=default_tp)
         dt_list = sorted(self.quote.date.unique())
         self.positions = Positions(dt_list)
@@ -678,18 +732,21 @@ class BackTest(object):
         """
 
         for dt, single_dt_quote, order_list in self.broker(self.orders):
-            for o in order_list:
-                code = o._attr.code
+            trade_list = map(lambda x: x.deal(single_dt_quote), order_list)
+            # for o in order_list:
+            #     # code = o._attr.code
+            #     trade = o.deal(single_dt_quote)
+            self.positions.trade_extend(trade_list)
 
-                last_position = self.positions.last_position(dt, code)
-                current_position = self.positions.current_position(dt, code)
-                res = self.operate(o, single_dt_quote, current_position, last_position)
-                print(1)
+                # last_position = self.positions.last_position(dt, code)
+                # current_position = self.positions.current_position(dt, code)
+                # res = self.operate(o, single_dt_quote, current_position, last_position)
+        print(1)
 
-                # else:
-                #     dt = o.create_date
-                #     price = self.broker._data[self.broker._data['date'] == dt]['price']
-                #     o.oper(None, price)
+        # else:
+        #     dt = o.create_date
+        #     price = self.broker._data[self.broker._data['date'] == dt]['price']
+        #     o.oper(None, price)
 
         pass
 
