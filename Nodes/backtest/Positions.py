@@ -8,6 +8,19 @@ from Nodes.backtest.Orders import Trade
 
 # import random
 # from Nodes.test import GOOG
+def create_element():
+    name = 'element'
+    cols = ['code', 'trade_amount', 'deal_price', 'fee']
+    element_creator = namedtuple(name, cols)  # 股票代码, 交易金额，交易价格 ，交易费用
+
+    def share(self):
+        return self.trade_amount / self.deal_price
+
+    cls_obj = type('ele', (element_creator,), {'share': property(share)})
+    return cls_obj
+
+
+cls_obj = create_element()
 
 
 class EmptyPositions(Exception):
@@ -138,9 +151,9 @@ class Positions(object):
         """
         if check_duplicate:
             self.check_duplicate_code(dt, code)
-        element_creator = namedtuple('element', ['code', 'trade_amount', 'deal_price', 'fee'])  # 股票代码, 交易金额，交易价格 ，交易费用
-        ele = element_creator(code, value, cost, fee)
-        self.__setitem__(dt, ele)
+        # element_creator = namedtuple('element', ['code', 'trade_amount', 'deal_price', 'fee'])  # 股票代码, 交易金额，交易价格 ，交易费用
+
+        self.__setitem__(dt, cls_obj(code, value, cost, fee))
 
     # @trade_append.register(Iterable)
     # @trade_append.register(tuple)
