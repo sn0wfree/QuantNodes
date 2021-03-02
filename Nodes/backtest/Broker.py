@@ -1,19 +1,11 @@
 # coding=utf-8
-from abc import abstractmethod, ABCMeta
-from collections import OrderedDict, namedtuple, Iterable, deque
-from functools import singledispatch
 # import random
-import copy
 # from Nodes.test import GOOG
-import datetime
 import numpy as np
 import pandas as pd
 
-import warnings
-from functools import lru_cache
-from Nodes.backtest.Orders import Orders, Trade, Order
+from Nodes.backtest.Orders import Orders, Order
 from Nodes.backtest.Quote import QuoteData
-from Nodes.backtest.Positions import Positions
 
 
 # from Nodes.utils_node.file_cache import file_cache
@@ -94,13 +86,15 @@ class Broker(object):
                     day.append(order)
             yield dt.strftime('%Y-%m-%d'), day
 
-    def __call__(self, orders: Orders):
+    def __call__(self, orders: Orders, reduce=False):
         # dt_list =
         # dt_col = self._data.date_col
-        dt_list = list(orders.keys())
+
+        dt_list = list(orders.reduce_keys(exclude_value=0)) if reduce else list(orders.keys())
+
         filtered_quote = self._data[dt_list]  # reduce quote data by select required date only
         # h = []
-        ### todo test the perfermance of df with group by and the perfrtmance of dataframe with slice
+        ## todo test the perfermance of df with group by and the perfrtmance of dataframe with slice
         for dt, df in iter(filtered_quote):
             dt = pd.to_datetime(dt).strftime('%Y-%m-%d')
             order_list = orders.get(dt)

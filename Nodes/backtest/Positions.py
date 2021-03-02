@@ -97,16 +97,18 @@ class Positions(object):
             raise ValueError(f'update function only accept position sign class to update!')
 
     @singledispatch
-    def append(self, trade: Trade):
-        dt = trade.dt
-        cost_price = trade.deal_price
-        code = trade.code
-        value = trade.trade_result_trade_side  # 交易金额
-        fee = trade.fee
+    def append(self, trade: Trade, reduce=False):
+        value = trade.trade_result_trade_side  # 成交金额
         # dt_trade = self[dt]  # 获取对应dt，如果没有这返回默认的PositionSection(dt)
         # dt_trade.append(trade)
-
-        self.raw_append(dt, code, value, cost_price, fee)
+        if reduce and value == 0:
+            pass
+        else:
+            dt = trade.dt
+            cost_price = trade.deal_price
+            code = trade.code
+            fee = trade.fee
+            self.raw_append(dt, code, value, cost_price, fee)
 
     # @append.register
     # def append(self,trade):
@@ -115,23 +117,37 @@ class Positions(object):
     #     self.raw_append(dt, code, value, cost, fee)
 
     # filter(lambda x: x.code ,exists)
-
-    def raw_append(self, dt, code: str, value: float, cost: float, fee: float):
+    def check_duplicate_code(self, dt, code: str):
+        ## todo 可能的性能点,可能存在重复计算的可能性
         for exists in self.__getitem__(dt):
             for e in exists:
                 if e.code == code:
+                    # 当天存在多笔交易
                     raise ValueError(f'detect duplicates code:{code}')
-        else:
-            element_creator = namedtuple('element', ['code', 'value', 'cost_price', 'fee'])  # 股票代码, 交易金额，  交易价格 ，交易费用
-            ele = element_creator(code, value, cost, fee)
-            self.__setitem__(dt, ele)
+
+    def raw_append(self, dt, code: str, value: float, cost: float, fee: float, check_duplicate=True):
+        """
+
+        :param check_duplicate:
+        :param dt:  trade date
+        :param code:  股票代码
+        :param value:   交易金额
+        :param cost:  交易价格
+        :param fee:  交易费用
+        :return:
+        """
+        if check_duplicate:
+            self.check_duplicate_code(dt, code)
+        element_creator = namedtuple('element', ['code', 'trade_amount', 'deal_price', 'fee'])  # 股票代码, 交易金额，交易价格 ，交易费用
+        ele = element_creator(code, value, cost, fee)
+        self.__setitem__(dt, ele)
 
     # @trade_append.register(Iterable)
     # @trade_append.register(tuple)
     # @trade_append.register(list)
-    def trade_extend(self, trades):
+    def trade_extend(self, trades, reduce=False):
         for trade in trades:
-            self.append(trade)
+            self.append(trade, reduce=reduce)
 
     # def create_element(self, element_code: str, value: float, cost_price: float):
     #     return element_creator(element_code, value, cost_price)

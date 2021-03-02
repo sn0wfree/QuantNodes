@@ -16,9 +16,6 @@ from Nodes.backtest.Quote import QuoteData
 # from collections import OrderedDict
 
 
-
-
-
 class BackTest(object):
     __slots__ = ['scripts', 'broker', 'orders', 'quote', 'trades', 'closed_trades', 'positions']
 
@@ -37,7 +34,7 @@ class BackTest(object):
     主程序, run
     """
 
-    def run(self):
+    def run(self, reduce=True):
         """
         the run function to begin back testing
 
@@ -46,12 +43,12 @@ class BackTest(object):
         :return:
         """
 
-        for dt, single_dt_quote, order_list in self.broker(self.orders):
+        for dt, single_dt_quote, order_list in self.broker(self.orders,reduce=reduce):
             trade_list = map(lambda x: x.deal(single_dt_quote), order_list)
             # for o in order_list:
             #     # code = o._attr.code
             #     trade = o.deal(single_dt_quote)
-            self.positions.trade_extend(trade_list)
+            self.positions.trade_extend(trade_list, reduce=reduce)
 
             # last_position = self.positions.last_position(dt, code)
             # current_position = self.positions.current_position(dt, code)

@@ -63,7 +63,7 @@ class Order(object):
     """
     订单执行系统
     """
-    __slots__ = ['commission', 'create_date', '_order_id', '_parent_trade', '_attr', '_is_cancel','adj_is_long']
+    __slots__ = ['commission', 'create_date', '_order_id', '_parent_trade', '_attr', '_is_cancel', 'adj_is_long']
 
     def __init__(self,
                  commission: float,
@@ -82,7 +82,7 @@ class Order(object):
         self.create_date = create_date
         self._order_id = _order_id = order_id if order_id is not None else 'order_' + random_str(num=6)
         self._parent_trade = parent_trade
-        self.adj_is_long =pow( 1 , (size <= 0) * 1)
+        self.adj_is_long = pow(1, (size <= 0) * 1)
         if sl_price is None:
             sl_price = -np.inf * self.adj_is_long
         if tp_price is None:
@@ -305,6 +305,12 @@ class Orders(object):
 
     def keys(self):
         return self.orders.keys()
+
+    def reduce_keys(self, exclude_value=0):
+        for key, items in self.items():
+            c = list(filter(lambda x: x.size != exclude_value, items))
+            if len(c) != 0:
+                yield key
 
     def items(self):
         return self.orders.items()
