@@ -6,6 +6,7 @@ import pandas as pd
 
 from Nodes.backtest.Orders import Orders, Order
 from Nodes.backtest.Quote import QuoteData
+from collections import Iterable, Iterator
 
 
 # from Nodes.utils_node.file_cache import file_cache
@@ -35,14 +36,16 @@ class Broker(object):
         # self.closed_trades = []
 
     def create_orders(self, scripts: pd.DataFrame, quote,
-                      default_stop=-np.inf, default_sl=None, default_tp=None, ):
+                      default_stop=-np.inf, default_sl=None, default_tp=None, iterable=False):
         """create all orders at begin"""
         ## TODO limit price should be set!!!
 
-        a = list(self._create_orders(scripts, self._commission, quote, self._trade_on_close, default_stop=default_stop,
-                                     default_sl=default_sl, default_tp=default_tp))
-
-        return Orders(*a)
+        a_iter = self._create_orders(scripts, self._commission, quote, self._trade_on_close, default_stop=default_stop,
+                                     default_sl=default_sl, default_tp=default_tp)
+        if iterable:
+            return a_iter
+        else:
+            return Orders(*list(a_iter))
 
     @staticmethod
     def _create_orders(scripts: pd.DataFrame, _commission, quota, trade_on_close, default_stop=-np.inf, default_sl=None,
@@ -86,22 +89,47 @@ class Broker(object):
                     day.append(order)
             yield dt.strftime('%Y-%m-%d'), day
 
-    def __call__(self, orders: Orders, reduce=False):
+    def __call__(self, orders: (Orders, Iterable), reduce=True, position_check_func=None):
         # dt_list =
         # dt_col = self._data.date_col
+        if position_check_func is None:
+            position_check_func = lambda x, y, z: (x, y, z)
 
-        dt_list = list(orders.reduce_keys(exclude_value=0)) if reduce else list(orders.keys())
+        if isinstance(orders, Orders):
 
-        filtered_quote = self._data[dt_list]  # reduce quote data by select required date only
-        # h = []
-        ## todo test the perfermance of df with group by and the perfrtmance of dataframe with slice
-        for dt, df in iter(filtered_quote):
-            dt = pd.to_datetime(dt).strftime('%Y-%m-%d')
-            order_list = orders.get(dt)
-            yield dt, QuoteData.create_quote(df), order_list
-        # for dt, order_list in orders.items():
-        #     single_dt_quote = QuoteData.create_quote(filtered_quote[filtered_quote[dt_col] == dt])
-        #     # res = list(map(lambda x: x.operate(single_dt_quote), order_list))
-        #     # h.append(res)
-        #     yield dt, single_dt_quote, order_list
+            dt_list = list(orders.reduce_keys(exclude_value=0)) if reduce else list(orders.keys())
+
+            filtered_quote = self._data[dt_list]  # reduce quote data by select required date only
+
+            ## todo test the perfermance of df with group by and the perfrtmance of dataframe with slice
+            for dt, df in iter(filtered_quote):
+                dt = pd.to_datetime(dt).strftime('%Y-%m-%d')
+                order_list = orders.get(dt)
+                q = QuoteData.create_quote(df)
+
+                dt, q, order_list = position_check_func(dt, q, order_list)
+                yield dt, q, order_list
+        elif isinstance(orders, Iterable):  # iter prepare to d to check current position
+            dt_col = self._data.date_col
+            for dt, order_list in orders:
+
+                if reduce:
+                    filtered_order_list = list(filter(lambda x: x.size != 0, order_list))
+                    if len(filtered_order_list) == 0:
+                        pass
+                    else:
+                        q = QuoteData.create_quote(self._data[self._data[dt_col] == dt])
+                        # res = list(map(lambda x: x.operate(single_dt_quote), order_list))
+                        # h.append(res)
+                        dt, q, order_list = position_check_func(dt, q, filtered_order_list)
+                        yield dt, q, order_list
+                else:
+                    q = QuoteData.create_quote(self._data[self._data[dt_col] == dt])
+                    # res = list(map(lambda x: x.operate(single_dt_quote), order_list))
+                    # h.append(res)
+                    dt, q, order_list = position_check_func(dt, q, order_list)
+                    yield dt, q, order_list
+        else:
+            raise ValueError('unknown orders!')
+
         # return h

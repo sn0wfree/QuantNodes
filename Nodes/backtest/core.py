@@ -16,7 +16,7 @@ from Nodes.backtest.Quote import QuoteData
 # from collections import OrderedDict
 
 
-class BackTest(object):
+class ScriptsBackTest(object):
     __slots__ = ['scripts', 'broker', 'orders', 'quote', 'trades', 'closed_trades', 'positions']
 
     def __init__(self, scripts, data, cash, commission, margin, trade_on_close, hedging, exclusive_orders,
@@ -34,7 +34,7 @@ class BackTest(object):
     主程序, run
     """
 
-    def run(self, reduce=True):
+    def run(self, reduce=True, position_check_func=None):
         """
         the run function to begin back testing
 
@@ -43,7 +43,7 @@ class BackTest(object):
         :return:
         """
 
-        for dt, single_dt_quote, order_list in self.broker(self.orders,reduce=reduce):
+        for dt, single_dt_quote, order_list in self.broker(self.orders, reduce=reduce, position_check_func=position_check_func):
             trade_list = map(lambda x: x.deal(single_dt_quote), order_list)
             # for o in order_list:
             #     # code = o._attr.code
@@ -53,6 +53,7 @@ class BackTest(object):
             # last_position = self.positions.last_position(dt, code)
             # current_position = self.positions.current_position(dt, code)
             # res = self.operate(o, single_dt_quote, current_position, last_position)
+        positions = self.positions
         print(1)
 
         # else:
@@ -60,40 +61,20 @@ class BackTest(object):
         #     price = self.broker._data[self.broker._data['date'] == dt]['price']
         #     o.oper(None, price)
 
-        pass
-
-    @staticmethod
-    def get_data(*args, **kwargs):
-        """
-        prepare required data
-        :param args:
-        :param kwargs:
-        :return:
-        """
-        pass
-
-    pass
+        # pass
+    #
+    # @staticmethod
+    # def get_data(*args, **kwargs):
+    #     """
+    #     prepare required data
+    #     :param args:
+    #     :param kwargs:
+    #     :return:
+    #     """
+    #     pass
 
 
-# class Orders(object):
-#     def __init__(self, *order):
-#         self._orders = order
-#
-#     @staticmethod
-#     def set_order(size: float,
-#                   limit_price: float = None,
-#                   stop_price: float = None,
-#                   sl_price: float = None,
-#                   tp_price: float = None,
-#                   order_id=None,
-#                   parent_trade=None):
-#         return Order(size,
-#                      limit_price=limit_price,
-#                      stop_price=stop_price,
-#                      sl_price=sl_price,
-#                      tp_price=tp_price,
-#                      order_id=order_id,
-#                      parent_trade=parent_trade)
+
 
 
 if __name__ == '__main__':
@@ -107,6 +88,7 @@ if __name__ == '__main__':
 
     # QD = QuoteData(GOOG)
     # print(len(QD))
+
     np.random.seed(1)
     price = pd.DataFrame(np.random.random(size=(GOOG.shape[0], 1)), columns=['GOOG'])
     orders_df = (price > 0.75) * 1
@@ -117,7 +99,7 @@ if __name__ == '__main__':
     GOOG = GOOG.reset_index().rename(columns={'index': "date"})
 
     QD = QuoteData(GOOG)
-
+    ## 先手动生成scripts
     "A limit order is a type of order to purchase or sell a security at a specified price or better. " \
     "For buy limit orders, the order will be executed only at the limit price or a lower one, " \
     "while for sell limit orders, the order will be executed only at the limit price or a higher one. " \
@@ -133,8 +115,8 @@ if __name__ == '__main__':
     hedging = 0
     exclusive_orders = []
     # quote_data = GOOG
-    bt = BackTest(scripts, QD, cash, commission, margin, trade_on_close, hedging, exclusive_orders)
-    bt.run()
+    sbt = ScriptsBackTest(scripts, QD, cash, commission, margin, trade_on_close, hedging, exclusive_orders)
+    sbt.run()
     print(1)
 
 pass
