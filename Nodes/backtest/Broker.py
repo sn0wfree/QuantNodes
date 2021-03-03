@@ -53,7 +53,7 @@ class Broker(object):
         default_dict = {'stop': default_stop, 'sl': default_sl, 'tp': default_tp}
         cols = scripts.columns.tolist()
         must = ['date', 'code', 'size', 'limit']
-        reqired = ['stop', 'sl', 'tp']
+        reqired = list(default_dict.keys())  # ['stop', 'sl', 'tp']
 
         if 'limit' in cols:
             pass
@@ -62,9 +62,8 @@ class Broker(object):
                 col = 'Close'
             else:
                 col = 'Open'
-            scripts = scripts.merge(
-                quota._data[['date', 'Code', col]].rename(columns={col: 'limit', 'Code': 'code'}),
-                on=['date', 'code'])
+            q = quota._data[['date', 'Code', col]].rename(columns={col: 'limit', 'Code': 'code'})
+            scripts = scripts.merge(q, on=['date', 'code'])
             cols = scripts.columns.tolist()
         missed = set(must) - set(cols)
         if len(missed) != 0:
@@ -73,20 +72,17 @@ class Broker(object):
         for c in filter(lambda x: x not in cols, reqired):
             scripts[c] = default_dict[c]
         # container = OrderedDict()
-        for dt, df in scripts.sort_values(must[0]).groupby(must[0]):
-            day = []
-            for code, size_df in df.groupby(must[1]):
-                for date, code, size, limit, stop, sl, tp in size_df[must + reqired].values:
-                    # = size_df[must + reqired].values.tolist()
-                    order = Order(_commission, size, code,
-                                  limit_price=limit,
-                                  stop_price=stop,
-                                  sl_price=sl,
-                                  tp_price=tp,
-                                  order_id=None,
-                                  create_date=date,
-                                  parent_trade=None)
-                    day.append(order)
+        date_col, code_col = must[:2]
+        scripts_groupby = scripts.sort_values([date_col, code_col])[must + reqired].groupby(date_col)
+        for dt, df in scripts_groupby:
+            day = [Order(_commission, size, code,
+                         limit_price=limit, stop_price=stop,
+                         sl_price=sl, tp_price=tp,
+                         order_id=None, create_date=date,
+                         parent_trade=None) for date, code, size, limit, stop, sl, tp in df.values]
+            # = size_df[must + reqired].values.tolist()
+            # order =
+            # day.append(order)
             yield dt.strftime('%Y-%m-%d'), day
 
     def __call__(self, orders: (Orders, Iterable), reduce=True, position_check_func=None):
