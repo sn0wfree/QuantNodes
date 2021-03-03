@@ -43,7 +43,8 @@ class ScriptsBackTest(object):
         :return:
         """
 
-        for dt, single_dt_quote, order_list in self.broker(self.orders, reduce=reduce, position_check_func=position_check_func):
+        for dt, single_dt_quote, order_list in self.broker(self.orders, reduce=reduce,
+                                                           position_check_func=position_check_func):
             trade_list = map(lambda x: x.deal(single_dt_quote), order_list)
             # for o in order_list:
             #     # code = o._attr.code
@@ -72,9 +73,6 @@ class ScriptsBackTest(object):
     #     :return:
     #     """
     #     pass
-
-
-
 
 
 if __name__ == '__main__':

@@ -12,6 +12,8 @@ from Nodes.backtest.bt_utils import random_str
 
 # from Nodes.utils_node.file_cache import file_cache
 class Trade(object):
+    __slots__ = ['correspond_order', 'side', 'deal_price', 'adjusted_price', '_status']
+
     def __init__(self, order, deal_price, adjusted_price, side, status='completed'):
         self.correspond_order = order  # 对应的order 实例
         self.side = side
@@ -186,8 +188,8 @@ class Order(object):
         :param quote: QuotaData
         :return:
         """
-
-        price = quote.filter(self).Close.values.ravel()[0]
+        data = quote.filter(self, to_quote=False)
+        price = data['Close'].values.ravel()[0]
         adjusted_price = self._adjusted_price(None, price, self.commission, self.size)
 
         available, side = self.check_available(adjusted_price, raiseError=True)

@@ -20,11 +20,11 @@ OHLCV_AGG = OrderedDict((
 
 
 class QuoteData(object):
-    # __slots__ =
+    __slots__ = ['_start', '_end', '_data', '_length', '_data_cols', '_general_cols', 'date_list', 'shape','target_cols']
+
     @staticmethod
     def create_quote(data):
         if isinstance(data, pd.DataFrame):
-
             return QuoteData(data)
         elif isinstance(data, QuoteData):
             return data
@@ -37,25 +37,16 @@ class QuoteData(object):
                        start=self._start, end=self._end)
 
     def __init__(self, df: (pd.DataFrame,), code='Code', date='date', target_cols=None, start=None, end=None):
-        if start is None:
-            start = '2000-01-01'
-        if end is None:
-            end = datetime.datetime.now().strftime('%Y-%m-%d')
-        self._start = start
-        self._end = end
-        if target_cols is None:
-            target_cols = list(OHLCV_AGG.keys())
-        self.target_cols = target_cols
+        self._start = '1990-01-01' if start is None else start
+        self._end = datetime.datetime.now().strftime('%Y-%m-%d') if end is None else end
         self._data = df[(df[date] >= self._start) & (df[date] <= self._end)].sort_values(date, ascending=True)
-
+        self.target_cols = list(OHLCV_AGG.keys()) if target_cols is None else target_cols
         self._length = len(self._data)
         self._data_cols = self._data.columns.tolist()
-        if code in self._data_cols and date in self._data_cols:
+        if code in self._data_cols:  # date columns have been checked
             self._general_cols = [date, code]
         else:
             raise AttributeError(f'Column {code} or {date} not in data')
-        # self.__slots__ = ['_start', '_end', '_data', '_length', '_data_cols', '_general_cols', 'date_list', 'shape',
-        #                   'length',  'target_cols'] + self._data_cols
         # self._setup()
 
     # def date_list(self):
@@ -76,13 +67,12 @@ class QuoteData(object):
     def length(self):
         return self.shape[0]
 
-    def __len__(self):
-        return self._length
+    # def __len__(self):
+    #     return self._length
 
     @lru_cache(maxsize=100)
     def _obtain_data(self, key):
         if key in self._data_cols:
-
             cols = self._general_cols + [key]
             if len(set(cols)) <= 2:
                 return self._data[key]
@@ -95,12 +85,15 @@ class QuoteData(object):
 
         return self._recreate_quote_func(self._data[indexer])
 
-    def filter(self, order):
+    def filter(self, order, to_quote=True):
         code = [order._attr.code]
         dt = [order.create_date]
-        data = self._data[(self._data[self.code_col].isin(code)) & (self._data[self.date_col].isin(dt))]
-
-        return self._recreate_quote_func(data)
+        data_indexer = (self._data[self.code_col].isin(code)) & (self._data[self.date_col].isin(dt))
+        # data = self._data[(self._data[self.code_col].isin(code)) & (self._data[self.date_col].isin(dt))]
+        if to_quote:
+            return self._getitem_bool_array(data_indexer)
+        else:
+            return self._data[data_indexer]
 
     def __getitem__(self, dt):
         col = self.date_col

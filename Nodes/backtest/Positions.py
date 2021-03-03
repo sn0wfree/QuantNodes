@@ -83,6 +83,8 @@ class Positions(object):
     def sorted(self):
         return OrderedDict(sorted(self.items(), key=lambda x: x[0]))
 
+    __slots__ = ['_obj', 'dt_list', '_position_sign_']
+
     def __init__(self, dt_list):
         self._obj = {}
         # self.traded = {dt: [] for dt in dt_list}
