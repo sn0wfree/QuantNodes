@@ -56,7 +56,7 @@ class QuoteData(object):
             raise AttributeError(f'Column {code} or {date} not in data')
         # self.__slots__ = ['_start', '_end', '_data', '_length', '_data_cols', '_general_cols', 'date_list', 'shape',
         #                   'length',  'target_cols'] + self._data_cols
-        self._setup()
+        # self._setup()
 
     # def date_list(self):
     #     return getattr(self, self._general_cols[0]).unique()
@@ -123,6 +123,7 @@ class QuoteData(object):
         for dt, data in self._data.groupby(self.date_col):
             yield dt, data
 
-    def _setup(self):
-        for col in self._data_cols:
-            setattr(self, col, self._obtain_data(col))
+    # def _setup(self):
+    #     ## todo 性能点,会消耗过度资源
+    #     for col in self._data_cols:
+    #         setattr(self, col, self._obtain_data(col))
