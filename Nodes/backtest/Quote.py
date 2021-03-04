@@ -20,7 +20,7 @@ OHLCV_AGG = OrderedDict((
 
 
 class QuoteData(object):
-    __slots__ = ['_start', '_end', '_data', '_length', '_data_cols', '_general_cols', 'date_list', 'shape','target_cols']
+    __slots__ = ['_start', '_end', '_data', '_length', '_data_cols', '_general_cols', 'date_list','target_cols']
 
     @staticmethod
     def create_quote(data):

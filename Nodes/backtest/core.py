@@ -28,7 +28,7 @@ class ScriptsBackTest(object):
         self.orders = self.broker.create_orders(scripts, self.quote, default_stop=default_stop,
                                                 default_sl=default_sl, default_tp=default_tp)
 
-        self.positions = Positions(sorted(self.quote.date.unique()))
+        self.positions = Positions()
 
     """
     主程序, run
@@ -43,18 +43,18 @@ class ScriptsBackTest(object):
         :return:
         """
 
-        for dt, single_dt_quote, order_list in self.broker(self.orders, reduce=reduce,
-                                                           position_check_func=position_check_func):
-            trade_list = map(lambda x: x.deal(single_dt_quote), order_list)
-            # for o in order_list:
-            #     # code = o._attr.code
-            #     trade = o.deal(single_dt_quote)
+        for dt, df, order_list in self.broker(self.orders, reduce=reduce,
+                                              position_check_func=position_check_func):
+            trade_list = [order.deal(df[df['Code'] == order._attr.code]['Close'].values.ravel()[0]) for order in
+                          order_list]
+
             self.positions.trade_extend(trade_list, reduce=reduce)
 
             # last_position = self.positions.last_position(dt, code)
             # current_position = self.positions.current_position(dt, code)
             # res = self.operate(o, single_dt_quote, current_position, last_position)
-        positions = self.positions
+
+        c3 = self.positions.to_pandas()
         print(1)
 
         # else:

@@ -16,6 +16,7 @@ class Trade(object):
 
     def __init__(self, order, deal_price, adjusted_price, side, status='completed'):
         self.correspond_order = order  # 对应的order 实例
+
         self.side = side
         self.deal_price = deal_price
         self.adjusted_price = adjusted_price
@@ -49,16 +50,27 @@ class Trade(object):
             return 0
 
     @property
-    def trade_result_cost_side(self):
+    def trade_result_cost_size(self):
         return self.adjusted_price * self.traded_size
 
     @property
-    def trade_result_trade_side(self):
+    def trade_result_trade_size(self):
         return self.deal_price * self.traded_size
 
     @property
     def fee(self):
-        return abs(self.trade_result_trade_side - self.trade_result_cost_side)
+        return abs(self.trade_result_trade_size - self.trade_result_cost_size)
+
+    def tolist(self):
+        attr = dict(self.correspond_order.attr)
+        attr.update({'side': self.side, 'code': self.code, 'dt': self.dt,
+                     'order_size': self.order_size, 'traded_size': self.traded_size, 'fee': self.fee,
+                     'trade_result_cost_size': self.trade_result_cost_size,
+                     'trade_result_trade_size': self.trade_result_trade_size,
+                     'deal_price': self.deal_price,
+                     'adjusted_price': self.adjusted_price
+                     })
+        return attr
 
 
 class Order(object):
@@ -94,8 +106,8 @@ class Order(object):
 
     def cancel(self):
         self._is_cancel = True
-
-    def __repr__(self):
+    @property
+    def attr(self):
         attr = (('order_id', self._order_id),
                 ('code', self._attr.code),  # 证券code
                 ('size', self._attr.size),  # 买入份数
@@ -104,7 +116,11 @@ class Order(object):
                 ('sl', self._attr.sl_price),  # 止损限价单
                 ('tp', self._attr.tp_price),  # 止盈限价单
                 ('create_date', self.create_date))
-        settings = ','.join([f'{name}={value}' for name, value in attr])
+        return attr
+
+    def __repr__(self):
+
+        settings = ','.join([f'{name}={value}' for name, value in self.attr])
 
         return f'<Order {settings}>'
 
@@ -182,14 +198,14 @@ class Order(object):
     #                 "Short orders require: "
     #                 f"TP ({tp_price}) < LIMIT ({limit_price or stop_price or adjusted_price}) < SL ({sl_price})")
 
-    def deal(self, quote):
+    def deal(self, price):
         """
         清算order 然后决定是否能够成交
         :param quote: QuotaData
         :return:
         """
-        data = quote.filter(self, to_quote=False)
-        price = data['Close'].values.ravel()[0]
+        # data = quote.filter(self, to_quote=False)
+        # price = data['Close'].values.ravel()[0]
         adjusted_price = self._adjusted_price(None, price, self.commission, self.size)
 
         available, side = self.check_available(adjusted_price, raiseError=True)
@@ -308,14 +324,26 @@ class Orders(object):
     def keys(self):
         return self.orders.keys()
 
+    def items(self):
+        return self.orders.items()
+
+    def values(self):
+        return self.orders.values()
+
     def reduce_keys(self, exclude_value=0):
         for key, items in self.items():
             c = list(filter(lambda x: x.size != exclude_value, items))
             if len(c) != 0:
                 yield key
 
-    def items(self):
-        return self.orders.items()
+    def reduce_items(self, exclude_value=0):
+        for key, items in self.items():
+            c = list(filter(lambda x: x.size != exclude_value, items))
+            if len(c) != 0:
+                yield key, c
 
-    def values(self):
-        return self.orders.values()
+    def reduce_values(self, exclude_value=0):
+        for key, items in self.items():
+            c = list(filter(lambda x: x.size != exclude_value, items))
+            if len(c) != 0:
+                yield c

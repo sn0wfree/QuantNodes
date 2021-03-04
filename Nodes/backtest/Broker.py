@@ -101,10 +101,11 @@ class Broker(object):
             for dt, df in iter(filtered_quote):
                 dt = pd.to_datetime(dt).strftime('%Y-%m-%d')
                 order_list = orders.get(dt)
-                q = QuoteData.create_quote(df)
+                # q = QuoteData.create_quote(df)
+                ## reduce quote data initetime
 
-                dt, q, order_list = position_check_func(dt, q, order_list)
-                yield dt, q, order_list
+                dt, df, order_list = position_check_func(dt, df, order_list)
+                yield dt, df, order_list
         elif isinstance(orders, Iterable):  # iter prepare to d to check current position
             dt_col = self._data.date_col
             for dt, order_list in orders:
@@ -114,13 +115,13 @@ class Broker(object):
                     if len(filtered_order_list) == 0:
                         pass
                     else:
-                        q = QuoteData.create_quote(self._data[self._data[dt_col] == dt])
+                        q = self._data[self._data[dt_col] == dt]
                         # res = list(map(lambda x: x.operate(single_dt_quote), order_list))
                         # h.append(res)
                         dt, q, order_list = position_check_func(dt, q, filtered_order_list)
                         yield dt, q, order_list
                 else:
-                    q = QuoteData.create_quote(self._data[self._data[dt_col] == dt])
+                    q = self._data[self._data[dt_col] == dt]
                     # res = list(map(lambda x: x.operate(single_dt_quote), order_list))
                     # h.append(res)
                     dt, q, order_list = position_check_func(dt, q, order_list)
