@@ -4,7 +4,8 @@ import pandas as pd
 from functools import singledispatch, lru_cache
 
 from Nodes.backtest.Orders import Trade
-from Nodes.backtest.Indicators import Indicators,Statistics
+from Nodes.backtest.Indicators import Indicators, Statistics
+
 
 class cached_property(object):
     """
@@ -83,14 +84,11 @@ class PositionSectionTrade(deque):
 
 
 
+
 class Positions(object):
     """
     计算每个时间点的仓位信息
     """
-
-    def last_position(self, dt, code):
-        last_dt = self.get_last_dt(dt, self.dt_list, raiseerror=False)
-        return self.current_position(last_dt, code)
 
     def position_share(self, dt, code):
         exists = self.__getitem__(dt)
@@ -134,8 +132,12 @@ class Positions(object):
             h.extend(e.tolist())
         return h
 
-    def to_pandas(self):
+    @property
+    def _pandas(self):
         return pd.DataFrame(self.to_list())
+
+    def to_pandas(self):
+        return self._pandas
 
     def items(self):
         return self._trades.items()
@@ -143,26 +145,21 @@ class Positions(object):
     def sorted(self):
         return OrderedDict(sorted(self.items(), key=lambda x: x[0]))
 
-    __slots__ = ['_position_sign_', '_trades']
+    __slots__ = ['_position_sign_', '_trades', '_quote', '_indicators']
 
-    def __init__(self):
+    def __init__(self, quotedata):
+
         # self._obj = {}
         self._position_sign_ = 'positions'
 
         # self.traded = {dt: [] for dt in dt_list}
         self._trades = {}
+        self._indicators = Indicators(quotedata)
 
     @property
     def dt_list(self):
         return list(self._trades.keys())
 
-    # def get_trade(self, key):
-    #     return self._trades.get(key, PositionSection(key))
-    #
-    # def set_trade(self, key, value):
-    #     exists = self.get_trade(key)
-    #     exists.append(value)
-    #     self._trades[key] = exists
 
     def __setitem__(self, key, value):
         exists = self.__getitem__(key)

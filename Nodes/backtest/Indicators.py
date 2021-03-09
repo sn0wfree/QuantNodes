@@ -33,4 +33,21 @@ class Indicators(object):
     """
     计算回测结果的指标信息
     """
+
+    def __init__(self, quote):
+        self.quote = quote
+
+    @staticmethod
+    def filter_dt_pandas(traded, dt, dt_col='dt'):
+        data = traded[traded[dt_col] <= dt]
+        return data
+
+
+    def cal_traded_df(self, traded, dt, dt_col='dt', code_col='code'):
+        traded2 = self.filter_dt_pandas(traded, dt, dt_col=dt_col)
+        res = traded2.groupby(code_col)[
+            ['traded_size', 'fee', 'trade_result_cost_size', 'trade_result_trade_size']].sum()
+        self.quote.opr_filter('@Code='GooG")
+        return res
+
     pass

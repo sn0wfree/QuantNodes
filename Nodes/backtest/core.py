@@ -28,7 +28,7 @@ class ScriptsBackTest(object):
         self.orders = self.broker.create_orders(scripts, self.quote, default_stop=default_stop,
                                                 default_sl=default_sl, default_tp=default_tp)
 
-        self.positions = Positions()
+        self.positions = Positions(self.quote)
 
     """
     主程序, run
@@ -55,6 +55,7 @@ class ScriptsBackTest(object):
             # res = self.operate(o, single_dt_quote, current_position, last_position)
 
         c3 = self.positions.to_pandas()
+        c32 = self.positions._indicators.cal_traded_df(c3,'2007-01-01')
         print(1)
 
         # else:

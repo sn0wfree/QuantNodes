@@ -20,7 +20,7 @@ OHLCV_AGG = OrderedDict((
 
 
 class QuoteData(object):
-    __slots__ = ['_start', '_end', '_data', '_length', '_data_cols', '_general_cols', 'date_list','target_cols']
+    __slots__ = ['_start', '_end', '_data', '_length', '_data_cols', '_general_cols', 'date_list', 'target_cols']
 
     @staticmethod
     def create_quote(data):
@@ -85,6 +85,17 @@ class QuoteData(object):
 
         return self._recreate_quote_func(self._data[indexer])
 
+    # def __le__(self,key:str):
+
+    def opr_filter(self, opr: str, split='&&', prefix='@'):
+        if isinstance(opr, str) and opr.startswith(prefix):
+            pass
+        else:
+            raise NotImplementedError('opr definition is wild! !')
+        filters = list(map(lambda x: x.strip()[1:], opr.split(split)))
+        cp = "(" + ") & (".join(filters) + ')'
+        return self._data.query(cp)
+
     def filter(self, order, to_quote=True):
         code = [order._attr.code]
         dt = [order.create_date]
@@ -103,6 +114,7 @@ class QuoteData(object):
             pass
         else:
             raise ValueError('dt must be str or list')
+        dt = pd.to_datetime(dt)
         indexer = self._data[col].isin(dt)
         return self._getitem_bool_array(indexer)
 
@@ -120,3 +132,26 @@ class QuoteData(object):
     #     ## todo 性能点,会消耗过度资源
     #     for col in self._data_cols:
     #         setattr(self, col, self._obtain_data(col))
+
+
+if __name__ == '__main__':
+    from Nodes.test import GOOG
+    import numpy as np
+
+    # ['size', 'limit', 'stop', 'sl', 'tp']
+    #
+    # GOOG['Code'] = 'GOOG'
+    #
+    # np.random.seed(1)
+    # price = pd.DataFrame(np.random.random(size=(GOOG.shape[0], 1)), columns=['GOOG'])
+    # orders_df = (price > 0.75) * 1
+    # orders_df['date'] = GOOG.index
+    # scripts = orders_df.set_index('date').stack().reset_index()
+    # scripts.columns = ['date', 'code', 'size']
+    #
+    # GOOG = GOOG.reset_index().rename(columns={'index': "date"})
+    #
+    # QD = QuoteData(GOOG)
+    # res = QD.opr_filter("@date<='2007-01-01' && @Code=='GOOG' ", split='&&')
+    # print(res)
+    # pass
