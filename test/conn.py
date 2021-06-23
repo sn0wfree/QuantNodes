@@ -1,0 +1,1 @@
+conn = 'clickhouse://default:***REMOVED***@***REMOVED***:8123/test.test'

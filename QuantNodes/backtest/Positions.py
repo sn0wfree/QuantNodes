@@ -3,8 +3,8 @@ from collections import OrderedDict, namedtuple, deque
 import pandas as pd
 from functools import singledispatch, lru_cache
 
-from Nodes.backtest.Orders import Trade
-from Nodes.backtest.Indicators import Indicators, Statistics
+from QuantNodes.backtest.Orders import Trade
+from QuantNodes.backtest.Indicators import Indicators, Statistics
 
 
 class cached_property(object):
@@ -28,7 +28,7 @@ class cached_property(object):
 
 
 # import random
-# from Nodes.test import GOOG
+# from QuantNodes.test import GOOG
 def create_element():
     name = 'element'
     cols = ['code', 'trade_amount', 'deal_price', 'fee']

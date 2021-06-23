@@ -2,7 +2,7 @@
 from collections import OrderedDict
 
 # import random
-# from Nodes.test import GOOG
+# from QuantNodes.test import GOOG
 import datetime
 import pandas as pd
 from functools import lru_cache, partial
@@ -135,7 +135,7 @@ class QuoteData(object):
 
 
 if __name__ == '__main__':
-    from Nodes.test import GOOG
+    from QuantNodes.test import GOOG
     import numpy as np
 
     # ['size', 'limit', 'stop', 'sl', 'tp']

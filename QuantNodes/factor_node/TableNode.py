@@ -1,8 +1,8 @@
 # coding=utf-8
 import copy
 
-from Nodes.database_node.clickhouse_node import ClickHouseDBNode
-from Nodes.operator_node.SQLUtils import SQLBuilder
+from QuantNodes.database_node.clickhouse_node import ClickHouseDBNode
+from QuantNodes.operator_node.SQLUtils import SQLBuilder
 
 
 

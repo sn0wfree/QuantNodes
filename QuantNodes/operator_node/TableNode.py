@@ -2,7 +2,7 @@
 import copy
 
 # from nodes.clickhouse_node import ClickHouseDBNode
-from Nodes.operator_node.SQLUtils import SQLBuilder
+from QuantNodes.operator_node.SQLUtils import SQLBuilder
 
 
 class BaseNode(SQLBuilder):

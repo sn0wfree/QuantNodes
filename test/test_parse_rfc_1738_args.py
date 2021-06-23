@@ -1,7 +1,7 @@
 # coding=utf-8
 import unittest
 
-from Nodes.conf_node.parse_rfc_1738_args import _parse_rfc1738_args
+from QuantNodes.conf_node.parse_rfc_1738_args import _parse_rfc1738_args
 
 
 class MyTestCase(unittest.TestCase):

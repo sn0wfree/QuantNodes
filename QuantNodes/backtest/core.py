@@ -3,14 +3,14 @@ from abc import abstractmethod, ABCMeta
 from collections import Iterable
 
 # import random
-# from Nodes.test import GOOG
+# from QuantNodes.test import GOOG
 import numpy as np
 import pandas as pd
 
-# from Nodes.utils_node.file_cache import file_cache
-from Nodes.backtest.Broker import Broker
-from Nodes.backtest.Positions import Positions
-from Nodes.backtest.Quote import QuoteData
+# from QuantNodes.utils_node.file_cache import file_cache
+from QuantNodes.backtest.Broker import Broker
+from QuantNodes.backtest.Positions import Positions
+from QuantNodes.backtest.Quote import QuoteData
 
 
 # from collections import OrderedDict
@@ -77,7 +77,7 @@ class ScriptsBackTest(object):
 
 
 if __name__ == '__main__':
-    from Nodes.test import GOOG
+    from QuantNodes.test import GOOG
 
     ['size', 'limit', 'stop', 'sl', 'tp']
 

@@ -3,9 +3,9 @@ from abc import abstractmethod, ABCMeta
 from collections import Iterable
 
 # import random
-# from Nodes.test import GOOG
+# from QuantNodes.test import GOOG
 
-# from Nodes.utils_node.file_cache import file_cache
+# from QuantNodes.utils_node.file_cache import file_cache
 class Strategy(metaclass=ABCMeta):
     """
     提供用户自定义界面

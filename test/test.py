@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-from Nodes.database_node.clickhouse_node import ClickHouseDBPool
+from QuantNodes.database_node.clickhouse_node import ClickHouseDBPool
 
 
 def get_node(p={'host': '***REMOVED***', 'port': 8123, 'user': 'default', 'password': '***REMOVED***', 'db': 'default'}):

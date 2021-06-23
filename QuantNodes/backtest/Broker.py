@@ -1,15 +1,15 @@
 # coding=utf-8
 # import random
-# from Nodes.test import GOOG
+# from QuantNodes.test import GOOG
 import numpy as np
 import pandas as pd
 
-from Nodes.backtest.Orders import Orders, Order
-from Nodes.backtest.Quote import QuoteData
+from QuantNodes.backtest.Orders import Orders, Order
+from QuantNodes.backtest.Quote import QuoteData
 from collections import Iterable, Iterator
 
 
-# from Nodes.utils_node.file_cache import file_cache
+# from QuantNodes.utils_node.file_cache import file_cache
 
 
 class Broker(object):

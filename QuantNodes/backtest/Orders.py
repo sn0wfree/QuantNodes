@@ -4,13 +4,13 @@ import copy
 import warnings
 from collections import OrderedDict, namedtuple
 
-# from Nodes.test import GOOG
+# from QuantNodes.test import GOOG
 import numpy as np
 
-from Nodes.backtest.bt_utils import random_str
+from QuantNodes.backtest.bt_utils import random_str
 
 
-# from Nodes.utils_node.file_cache import file_cache
+# from QuantNodes.utils_node.file_cache import file_cache
 class Trade(object):
     __slots__ = ['correspond_order', 'side', 'deal_price', 'adjusted_price', '_status']
 
