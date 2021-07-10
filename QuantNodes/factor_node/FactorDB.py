@@ -375,7 +375,7 @@ def _calculate(args):
             else:
                 TaskDispatched[iDBTable] = (iDB, [FT.OperationMode._FactorDict[iFactorName]], [iTargetFactorName])
     else:
-        TaskDispatched = {(id(TDB), TableName): (TDB, FT.OperationMode._Factors, list(FT.OperationMode.FactorNames))}
+        TaskDispatched = {(id(TDB), TableName): (TDB, FT.OperationMode._FactorPool, list(FT.OperationMode.FactorNames))}
     # 执行任务
     nTask = len(FT.OperationMode.FactorNames)
     nDT = len(FT.OperationMode.DateTimes)

@@ -1,8 +1,8 @@
 # coding=utf-8
 
-from ClickSQL.factor_table.factortable import FactorTable
+from QuantNodes.factor_table.factortable import FactorTable
 
-from test.conn import conn
+conn = 'clickhouse://default:***REMOVED***@***REMOVED***:8123/test.test'
 
 ft = FactorTable(conn, cik_dt='datetime', cik_iid='code', strict_cik=False)
 
