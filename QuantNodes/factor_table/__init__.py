@@ -5,7 +5,7 @@ from collections import namedtuple, deque, Callable
 
 import pandas as pd
 
-from ClickSQL.nodes.base import BaseSingleQueryBaseNode
+# from ClickSQL.nodes.base import BaseSingleQueryBaseNode
 
 CIK = namedtuple('CoreIndexKeys', ('dts', 'iid'))
 CIKDATA = namedtuple('CoreIndexKeys', ('dts', 'iid'))
