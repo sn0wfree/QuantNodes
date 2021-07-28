@@ -131,6 +131,7 @@ class __FactorSQL__(__Factor__):  # only store a cross section data
         super(__FactorSQL__, self).__init__(db_table_sql, query, cik_dt, cik_id, factor_names, *args,
                                             as_alias=as_alias, **kwargs)
         db_type = kwargs.get('db_type', 'ClickHouse')  # 默认是ClickHouse
+        self.db_type = db_type
         if db_table_sql.lower().startswith('select '):
             self._obj_type = f'SQL_{db_type}'
         else:
@@ -166,27 +167,66 @@ class __FactorSQL__(__Factor__):  # only store a cross section data
                               self._src  # info
                               )
 
-    def get(self, cik_dt_list, cik_id_list):
-
+    @staticmethod
+    def get_sql_create( cik_dt_list, cik_id_list, _factor_name_list, _alias, _cik, _db_table, _obj_type):
         f_names_list = [f if (a is None) or (f == a) else f"{f} as {a}" for f, a in
-                        zip(self._factor_name_list, self._alias)]
+                        zip(_factor_name_list, _alias)]
         cols_str = ','.join(f_names_list)
 
-        cik_id_cond = "' , '".join(cik_id_list)
-        # cik_dt_cond =
-        conditions = f"cik_dts in ({','.join(cik_dt_list)}) and cik_iid in ('{cik_id_cond}')"
+        cik_id_cond = "'" + "' , '".join(cik_id_list) + "'"
+        cik_dt_cond = "'" + "' , '".join(cik_dt_list) + "'"
+        conditions = f"cik_dts in ({cik_dt_cond}) and cik_iid in ({cik_id_cond})"
 
-        if self._obj_type.startswith('SQL'):
-            sql = f'select {cols_str},{self._cik.dts} as cik_dts, {self._cik.iid}  as cik_iid  from ({self._db_table}) where {conditions}'
+        if _obj_type.startswith('SQL'):
+            sql = f"select {cols_str},{_cik.dts} as cik_dts, {_cik.iid}  as cik_iid  from ({_db_table}) where {conditions}"
         else:
-            sql = f'select {cols_str},{self._cik.dts} as cik_dts, {self._cik.iid}  as cik_iid  from {self._db_table} where {conditions}'
+            sql = f"select {cols_str},{_cik.dts} as cik_dts, {_cik.iid}  as cik_iid  from {_db_table} where {conditions}"
 
+        return sql
+
+    def get(self, cik_dt_list, cik_id_list):
+        func = getattr(self,'get_sql_create')
+        sql = func(cik_dt_list, cik_id_list, self._factor_name_list, self._alias, self._cik,
+                                  self._db_table, self._obj_type)
         return self._obj(sql)
+
+
+def get_clickhouse_sql_create(cik_dt_list, cik_id_list, _factor_name_list, _alias, _cik, _db_table, _obj_type):
+    f_names_list = [f if (a is None) or (f == a) else f"{f} as {a}" for f, a in
+                    zip(_factor_name_list, _alias)]
+    cols_str = ','.join(f_names_list)
+
+    cik_id_cond = "'" + "' , '".join(cik_id_list) + "'"
+    cik_dt_cond = "'" + "' , '".join(cik_dt_list) + "'"
+    conditions = f"cik_dts in ({cik_dt_cond}) and cik_iid in ({cik_id_cond})"
+
+    if _obj_type.startswith('SQL'):
+        sql = f"select {cols_str},{_cik.dts} as cik_dts, {_cik.iid}  as cik_iid  from ({_db_table}) where {conditions}"
+    else:
+        sql = f"select {cols_str},{_cik.dts} as cik_dts, {_cik.iid}  as cik_iid  from {_db_table} where {conditions}"
+
+    return sql
+
+
+__FactorSQLClickHouse__ = type('__FactorSQLClickHouse__', (__FactorSQL__,),
+                               {'get_sql_create': staticmethod(get_clickhouse_sql_create)})
 
 
 class FactorUnit(type):
     def __new__(cls, name, obj, cik_dt: str, cik_id: str, factor_names: (list, tuple, str), *args,
                 as_alias: (list, tuple, str) = None, db_table: str = None, **kwargs):
+        """
+
+        :param name:  db_table_sql, df name or  h5_key
+        :param obj:  query,df or h5_path
+        :param cik_dt:  cik_dt
+        :param cik_id:  cik_id
+        :param factor_names:  factor names
+        :param args:
+        :param as_alias:    factor alias name
+        :param db_table:  db_table
+        :param kwargs:
+        """
         if isinstance(obj, pd.DataFrame):
             _obj = __FactorDF__(name, obj, cik_dt, cik_id, factor_names, *args,
                                 as_alias, db_table, **kwargs)
@@ -195,8 +235,14 @@ class FactorUnit(type):
             _obj = __FactorH5__(name, obj, cik_dt, cik_id, factor_names, *args,
                                 as_alias, db_table, **kwargs)
         elif isinstance(obj, Callable):  # obj is executable query function
-            _obj = __FactorSQL__(name, obj, cik_dt, cik_id, factor_names, *args,
-                                 as_alias, db_table, **kwargs)
+
+            db_type = kwargs.get('db_type', None)
+            if db_type is None:
+                raise ValueError('FactorSQL must have db_type to claim database type!')
+
+            elif db_type == 'ClickHouse':
+                _obj = __FactorSQLClickHouse__(name, obj, cik_dt, cik_id, factor_names, *args,
+                                     as_alias, db_table, **kwargs)
         else:
             raise ValueError('unknow info')
         _obj.__class__.__name__ = 'FactorUnit'
