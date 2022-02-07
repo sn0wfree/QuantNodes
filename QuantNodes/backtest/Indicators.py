@@ -47,7 +47,7 @@ class Indicators(object):
         traded2 = self.filter_dt_pandas(traded, dt, dt_col=dt_col)
         res = traded2.groupby(code_col)[
             ['traded_size', 'fee', 'trade_result_cost_size', 'trade_result_trade_size']].sum()
-        self.quote.opr_filter('@Code='GooG")
+        # self.quote.opr_filter('@Code='GooG'))
         return res
 
     pass

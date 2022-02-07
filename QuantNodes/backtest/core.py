@@ -1,10 +1,8 @@
 # coding=utf-8
-from abc import abstractmethod, ABCMeta
-from collections import Iterable
 
+import numpy as np
 # import random
 # from QuantNodes.test import GOOG
-import numpy as np
 import pandas as pd
 
 # from QuantNodes.utils_node.file_cache import file_cache
@@ -55,7 +53,7 @@ class ScriptsBackTest(object):
             # res = self.operate(o, single_dt_quote, current_position, last_position)
 
         c3 = self.positions.to_pandas()
-        c32 = self.positions._indicators.cal_traded_df(c3,'2007-01-01')
+        c32 = self.positions._indicators.cal_traded_df(c3, '2007-01-01')
         print(1)
 
         # else:
@@ -76,10 +74,10 @@ class ScriptsBackTest(object):
     #     pass
 
 
-if __name__ == '__main__':
+def test_ScriptsBackTest():
     from QuantNodes.test import GOOG
 
-    ['size', 'limit', 'stop', 'sl', 'tp']
+    # ['size', 'limit', 'stop', 'sl', 'tp']
 
     GOOG['Code'] = 'GOOG'
     # GOOG = GOOG.reset_index().rename(columns={'index': 'date'})
@@ -116,6 +114,97 @@ if __name__ == '__main__':
     # quote_data = GOOG
     sbt = ScriptsBackTest(scripts, QD, cash, commission, margin, trade_on_close, hedging, exclusive_orders)
     sbt.run()
+
+
+def index_merge(idx1: list, idx2: list):
+    idx = sorted(set(idx1 + idx2))
+    return idx
+
+
+class FastBackTestWeight(object):
+    """
+    1. directly give stock list and dt, | weight or share number
+    2. fast calc net value and daily holdings
+    3. calc indicators
+    4 draw plot
+
+    """
+
+    __slots__ = ['scripts', 'broker', 'orders', 'quote', 'trades', 'closed_trades', 'positions', 'default_cols']
+
+    def __init__(self, scripts, data, cash, commission, margin, trade_on_close, hedging, exclusive_orders,
+                 default_limit=None, default_stop=-np.inf, default_sl=None, default_tp=None,
+                 default_cols={'date': 'date', 'code': 'code', 'weight': 'weight'}):
+        self.scripts = scripts
+        self.quote = QuoteData.create_quote(data)
+        self.default_cols = default_cols
+
+    def _matrix_scripts(self, re_weight=True):
+        dc = self.default_cols
+        res = self.scripts.pivot_table(columns=dc['code'], index=dc['date'], values=dc['weight'], aggfunc="sum")
+        cols = res.columns.tolist()
+        if re_weight:
+            res_sum = res.sum(axis=1)
+            r4 = res.apply(lambda x: x / res_sum).fillna(0)
+            return r4, cols
+        else:
+            return res, cols
+
+    @staticmethod
+    def _fast_cal_nv_pct(scripts_trim, pct_trim):
+        port_info = scripts_trim * pct_trim
+        port_info['port_pct'] = port_info.sum(axis=1)
+        port_info['port_nv'] = np.cumprod(port_info['port_pct'] + 1)
+        return port_info
+
+    def run(self, re_weight=True, idx_list=None):
+        scripts, stk_list = self._matrix_scripts(re_weight=re_weight)
+        # scripts : index = dt , column : stock
+        data = self.quote.data_filter_matrix(stk_list, )
+
+        pct = data.get_one_data('Close').pct_change()
+        # idx_list = pct.index.tolist()
+        # idx = index_merge(pct.index.tolist(), scripts.index.tolist())
+        cols = index_merge(pct.columns.tolist(), scripts.columns.tolist())
+        scripts_trim = scripts.reindex(index=idx_list, columns=cols)
+        pct_trim = pct.reindex(index=idx_list, columns=cols)
+        port_info = self._fast_cal_nv_pct(scripts_trim, pct_trim)
+        # port_nv.plot()
+
+        # trim
+        return port_info
+
+
+if __name__ == '__main__':
+    # prepare quote data
+    from QuantNodes.test import GOOG
+
+    # ['size', 'limit', 'stop', 'sl', 'tp']
+
+    QD = QuoteData(GOOG, code='Code', date='date')
+
+    # prepare scipts
+    np.random.seed(1)
+    price = pd.DataFrame(np.random.random(size=(GOOG.shape[0], 1)), columns=['GOOG'])
+    orders_df = (price > 0.75) * 1
+    orders_df['date'] = GOOG['date']
+    scripts = orders_df.set_index('date').stack().reset_index()
+    scripts.columns = ['date', 'code', 'weight']
+    scripts['weight'] = scripts['weight'].shift(1)
+
+    config = {}
+    config['cash'] = 100000
+    config['commission'] = 0.01
+    config['margin'] = 0.01
+    config['trade_on_close'] = True
+    config['hedging'] = 0
+    idx_list = scripts['date'].tolist()[-300:]
+    exclusive_orders = []
+    # quote_data = GOOG
+    sbt = FastBackTestWeight(scripts, QD, **config, exclusive_orders=exclusive_orders)
+    port_info = sbt.run(re_weight=True, idx_list=idx_list)
+    port_info.to_csv('port_info.csv')
     print(1)
 
 pass
+print(1)

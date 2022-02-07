@@ -1,6 +1,6 @@
 import unittest
 
-from ClickSQL.factor_table.factortable import FactorTable
+from QuantNodes.factor_table.factortable import FactorTable
 from test.conn import conn
 
 
