@@ -7,8 +7,10 @@ import pandas as pd
 
 # from QuantNodes.utils_node.file_cache import file_cache
 from QuantNodes.backtest.Broker import Broker
+from QuantNodes.backtest.Indicators import IndicatorsFromNetValue
 from QuantNodes.backtest.Positions import Positions
 from QuantNodes.backtest.Quote import QuoteData
+from QuantNodes.utils_node.generate_str_node import randon_str_hash
 
 
 # from collections import OrderedDict
@@ -130,7 +132,7 @@ class FastBackTestWeight(object):
 
     """
 
-    __slots__ = ['scripts', 'broker', 'orders', 'quote', 'trades', 'closed_trades', 'positions', 'default_cols']
+    __slots__ = ['scripts', 'broker', 'orders', 'quote', 'trades', 'closed_trades', 'positions', 'default_cols', 'sid']
 
     def __init__(self, scripts, data, cash, commission, margin, trade_on_close, hedging, exclusive_orders,
                  default_limit=None, default_stop=-np.inf, default_sl=None, default_tp=None,
@@ -138,6 +140,7 @@ class FastBackTestWeight(object):
         self.scripts = scripts
         self.quote = QuoteData.create_quote(data)
         self.default_cols = default_cols
+        self.sid = randon_str_hash(num=12)
 
     def _matrix_scripts(self, re_weight=True):
         dc = self.default_cols
@@ -157,7 +160,8 @@ class FastBackTestWeight(object):
         port_info['port_nv'] = np.cumprod(port_info['port_pct'] + 1)
         return port_info
 
-    def run(self, re_weight=True, idx_list=None):
+    def run(self, re_weight=True, idx_list=None, rf=1.5 / 100, return_dt=True,
+            period_num=(20, 40, 60, 90, 180)):
         scripts, stk_list = self._matrix_scripts(re_weight=re_weight)
         # scripts : index = dt , column : stock
         data = self.quote.data_filter_matrix(stk_list, )
@@ -169,10 +173,13 @@ class FastBackTestWeight(object):
         scripts_trim = scripts.reindex(index=idx_list, columns=cols)
         pct_trim = pct.reindex(index=idx_list, columns=cols)
         port_info = self._fast_cal_nv_pct(scripts_trim, pct_trim)
+        info = IndicatorsFromNetValue.cal(self.sid, port_info['port_nv'], rf=rf, return_dt=return_dt,
+                                          period_num=period_num)
+        # port_info contain stock_pct, port_pct, port_nv
         # port_nv.plot()
 
         # trim
-        return port_info
+        return port_info, info
 
 
 if __name__ == '__main__':
@@ -202,9 +209,8 @@ if __name__ == '__main__':
     exclusive_orders = []
     # quote_data = GOOG
     sbt = FastBackTestWeight(scripts, QD, **config, exclusive_orders=exclusive_orders)
-    port_info = sbt.run(re_weight=True, idx_list=idx_list)
-    port_info.to_csv('port_info.csv')
+    port_info, indicators = sbt.run(re_weight=True, idx_list=idx_list)
+
     print(1)
 
-pass
-print(1)
+
