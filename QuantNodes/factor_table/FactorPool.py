@@ -140,10 +140,10 @@ class FactorPool(deque):
     def add_factor(self, *args, **kwargs):
         if isinstance(args[0], Factor):
             factor = args[0]
-        elif isinstance(args[0],Fac)
+
+
         else:
             factor = FactorCreator(*args, **kwargs)
-
 
         exist_factor = self.factors
 

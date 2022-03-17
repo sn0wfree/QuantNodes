@@ -1,6 +1,26 @@
+#coding=utf-8
 import numpy as np
 import pandas as pd
 
+"""
+策略业绩评估指标
+年化收益率
+年化波动率
+年化夏普率
+最大化回撤率
+M2测度
+TreynorRatio
+JensenRatio
+InformationRatio
+CalmarRatio
+SortinoRatio
+SterlingRatio
+BurkeRatio
+KappaRatio
+OmegaRatio
+-----
+最大亏损，最大盈利，胜率，超额胜率，平均组合大小
+"""
 
 class Statistics(object):
     @staticmethod

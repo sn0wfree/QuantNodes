@@ -6,7 +6,7 @@ from QuantNodes import __version__, __author__
 setup(
     name="nodes",
     version=__version__,
-    keywords=("Node", "Databases"),
+    keywords= ("Node", "Databases"),
     description="node programming",
     long_description="node databases",
     license="MIT Licence",

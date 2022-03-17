@@ -32,10 +32,10 @@ def detect_series_na(series, raise_error=True):
 
 
 def _check_series_type(series):
-    if isinstance(series, pd.Series):
-        pass
-    else:
+    if not isinstance(series, pd.Series):
         series = pd.Series(series)
+    
+        
     return series
 
 
@@ -119,6 +119,19 @@ class Scaling(object):
 
     """
     __slots__ = []
+
+
+
+    @staticmethod
+    def softmax(series: (pd.Series, np.array)):
+        """
+        do factor softmax standardization
+        :param factor_Series:
+        :return:
+        """
+        factor_Series_standardized = series.copy()
+        factor_Series_standardized = np.exp(factor_Series_standardized) / np.exp(factor_Series_standardized).sum()
+        return factor_Series_standardized
 
     @staticmethod
     def sigmoid(series):
