@@ -85,6 +85,71 @@ class Expression(ABC):
         from QuantNodes.core.ast_parser import parse_expression
         return parse_expression(expr_str)
 
+    # ========================================================================
+    # 序列化优化 - 多种序列化方案
+    # ========================================================================
+
+    def to_dict(self) -> Dict[str, Any]:
+        """序列化为字典 - 最通用的格式"""
+        return {"type": self.__class__.__name__}
+
+    def to_json(self, compress: bool = False, **kwargs) -> str:
+        """
+        序列化为 JSON 字符串
+
+        Args:
+            compress: 是否压缩（去掉空格）
+            **kwargs: 传递给 json.dumps 的参数
+        """
+        import json
+        indent = None if compress else kwargs.get('indent', 2)
+        kwargs.pop('indent', None)
+        return json.dumps(self.to_dict(), indent=indent, **kwargs)
+
+    def to_pickle(self, protocol: int = None) -> bytes:
+        """
+        序列化为 pickle 字节流 - 性能最好，但有安全风险
+
+        警告：仅在可信环境下使用！
+        """
+        import pickle
+        import warnings
+        warnings.warn(
+            "Pickle 序列化存在安全风险，仅在可信环境下使用。"
+            "建议优先使用 to_json() 或 to_dict()",
+            UserWarning,
+            stacklevel=2
+        )
+        return pickle.dumps(self, protocol=protocol)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> 'Expression':
+        """从 JSON 字符串反序列化"""
+        import json
+        data = json.loads(json_str)
+        return cls.from_dict(data)
+
+    @classmethod
+    def from_pickle(cls, data: bytes) -> 'Expression':
+        """
+        从 pickle 字节流反序列化
+
+        警告：仅反序列化可信来源的数据！
+        """
+        import pickle
+        import warnings
+        warnings.warn(
+            "Pickle 反序列化存在安全风险，仅反序列化可信来源的数据。",
+            UserWarning,
+            stacklevel=2
+        )
+        return pickle.loads(data)
+
+    # 紧凑格式 - 类似表达式字符串
+    def compact(self) -> str:
+        """返回紧凑的字符串表示（类似源码形式）"""
+        return repr(self)
+
     def __add__(self, other: Any) -> 'BinaryOpExpr':
         return BinaryOpExpr(self, "+", _wrap_expr(other))
 
@@ -756,3 +821,39 @@ _register_expression_class(UnaryOpExpr)
 _register_expression_class(ComparisonExpr)
 _register_expression_class(LogicalOpExpr)
 _register_expression_class(LambdaExpression)
+
+
+# ============================================================================
+# 初始化序列化方法
+# ============================================================================
+
+def _init_serialization():
+    """将序列化方法添加到 Expression 类"""
+    from QuantNodes.core.serialization import (
+        serialize_json, serialize_json_bytes, serialize_compact,
+        serialize_msgpack, serialize_pickle, serialize_proto,
+        serialize_encrypted,
+        deserialize_json, deserialize_compact, deserialize_msgpack,
+        deserialize_pickle, deserialize_proto, deserialize_encrypted,
+        deserialize_auto,
+    )
+
+    Expression.to_json = serialize_json
+    Expression.to_bytes = serialize_json_bytes
+    Expression.to_compact = serialize_compact
+    Expression.to_msgpack = serialize_msgpack
+    Expression.to_pickle = serialize_pickle
+    Expression.to_proto = serialize_proto
+    Expression.to_encrypted = serialize_encrypted
+
+    Expression.from_json = staticmethod(deserialize_json)
+    Expression.from_compact = staticmethod(deserialize_compact)
+    Expression.from_msgpack = staticmethod(deserialize_msgpack)
+    Expression.from_pickle = staticmethod(deserialize_pickle)
+    Expression.from_proto = staticmethod(deserialize_proto)
+    Expression.from_encrypted = staticmethod(deserialize_encrypted)
+    Expression.deserialize = staticmethod(deserialize_auto)
+
+
+_init_serialization()
+del _init_serialization
