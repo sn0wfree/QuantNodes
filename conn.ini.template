@@ -1,0 +1,15 @@
+[ClickHouse]
+
+host = your-clickhouse-host
+port = 8123
+user = default
+passwd = your-password
+db = default
+
+[MySQL]
+
+host = your-mysql-host
+port = 3306
+user = username
+passwd = your-password
+db = mysql
