@@ -1,11 +1,36 @@
 # -*- coding: utf-8 -*-
-"""因子运算"""
+"""
+因子运算模块
+
+提供因子运算操作类，包括单点运算、时间序列运算、截面运算和面板运算。
+
+Classes:
+    DerivativeFactor: 因子运算基类
+    PointOperation: 单点运算，对描述子进行单点运算
+    TimeOperation: 时间序列运算，对描述子进行时间序列运算（滚动/扩展窗口）
+    SectionOperation: 截面运算，对描述子进行截面运算
+    PanelOperation: 面板运算，结合时间序列和截面运算
+
+Operator Signature:
+    f: 该算子所属的因子（因子对象）
+    idt: 当前待计算的时点，如果运算时点为多时点，则该值为[时点]
+    iid: 当前待计算的ID，如果运算ID为多ID，则该值为[ID]
+    x: 描述子当期的数据，类型取决于DTMode和IDMode组合
+    args: 参数字典 {参数名: 参数值}
+
+Mode Combinations:
+    - 单时点 + 单ID: x元素为单个描述子值，返回单个元素
+    - 单时点 + 多ID: x元素为array(shape=(nID,))，返回array(shape=(nID,))
+    - 多时点 + 单ID: x元素为array(shape=(nDT,))，返回array(shape=(nID,))
+    - 多时点 + 多ID: x元素为array(shape=(nDT, nID))，返回array(shape=(nDT, nID))
+"""
+from __future__ import annotations
+
 import numpy as np
-import os
 import pandas as pd
-import shelve
+from typing import Any, Dict, List, Optional, Tuple, Callable
 from multiprocessing import Queue, Event
-from traits.api import TraitFunction, Dict, Enum, List, Int, Instance
+from traits.api import TraitFunction, Dict as TraitDict, Enum, List as TraitList, Int, Instance
 
 from QuantNodes.core.base import FactorError as __QS_Error__
 from QuantNodes.core.factor_base import Factor
@@ -19,39 +44,88 @@ from QuantNodes.core.cache_utils import (
 from QuantNodes.core.tools import partition_list as partitionList
 
 
-def _DefaultOperator(f, idt, iid, x, args):
+def _DefaultOperator(f: Factor, idt: Any, iid: Any, x: List[np.ndarray], args: Dict[str, Any]) -> np.ndarray:
+    """默认算子，返回 NaN"""
     return np.nan
 
 
 class DerivativeFactor(Factor):
+    """因子运算基类
+
+    所有因子运算类的基类，提供描述子管理和通用接口。
+
+    Attributes:
+        Operator: 运算函数，签名为 (f, idt, iid, x, args) -> result
+        ModelArgs: 参数字典
+        DataType: 数据类型 ("double", "string", "object")
+
+    Args:
+        name: 因子名称
+        descriptors: 描述子列表
+        sys_args: 系统参数字典
+        **kwargs: 其他关键字参数
+
+    Example:
+        >>> def my_op(f, idt, iid, x, args):
+        ...     return x[0] + x[1]
+        >>> factor = PointOperation(name="my_factor", descriptors=[f1, f2])
+        >>> factor.Operator = my_op
+    """
     Operator = TraitFunction(_DefaultOperator)
-    ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
+    ModelArgs = TraitDict(arg_type="Dict", label="参数", order=1)
     DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2)
 
-    def __init__(self, name="", descriptors=[], sys_args={}, **kwargs):
-        self._Descriptors = descriptors
+    def __init__(self, name: str = "", descriptors: List[Factor] = None, sys_args: Dict[str, Any] = None, **kwargs):
+        self._Descriptors = descriptors if descriptors else []
         self.UserData = {}
-        if descriptors: kwargs.setdefault("logger", descriptors[0]._QS_Logger)
-        return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
+        if descriptors:
+            kwargs.setdefault("logger", descriptors[0]._QS_Logger)
+        return super().__init__(name=name, ft=None, sys_args=sys_args or {}, config_file=None, **kwargs)
 
     @property
-    def Descriptors(self):
+    def Descriptors(self) -> List[Factor]:
+        """描述子列表"""
         return self._Descriptors
 
-    def getMetaData(self, key=None, args={}):
-        DataType = args.get("数据类型", self.DataType)
+    def getMetaData(self, key: str = None, args: Dict[str, Any] = None) -> Any:
+        """获取元数据
+
+        Args:
+            key: 元数据键名，None时返回包含DataType的Series
+            args: 参数字典
+
+        Returns:
+            元数据值或包含元数据的Series
+        """
+        DataType = args.get("数据类型", self.DataType) if args else self.DataType
         if key is None:
             return pd.Series({"DataType": DataType})
         elif key == "DataType":
             return DataType
         return None
 
-    def start(self, dts, **kwargs):
-        for iDescriptor in self._Descriptors: iDescriptor.start(dts=dts, **kwargs)
+    def start(self, dts: List[Any], **kwargs) -> int:
+        """开始运算前的初始化
+
+        Args:
+            dts: 时间点列表
+            **kwargs: 其他关键字参数
+
+        Returns:
+            成功返回0
+        """
+        for iDescriptor in self._Descriptors:
+            iDescriptor.start(dts=dts, **kwargs)
         return 0
 
-    def end(self):
-        for iDescriptor in self._Descriptors: iDescriptor.end()
+    def end(self) -> int:
+        """运算结束后的清理
+
+        Returns:
+            成功返回0
+        """
+        for iDescriptor in self._Descriptors:
+            iDescriptor.end()
         return 0
 
 
@@ -66,74 +140,179 @@ class DerivativeFactor(Factor):
 # 如果运算时点参数为多时点, 运算ID参数为单ID, 那么 x 元素为 array(shape=(nDT, )), 返回 array(shape=(nID, ))
 # 如果运算时点参数为多时点, 运算ID参数为多ID, 那么 x 元素为 array(shape=(nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
 class PointOperation(DerivativeFactor):
-    """单点运算"""
+    """单点运算
+
+    对描述子进行单点运算，即每个时点-ID组合独立计算。
+
+    Attributes:
+        DTMode: 运算时点模式 ("单时点" 或 "多时点")
+        IDMode: 运算ID模式 ("单ID" 或 "多ID")
+
+    Args:
+        name: 因子名称
+        descriptors: 描述子列表
+        sys_args: 系统参数字典
+
+    Example:
+        >>> op = PointOperation(name="add", descriptors=[f1, f2])
+        >>> op.DTMode = "单时点"
+        >>> op.IDMode = "单ID"
+        >>> op.Operator = lambda f, idt, iid, x, args: x[0] + x[1]
+    """
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
 
-    _DT_ID_DISPATCH = {
+    _DT_ID_DISPATCH: Dict[Tuple[str, str], str] = {
         ("多时点", "多ID"): "_calcData_multi_time_multi_id",
         ("单时点", "单ID"): "_calcData_single_time_single_id",
         ("多时点", "单ID"): "_calcData_multi_time_single_id",
         ("单时点", "多ID"): "_calcData_single_time_multi_id",
     }
 
-    def readData(self, ids, dts, **kwargs):
-        StdData = self._calcData(ids=ids, dts=dts,
-                                 descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs).values for
-                                                  iDescriptor in self._Descriptors])
+    def readData(self, ids: List[Any], dts: List[Any], **kwargs) -> pd.DataFrame:
+        """读取并计算数据
+
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            **kwargs: 其他关键字参数
+
+        Returns:
+            计算结果DataFrame，index为dts，columns为ids
+        """
+        StdData = self._calcData(
+            ids=ids,
+            dts=dts,
+            descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs).values
+                           for iDescriptor in self._Descriptors]
+        )
         return pd.DataFrame(StdData, index=dts, columns=ids)
 
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
+    def _QS_initOperation(self, start_dt: Any, dt_dict: Dict[str, Any], prepare_ids: List[Any], id_dict: Dict[str, List[Any]]) -> None:
+        """初始化运算环境
+
+        Args:
+            start_dt: 起始时间点
+            dt_dict: 时间点字典
+            prepare_ids: 准备计算的ID列表
+            id_dict: ID字典
+        """
         super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
         for i, iDescriptor in enumerate(self._Descriptors):
             iDescriptor._QS_initOperation(dt_dict[self.Name], dt_dict, prepare_ids, id_dict)
 
-    def _calcData(self, ids, dts, descriptor_data):
+    def _calcData(self, ids: List[Any], dts: List[Any], descriptor_data: List[np.ndarray]) -> np.ndarray:
+        """计算数据（策略分派入口）
+
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            descriptor_data: 描述子数据列表
+
+        Returns:
+            计算结果数组
+        """
         handler_name = self._DT_ID_DISPATCH.get((self.DTMode, self.IDMode))
         if handler_name:
             return getattr(self, handler_name)(ids, dts, descriptor_data)
         return create_std_data(dts, ids, self.DataType)
 
-    def _calcData_multi_time_multi_id(self, ids, dts, descriptor_data):
+    def _calcData_multi_time_multi_id(self, ids: List[Any], dts: List[Any], descriptor_data: List[np.ndarray]) -> np.ndarray:
+        """多时点-多ID模式计算"""
         return self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
 
-    def _calcData_single_time_single_id(self, ids, dts, descriptor_data):
+    def _calcData_single_time_single_id(self, ids: List[Any], dts: List[Any], descriptor_data: List[np.ndarray]) -> np.ndarray:
+        """单时点-单ID模式计算
+
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            descriptor_data: 描述子数据列表
+
+        Returns:
+            计算结果数组
+        """
         StdData = create_std_data(dts, ids, self.DataType)
         for i, iDT in enumerate(dts):
             for j, jID in enumerate(ids):
-                StdData[i, j] = self.Operator(self, iDT, jID, [iData[i, j] for iData in descriptor_data],
-                                              self.ModelArgs)
+                StdData[i, j] = self.Operator(
+                    self, iDT, jID,
+                    [iData[i, j] for iData in descriptor_data],
+                    self.ModelArgs
+                )
         return StdData
 
-    def _calcData_multi_time_single_id(self, ids, dts, descriptor_data):
+    def _calcData_multi_time_single_id(self, ids: List[Any], dts: List[Any], descriptor_data: List[np.ndarray]) -> np.ndarray:
+        """多时点-单ID模式计算
+
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            descriptor_data: 描述子数据列表
+
+        Returns:
+            计算结果数组
+        """
         StdData = create_std_data(dts, ids, self.DataType)
         for j, jID in enumerate(ids):
-            StdData[:, j] = self.Operator(self, dts, jID, [iData[:, j] for iData in descriptor_data],
-                                          self.ModelArgs)
+            StdData[:, j] = self.Operator(
+                self, dts, jID,
+                [iData[:, j] for iData in descriptor_data],
+                self.ModelArgs
+            )
         return StdData
 
-    def _calcData_single_time_multi_id(self, ids, dts, descriptor_data):
+    def _calcData_single_time_multi_id(self, ids: List[Any], dts: List[Any], descriptor_data: List[np.ndarray]) -> np.ndarray:
+        """单时点-多ID模式计算
+
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            descriptor_data: 描述子数据列表
+
+        Returns:
+            计算结果数组
+        """
         StdData = create_std_data(dts, ids, self.DataType)
         for i, iDT in enumerate(dts):
-            StdData[i, :] = self.Operator(self, iDT, ids, [iData[i, :] for iData in descriptor_data],
-                                          self.ModelArgs)
+            StdData[i, :] = self.Operator(
+                self, iDT, ids,
+                [iData[i, :] for iData in descriptor_data],
+                self.ModelArgs
+            )
         return StdData
 
-    def __QS_prepareCacheData__(self, ids=None):
+    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> pd.DataFrame:
+        """准备缓存数据
+
+        Args:
+            ids: ID列表
+
+        Returns:
+            标准数据DataFrame
+        """
         PID = self._OperationMode._iPID
         StartDT = self._OperationMode._FactorStartDT[self.Name]
         EndDT = self._OperationMode.DateTimes[-1]
-        StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
+        StartInd, EndInd = (
+            self._OperationMode.DTRuler.index(StartDT),
+            self._OperationMode.DTRuler.index(EndDT)
+        )
         DTs = list(self._OperationMode.DTRuler[StartInd:EndInd + 1])
         IDs = partition_ids_for_pid(self._OperationMode, self._OperationMode._FactorPrepareIDs[self.Name], PID)
         if IDs:
-            StdData = self._calcData(ids=IDs, dts=DTs,
-                                     descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values for iDescriptor in
-                                                      self._Descriptors])
+            StdData = self._calcData(
+                ids=IDs, dts=DTs,
+                descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values
+                                 for iDescriptor in self._Descriptors]
+            )
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
             StdData = create_empty_dataframe(DTs, [], self.DataType)
-        write_cache_file(self._OperationMode, PID, self.Name, self._OperationMode._FactorID[self.Name], StdData, IDs)
+        write_cache_file(
+            self._OperationMode, PID, self.Name,
+            self._OperationMode._FactorID[self.Name], StdData, IDs
+        )
         self._isCacheDataOK = True
         return StdData
 
@@ -142,25 +321,58 @@ class _LookBackOperation(DerivativeFactor):
     """带 LookBack 窗口运算的基类
     
     提取 TimeOperation 和 PanelOperation 中相同的 LookBack 窗口计算逻辑。
+    子类需要实现具体的 _calcData 方法或使用策略分派模式。
+
+    Attributes:
+        LookBack: 回溯期数列表，对应每个描述子
+        LookBackMode: 回溯模式列表 ("滚动窗口" 或 "扩张窗口")
+        iLookBack: 自身回溯期数
+        iLookBackMode: 自身回溯模式 ("滚动窗口" 或 "扩张窗口")
+        iInitData: 自身初始值DataFrame，用于填充回溯窗口前的数据
+
+    Args:
+        name: 因子名称
+        descriptors: 描述子列表
+        sys_args: 系统参数字典
     """
-    LookBack = List(arg_type="ArgList", label="回溯期数", order=5)
-    LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
+    LookBack = TraitList(arg_type="ArgList", label="回溯期数", order=5)
+    LookBackMode = TraitList(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
     iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
     iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
     iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
 
-    def __QS_initArgs__(self):
+    def __QS_initArgs__(self) -> None:
+        """初始化参数"""
         n = len(self._Descriptors)
         self.LookBack = [0] * n
         self.LookBackMode = ["滚动窗口"] * n
 
-    def _prepare_lookback_data(self, ids, dts, descriptor_data, dt_ruler):
+    def _prepare_lookback_data(
+        self,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray],
+        dt_ruler: List[Any]
+    ) -> Tuple[np.ndarray, int, List[Any], List[Tuple[int, int]], int, int, List[np.ndarray]]:
         """准备 LookBack 窗口数据
         
         计算窗口参数、处理初始数据、扩展时间标尺。
         
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            descriptor_data: 描述子数据列表
+            dt_ruler: 时间标尺列表
+        
         Returns:
             tuple: (StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, descriptor_data)
+            - StdData: 预分配的结果数组
+            - iStartInd: 初始数据起始索引
+            - DTRuler: 扩展后的时间标尺
+            - StartIndAndLen: 每个描述子的(起始索引, 窗口长度)列表
+            - MaxLookBack: 最大回溯期数
+            - MaxLen: 最大窗口长度
+            - descriptor_data: 处理后的描述子数据
         """
         StdData = create_std_data(dts, ids, self.DataType)
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
@@ -211,36 +423,84 @@ class _LookBackOperation(DerivativeFactor):
 # 如果运算时点参数为多时点, 运算ID参数为单ID, 那么x元素为array(shape=(回溯期数+nDT, )), 返回 array(shape=(nDate,))
 # 如果运算时点参数为多时点, 运算ID参数为多ID, 那么x元素为array(shape=(回溯期数+nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
 class TimeOperation(_LookBackOperation):
-    """时间序列运算"""
+    """时间序列运算
+    
+    对描述子进行时间序列运算，支持滚动窗口和扩展窗口模式。
+
+    Attributes:
+        DTMode: 运算时点模式 ("单时点" 或 "多时点")
+        IDMode: 运算ID模式 ("单ID" 或 "多ID")
+
+    Operator Signature:
+        - 单时点 + 单ID: x元素为array(shape=(回溯期数,))，返回单个元素
+        - 单时点 + 多ID: x元素为array(shape=(回溯期数, nID))，返回array(shape=(nID,))
+        - 多时点 + 单ID: x元素为array(shape=(回溯期数+nDT,))，返回array(shape=(nDT,))
+        - 多时点 + 多ID: x元素为array(shape=(回溯期数+nDT, nID))，返回array(shape=(nDT, nID))
+
+    Args:
+        name: 因子名称
+        descriptors: 描述子列表
+        sys_args: 系统参数字典
+    """
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
 
-    _DT_ID_DISPATCH = {
+    _DT_ID_DISPATCH: Dict[Tuple[str, str], str] = {
         ("单时点", "单ID"): "_calcData_single_time_single_id",
         ("单时点", "多ID"): "_calcData_single_time_multi_id",
         ("多时点", "单ID"): "_calcData_multi_time_single_id",
         ("多时点", "多ID"): "_calcData_multi_time_multi_id",
     }
 
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
+    def _QS_initOperation(
+        self,
+        start_dt: Any,
+        dt_dict: Dict[str, Any],
+        prepare_ids: List[Any],
+        id_dict: Dict[str, List[Any]]
+    ) -> None:
+        """初始化运算环境
+
+        Args:
+            start_dt: 起始时间点
+            dt_dict: 时间点字典
+            prepare_ids: 准备计算的ID列表
+            id_dict: ID字典
+        """
         super(_LookBackOperation, self)._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
-        if len(self._Descriptors) > len(self.LookBack): raise __QS_Error__(
-            "时间序列运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
+        if len(self._Descriptors) > len(self.LookBack):
+            raise __QS_Error__(
+                "时间序列运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name
+            )
         StartDT = dt_dict[self.Name]
         StartInd = self._OperationMode.DTRuler.index(StartDT)
         if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
             if self.iInitData.index[-1] not in self._OperationMode.DTRuler:
-                self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
+                self._QS_Logger.warning(
+                    "注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,)
+                )
             else:
                 StartInd = min(StartInd, self._OperationMode.DTRuler.index(self.iInitData.index[-1]) + 1)
         for i, iDescriptor in enumerate(self._Descriptors):
             iStartInd = StartInd - self.LookBack[i]
-            if iStartInd < 0: self._QS_Logger.warning(
-                "注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name))
+            if iStartInd < 0:
+                self._QS_Logger.warning(
+                    "注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name)
+                )
             iStartDT = self._OperationMode.DTRuler[max(0, iStartInd)]
             iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
 
-    def readData(self, ids, dts, **kwargs):
+    def readData(self, ids: List[Any], dts: List[Any], **kwargs) -> pd.DataFrame:
+        """读取并计算数据
+
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            **kwargs: 其他关键字参数，支持 dt_ruler 指定时间标尺
+
+        Returns:
+            计算结果DataFrame，index为dts，columns为ids
+        """
         DTRuler = kwargs.get("dt_ruler", dts)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
         if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
@@ -249,7 +509,8 @@ class TimeOperation(_LookBackOperation):
             else:
                 StartInd = min(StartInd, DTRuler.index(self.iInitData.index[-1]) + 1)
         EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler) - 1)
-        if StartInd > EndInd: return pd.DataFrame(index=dts, columns=ids)
+        if StartInd > EndInd:
+            return pd.DataFrame(index=dts, columns=ids)
         nID = len(ids)
         DescriptorData = []
         for i, iDescriptor in enumerate(self._Descriptors):
@@ -262,19 +523,55 @@ class TimeOperation(_LookBackOperation):
                 iLookBackData = np.full((self.LookBack[i] - StartInd, nID), np.nan)
                 iDescriptorData = np.r_[iLookBackData, iDescriptorData]
             DescriptorData.append(iDescriptorData)
-        StdData = self._calcData(ids=ids, dts=DTRuler[StartInd:EndInd + 1], descriptor_data=DescriptorData,
-                                 dt_ruler=DTRuler)
+        StdData = self._calcData(
+            ids=ids,
+            dts=DTRuler[StartInd:EndInd + 1],
+            descriptor_data=DescriptorData,
+            dt_ruler=DTRuler
+        )
         return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd + 1], columns=ids).loc[dts, :]
 
-    def _calcData(self, ids, dts, descriptor_data, dt_ruler):
+    def _calcData(
+        self,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray],
+        dt_ruler: List[Any]
+    ) -> np.ndarray:
+        """计算数据（策略分派入口）
+
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            descriptor_data: 描述子数据列表
+            dt_ruler: 时间标尺
+
+        Returns:
+            计算结果数组
+        """
         StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, descriptor_data = \
             self._prepare_lookback_data(ids, dts, descriptor_data, dt_ruler)
         handler_name = self._DT_ID_DISPATCH.get((self.DTMode, self.IDMode))
         if handler_name:
-            return getattr(self, handler_name)(StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data)
+            return getattr(self, handler_name)(
+                StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen,
+                ids, dts, descriptor_data
+            )
         return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
 
-    def _calcData_single_time_single_id(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+    def _calcData_single_time_single_id(
+        self,
+        StdData: np.ndarray,
+        iStartInd: int,
+        DTRuler: List[Any],
+        StartIndAndLen: List[Tuple[int, int]],
+        MaxLookBack: int,
+        MaxLen: int,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray]
+    ) -> np.ndarray:
+        """单时点-单ID模式计算"""
         for i, iDT in enumerate(dts):
             iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
             for j, jID in enumerate(ids):
@@ -285,7 +582,19 @@ class TimeOperation(_LookBackOperation):
                 StdData[iStartInd + i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
         return StdData[iStartInd:, :]
 
-    def _calcData_single_time_multi_id(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+    def _calcData_single_time_multi_id(
+        self,
+        StdData: np.ndarray,
+        iStartInd: int,
+        DTRuler: List[Any],
+        StartIndAndLen: List[Tuple[int, int]],
+        MaxLookBack: int,
+        MaxLen: int,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray]
+    ) -> np.ndarray:
+        """单时点-多ID模式计算"""
         for i, iDT in enumerate(dts):
             iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
             x = []
@@ -295,21 +604,58 @@ class TimeOperation(_LookBackOperation):
             StdData[iStartInd + i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
         return StdData[iStartInd:, :]
 
-    def _calcData_multi_time_single_id(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+    def _calcData_multi_time_single_id(
+        self,
+        StdData: np.ndarray,
+        iStartInd: int,
+        DTRuler: List[Any],
+        StartIndAndLen: List[Tuple[int, int]],
+        MaxLookBack: int,
+        MaxLen: int,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray]
+    ) -> np.ndarray:
+        """多时点-单ID模式计算"""
         for j, jID in enumerate(ids):
-            StdData[iStartInd:, j] = self.Operator(self, DTRuler, jID,
-                                                   [kDescriptorData[:, j] for kDescriptorData in descriptor_data],
-                                                   self.ModelArgs)
+            StdData[iStartInd:, j] = self.Operator(
+                self, DTRuler, jID,
+                [kDescriptorData[:, j] for kDescriptorData in descriptor_data],
+                self.ModelArgs
+            )
         return StdData[iStartInd:, :]
 
-    def _calcData_multi_time_multi_id(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+    def _calcData_multi_time_multi_id(
+        self,
+        StdData: np.ndarray,
+        iStartInd: int,
+        DTRuler: List[Any],
+        StartIndAndLen: List[Tuple[int, int]],
+        MaxLookBack: int,
+        MaxLen: int,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray]
+    ) -> np.ndarray:
+        """多时点-多ID模式计算"""
         return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
 
-    def __QS_prepareCacheData__(self, ids=None):
+    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> pd.DataFrame:
+        """准备缓存数据
+
+        Args:
+            ids: ID列表
+
+        Returns:
+            标准数据DataFrame
+        """
         PID = self._OperationMode._iPID
         StartDT = self._OperationMode._FactorStartDT[self.Name]
         EndDT = self._OperationMode.DateTimes[-1]
-        StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
+        StartInd, EndInd = (
+            self._OperationMode.DTRuler.index(StartDT),
+            self._OperationMode.DTRuler.index(EndDT)
+        )
         DTs = list(self._OperationMode.DTRuler[StartInd:EndInd + 1])
         IDs = partition_ids_for_pid(self._OperationMode, self._OperationMode._FactorPrepareIDs[self.Name], PID)
         if IDs:
@@ -318,15 +664,23 @@ class TimeOperation(_LookBackOperation):
                 iStartInd = StartInd - self.LookBack[i]
                 iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
                 iDescriptorData = iDescriptor._QS_getData(iDTs, pids=[PID]).values
-                if iStartInd < 0: iDescriptorData = np.r_[
-                    np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
+                if iStartInd < 0:
+                    iDescriptorData = np.r_[
+                        np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan),
+                        iDescriptorData
+                    ]
                 DescriptorData.append(iDescriptorData)
-            StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData,
-                                     dt_ruler=self._OperationMode.DTRuler)
+            StdData = self._calcData(
+                ids=IDs, dts=DTs, descriptor_data=DescriptorData,
+                dt_ruler=self._OperationMode.DTRuler
+            )
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
             StdData = create_empty_dataframe(DTs, [], self.DataType)
-        write_cache_file(self._OperationMode, PID, self.Name, self._OperationMode._FactorID[self.Name], StdData, IDs)
+        write_cache_file(
+            self._OperationMode, PID, self.Name,
+            self._OperationMode._FactorID[self.Name], StdData, IDs
+        )
         self._isCacheDataOK = True
         return StdData
 
@@ -340,43 +694,91 @@ class TimeOperation(_LookBackOperation):
 # 如果运算时点参数为单时点, 那么 x 元素为 array(shape=(nID, )), 如果输出形式为全截面返回 array(shape=(nID, )), 否则返回单个值
 # 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class SectionOperation(DerivativeFactor):
-    """截面运算"""
+    """截面运算
+    
+    对描述子进行截面运算，即在同一时点对全截面ID进行计算。
+
+    Attributes:
+        DTMode: 运算时点模式 ("单时点" 或 "多时点")
+        OutputMode: 输出形式 ("全截面" 或 "单ID")
+        DescriptorSection: 描述子截面列表
+
+    Operator Signature:
+        - 单时点 + 全截面: x元素为array(shape=(nID,))，返回array(shape=(nID,))
+        - 单时点 + 单ID: x元素为array(shape=(nID,))，返回单个值
+        - 多时点 + 全截面: x元素为array(shape=(nDT, nID))，返回array(shape=(nDT, nID))
+        - 多时点 + 单ID: x元素为array(shape=(nDT, nID))，返回array(shape=(nDT,))
+
+    Args:
+        name: 因子名称
+        descriptors: 描述子列表
+        sys_args: 系统参数字典
+    """
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
-    DescriptorSection = List(arg_type="List", label="描述子截面", order=5)
+    DescriptorSection = TraitList(arg_type="List", label="描述子截面", order=5)
 
-    _OUTPUT_DT_DISPATCH = {
+    _OUTPUT_DT_DISPATCH: Dict[Tuple[str, str], str] = {
         ("全截面", "单时点"): "_calcData_full_section_single_time",
         ("全截面", "多时点"): "_calcData_full_section_multi_time",
         ("单ID", "单时点"): "_calcData_single_id_single_time",
         ("单ID", "多时点"): "_calcData_single_id_multi_time",
     }
 
-    def __QS_initArgs__(self):
+    def __QS_initArgs__(self) -> None:
+        """初始化参数"""
         super().__QS_initArgs__()
         self.DescriptorSection = [None] * len(self._Descriptors)
 
-    def readData(self, ids, dts, **kwargs):
+    def readData(self, ids: List[Any], dts: List[Any], **kwargs) -> pd.DataFrame:
+        """读取并计算数据
+
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            **kwargs: 其他关键字参数，支持 section_ids 指定截面ID
+
+        Returns:
+            计算结果DataFrame，index为dts，columns为ids
+        """
         SectionIDs = kwargs.pop("section_ids", ids)
         DescriptorData = []
         for i, iDescriptor in enumerate(self._Descriptors):
             iSectionIDs = self.DescriptorSection[i]
-            if iSectionIDs is None: iSectionIDs = SectionIDs
+            if iSectionIDs is None:
+                iSectionIDs = SectionIDs
             DescriptorData.append(iDescriptor.readData(ids=iSectionIDs, dts=dts, **kwargs).values)
         StdData = self._calcData(ids=SectionIDs, dts=dts, descriptor_data=DescriptorData)
         return pd.DataFrame(StdData, index=dts, columns=SectionIDs).loc[:, ids]
 
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
+    def _QS_initOperation(
+        self,
+        start_dt: Any,
+        dt_dict: Dict[str, Any],
+        prepare_ids: List[Any],
+        id_dict: Dict[str, List[Any]]
+    ) -> None:
+        """初始化运算环境
+
+        Args:
+            start_dt: 起始时间点
+            dt_dict: 时间点字典
+            prepare_ids: 准备计算的ID列表
+            id_dict: ID字典
+        """
         OldStartDT = dt_dict.get(self.Name, None)
         if (OldStartDT is None) or (start_dt < OldStartDT):
             dt_dict[self.Name] = start_dt
-            StartInd, EndInd = self._OperationMode.DTRuler.index(dt_dict[self.Name]), self._OperationMode.DTRuler.index(
-                self._OperationMode.DateTimes[-1])
+            StartInd, EndInd = (
+                self._OperationMode.DTRuler.index(dt_dict[self.Name]),
+                self._OperationMode.DTRuler.index(self._OperationMode.DateTimes[-1])
+            )
             DTs = self._OperationMode.DTRuler[StartInd:EndInd + 1]
             DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
             self._PID_DTs = {iPID: DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
         PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
-        if prepare_ids != PrepareIDs: raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
+        if prepare_ids != PrepareIDs:
+            raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
         for i, iDescriptor in enumerate(self._Descriptors):
             if self.DescriptorSection[i] is None:
                 iDescriptor._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
@@ -385,36 +787,89 @@ class SectionOperation(DerivativeFactor):
         if (self._OperationMode.SubProcessNum > 0) and (self.Name not in self._OperationMode._Event):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
 
-    def _calcData(self, ids, dts, descriptor_data):
+    def _calcData(
+        self,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray]
+    ) -> np.ndarray:
+        """计算数据（策略分派入口）
+
+        Args:
+            ids: ID列表
+            dts: 时间点列表
+            descriptor_data: 描述子数据列表
+
+        Returns:
+            计算结果数组
+        """
         StdData = create_std_data(dts, ids, self.DataType)
         handler_name = self._OUTPUT_DT_DISPATCH.get((self.OutputMode, self.DTMode))
         if handler_name:
             return getattr(self, handler_name)(StdData, ids, dts, descriptor_data)
         return StdData
 
-    def _calcData_full_section_single_time(self, StdData, ids, dts, descriptor_data):
+    def _calcData_full_section_single_time(
+        self,
+        StdData: np.ndarray,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray]
+    ) -> np.ndarray:
+        """全截面-单时点模式计算"""
         for i, iDT in enumerate(dts):
-            StdData[i, :] = self.Operator(self, iDT, ids,
-                                          [kDescriptorData[i] for kDescriptorData in descriptor_data],
-                                          self.ModelArgs)
+            StdData[i, :] = self.Operator(
+                self, iDT, ids,
+                [kDescriptorData[i] for kDescriptorData in descriptor_data],
+                self.ModelArgs
+            )
         return StdData
 
-    def _calcData_full_section_multi_time(self, StdData, ids, dts, descriptor_data):
+    def _calcData_full_section_multi_time(
+        self,
+        StdData: np.ndarray,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray]
+    ) -> np.ndarray:
+        """全截面-多时点模式计算"""
         return self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
 
-    def _calcData_single_id_single_time(self, StdData, ids, dts, descriptor_data):
+    def _calcData_single_id_single_time(
+        self,
+        StdData: np.ndarray,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray]
+    ) -> np.ndarray:
+        """单ID-单时点模式计算"""
         for i, iDT in enumerate(dts):
             x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
             for j, jID in enumerate(ids):
                 StdData[i, j] = self.Operator(self, iDT, jID, x, self.ModelArgs)
         return StdData
 
-    def _calcData_single_id_multi_time(self, StdData, ids, dts, descriptor_data):
+    def _calcData_single_id_multi_time(
+        self,
+        StdData: np.ndarray,
+        ids: List[Any],
+        dts: List[Any],
+        descriptor_data: List[np.ndarray]
+    ) -> np.ndarray:
+        """单ID-多时点模式计算"""
         for j, jID in enumerate(ids):
             StdData[:, j] = self.Operator(self, dts, jID, descriptor_data, self.ModelArgs)
         return StdData
 
-    def __QS_prepareCacheData__(self, ids=None):
+    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> pd.DataFrame:
+        """准备缓存数据
+
+        Args:
+            ids: ID列表
+
+        Returns:
+            标准数据DataFrame
+        """
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
         IDs = self._OperationMode._FactorPrepareIDs[self.Name]
         if IDs is None:
@@ -425,17 +880,26 @@ class SectionOperation(DerivativeFactor):
                 iDescriptor._QS_getData(iDTs, pids=None)
             StdData = create_empty_dataframe([], IDs, self.DataType, include_index=False)
         elif IDs:
-            StdData = self._calcData(ids=IDs, dts=DTs,
-                                     descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for i, iDescriptor
-                                                      in enumerate(self._Descriptors)])
+            StdData = self._calcData(
+                ids=IDs, dts=DTs,
+                descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values
+                                 for i, iDescriptor in enumerate(self._Descriptors)]
+            )
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
             StdData = create_empty_dataframe(DTs, [], self.DataType)
-        PID_IDs = self._OperationMode._PID_IDs if self._OperationMode._FactorPrepareIDs[self.Name] is None else \
-            {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in
-             enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
-        write_cache_files_for_all_pids(self._OperationMode, PID_IDs, self.Name,
-                                       self._OperationMode._FactorID[self.Name], StdData)
+        PID_IDs = (
+            self._OperationMode._PID_IDs
+            if self._OperationMode._FactorPrepareIDs[self.Name] is None
+            else {
+                self._OperationMode._PIDs[i]: iSubIDs
+                for i, iSubIDs in enumerate(partitionList(IDs, len(self._OperationMode._PIDs)))
+            }
+        )
+        write_cache_files_for_all_pids(
+            self._OperationMode, PID_IDs, self.Name,
+            self._OperationMode._FactorID[self.Name], StdData
+        )
         StdData = None
         if self._OperationMode.SubProcessNum > 0:
             Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
@@ -454,19 +918,34 @@ class SectionOperation(DerivativeFactor):
 # 如果运算时点参数为单时点, 那么 x 元素为 array(shape=(回溯期数, nID)), 如果输出形式为全截面返回 array(shape=(nID, )), 否则返回单个值
 # 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(回溯期数+nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class PanelOperation(_LookBackOperation):
-    """面板运算"""
+    """面板运算
+    
+    结合时间序列和截面运算，对描述子进行面板数据计算。
+
+    Attributes:
+        DTMode: 运算时点模式 ("单时点" 或 "多时点")
+        OutputMode: 输出形式 ("全截面" 或 "单ID")
+        DescriptorSection: 描述子截面列表
+
+    Operator Signature:
+        - 单时点 + 全截面: x元素为array(shape=(回溯期数, nID))，返回array(shape=(nID,))
+        - 单时点 + 单ID: x元素为array(shape=(回溯期数, nID))，返回单个值
+        - 多时点 + 全截面: x元素为array(shape=(回溯期数+nDT, nID))，返回array(shape=(nDT, nID))
+        - 多时点 + 单ID: x元素为array(shape=(回溯期数+nDT, nID))，返回array(shape=(nDT,))
+    """
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
-    DescriptorSection = List(arg_type="List", label="描述子截面", order=10)
+    DescriptorSection = TraitList(arg_type="List", label="描述子截面", order=10)
 
-    _OUTPUT_DT_DISPATCH = {
+    _OUTPUT_DT_DISPATCH: Dict[Tuple[str, str], str] = {
         ("全截面", "单时点"): "_calcData_full_section_single_time",
         ("全截面", "多时点"): "_calcData_full_section_multi_time",
         ("单ID", "单时点"): "_calcData_single_id_single_time",
         ("单ID", "多时点"): "_calcData_single_id_multi_time",
     }
 
-    def __QS_initArgs__(self):
+    def __QS_initArgs__(self) -> None:
+        """初始化参数"""
         super().__QS_initArgs__()
         self.DescriptorSection = [None] * len(self._Descriptors)
 
