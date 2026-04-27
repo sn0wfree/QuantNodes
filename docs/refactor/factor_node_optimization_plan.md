@@ -205,6 +205,7 @@ def _calculate(args)
 | 9 | 策略字典分派 - `TimeOperation._calcData` | `factor_operation.py` | ✅ 2026-04-27 |
 | 10 | 策略字典分派 - `SectionOperation._calcData` | `factor_operation.py` | ✅ 2026-04-27 |
 | 11 | 策略字典分派 - `PanelOperation._calcData` | `factor_operation.py` | ✅ 2026-04-27 |
+| 12 | 补充 docstrings 和类型注解 | `factor_operation.py` | ✅ 2026-04-27 |
 
 ## 完成记录
 
@@ -219,17 +220,20 @@ def _calculate(args)
 | 2026-04-27 | 策略字典分派 - `TimeOperation._calcData` | ✅ 消除 4 层 if-elif |
 | 2026-04-27 | 策略字典分派 - `SectionOperation._calcData` | ✅ 消除嵌套 if-elif |
 | 2026-04-27 | 策略字典分派 - `PanelOperation._calcData` | ✅ 消除嵌套 if-elif |
+| 2026-04-27 | 补充 docstrings 和类型注解 | ✅ 添加完整 Google 风格文档 |
 
 ## 优化结果
 
 | 指标 | 优化前 | 优化后 | 变化 |
 |------|--------|--------|------|
-| `factor_operation.py` 行数 | 564 | ~600 | +36行 (新增 handler 方法) |
+| `factor_operation.py` 行数 | 564 | ~900 | +336行 (handler方法+文档) |
 | `_LookBackOperation` 基类 | 0 | ~60行 | +60行 (新增) |
 | `factor_table.py` `_calculate()` | 99行 | 14行 + 6个辅助函数 | 结构更清晰 |
 | 重复代码 | ~200行 | ~100行 | -100行 |
 | 最大函数行数 | 99行 | ~40行 | -59行 |
 | if-elif 分支层次 | 4层嵌套 | 1层 dispatch | 圈复杂度大幅下降 |
+| 类型注解 | 缺失 | 完整 | ✅ 全面覆盖 |
+| docstring | 缺失/不完整 | 完整 | ✅ Google 风格 |
 
 ## 注意事项
 
