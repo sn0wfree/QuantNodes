@@ -419,6 +419,268 @@ def deserialize_encrypted(
 
 
 # ============================================================================
+# 节点序列化方案
+# ============================================================================
+
+def serialize_node_json(node, indent: Optional[int] = 2) -> str:
+    """
+    节点 JSON 序列化
+
+    Args:
+        node: BaseNode 实例
+        indent: 缩进空格数，None 表示紧凑格式
+
+    Returns:
+        JSON 字符串
+    """
+    return json.dumps(node.serialize(), indent=indent, ensure_ascii=False)
+
+
+def serialize_node_json_bytes(node) -> bytes:
+    """节点 JSON 序列化（字节形式）"""
+    return serialize_node_json(node, indent=None).encode('utf-8')
+
+
+def serialize_node_compact(node, compress_level: int = 6) -> bytes:
+    """
+    节点紧凑序列化 - 推荐用于网络传输/持久化
+
+    JSON + zlib 压缩，零额外依赖
+    压缩率通常可达 30%-50%
+    """
+    json_bytes = serialize_node_json_bytes(node)
+    return zlib.compress(json_bytes, level=compress_level)
+
+
+def serialize_node_msgpack(node) -> bytes:
+    """
+    节点 msgpack 序列化 - 极致性能
+
+    要求：pip install msgpack
+    """
+    try:
+        import msgpack
+    except ImportError:
+        raise ImportError(
+            "msgpack 未安装。请运行: pip install msgpack"
+        ) from None
+    return msgpack.packb(node.serialize(), use_bin_type=True)
+
+
+# ============================================================================
+# 节点反序列化方案
+# ============================================================================
+
+def deserialize_node_json(data: Union[str, bytes]):
+    """
+    从 JSON 反序列化节点
+
+    Args:
+        data: JSON 字符串或字节
+
+    Returns:
+        BaseNode 实例
+    """
+    from QuantNodes.core.node import BaseNode
+
+    if isinstance(data, bytes):
+        data = data.decode('utf-8')
+    node_data = json.loads(data)
+    return BaseNode.deserialize(node_data)
+
+
+def deserialize_node_compact(data: bytes):
+    """
+    从紧凑格式（JSON + zlib）反序列化节点
+
+    Args:
+        data: 压缩的字节数据
+
+    Returns:
+        BaseNode 实例
+    """
+    from QuantNodes.core.node import BaseNode
+
+    json_bytes = zlib.decompress(data)
+    return deserialize_node_json(json_bytes)
+
+
+def deserialize_node_msgpack(data: bytes):
+    """
+    从 msgpack 反序列化节点
+
+    Args:
+        data: msgpack 字节数据
+
+    Returns:
+        BaseNode 实例
+    """
+    from QuantNodes.core.node import BaseNode
+
+    try:
+        import msgpack
+    except ImportError:
+        raise ImportError(
+            "msgpack 未安装。请运行: pip install msgpack"
+        ) from None
+    node_data = msgpack.unpackb(data, raw=False)
+    return BaseNode.deserialize(node_data)
+
+
+# ============================================================================
+# 节点自动检测反序列化
+# ============================================================================
+
+def deserialize_node_auto(data: Union[str, bytes]):
+    """
+    自动检测格式并反序列化节点
+
+    支持：JSON(str/bytes), JSON+zlib(bytes), msgpack(bytes)
+    """
+    if isinstance(data, str):
+        return deserialize_node_json(data)
+
+    if not isinstance(data, bytes):
+        raise TypeError(f"不支持的数据类型: {type(data)}")
+
+    # 尝试 zlib 压缩格式
+    if len(data) >= 2 and data[0:2] == b'x\x9c':
+        try:
+            return deserialize_node_compact(data)
+        except Exception:
+            pass
+
+    # 尝试 msgpack (第一个字节通常是 map 标记 0x80-0x8f)
+    if data and 0x80 <= data[0] <= 0x8f:
+        try:
+            return deserialize_node_msgpack(data)
+        except Exception:
+            pass
+
+    # 尝试 JSON
+    return deserialize_node_json(data)
+
+
+# ============================================================================
+# 节点加密序列化
+# ============================================================================
+
+def serialize_node_encrypted(node, key: Union[str, bytes]) -> bytes:
+    """
+    节点加密序列化 - 保护敏感策略
+
+    Args:
+        node: BaseNode 实例
+        key: 加密密钥（字符串或 bytes）
+
+    要求：pip install cryptography
+    """
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.backends import default_backend
+    except ImportError:
+        raise ImportError(
+            "cryptography 未安装。请运行: pip install cryptography"
+        ) from None
+
+    import os
+
+    # 1. 先序列化为紧凑 JSON
+    plaintext = node.serialize()
+    plaintext_bytes = json.dumps(plaintext, separators=(',', ':')).encode('utf-8')
+
+    # 2. 处理密钥
+    if isinstance(key, str):
+        salt = os.urandom(16)
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+            backend=default_backend(),
+        )
+        key_bytes = kdf.derive(key.encode('utf-8'))
+        key_type = b'P'
+    else:
+        key_bytes = key
+        salt = b''
+        key_type = b'R'
+
+    # 3. AES-GCM 加密
+    nonce = os.urandom(12)
+    aesgcm = AESGCM(key_bytes)
+    ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, None)
+
+    # 4. 打包
+    salt_len = len(salt)
+    return b''.join([
+        key_type,
+        bytes([salt_len]),
+        salt,
+        nonce,
+        ciphertext,
+    ])
+
+
+def deserialize_node_encrypted(data: bytes, key: Union[str, bytes]):
+    """
+    解密反序列化节点
+
+    Args:
+        data: 加密的字节数据
+        key: 解密密钥
+    """
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.backends import default_backend
+    except ImportError:
+        raise ImportError(
+            "cryptography 未安装。请运行: pip install cryptography"
+        ) from None
+
+    # 1. 解包
+    key_type = data[0:1]
+    salt_len = data[1]
+    offset = 2
+
+    salt = data[offset:offset + salt_len]
+    offset += salt_len
+
+    nonce = data[offset:offset + 12]
+    offset += 12
+
+    ciphertext = data[offset:]
+
+    # 2. 处理密钥
+    if key_type == b'P':
+        if not isinstance(key, str):
+            raise ValueError("数据使用字符串密码加密，请提供字符串密钥")
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+            backend=default_backend(),
+        )
+        key_bytes = kdf.derive(key.encode('utf-8'))
+    else:
+        if isinstance(key, str):
+            raise ValueError("数据使用原始密钥加密，请提供 bytes 密钥")
+        key_bytes = key
+
+    # 3. AES-GCM 解密
+    aesgcm = AESGCM(key_bytes)
+    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+
+    # 4. 反序列化
+    return deserialize_node_json(plaintext)
+
+
+# ============================================================================
 # 更新序列化方法注册表
 # ============================================================================
 

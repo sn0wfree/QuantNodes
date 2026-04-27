@@ -16,6 +16,8 @@ from QuantNodes.core.node import (
     NodeState,
     NodeStats,
     NodeExecutionError,
+    SerializationError,
+    register_node,
 )
 from QuantNodes.core.pipeline import (
     Pipeline,
@@ -33,6 +35,17 @@ from QuantNodes.core.expression import (
     LambdaExpression,
 )
 from QuantNodes.core.cond_builder import Cond
+from QuantNodes.core.serialization import (
+    serialize_node_json,
+    serialize_node_compact,
+    serialize_node_msgpack,
+    serialize_node_encrypted,
+    deserialize_node_json,
+    deserialize_node_compact,
+    deserialize_node_msgpack,
+    deserialize_node_encrypted,
+    deserialize_node_auto,
+)
 
 __all__ = [
     # base
@@ -51,6 +64,8 @@ __all__ = [
     'NodeState',
     'NodeStats',
     'NodeExecutionError',
+    'SerializationError',
+    'register_node',
 
     # pipeline
     'Pipeline',
@@ -62,8 +77,22 @@ __all__ = [
     'MapNode',
     'WhileNode',
 
+    # lambda
+    'LambdaNode',
+
     # expression
     'Expression',
     'Cond',
     'LambdaExpression',
+
+    # serialization
+    'serialize_node_json',
+    'serialize_node_compact',
+    'serialize_node_msgpack',
+    'serialize_node_encrypted',
+    'deserialize_node_json',
+    'deserialize_node_compact',
+    'deserialize_node_msgpack',
+    'deserialize_node_encrypted',
+    'deserialize_node_auto',
 ]

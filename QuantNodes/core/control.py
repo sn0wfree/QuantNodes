@@ -20,7 +20,7 @@ import pandas as pd
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 from abc import abstractmethod
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.core.node import BaseNode, register_node, SerializationError
 from QuantNodes.core.pipeline import Pipeline
 from QuantNodes.core.expression import Expression, ExpressionBuilder, LambdaExpression
 
@@ -44,6 +44,7 @@ def _wrap_condition(
     raise TypeError(f"Unsupported condition type: {type(condition)}")
 
 
+@register_node
 class IfNode(BaseNode):
     """
     条件分支节点
@@ -69,15 +70,17 @@ class IfNode(BaseNode):
                  condition: Union[Expression, ExpressionBuilder, Callable[[Any], bool], str],
                  true_branch: BaseNode,
                  false_branch: Optional[BaseNode] = None,
-                 name: str = None):
+                 name: str = None,
+                 config: Dict[str, Any] = None):
         """
         Args:
             condition: 条件判断表达式，支持多种格式
             true_branch: 条件为 True 时执行的节点
             false_branch: 条件为 False 时执行的节点，None 表示直接返回原输入
             name: 节点名称
+            config: 配置字典
         """
-        super().__init__(name=name or "IfNode")
+        super().__init__(name=name or "IfNode", config=config)
         self.condition = _wrap_condition(condition)
         self.true_branch = true_branch
         self.false_branch = false_branch
@@ -99,17 +102,48 @@ class IfNode(BaseNode):
             self.logger.debug("Condition is False, no false branch, returning input")
             return input_data
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        """返回需要序列化的额外字段"""
+        if isinstance(self.condition, LambdaExpression):
+            raise SerializationError(
+                "IfNode with lambda condition cannot be serialized. "
+                "Please use Cond() DSL or string expression instead."
+            )
+        result = {
+            "condition": self.condition.to_dict(),
+            "true_branch": self.true_branch.serialize(),
+        }
+        if self.false_branch:
+            result["false_branch"] = self.false_branch.serialize()
+        return result
+
+    @classmethod
+    def _from_dict_impl(cls, data: Dict[str, Any]) -> 'IfNode':
+        """从字典反序列化重建 IfNode"""
+        condition = Expression.from_dict(data["condition"])
+        true_branch = BaseNode.deserialize(data["true_branch"])
+        false_branch = BaseNode.deserialize(data["false_branch"]) if data.get("false_branch") else None
+
+        return IfNode(
+            condition=condition,
+            true_branch=true_branch,
+            false_branch=false_branch,
+            name=data.get("name"),
+            config=data.get("config", {})
+        )
+
+    def to_info(self) -> Dict[str, Any]:
         """导出节点信息"""
-        result = super().to_dict()
+        result = super().to_info()
         result['condition'] = repr(self.condition)
         result['condition_dict'] = self.condition.to_dict()
-        result['true_branch'] = self.true_branch.to_dict()
-        result['false_branch'] = self.false_branch.to_dict() if self.false_branch else None
+        result['true_branch'] = self.true_branch.to_info()
+        result['false_branch'] = self.false_branch.to_info() if self.false_branch else None
         result['last_branch_taken'] = self._last_branch_taken
         return result
 
 
+@register_node
 class MapNode(BaseNode, Generic[I, O]):
     """
     分组映射节点
@@ -138,7 +172,8 @@ class MapNode(BaseNode, Generic[I, O]):
                  group_by: Union[str, Expression, ExpressionBuilder, Callable[[Any], Any]],
                  max_workers: Optional[int] = None,
                  parallel: bool = True,
-                 name: str = None):
+                 name: str = None,
+                 config: Dict[str, Any] = None):
         """
         Args:
             node: 要在每个分组上执行的节点
@@ -146,8 +181,9 @@ class MapNode(BaseNode, Generic[I, O]):
             max_workers: 最大工作线程数，None 表示自动选择
             parallel: 是否并行执行，False 表示串行（调试用）
             name: 节点名称
+            config: 配置字典
         """
-        super().__init__(name=name or "MapNode")
+        super().__init__(name=name or "MapNode", config=config)
         self.node = node
         if group_by is None:
             self.group_by_expr = None
@@ -222,16 +258,45 @@ class MapNode(BaseNode, Generic[I, O]):
 
         return results
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        """返回需要序列化的额外字段"""
+        return {
+            "node": self.node.serialize(),
+            "group_by": self.group_by_expr if isinstance(self.group_by_expr, str) else self.group_by_expr.to_dict(),
+            "max_workers": self.max_workers,
+            "parallel": self.parallel,
+        }
+
+    @classmethod
+    def _from_dict_impl(cls, data: Dict[str, Any]) -> 'MapNode':
+        """从字典反序列化重建 MapNode"""
+        from QuantNodes.core.expression import Expression
+
+        node = BaseNode.deserialize(data["node"])
+        group_by = data["group_by"]
+        if isinstance(group_by, dict):
+            group_by = Expression.from_dict(group_by)
+
+        return MapNode(
+            node=node,
+            group_by=group_by,
+            max_workers=data.get("max_workers"),
+            parallel=data.get("parallel", True),
+            name=data.get("name"),
+            config=data.get("config", {})
+        )
+
+    def to_info(self) -> Dict[str, Any]:
         """导出节点信息"""
-        result = super().to_dict()
+        result = super().to_info()
         result['group_by'] = repr(self.group_by_expr) if isinstance(self.group_by_expr, Expression) else self.group_by_expr
-        result['node'] = self.node.to_dict()
+        result['node'] = self.node.to_info()
         result['max_workers'] = self.max_workers
         result['parallel'] = self.parallel
         return result
 
 
+@register_node
 class WhileNode(BaseNode):
     """
     条件循环节点
@@ -255,15 +320,17 @@ class WhileNode(BaseNode):
                  condition: Union[Expression, ExpressionBuilder, Callable[[Any], bool], str],
                  body: BaseNode,
                  max_iterations: int = 1000,
-                 name: str = None):
+                 name: str = None,
+                 config: Dict[str, Any] = None):
         """
         Args:
             condition: 循环继续条件，接收当前结果返回 bool
             body: 循环体节点
             max_iterations: 最大迭代次数，防止死循环
             name: 节点名称
+            config: 配置字典
         """
-        super().__init__(name=name or "WhileNode")
+        super().__init__(name=name or "WhileNode", config=config)
         self.condition = _wrap_condition(condition)
         self.body = body
         self.max_iterations = max_iterations
@@ -293,12 +360,41 @@ class WhileNode(BaseNode):
         """返回最后一次执行的迭代次数"""
         return self._iteration_count
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        """返回需要序列化的额外字段"""
+        if isinstance(self.condition, LambdaExpression):
+            raise SerializationError(
+                "WhileNode with lambda condition cannot be serialized. "
+                "Please use Cond() DSL or string expression instead."
+            )
+        return {
+            "condition": self.condition.to_dict(),
+            "body": self.body.serialize(),
+            "max_iterations": self.max_iterations,
+        }
+
+    @classmethod
+    def _from_dict_impl(cls, data: Dict[str, Any]) -> 'WhileNode':
+        """从字典反序列化重建 WhileNode"""
+        from QuantNodes.core.expression import Expression
+
+        condition = Expression.from_dict(data["condition"])
+        body = BaseNode.deserialize(data["body"])
+
+        return WhileNode(
+            condition=condition,
+            body=body,
+            max_iterations=data["max_iterations"],
+            name=data.get("name"),
+            config=data.get("config", {})
+        )
+
+    def to_info(self) -> Dict[str, Any]:
         """导出节点信息"""
-        result = super().to_dict()
+        result = super().to_info()
         result['condition'] = repr(self.condition)
         result['condition_dict'] = self.condition.to_dict()
-        result['body'] = self.body.to_dict()
+        result['body'] = self.body.to_info()
         result['max_iterations'] = self.max_iterations
         result['last_iteration_count'] = self._iteration_count
         return result

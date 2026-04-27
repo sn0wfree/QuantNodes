@@ -3,22 +3,50 @@
 统一节点架构核心模块
 
 本模块定义了所有节点的统一基类 BaseNode，以及节点状态枚举和统计类。
+
+序列化设计：
+- serialize() / deserialize(): 纯逻辑序列化，用于保存/重建
+- to_info(): 运行时信息导出，用于监控/调试
+- @register_node: 节点类注册装饰器，用于反序列化
 """
 
 from __future__ import annotations
 
 import uuid
 import logging
+import warnings
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional, TypeVar, Generic, Callable, List
+from typing import Any, Dict, Optional, TypeVar, Generic, Callable, List, Type
 
 from QuantNodes.core.base import QuantNodesBase, QuantNodesError, ValidationError
 
 
 T = TypeVar('T')  # 输入类型
 R = TypeVar('R')  # 输出类型
+
+
+# ============================================================================
+# 节点类注册表
+# ============================================================================
+
+_NODE_CLASSES: Dict[str, Type['BaseNode']] = {}
+
+
+def register_node(cls: Type['BaseNode']) -> Type['BaseNode']:
+    """
+    装饰器：注册节点类用于反序列化
+
+    用法：
+        @register_node
+        class MyNode(BaseNode):
+            ...
+
+    所有需要支持反序列化的节点类都必须使用此装饰器。
+    """
+    _NODE_CLASSES[cls.__name__] = cls
+    return cls
 
 
 class NodeState(str, Enum):
@@ -82,6 +110,11 @@ class NodeExecutionError(QuantNodesError):
         self.node_name = node_name
 
 
+class SerializationError(QuantNodesError):
+    """节点序列化异常"""
+    code = "SERIALIZATION_ERROR"
+
+
 class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
     """
     所有节点的统一基类
@@ -90,6 +123,7 @@ class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
 
     子类必须实现：
         _execute(input_data, **kwargs): 核心执行逻辑
+        _from_dict_impl(data): 反序列化实现
 
     子类可覆盖：
         ConfigSchema: 配置模型类
@@ -98,6 +132,7 @@ class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
         before_execute(): 执行前钩子
         after_execute(): 执行后钩子
         validate(): 配置校验
+        _get_serializable_fields(): 序列化扩展
 
     配置开关（类属性）：
         _enable_validation: 是否启用配置校验
@@ -123,25 +158,19 @@ class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
         """
         super().__init__(name=name)
 
-        # 节点唯一标识
         self.node_id = f"{self.name}_{uuid.uuid4().hex[:8]}"
 
-        # 状态管理
         self.state: NodeState = NodeState.IDLE
         self._last_error: Optional[Exception] = None
         self._last_result: Optional[R] = None
         self._last_input: Optional[T] = None
 
-        # 配置处理
         self.config: Dict[str, Any] = {**(config or {}), **kwargs}
 
-        # 日志器
         self.logger = logging.getLogger(f"node.{self.node_id}")
 
-        # 执行统计
         self.stats: Optional[NodeStats] = NodeStats() if self._enable_stats else None
 
-        # 简单缓存（仅缓存上一次的输入输出）
         self._cache: Dict[str, R] = {}
 
     @abstractmethod
@@ -157,6 +186,135 @@ class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
             执行结果
         """
         pass
+
+    @classmethod
+    def _from_dict_impl(cls, data: Dict[str, Any]) -> 'BaseNode':
+        """
+        子类实现的具体反序列化逻辑
+
+        默认实现使用 data 中的 name 和 config 重建节点。
+        如果节点有额外参数（如 Pipeline 的 nodes），子类必须重写此方法。
+
+        Args:
+            data: 序列化字典
+
+        Returns:
+            重建的节点实例
+        """
+        return cls(name=data.get("name"), config=data.get("config", {}))
+
+    # =========================================================================
+    # 序列化接口（用于保存/重建）
+    # =========================================================================
+
+    def serialize(self) -> Dict[str, Any]:
+        """
+        序列化节点配置（不含运行时数据）
+
+        用于保存到文件/数据库/传输，以及重建节点。
+        不包含运行时数据如 node_id, state, stats 等。
+
+        Returns:
+            包含节点配置的字典
+        """
+        result = {
+            "type": self.__class__.__name__,
+            "name": self.name,
+            "config": self._filter_config(self.config),
+            "_schema_version": "1.0",
+        }
+        result.update(self._get_serializable_fields())
+        return result
+
+    def _filter_config(self, config: Dict) -> Dict:
+        """
+        过滤配置字典中的不可序列化项
+
+        子类可重写以排除特定的配置项。
+        """
+        return config.copy() if config else {}
+
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        """
+        子类扩展：返回需要序列化的额外字段
+
+        默认实现返回空字典。复合节点需要重写此方法
+        以包含子节点等额外字段。
+
+        Returns:
+            额外序列化字段字典
+        """
+        return {}
+
+    @classmethod
+    def deserialize(cls, data: Dict[str, Any]) -> 'BaseNode':
+        """
+        从字典反序列化重建节点
+
+        Args:
+            data: 序列化字典
+
+        Returns:
+            重建的节点实例
+
+        Raises:
+            ValueError: 未知节点类型或数据格式错误
+        """
+        schema_version = data.get("_schema_version", "0.0")
+
+        node_type = data.get("type")
+        if not node_type:
+            raise ValueError("Missing 'type' in serialized data")
+
+        node_cls = _NODE_CLASSES.get(node_type)
+        if not node_cls:
+            raise ValueError(
+                f"Unknown node type: {node_type}. "
+                f"Available types: {list(_NODE_CLASSES.keys())}"
+            )
+
+        return node_cls._from_dict_impl(data)
+
+    # =========================================================================
+    # 信息导出接口（用于监控/调试）
+    # =========================================================================
+
+    def to_info(self) -> Dict[str, Any]:
+        """
+        导出运行时信息（用于监控/调试）
+
+        包含 node_id, state, stats 等运行时数据，
+        不适合用于序列化重建。
+
+        Returns:
+            包含运行时信息的字典
+        """
+        return {
+            'node_id': self.node_id,
+            'name': self.name,
+            'class': self.__class__.__name__,
+            'state': self.state.value,
+            'config': self.config,
+            'stats': self.stats.to_dict() if self.stats else None,
+        }
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        导出节点信息（兼容性方法）
+
+        警告：此方法用于监控/调试目的。
+        如需序列化/重建，请使用 serialize() 方法。
+
+        Returns:
+            包含节点信息的字典
+        """
+        warnings.warn(
+            "to_dict() is for monitoring/debugging. "
+            "Use serialize() for serialization.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.to_info()
 
     def execute(self, input_data: T = None, *, validate_input: bool = None, **kwargs) -> R:
         """
@@ -287,17 +445,6 @@ class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
         if self._enable_stats:
             self.stats = NodeStats()
         self._cache.clear()
-
-    def to_dict(self) -> Dict[str, Any]:
-        """导出节点信息"""
-        return {
-            'node_id': self.node_id,
-            'name': self.name,
-            'class': self.__class__.__name__,
-            'state': self.state.value,
-            'config': self.config,
-            'stats': self.stats.to_dict() if self.stats else None,
-        }
 
     def copy(self) -> 'BaseNode[T, R]':
         """创建节点的副本"""
