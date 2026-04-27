@@ -135,8 +135,7 @@ class QuoteData(object):
 
 
 if __name__ == '__main__':
-    from QuantNodes.test import GOOG
-    import numpy as np
+    pass
 
     # ['size', 'limit', 'stop', 'sl', 'tp']
     #

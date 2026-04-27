@@ -1,16 +1,13 @@
 # coding=utf-8
-import copy
 
-from QuantNodes.database_node.clickhouse_node import ClickHouseDBNode
-from QuantNodes.operator_node.SQLUtils import SQLBuilder
-
+from QuantNodes.core.node import BaseNode
 
 
 class Node2(BaseNode):
-    def __init__(self, table_name, settings, mode='limit'):
-        super(Node2, self).__init__(table_name, settings, mode=mode)
+    def __init__(self, table_name, settings, mode='limit', **kwargs):
+        super(Node2, self).__init__(name=table_name, config=settings, **kwargs)
         self._sql_str = f'select * from {self.db_table}'
-        pass
+        self.mode = mode
 
     @property
     def _sql(self):

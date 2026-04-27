@@ -4,12 +4,12 @@ import numpy as np
 import os
 import pandas as pd
 import shelve
-from multiprocessing import Queue, Event, Lock
+from multiprocessing import Queue, Event
 from traits.api import Function, Dict, Enum, List, Int, Instance
 
-from QuantStudio import __QS_Error__
-from QuantStudio.FactorDataBase.FactorDB import Factor
-from QuantStudio.Tools.AuxiliaryFun import partitionList, partitionListMovingSampling
+from QuantNodes.core.base import FactorError as __QS_Error__
+from QuantNodes.core.factor_base import Factor
+from QuantNodes.core.tools import partition_list as partitionList, partition_list_moving_sampling as partitionListMovingSampling
 
 
 def _DefaultOperator(f, idt, iid, x, args):

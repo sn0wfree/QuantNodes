@@ -20,7 +20,7 @@ def detect_file_full_path(conf_file: str = 'conn.ini'):
     elif path3 + sep + conf_file in glob(path3 + sep + '*'):
         target_path = path3 + sep
     else:
-        raise FileNotFoundError('connot locate {}'.format(conf_file, __file__))
+        raise FileNotFoundError('connot locate {}'.format(conf_file, ))
     return target_path + conf_file
 
 

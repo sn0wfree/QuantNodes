@@ -6,7 +6,7 @@ import pandas as pd
 
 from QuantNodes.backtest.Orders import Orders, Order
 from QuantNodes.backtest.Quote import QuoteData
-from collections import Iterable, Iterator
+from collections import Iterable
 
 
 # from QuantNodes.utils_node.file_cache import file_cache

@@ -32,7 +32,7 @@ class UrlMetaFinder(abc.MetaPathFinder):
         try:
             loader = UrlMetaLoader(base_url, suffix=self.suffix)
             return ModuleSpec(fullname, loader, is_package=loader.is_package(fullname))
-        except Exception as e:
+        except Exception:
             return None
 
 

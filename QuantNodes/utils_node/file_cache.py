@@ -5,14 +5,13 @@ import os
 import pickle
 from collections import OrderedDict
 from functools import wraps
-from platform import platform
 
 def get_cache_path(fmt="%Y-%m-%d"):
     __cache__path = '/tmp/{}/'.format(datetime.datetime.now().strftime(format=fmt))
     if not os.path.exists(__cache__path):
         try:
             os.mkdir(__cache__path)
-        except Exception as e:
+        except Exception:
             __cache__path = get_cache_path_windows()
     return __cache__path
 
