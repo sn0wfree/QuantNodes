@@ -13,8 +13,8 @@ import numpy as np
 import pandas as pd
 from traits.api import Enum, Int, Str
 
-from QuantNodes.core.quant_nodes_object import QuantNodesObject as __QS_Object__
-from QuantNodes.core.base import FactorError as __QS_Error__
+from QuantNodes.core.quant_nodes_object import QuantNodesObject as _QN_Object
+from QuantNodes.core.base import FactorError
 from QuantNodes.core.tools import (
     partition_list_moving_sampling as partitionListMovingSampling,
     fill_na_by_lookback as fillNaByLookback,
@@ -27,7 +27,7 @@ def Factorize(factor_object, factor_name, args={}, **kwargs):
     for iArg, iVal in args.items():
         factor_object[iArg] = iVal
     if "logger" in kwargs:
-        factor_object._QS_Logger = kwargs.logger
+        factor_object._QN_Logger = kwargs.logger
     return factor_object
 
 
@@ -46,7 +46,7 @@ def _UnitaryOperator(f, idt, iid, x, args):
     elif OperatorType == "not":
         return (~Data)
     else:
-        raise __QS_Error__("尚不支持的单因子运算符: %s" % OperatorType)
+        raise FactorError("尚不支持的单因子运算符: %s" % OperatorType)
 
 
 def _BinaryOperator(f, idt, iid, x, args):
@@ -111,10 +111,10 @@ def _BinaryOperator(f, idt, iid, x, args):
     elif OperatorType == "!=":
         return (Data1 != Data2)
     else:
-        raise __QS_Error__("尚不支持的多因子运算符: %s" % OperatorType)
+        raise FactorError("尚不支持的多因子运算符: %s" % OperatorType)
 
 
-class Factor(__QS_Object__):
+class Factor(_QN_Object):
     """因子
 
     因子可看做一个 DataFrame(index=[时间点], columns=[ID])。
@@ -192,14 +192,14 @@ class Factor(__QS_Object__):
             self._CacheData = pd.merge(self._CacheData, NewCacheData, left_index=True, right_index=True)
         return self._CacheData.loc[dts, ids]
 
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
+    def _QN_init_operation(self, start_dt, dt_dict, prepare_ids, id_dict):
         OldStartDT = dt_dict.get(self.Name, start_dt)
         dt_dict[self.Name] = start_dt if start_dt < OldStartDT else OldStartDT
         PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
         if prepare_ids != PrepareIDs:
-            raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
+            raise FactorError("因子 %s 指定了不同的截面!" % self.Name)
 
-    def __QS_prepareCacheData__(self, ids=None):
+    def __QN_prepare_cache_data__(self, ids=None):
         StartDT = self._OperationMode._FactorStartDT[self.Name]
         EndDT = self._OperationMode.DateTimes[-1]
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
@@ -207,7 +207,7 @@ class Factor(__QS_Object__):
         RawDataFilePath = self._OperationMode._RawDataDir + os.sep + self._OperationMode._iPID + os.sep + self._RawDataFile
         if os.path.isfile(RawDataFilePath + self._OperationMode._FileSuffix):
             with shelve.open(RawDataFilePath, "r") as File:
-                PrepareIDs = File["_QS_IDs"]
+                PrepareIDs = File["_QN_IDs"]
                 if self._NameInFT in File:
                     RawData = File[self._NameInFT]
                 elif "RawData" in File:
@@ -217,7 +217,7 @@ class Factor(__QS_Object__):
             if PrepareIDs is None:
                 PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
             if RawData is not None:
-                StdData = self._FactorTable.__QS_calcData__(
+                StdData = self._FactorTable.__QN_calc_data__(
                     RawData, factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args
                 ).iloc[0]
             else:
@@ -239,11 +239,11 @@ class Factor(__QS_Object__):
                 self._OperationMode._CacheDataDir + os.sep + self._OperationMode._iPID + os.sep + self.Name + str(
                     self._OperationMode._FactorID[self.Name])) as CacheFile:
                 CacheFile["StdData"] = StdData
-                CacheFile["_QS_IDs"] = PrepareIDs
+                CacheFile["_QN_IDs"] = PrepareIDs
         self._isCacheDataOK = True
         return StdData
 
-    def _QS_getData(self, dts, pids=None, **kwargs):
+    def _QN_get_data(self, dts, pids=None, **kwargs):
         if pids is None:
             pids = set(self._OperationMode._PID_IDs)
             AllPID = True
@@ -251,7 +251,7 @@ class Factor(__QS_Object__):
             pids = set(pids)
             AllPID = False
         if not self._isCacheDataOK:
-            StdData = self.__QS_prepareCacheData__()
+            StdData = self.__QN_prepare_cache_data__()
             if (StdData is not None) and (self._OperationMode._iPID in pids):
                 pids.remove(self._OperationMode._iPID)
             else:
@@ -341,7 +341,7 @@ class Factor(__QS_Object__):
         Args["OperatorType"] = op_type
         return PointOperation("", Descriptors,
                               {"算子": _BinaryOperator, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"},
-                              logger=self._QS_Logger)
+                              logger=self._QN_Logger)
 
     def __add__(self, other):
         return self._binary_op(other, "add", is_reverse=False)
@@ -427,7 +427,7 @@ class Factor(__QS_Object__):
         Args["OperatorType"] = op_type
         return PointOperation("", Descriptors,
                               {"算子": _UnitaryOperator, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"},
-                              logger=self._QS_Logger)
+                              logger=self._QN_Logger)
 
     def __neg__(self):
         return self._unary_op("neg")
@@ -529,10 +529,10 @@ class DataFactor(Factor):
             return fillNaByLookback(Data.loc[sorted(Data.index.union(dts)), ids],
                                     lookback=self.LookBack * 24.0 * 3600).loc[dts, :]
 
-    def __QS_prepareCacheData__(self, ids=None):
+    def __QN_prepare_cache_data__(self, ids=None):
         return self._Data
 
-    def _QS_getData(self, dts, pids=None, **kwargs):
+    def _QN_get_data(self, dts, pids=None, **kwargs):
         IDs = kwargs.get("ids", None)
         if IDs is None:
             if pids is None:

@@ -49,7 +49,7 @@ class FactorTable(QuantNodesObject):
     def FactorDB(self) -> Optional["FactorDB"]:
         return self._FactorDB
 
-    def __QS_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
+    def __QN_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
         pass
 
     def getMetaData(self, key: Optional[str] = None, args: Optional[Dict[str, Any]] = None) -> Dict:
@@ -125,7 +125,7 @@ class FactorTable(QuantNodesObject):
     ) -> List[Any]:
         return []
 
-    def __QS_prepareRawData__(
+    def __QN_prepare_raw_data__(
         self,
         factor_names: List[str],
         ids: List[Any],
@@ -134,7 +134,7 @@ class FactorTable(QuantNodesObject):
     ) -> Optional[Any]:
         return None
 
-    def __QS_calcData__(
+    def __QN_calc_data__(
         self,
         raw_data: Any,
         factor_names: List[str],
@@ -154,8 +154,8 @@ class FactorTable(QuantNodesObject):
         args = args or {}
         if self.ErgodicMode is not None and self.ErgodicMode._isStarted:
             return self._readData_ErgodicMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        return self.__QS_calcData__(
-            raw_data=self.__QS_prepareRawData__(factor_names=factor_names, ids=ids, dts=dts, args=args),
+        return self.__QN_calc_data__(
+            raw_data=self.__QN_prepare_raw_data__(factor_names=factor_names, ids=ids, dts=dts, args=args),
             factor_names=factor_names,
             ids=ids,
             dts=dts,
@@ -184,13 +184,13 @@ class FactorTable(QuantNodesObject):
             self.ErgodicMode._isStarted = False
         return 0
 
-    def __QS_onBackTestMoveEvent__(self, event: Any) -> None:
+    def __QN_on_backtest_move_event__(self, event: Any) -> None:
         pass
 
-    def __QS_onBackTestEndEvent__(self, event: Any) -> None:
+    def __QN_on_backtest_end_event__(self, event: Any) -> None:
         pass
 
-    def __QS_genGroupInfo__(self, factors: List["Factor"], operation_mode: Any) -> List[Any]:
+    def __QN_gen_group_info__(self, factors: List["Factor"], operation_mode: Any) -> List[Any]:
         return []
 
     def write2FDB(
@@ -220,7 +220,7 @@ class CustomFT(FactorTable):
         self._IDs = []
         super().__init__(name=name, fdb=None, sys_args=sys_args, **kwargs)
 
-    def __QS_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
+    def __QN_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
         self._Factors = {}
         self._DateTimes = []
         self._IDs = []
@@ -323,7 +323,7 @@ class CustomFT(FactorTable):
         self._Factors[new_factor_name].Name = new_factor_name
         return 0
 
-    def __QS_calcData__(
+    def __QN_calc_data__(
         self,
         raw_data: Any,
         factor_names: List[str],

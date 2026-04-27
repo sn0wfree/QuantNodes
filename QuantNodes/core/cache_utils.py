@@ -110,7 +110,7 @@ def write_cache_file(
                 ).sort_index()
             else:
                 cache_file["StdData"] = std_data
-            cache_file["_QS_IDs"] = ids
+            cache_file["_QN_IDs"] = ids
 
 
 def write_cache_files_for_all_pids(

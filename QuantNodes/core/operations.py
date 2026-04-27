@@ -60,7 +60,7 @@ class PointOperation(DerivativeFactor):
         )
         return pd.DataFrame(std_data, index=dts, columns=ids)
 
-    def _QS_initOperation(
+    def _QN_init_operation(
         self,
         start_dt: Any,
         dt_dict: Dict[str, Any],
@@ -68,9 +68,9 @@ class PointOperation(DerivativeFactor):
         id_dict: Dict[str, List[Any]],
     ) -> None:
         """初始化运算模式"""
-        super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
+        super()._QN_init_operation(start_dt, dt_dict, prepare_ids, id_dict)
         for i, iDescriptor in enumerate(self._Descriptors):
-            iDescriptor._QS_initOperation(dt_dict[self.Name], dt_dict, prepare_ids, id_dict)
+            iDescriptor._QN_init_operation(dt_dict[self.Name], dt_dict, prepare_ids, id_dict)
 
     def _calcData(
         self,
@@ -111,7 +111,7 @@ class PointOperation(DerivativeFactor):
                     )
         return std_data
 
-    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
+    def __QN_prepare_cache_data__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
         """准备缓存数据"""
         pid = self._OperationMode._iPID
         start_dt = self._OperationMode._FactorStartDT[self.Name]
@@ -134,7 +134,7 @@ class PointOperation(DerivativeFactor):
                 ids=sampled_ids,
                 dts=dts,
                 descriptor_data=[
-                    iDescriptor._QS_getData(dts, pids=[pid]).values
+                    iDescriptor._QN_get_data(dts, pids=[pid]).values
                     for iDescriptor in self._Descriptors
                 ],
             )
@@ -148,7 +148,7 @@ class PointOperation(DerivativeFactor):
             os.makedirs(cache_dir, exist_ok=True)
             with shelve.open(cache_dir + os.sep + self.Name + str(self._OperationMode._FactorID[self.Name])) as cache_file:
                 cache_file["StdData"] = std_data
-                cache_file["_QS_IDs"] = sampled_ids if prepare_ids else []
+                cache_file["_QN_ids"] = sampled_ids if prepare_ids else []
         
         self._isCacheDataOK = True
         return std_data
@@ -188,9 +188,9 @@ class TimeOperation(DerivativeFactor):
         self._iInitData = None
         super().__init__(name=name, descriptors=descriptors, sys_args=sys_args, **kwargs)
 
-    def __QS_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
+    def __QN_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
         """初始化参数"""
-        super().__QS_initArgs__(sys_args)
+        super().__QN_initArgs__(sys_args)
         if not self.LookBack:
             self.LookBack = [0] * len(self._Descriptors)
         if not self.LookBackMode:
@@ -261,9 +261,9 @@ class TimeOperation(DerivativeFactor):
         
         return std_data
 
-    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
+    def __QN_prepare_cache_data__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
         """准备缓存数据"""
-        raise NotImplementedError("TimeOperation.__QS_prepareCacheData__ 需要实现")
+        raise NotImplementedError("TimeOperation.__QN_prepare_cache_data__ 需要实现")
 
 
 class SectionOperation(DerivativeFactor):
@@ -291,9 +291,9 @@ class SectionOperation(DerivativeFactor):
     ):
         super().__init__(name=name, descriptors=descriptors, sys_args=sys_args, **kwargs)
 
-    def __QS_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
+    def __QN_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
         """初始化参数"""
-        super().__QS_initArgs__(sys_args)
+        super().__QN_initArgs__(sys_args)
         if not self.DescriptorSection:
             self.DescriptorSection = [None] * len(self._Descriptors)
 
@@ -357,9 +357,9 @@ class SectionOperation(DerivativeFactor):
         
         return std_data
 
-    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
+    def __QN_prepare_cache_data__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
         """准备缓存数据"""
-        raise NotImplementedError("SectionOperation.__QS_prepareCacheData__ 需要实现")
+        raise NotImplementedError("SectionOperation.__QN_prepare_cache_data__ 需要实现")
 
 
 class PanelOperation(DerivativeFactor):
@@ -387,9 +387,9 @@ class PanelOperation(DerivativeFactor):
     ):
         super().__init__(name=name, descriptors=descriptors, sys_args=sys_args, **kwargs)
 
-    def __QS_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
+    def __QN_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
         """初始化参数"""
-        super().__QS_initArgs__(sys_args)
+        super().__QN_initArgs__(sys_args)
         if not self.LookBack:
             self.LookBack = [0] * len(self._Descriptors)
 
@@ -411,6 +411,6 @@ class PanelOperation(DerivativeFactor):
         """计算数据"""
         raise NotImplementedError("PanelOperation._calcData 需要实现")
 
-    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
+    def __QN_prepare_cache_data__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
         """准备缓存数据"""
-        raise NotImplementedError("PanelOperation.__QS_prepareCacheData__ 需要实现")
+        raise NotImplementedError("PanelOperation.__QN_prepare_cache_data__ 需要实现")

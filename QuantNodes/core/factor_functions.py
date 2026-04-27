@@ -12,6 +12,7 @@ import pandas as pd
 import statsmodels.api as sm
 import uuid
 
+from QuantNodes.core.base import FactorError
 from QuantNodes.core.factor_base import Factor
 from QuantNodes.core.operations import PointOperation, TimeOperation, SectionOperation
 
@@ -1705,7 +1706,7 @@ def _disaggregate(f, idt, iid, x, args):
 
 
 def disaggregate(f, aggr_ids, cat_data=None, disaggr_ids=None, **kwargs):  # 将聚合因子分解成为普通因子
-    if (len(aggr_ids) > 1) and (cat_data is None): raise __QS_Error__("解聚合算子 disaggregate: 缺少类别因子!")
+    if (len(aggr_ids) > 1) and (cat_data is None): raise FactorError("解聚合算子 disaggregate: 缺少类别因子!")
     Factors = [f]
     if cat_data is not None:
         Factors.append(cat_data)
@@ -2182,7 +2183,7 @@ def _merge(f, idt, iid, x, args):
 
 
 def merge(factors, descriptor_ids, **kwargs):
-    if len(factors) != len(descriptor_ids): raise __QS_Error__("描述子个数与描述子截面个数不一致!")
+    if len(factors) != len(descriptor_ids): raise FactorError("描述子个数与描述子截面个数不一致!")
     Descriptors, Args = _genMultivariateOperatorInfo(*factors)
     DescriptorIDs = []
     for i in range(len(factors)):

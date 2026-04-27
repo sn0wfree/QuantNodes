@@ -19,12 +19,12 @@ class QuantNodesObject(HasTraits):
 
     Attributes:
         Name: 对象名称
-        _QS_Logger: 日志记录器
+        _QN_logger: 日志记录器
     """
 
     Name = Str("QuantNodes对象")
 
-    _QS_Logger = logging.getLogger("QuantNodes")
+    _QN_logger = logging.getLogger("QuantNodes")
 
     def __init__(
         self,
@@ -42,13 +42,13 @@ class QuantNodesObject(HasTraits):
         """
         super().__init__(**kwargs)
         self._init_logger()
-        self.__QS_initArgs__(sys_args=sys_args or {})
+        self.__QN_initArgs__(sys_args=sys_args or {})
 
     def _init_logger(self) -> None:
         """初始化日志记录器"""
-        self._QS_Logger = logging.getLogger(f"QuantNodes.{self.__class__.__name__}")
+        self._QN_logger = logging.getLogger(f"QuantNodes.{self.__class__.__name__}")
 
-    def __QS_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
+    def __QN_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
         """
         初始化配置参数
 

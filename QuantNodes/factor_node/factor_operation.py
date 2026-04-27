@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple, Callable
 from multiprocessing import Queue, Event
 from traits.api import TraitFunction, Dict as TraitDict, Enum, List as TraitList, Int, Instance
 
-from QuantNodes.core.base import FactorError as __QS_Error__
+from QuantNodes.core.base import FactorError
 from QuantNodes.core.factor_base import Factor
 from QuantNodes.core.cache_utils import (
     create_std_data,
@@ -79,7 +79,7 @@ class DerivativeFactor(Factor):
         self._Descriptors = descriptors if descriptors else []
         self.UserData = {}
         if descriptors:
-            kwargs.setdefault("logger", descriptors[0]._QS_Logger)
+            kwargs.setdefault("logger", descriptors[0]._QN_logger)
         return super().__init__(name=name, ft=None, sys_args=sys_args or {}, config_file=None, **kwargs)
 
     @property
@@ -188,7 +188,7 @@ class PointOperation(DerivativeFactor):
         )
         return pd.DataFrame(StdData, index=dts, columns=ids)
 
-    def _QS_initOperation(self, start_dt: Any, dt_dict: Dict[str, Any], prepare_ids: List[Any], id_dict: Dict[str, List[Any]]) -> None:
+    def _QN_init_operation(self, start_dt: Any, dt_dict: Dict[str, Any], prepare_ids: List[Any], id_dict: Dict[str, List[Any]]) -> None:
         """初始化运算环境
 
         Args:
@@ -197,9 +197,9 @@ class PointOperation(DerivativeFactor):
             prepare_ids: 准备计算的ID列表
             id_dict: ID字典
         """
-        super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
+        super()._QN_init_operation(start_dt, dt_dict, prepare_ids, id_dict)
         for i, iDescriptor in enumerate(self._Descriptors):
-            iDescriptor._QS_initOperation(dt_dict[self.Name], dt_dict, prepare_ids, id_dict)
+            iDescriptor._QN_init_operation(dt_dict[self.Name], dt_dict, prepare_ids, id_dict)
 
     def _calcData(self, ids: List[Any], dts: List[Any], descriptor_data: List[np.ndarray]) -> np.ndarray:
         """计算数据（策略分派入口）
@@ -282,7 +282,7 @@ class PointOperation(DerivativeFactor):
             )
         return StdData
 
-    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> pd.DataFrame:
+    def __QN_prepare_cache_data__(self, ids: Optional[List[Any]] = None) -> pd.DataFrame:
         """准备缓存数据
 
         Args:
@@ -303,7 +303,7 @@ class PointOperation(DerivativeFactor):
         if IDs:
             StdData = self._calcData(
                 ids=IDs, dts=DTs,
-                descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values
+                descriptor_data=[iDescriptor._QN_get_data(DTs, pids=[PID]).values
                                  for iDescriptor in self._Descriptors]
             )
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
@@ -341,7 +341,7 @@ class _LookBackOperation(DerivativeFactor):
     iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
     iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
 
-    def __QS_initArgs__(self) -> None:
+    def __QN_initArgs__(self) -> None:
         """初始化参数"""
         n = len(self._Descriptors)
         self.LookBack = [0] * n
@@ -452,7 +452,7 @@ class TimeOperation(_LookBackOperation):
         ("多时点", "多ID"): "_calcData_multi_time_multi_id",
     }
 
-    def _QS_initOperation(
+    def _QN_init_operation(
         self,
         start_dt: Any,
         dt_dict: Dict[str, Any],
@@ -467,16 +467,16 @@ class TimeOperation(_LookBackOperation):
             prepare_ids: 准备计算的ID列表
             id_dict: ID字典
         """
-        super(_LookBackOperation, self)._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
+        super(_LookBackOperation, self)._QN_init_operation(start_dt, dt_dict, prepare_ids, id_dict)
         if len(self._Descriptors) > len(self.LookBack):
-            raise __QS_Error__(
+            raise FactorError(
                 "时间序列运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name
             )
         StartDT = dt_dict[self.Name]
         StartInd = self._OperationMode.DTRuler.index(StartDT)
         if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
             if self.iInitData.index[-1] not in self._OperationMode.DTRuler:
-                self._QS_Logger.warning(
+                self._QN_logger.warning(
                     "注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,)
                 )
             else:
@@ -484,11 +484,11 @@ class TimeOperation(_LookBackOperation):
         for i, iDescriptor in enumerate(self._Descriptors):
             iStartInd = StartInd - self.LookBack[i]
             if iStartInd < 0:
-                self._QS_Logger.warning(
+                self._QN_logger.warning(
                     "注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name)
                 )
             iStartDT = self._OperationMode.DTRuler[max(0, iStartInd)]
-            iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
+            iDescriptor._QN_init_operation(iStartDT, dt_dict, prepare_ids, id_dict)
 
     def readData(self, ids: List[Any], dts: List[Any], **kwargs) -> pd.DataFrame:
         """读取并计算数据
@@ -505,7 +505,7 @@ class TimeOperation(_LookBackOperation):
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
         if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
             if self.iInitData.index[-1] not in DTRuler:
-                self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
+                self._QN_logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
             else:
                 StartInd = min(StartInd, DTRuler.index(self.iInitData.index[-1]) + 1)
         EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler) - 1)
@@ -640,7 +640,7 @@ class TimeOperation(_LookBackOperation):
         """多时点-多ID模式计算"""
         return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
 
-    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> pd.DataFrame:
+    def __QN_prepare_cache_data__(self, ids: Optional[List[Any]] = None) -> pd.DataFrame:
         """准备缓存数据
 
         Args:
@@ -663,7 +663,7 @@ class TimeOperation(_LookBackOperation):
             for i, iDescriptor in enumerate(self._Descriptors):
                 iStartInd = StartInd - self.LookBack[i]
                 iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
-                iDescriptorData = iDescriptor._QS_getData(iDTs, pids=[PID]).values
+                iDescriptorData = iDescriptor._QN_get_data(iDTs, pids=[PID]).values
                 if iStartInd < 0:
                     iDescriptorData = np.r_[
                         np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan),
@@ -725,9 +725,9 @@ class SectionOperation(DerivativeFactor):
         ("单ID", "多时点"): "_calcData_single_id_multi_time",
     }
 
-    def __QS_initArgs__(self) -> None:
+    def __QN_initArgs__(self) -> None:
         """初始化参数"""
-        super().__QS_initArgs__()
+        super().__QN_initArgs__()
         self.DescriptorSection = [None] * len(self._Descriptors)
 
     def readData(self, ids: List[Any], dts: List[Any], **kwargs) -> pd.DataFrame:
@@ -751,7 +751,7 @@ class SectionOperation(DerivativeFactor):
         StdData = self._calcData(ids=SectionIDs, dts=dts, descriptor_data=DescriptorData)
         return pd.DataFrame(StdData, index=dts, columns=SectionIDs).loc[:, ids]
 
-    def _QS_initOperation(
+    def _QN_init_operation(
         self,
         start_dt: Any,
         dt_dict: Dict[str, Any],
@@ -778,12 +778,12 @@ class SectionOperation(DerivativeFactor):
             self._PID_DTs = {iPID: DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
         PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
         if prepare_ids != PrepareIDs:
-            raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
+            raise FactorError("因子 %s 指定了不同的截面!" % self.Name)
         for i, iDescriptor in enumerate(self._Descriptors):
             if self.DescriptorSection[i] is None:
-                iDescriptor._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
+                iDescriptor._QN_init_operation(start_dt, dt_dict, prepare_ids, id_dict)
             else:
-                iDescriptor._QS_initOperation(start_dt, dt_dict, self.DescriptorSection[i], id_dict)
+                iDescriptor._QN_init_operation(start_dt, dt_dict, self.DescriptorSection[i], id_dict)
         if (self._OperationMode.SubProcessNum > 0) and (self.Name not in self._OperationMode._Event):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
 
@@ -861,7 +861,7 @@ class SectionOperation(DerivativeFactor):
             StdData[:, j] = self.Operator(self, dts, jID, descriptor_data, self.ModelArgs)
         return StdData
 
-    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> pd.DataFrame:
+    def __QN_prepare_cache_data__(self, ids: Optional[List[Any]] = None) -> pd.DataFrame:
         """准备缓存数据
 
         Args:
@@ -877,12 +877,12 @@ class SectionOperation(DerivativeFactor):
         if len(DTs) == 0:
             iDTs = [self._OperationMode.DateTimes[-1]]
             for i, iDescriptor in enumerate(self._Descriptors):
-                iDescriptor._QS_getData(iDTs, pids=None)
+                iDescriptor._QN_get_data(iDTs, pids=None)
             StdData = create_empty_dataframe([], IDs, self.DataType, include_index=False)
         elif IDs:
             StdData = self._calcData(
                 ids=IDs, dts=DTs,
-                descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values
+                descriptor_data=[iDescriptor._QN_get_data(DTs, pids=None).values
                                  for i, iDescriptor in enumerate(self._Descriptors)]
             )
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
@@ -944,13 +944,13 @@ class PanelOperation(_LookBackOperation):
         ("单ID", "多时点"): "_calcData_single_id_multi_time",
     }
 
-    def __QS_initArgs__(self) -> None:
+    def __QN_initArgs__(self) -> None:
         """初始化参数"""
-        super().__QS_initArgs__()
+        super().__QN_initArgs__()
         self.DescriptorSection = [None] * len(self._Descriptors)
 
-    def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        if len(self._Descriptors) > len(self.LookBack): raise __QS_Error__(
+    def _QN_init_operation(self, start_dt, dt_dict, prepare_ids, id_dict):
+        if len(self._Descriptors) > len(self.LookBack): raise FactorError(
             "面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         OldStartDT = dt_dict.get(self.Name, None)
         DTRuler = self._OperationMode.DTRuler
@@ -959,7 +959,7 @@ class PanelOperation(_LookBackOperation):
             StartInd, EndInd = DTRuler.index(StartDT), DTRuler.index(self._OperationMode.DateTimes[-1])
             if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
                 if self.iInitData.index[-1] not in self._OperationMode.DTRuler:
-                    self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
+                    self._QN_logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
                 else:
                     StartInd = min(StartInd, self._OperationMode.DTRuler.index(self.iInitData.index[-1]) + 1)
             DTs = DTRuler[StartInd:EndInd + 1]
@@ -971,16 +971,16 @@ class PanelOperation(_LookBackOperation):
         else:
             StartInd = DTRuler.index(OldStartDT)
         PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
-        if prepare_ids != PrepareIDs: raise __QS_Error__("因子 %s 指定了不同的截面!" % self.Name)
+        if prepare_ids != PrepareIDs: raise FactorError("因子 %s 指定了不同的截面!" % self.Name)
         for i, iDescriptor in enumerate(self._Descriptors):
             iStartInd = StartInd - self.LookBack[i]
-            if iStartInd < 0: self._QS_Logger.warning(
+            if iStartInd < 0: self._QN_logger.warning(
                 "注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
             iStartDT = DTRuler[max(0, iStartInd)]
             if self.DescriptorSection[i] is None:
-                iDescriptor._QS_initOperation(iStartDT, dt_dict, prepare_ids, id_dict)
+                iDescriptor._QN_init_operation(iStartDT, dt_dict, prepare_ids, id_dict)
             else:
-                iDescriptor._QS_initOperation(iStartDT, dt_dict, self.DescriptorSection[i], id_dict)
+                iDescriptor._QN_init_operation(iStartDT, dt_dict, self.DescriptorSection[i], id_dict)
         if (self._OperationMode.SubProcessNum > 0) and (self.Name not in self._OperationMode._Event):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
 
@@ -990,7 +990,7 @@ class PanelOperation(_LookBackOperation):
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
         if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
             if self.iInitData.index[-1] not in DTRuler:
-                self._QS_Logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
+                self._QN_logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
             else:
                 StartInd = min(StartInd, DTRuler.index(self.iInitData.index[-1]) + 1)
         EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler) - 1)
@@ -1050,7 +1050,7 @@ class PanelOperation(_LookBackOperation):
             StdData[iStartInd:, j] = self.Operator(self, DTRuler, jID, descriptor_data, self.ModelArgs)
         return StdData[iStartInd:, :]
 
-    def __QS_prepareCacheData__(self, ids=None):
+    def __QN_prepare_cache_data__(self, ids=None):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
         IDs = self._OperationMode._FactorPrepareIDs[self.Name]
         if IDs is None:
@@ -1058,14 +1058,14 @@ class PanelOperation(_LookBackOperation):
         if len(DTs) == 0:
             iDTs = [self._OperationMode.DateTimes[-1]]
             for i, iDescriptor in enumerate(self._Descriptors):
-                iDescriptor._QS_getData(iDTs, pids=None)
+                iDescriptor._QN_get_data(iDTs, pids=None)
             StdData = create_empty_dataframe([], IDs, self.DataType, include_index=False)
         elif IDs:
             DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
             for i, iDescriptor in enumerate(self._Descriptors):
                 iStartInd = StartInd - self.LookBack[i]
                 iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
-                iDescriptorData = iDescriptor._QS_getData(iDTs, pids=None).values
+                iDescriptorData = iDescriptor._QN_get_data(iDTs, pids=None).values
                 if iStartInd < 0: iDescriptorData = np.r_[
                     np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
                 DescriptorData.append(iDescriptorData)

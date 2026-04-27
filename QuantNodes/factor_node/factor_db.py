@@ -6,11 +6,11 @@
 import pandas as pd
 from traits.api import Str
 
-from QuantNodes.core.quant_nodes_object import QuantNodesObject as __QS_Object__
-from QuantNodes.core.base import FactorError as __QS_Error__
+from QuantNodes.core.quant_nodes_object import QuantNodesObject as _QN_Object
+from QuantNodes.core.base import FactorError
 
 
-class FactorDB(__QS_Object__):
+class FactorDB(_QN_Object):
     """因子库（只读接口）
 
     数据库由若干张因子表组成。

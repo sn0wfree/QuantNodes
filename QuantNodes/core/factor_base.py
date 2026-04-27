@@ -204,7 +204,7 @@ class Factor(QuantNodesObject):
 
         return self._CacheData.loc[dts, ids]
 
-    def _QS_initOperation(
+    def _QN_init_operation(
         self,
         start_dt: Any,
         dt_dict: Dict[str, Any],
@@ -226,7 +226,7 @@ class Factor(QuantNodesObject):
         if prepare_ids != id_dict.get(self.Name):
             raise FactorError(f"因子 {self.Name} 指定了不同的截面!")
 
-    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
+    def __QN_prepare_cache_data__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
         """
         准备缓存数据
 
@@ -236,9 +236,9 @@ class Factor(QuantNodesObject):
         Returns:
             标准化数据数组
         """
-        raise NotImplementedError("Factor.__QS_prepareCacheData__ 子类必须实现")
+        raise NotImplementedError("Factor.__QN_prepare_cache_data__ 子类必须实现")
 
-    def _QS_getData(
+    def _QN_get_data(
         self,
         dts: List[Any],
         pids: Optional[List[Any]] = None,
@@ -255,7 +255,7 @@ class Factor(QuantNodesObject):
         Returns:
             数据数组
         """
-        raise NotImplementedError("Factor._QS_getData 子类必须实现")
+        raise NotImplementedError("Factor._QN_get_data 子类必须实现")
 
     def start(self, dts: List[Any], **kwargs) -> int:
         """
@@ -365,8 +365,8 @@ class DerivativeFactor(Factor):
         """
         self._Descriptors = descriptors or []
         self.UserData = {}
-        if self._Descriptors and hasattr(self._Descriptors[0], "_QS_Logger"):
-            self._QS_Logger = self._Descriptors[0]._QS_Logger
+        if self._Descriptors and hasattr(self._Descriptors[0], "_QN_logger"):
+            self._QN_logger = self._Descriptors[0]._QN_logger
         super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
 
     @property
@@ -419,7 +419,7 @@ class DerivativeFactor(Factor):
             descriptor.end()
         return 0
 
-    def __QS_prepareCacheData__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
+    def __QN_prepare_cache_data__(self, ids: Optional[List[Any]] = None) -> np.ndarray:
         """
         准备缓存数据
 
@@ -429,4 +429,4 @@ class DerivativeFactor(Factor):
         Returns:
             数据数组
         """
-        raise NotImplementedError("DerivativeFactor.__QS_prepareCacheData__ 子类应实现")
+        raise NotImplementedError("DerivativeFactor.__QN_prepare_cache_data__ 子类应实现")

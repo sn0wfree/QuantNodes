@@ -156,8 +156,8 @@ def prepare_mmap_factor_cache_data(ft: Any, mmap_cache: Any) -> int:
                 if CacheDTs:
                     CacheData.update(
                         dict(
-                            ft.__QS_calcData__(
-                                raw_data=ft.__QS_prepareRawData__(
+                            ft.__QN_calc_data__(
+                                raw_data=ft.__QN_prepare_raw_data__(
                                     factor_names=NewFactors,
                                     ids=ft.ErgodicMode._IDs,
                                     dts=CacheDTs,
@@ -190,8 +190,8 @@ def prepare_mmap_factor_cache_data(ft: Any, mmap_cache: Any) -> int:
                     isDisjoint = OldCacheDTs.isdisjoint(CacheDTs)
                     CacheFactorNames = list(CacheData.keys())
                     if NewCacheDTs:
-                        NewCacheData = ft.__QS_calcData__(
-                            raw_data=ft.__QS_prepareRawData__(
+                        NewCacheData = ft.__QN_calc_data__(
+                            raw_data=ft.__QN_prepare_raw_data__(
                                 factor_names=CacheFactorNames,
                                 ids=ft.ErgodicMode._IDs,
                                 dts=NewCacheDTs,
@@ -252,8 +252,8 @@ def prepare_mmap_id_cache_data(ft: Any, mmap_cache: Any) -> int:
                 CacheData.pop(PopID)
             if NewID:
                 if CacheDTs:
-                    CacheData[NewID] = ft.__QS_calcData__(
-                        raw_data=ft.__QS_prepareRawData__(
+                    CacheData[NewID] = ft.__QN_calc_data__(
+                        raw_data=ft.__QN_prepare_raw_data__(
                             factor_names=ft.FactorNames,
                             ids=[NewID],
                             dts=CacheDTs,
@@ -279,8 +279,8 @@ def prepare_mmap_id_cache_data(ft: Any, mmap_cache: Any) -> int:
                     isDisjoint = OldCacheDTs.isdisjoint(CacheDTs)
                     CacheIDs = list(CacheData.keys())
                     if NewCacheDTs:
-                        NewCacheData = ft.__QS_calcData__(
-                            raw_data=ft.__QS_prepareRawData__(
+                        NewCacheData = ft.__QN_calc_data__(
+                            raw_data=ft.__QN_prepare_raw_data__(
                                 factor_names=ft.FactorNames,
                                 ids=CacheIDs,
                                 dts=NewCacheDTs,
@@ -329,12 +329,12 @@ def save_raw_data(
                         iFile[jFactorName] = iData[CommonCols + [jFactorName]].reset_index()
                 else:
                     iFile["RawData"] = iData[CommonCols].reset_index()
-                iFile["_QS_IDs"] = iIDs
+                iFile["_QN_IDs"] = iIDs
     else:
         for iPID, iIDs in pid_ids.items():
             with shelve.open(raw_data_dir + os.sep + iPID + os.sep + file_name) as iFile:
                 iFile["RawData"] = raw_data
-                iFile["_QS_IDs"] = iIDs
+                iFile["_QN_IDs"] = iIDs
     return 0
 
 
