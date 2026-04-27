@@ -51,6 +51,13 @@ from QuantNodes.core.factor_base import Factor, DerivativeFactor
 from QuantNodes.core.factor_table import FactorTable, CustomFT
 from QuantNodes.core.factor_db import FactorDB, WritableFactorDB
 from QuantNodes.core.operations import PointOperation, TimeOperation, SectionOperation, PanelOperation
+from QuantNodes.factor_node.factor_operation import (
+    PointOperation as FN_PointOperation,
+    TimeOperation as FN_TimeOperation,
+    SectionOperation as FN_SectionOperation,
+    PanelOperation as FN_PanelOperation,
+    _LookBackOperation,
+)
 from QuantNodes.core.tools import (
     gen_available_name,
     partition_list,
@@ -136,6 +143,11 @@ __all__ = [
     'TimeOperation',
     'SectionOperation',
     'PanelOperation',
+    '_LookBackOperation',
+    'FN_PointOperation',
+    'FN_TimeOperation',
+    'FN_SectionOperation',
+    'FN_PanelOperation',
 
     # tools
     'gen_available_name',

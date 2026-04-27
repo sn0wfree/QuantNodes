@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import shelve
 from multiprocessing import Queue, Event
-from traits.api import Function, Dict, Enum, List, Int, Instance
+from traits.api import TraitFunction, Dict, Enum, List, Int, Instance
 
 from QuantNodes.core.base import FactorError as __QS_Error__
 from QuantNodes.core.factor_base import Factor
@@ -24,7 +24,7 @@ def _DefaultOperator(f, idt, iid, x, args):
 
 
 class DerivativeFactor(Factor):
-    Operator = Function(default_value=_DefaultOperator, arg_type="Function", label="算子", order=0)
+    Operator = TraitFunction(_DefaultOperator)
     ModelArgs = Dict(arg_type="Dict", label="参数", order=1)
     DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2)
 
@@ -120,6 +120,68 @@ class PointOperation(DerivativeFactor):
         return StdData
 
 
+class _LookBackOperation(DerivativeFactor):
+    """带 LookBack 窗口运算的基类
+    
+    提取 TimeOperation 和 PanelOperation 中相同的 LookBack 窗口计算逻辑。
+    """
+    LookBack = List(arg_type="ArgList", label="回溯期数", order=5)
+    LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
+    iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
+    iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
+    iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
+
+    def __QS_initArgs__(self):
+        n = len(self._Descriptors)
+        self.LookBack = [0] * n
+        self.LookBackMode = ["滚动窗口"] * n
+
+    def _prepare_lookback_data(self, ids, dts, descriptor_data, dt_ruler):
+        """准备 LookBack 窗口数据
+        
+        计算窗口参数、处理初始数据、扩展时间标尺。
+        
+        Returns:
+            tuple: (StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, descriptor_data)
+        """
+        StdData = create_std_data(dts, ids, self.DataType)
+        StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
+        for i in range(len(self._Descriptors)):
+            iLookBack = self.LookBack[i]
+            if self.LookBackMode[i] == "滚动窗口":
+                StartIndAndLen.append((iLookBack, iLookBack + 1))
+                MaxLen = max(MaxLen, iLookBack + 1)
+            else:
+                StartIndAndLen.append((iLookBack, np.inf))
+                MaxLen = np.inf
+            MaxLookBack = max(MaxLookBack, iLookBack)
+        iStartInd = 0
+        if (self.iLookBackMode == "扩张窗口") or (self.iLookBack != 0):
+            if self.iInitData is not None:
+                iInitData = self.iInitData.loc[self.iInitData.index < dts[0], :]
+                if iInitData.shape[0] > 0:
+                    if iInitData.columns.intersection(ids).shape[0] > 0:
+                        iInitData = iInitData.loc[:, ids].values.astype(StdData.dtype)
+                    else:
+                        iInitData = np.full(shape=(iInitData.shape[0], len(ids)), dtype=StdData.dtype)
+                    iStartInd = min(self.iLookBack, iInitData.shape[0])
+                    StdData = np.r_[iInitData[-iStartInd:], StdData]
+            if self.iLookBackMode == "扩张窗口":
+                StartIndAndLen.insert(0, (iStartInd - 1, np.inf))
+                MaxLen = np.inf
+            else:
+                StartIndAndLen.insert(0, (iStartInd - 1, self.iLookBack))
+                MaxLen = max(MaxLen, self.iLookBack + 1)
+            MaxLookBack = max(MaxLookBack, self.iLookBack)
+            descriptor_data.insert(0, StdData)
+        start_ind = dt_ruler.index(dts[0])
+        if start_ind >= MaxLookBack:
+            DTRuler = dt_ruler[start_ind - MaxLookBack:]
+        else:
+            DTRuler = [None] * (MaxLookBack - start_ind) + dt_ruler
+        return StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, descriptor_data
+
+
 # 时间序列运算
 # f: 该算子所属的因子, 因子对象
 # idt: 当前待计算的时点, 如果运算日期为多时点，则该值为 [时点]
@@ -130,22 +192,13 @@ class PointOperation(DerivativeFactor):
 # 如果运算时点参数为单时点, 运算ID参数为多ID, 那么x元素为array(shape=(回溯期数, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nID, ))
 # 如果运算时点参数为多时点, 运算ID参数为单ID, 那么x元素为array(shape=(回溯期数+nDT, )), 返回 array(shape=(nDate,))
 # 如果运算时点参数为多时点, 运算ID参数为多ID, 那么x元素为array(shape=(回溯期数+nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
-class TimeOperation(DerivativeFactor):
+class TimeOperation(_LookBackOperation):
     """时间序列运算"""
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
-    LookBack = List(arg_type="ArgList", label="回溯期数", order=5)  # 描述子向前回溯的时点数(不包括当前时点)
-    LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)  # 描述子的回溯模式
-    iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
-    iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
-    iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
-
-    def __QS_initArgs__(self):
-        self.LookBack = [0] * len(self._Descriptors)
-        self.LookBackMode = ["滚动窗口"] * len(self._Descriptors)
 
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        super()._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
+        super(_LookBackOperation, self)._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
         if len(self._Descriptors) > len(self.LookBack): raise __QS_Error__(
             "时间序列运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
         StartDT = dt_dict[self.Name]
@@ -189,41 +242,8 @@ class TimeOperation(DerivativeFactor):
         return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd + 1], columns=ids).loc[dts, :]
 
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
-        StdData = create_std_data(dts, ids, self.DataType)
-        StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
-        for i in range(len(self._Descriptors)):
-            iLookBack = self.LookBack[i]
-            if self.LookBackMode[i] == "滚动窗口":
-                StartIndAndLen.append((iLookBack, iLookBack + 1))
-                MaxLen = max(MaxLen, iLookBack + 1)
-            else:
-                StartIndAndLen.append((iLookBack, np.inf))
-                MaxLen = np.inf
-            MaxLookBack = max(MaxLookBack, iLookBack)
-        iStartInd = 0
-        if (self.iLookBackMode == "扩张窗口") or (self.iLookBack != 0):
-            if self.iInitData is not None:
-                iInitData = self.iInitData.loc[self.iInitData.index < dts[0], :]
-                if iInitData.shape[0] > 0:
-                    if iInitData.columns.intersection(ids).shape[0] > 0:
-                        iInitData = iInitData.loc[:, ids].values.astype(StdData.dtype)
-                    else:
-                        iInitData = np.full(shape=(iInitData.shape[0], len(ids)), dtype=StdData.dtype)
-                    iStartInd = min(self.iLookBack, iInitData.shape[0])
-                    StdData = np.r_[iInitData[-iStartInd:], StdData]
-            if self.iLookBackMode == "扩张窗口":
-                StartIndAndLen.insert(0, (iStartInd - 1, np.inf))
-                MaxLen = np.inf
-            else:
-                StartIndAndLen.insert(0, (iStartInd - 1, self.iLookBack))
-                MaxLen = max(MaxLen, self.iLookBack + 1)
-            MaxLookBack = max(MaxLookBack, self.iLookBack)
-            descriptor_data.insert(0, StdData)
-        StartInd = dt_ruler.index(dts[0])
-        if StartInd >= MaxLookBack:
-            DTRuler = dt_ruler[StartInd - MaxLookBack:]
-        else:
-            DTRuler = [None] * (MaxLookBack - StartInd) + dt_ruler
+        StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, descriptor_data = \
+            self._prepare_lookback_data(ids, dts, descriptor_data, dt_ruler)
         if (self.DTMode == '单时点') and (self.IDMode == '单ID'):
             for i, iDT in enumerate(dts):
                 iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
@@ -383,21 +403,14 @@ class SectionOperation(DerivativeFactor):
 # args: 参数, {参数名:参数值}
 # 如果运算时点参数为单时点, 那么 x 元素为 array(shape=(回溯期数, nID)), 如果输出形式为全截面返回 array(shape=(nID, )), 否则返回单个值
 # 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(回溯期数+nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
-class PanelOperation(DerivativeFactor):
+class PanelOperation(_LookBackOperation):
     """面板运算"""
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
-    LookBack = List(arg_type="ArgList", label="回溯期数", order=5)  # 描述子向前回溯的时点数(不包括当前时点)
-    LookBackMode = List(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
-    iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
-    iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
-    iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
     DescriptorSection = List(arg_type="List", label="描述子截面", order=10)
 
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
-        self.LookBack = [0] * len(self._Descriptors)
-        self.LookBackMode = ["滚动窗口"] * len(self._Descriptors)
         self.DescriptorSection = [None] * len(self._Descriptors)
 
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
@@ -465,41 +478,8 @@ class PanelOperation(DerivativeFactor):
         return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd + 1], columns=SectionIDs).loc[dts, ids]
 
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
-        StdData = create_std_data(dts, ids, self.DataType)
-        StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
-        for i, iDescriptor in enumerate(self._Descriptors):
-            iLookBack = self.LookBack[i]
-            if self.LookBackMode[i] == "滚动窗口":
-                StartIndAndLen.append((iLookBack, iLookBack + 1))
-                MaxLen = max(MaxLen, iLookBack + 1)
-            else:
-                StartIndAndLen.append((iLookBack, np.inf))
-                MaxLen = np.inf
-            MaxLookBack = max(MaxLookBack, iLookBack)
-        iStartInd = 0
-        if (self.iLookBackMode == "扩张窗口") or (self.iLookBack != 0):
-            if self.iInitData is not None:
-                iInitData = self.iInitData.loc[self.iInitData.index < dts[0], :]
-                if iInitData.shape[0] > 0:
-                    if iInitData.columns.intersection(ids).shape[0] > 0:
-                        iInitData = iInitData.loc[:, ids].values.astype(StdData.dtype)
-                    else:
-                        iInitData = np.full(shape=(iInitData.shape[0], len(ids)), dtype=StdData.dtype)
-                    iStartInd = min(self.iLookBack, iInitData.shape[0])
-                    StdData = np.r_[iInitData[-iStartInd:], StdData]
-            if self.iLookBackMode == "扩张窗口":  # 自身为扩张窗口模式
-                StartIndAndLen.insert(0, (iStartInd - 1, np.inf))
-                MaxLen = np.inf
-            else:  # 自身为滚动窗口模式
-                StartIndAndLen.insert(0, (iStartInd - 1, self.iLookBack))
-                MaxLen = max(MaxLen, self.iLookBack + 1)
-            descriptor_data.insert(0, StdData)
-            MaxLookBack = max(MaxLookBack, self.iLookBack)
-        StartInd = dt_ruler.index(dts[0])
-        if StartInd >= MaxLookBack:
-            DTRuler = dt_ruler[StartInd - MaxLookBack:]
-        else:
-            DTRuler = [None] * (MaxLookBack - StartInd) + dt_ruler
+        StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, descriptor_data = \
+            self._prepare_lookback_data(ids, dts, descriptor_data, dt_ruler)
         if self.OutputMode == '全截面':
             if self.DTMode == '单时点':
                 for i, iDT in enumerate(dts):
