@@ -5,7 +5,7 @@
 本模块提供表达式抽象和 DSL 构建器，支持：
 1. 运算符重载构建表达式
 2. AST 安全解析字符串表达式
-3. 序列化/反序列化
+3. 序列化/反序列化（通过 Serializable Mixin）
 4. 向后兼容 lambda 表达式
 """
 
@@ -14,7 +14,9 @@ from __future__ import annotations
 import ast
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Tuple, Type, Union
+
+from QuantNodes.core.serializable import Serializable, serializable
 
 
 logger = logging.getLogger(__name__)
@@ -44,7 +46,8 @@ FORBIDDEN_METHODS = {
 # 表达式基类
 # ============================================================================
 
-class Expression(ABC):
+@serializable
+class Expression(Serializable, ABC):
     """表达式基类，所有计算逻辑的抽象"""
 
     @abstractmethod
@@ -52,27 +55,9 @@ class Expression(ABC):
         """对输入数据执行表达式求值"""
         pass
 
-    def to_dict(self) -> Dict[str, Any]:
-        """序列化为字典"""
-        return {"type": self.__class__.__name__}
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Expression':
-        """从字典反序列化"""
-        expr_type = data.get("type")
-        if not expr_type:
-            raise ValueError("Missing 'type' in expression data")
-        
-        # 首先检查基类本身
-        if cls.__name__ == expr_type:
-            return cls._from_dict_impl(data)
-        
-        # 然后检查子类
-        for subclass in cls.__subclasses__():
-            if subclass.__name__ == expr_type:
-                return subclass._from_dict_impl(data)
-        
-        raise ValueError(f"Unknown expression type: {expr_type}")
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        """序列化字段"""
+        return {}
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'Expression':
@@ -85,38 +70,61 @@ class Expression(ABC):
         from QuantNodes.core.ast_parser import parse_expression
         return parse_expression(expr_str)
 
-    # ========================================================================
-    # 序列化优化 - 多种序列化方案
-    # ========================================================================
+    def serialize(self) -> Dict[str, Any]:
+        """序列化为字典"""
+        return {
+            "type": self.__class__.__name__,
+            **self._get_serializable_fields(),
+        }
 
-    def to_dict(self) -> Dict[str, Any]:
-        """序列化为字典 - 最通用的格式"""
-        return {"type": self.__class__.__name__}
+    @classmethod
+    def deserialize(cls, data: Union[str, Dict, bytes]) -> 'Expression':
+        """从字典、JSON 字符串或压缩字节反序列化"""
+        if isinstance(data, bytes):
+            import zlib
+            if len(data) >= 2 and data[0:2] == b'x\x9c':
+                try:
+                    data = zlib.decompress(data)
+                except Exception:
+                    pass
+
+            if isinstance(data, bytes):
+                if data and 0x80 <= data[0] <= 0x8f:
+                    try:
+                        import msgpack
+                        data = msgpack.unpackb(data, raw=False)
+                    except Exception:
+                        data = data.decode('utf-8')
+                else:
+                    data = data.decode('utf-8')
+
+        if isinstance(data, str):
+            import json
+            data = json.loads(data)
+
+        type_name = data.get("type")
+        if not type_name:
+            raise ValueError("Missing 'type' in expression data")
+
+        target = _EXPRESSION_REGISTRY.get(type_name)
+        if target:
+            return target._from_dict_impl(data)
+
+        raise ValueError(f"Unknown expression type: {type_name}")
 
     def to_json(self, compress: bool = False, **kwargs) -> str:
-        """
-        序列化为 JSON 字符串
-
-        Args:
-            compress: 是否压缩（去掉空格）
-            **kwargs: 传递给 json.dumps 的参数
-        """
+        """序列化为 JSON 字符串"""
         import json
         indent = None if compress else kwargs.get('indent', 2)
         kwargs.pop('indent', None)
-        return json.dumps(self.to_dict(), indent=indent, **kwargs)
+        return json.dumps(self.serialize(), indent=indent, **kwargs)
 
     def to_pickle(self, protocol: int = None) -> bytes:
-        """
-        序列化为 pickle 字节流 - 性能最好，但有安全风险
-
-        警告：仅在可信环境下使用！
-        """
+        """序列化为 pickle 字节流"""
         import pickle
         import warnings
         warnings.warn(
-            "Pickle 序列化存在安全风险，仅在可信环境下使用。"
-            "建议优先使用 to_json() 或 to_dict()",
+            "Pickle 序列化存在安全风险，仅在可信环境下使用。",
             UserWarning,
             stacklevel=2
         )
@@ -127,15 +135,52 @@ class Expression(ABC):
         """从 JSON 字符串反序列化"""
         import json
         data = json.loads(json_str)
-        return cls.from_dict(data)
+        return cls.deserialize(data)
+
+    # =========================================================================
+    # 便捷序列化方法
+    # =========================================================================
+
+    def to_bytes(self) -> bytes:
+        """JSON 序列化（字节形式）"""
+        from QuantNodes.core.serialization import serialize_json_bytes
+        return serialize_json_bytes(self)
+
+    def to_compact(self) -> bytes:
+        """紧凑序列化（JSON+zlib 压缩）"""
+        from QuantNodes.core.serialization import serialize_compact
+        return serialize_compact(self)
+
+    def to_msgpack(self) -> bytes:
+        """msgpack 序列化"""
+        from QuantNodes.core.serialization import serialize_msgpack
+        return serialize_msgpack(self)
+
+    def to_proto(self) -> bytes:
+        """Protobuf 序列化"""
+        from QuantNodes.core.serialization import serialize_proto
+        return serialize_proto(self)
+
+    @classmethod
+    def from_proto(cls, data: bytes) -> 'Expression':
+        """Protobuf 反序列化"""
+        from QuantNodes.core.serialization import deserialize_proto
+        return deserialize_proto(data)
+
+    def to_encrypted(self, key: Union[str, bytes]) -> bytes:
+        """加密序列化"""
+        from QuantNodes.core.serialization import serialize_encrypted
+        return serialize_encrypted(self, key)
+
+    @classmethod
+    def from_encrypted(cls, data: bytes, key: Union[str, bytes]) -> 'Expression':
+        """加密反序列化"""
+        from QuantNodes.core.serialization import deserialize_encrypted
+        return deserialize_encrypted(data, key)
 
     @classmethod
     def from_pickle(cls, data: bytes) -> 'Expression':
-        """
-        从 pickle 字节流反序列化
-
-        警告：仅反序列化可信来源的数据！
-        """
+        """从 pickle 字节流反序列化"""
         import pickle
         import warnings
         warnings.warn(
@@ -272,8 +317,8 @@ class InputExpr(Expression):
     def evaluate(self, input_data: Any) -> Any:
         return input_data
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {"type": "InputExpr"}
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {}
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'InputExpr':
@@ -292,8 +337,8 @@ class ConstantExpr(Expression):
     def evaluate(self, input_data: Any) -> Any:
         return self.value
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {"type": "ConstantExpr", "value": self.value}
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {"value": self.value}
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'ConstantExpr':
@@ -314,8 +359,8 @@ class VariableExpr(Expression):
             return input_data[self.name]
         return getattr(input_data, self.name)
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {"type": "VariableExpr", "name": self.name}
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        return {"name": self.name}
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'VariableExpr':
@@ -336,17 +381,16 @@ class AttributeExpr(Expression):
         obj = self.expr.evaluate(input_data)
         return getattr(obj, self.attr)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "type": "AttributeExpr",
-            "expr": self.expr.to_dict(),
+            "expr": self.expr.serialize(),
             "attr": self.attr,
         }
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'AttributeExpr':
         return AttributeExpr(
-            Expression.from_dict(data["expr"]),
+            Expression.deserialize(data["expr"]),
             data["attr"],
         )
 
@@ -366,18 +410,17 @@ class SubscriptExpr(Expression):
         key_val = self.key.evaluate(input_data)
         return obj[key_val]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "type": "SubscriptExpr",
-            "expr": self.expr.to_dict(),
-            "key": self.key.to_dict(),
+            "expr": self.expr.serialize(),
+            "key": self.key.serialize(),
         }
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'SubscriptExpr':
         return SubscriptExpr(
-            Expression.from_dict(data["expr"]),
-            Expression.from_dict(data["key"]),
+            Expression.deserialize(data["expr"]),
+            Expression.deserialize(data["key"]),
         )
 
     def __repr__(self) -> str:
@@ -414,22 +457,21 @@ class MethodCallExpr(Expression):
         kwargs_val = {k: v.evaluate(input_data) for k, v in self.kwargs.items()}
         return func(*args_val, **kwargs_val)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "type": "MethodCallExpr",
-            "expr": self.expr.to_dict(),
+            "expr": self.expr.serialize(),
             "method": self.method,
-            "args": [a.to_dict() for a in self.args],
-            "kwargs": {k: v.to_dict() for k, v in self.kwargs.items()},
+            "args": [a.serialize() for a in self.args],
+            "kwargs": {k: v.serialize() for k, v in self.kwargs.items()},
         }
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'MethodCallExpr':
         return MethodCallExpr(
-            Expression.from_dict(data["expr"]),
+            Expression.deserialize(data["expr"]),
             data["method"],
-            tuple(Expression.from_dict(a) for a in data["args"]),
-            {k: Expression.from_dict(v) for k, v in data["kwargs"].items()},
+            tuple(Expression.deserialize(a) for a in data["args"]),
+            {k: Expression.deserialize(v) for k, v in data["kwargs"].items()},
         )
 
     def __repr__(self) -> str:
@@ -468,20 +510,19 @@ class BinaryOpExpr(Expression):
         right_val = self.right.evaluate(input_data)
         return self._OP_MAP[self.op](left_val, right_val)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "type": "BinaryOpExpr",
-            "left": self.left.to_dict(),
+            "left": self.left.serialize(),
             "op": self.op,
-            "right": self.right.to_dict(),
+            "right": self.right.serialize(),
         }
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'BinaryOpExpr':
         return BinaryOpExpr(
-            Expression.from_dict(data["left"]),
+            Expression.deserialize(data["left"]),
             data["op"],
-            Expression.from_dict(data["right"]),
+            Expression.deserialize(data["right"]),
         )
 
     def __repr__(self) -> str:
@@ -507,18 +548,17 @@ class UnaryOpExpr(Expression):
         val = self.operand.evaluate(input_data)
         return self._OP_MAP[self.op](val)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "type": "UnaryOpExpr",
             "op": self.op,
-            "operand": self.operand.to_dict(),
+            "operand": self.operand.serialize(),
         }
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'UnaryOpExpr':
         return UnaryOpExpr(
             data["op"],
-            Expression.from_dict(data["operand"]),
+            Expression.deserialize(data["operand"]),
         )
 
     def __repr__(self) -> str:
@@ -549,20 +589,19 @@ class ComparisonExpr(Expression):
         right_val = self.right.evaluate(input_data)
         return self._OP_MAP[self.op](left_val, right_val)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "type": "ComparisonExpr",
-            "left": self.left.to_dict(),
+            "left": self.left.serialize(),
             "op": self.op,
-            "right": self.right.to_dict(),
+            "right": self.right.serialize(),
         }
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'ComparisonExpr':
         return ComparisonExpr(
-            Expression.from_dict(data["left"]),
+            Expression.deserialize(data["left"]),
             data["op"],
-            Expression.from_dict(data["right"]),
+            Expression.deserialize(data["right"]),
         )
 
     def __repr__(self) -> str:
@@ -588,18 +627,17 @@ class LogicalOpExpr(Expression):
         vals = tuple(op.evaluate(input_data) for op in self.operands)
         return self._OP_MAP[self.op](*vals)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "type": "LogicalOpExpr",
             "op": self.op,
-            "operands": [op.to_dict() for op in self.operands],
+            "operands": [op.serialize() for op in self.operands],
         }
 
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'LogicalOpExpr':
         return LogicalOpExpr(
             data["op"],
-            *(Expression.from_dict(op) for op in data["operands"]),
+            *(Expression.deserialize(op) for op in data["operands"]),
         )
 
     def __repr__(self) -> str:
@@ -607,10 +645,6 @@ class LogicalOpExpr(Expression):
             return f"~{self.operands[0]}"
         return f"({(' ' + self.op + ' ').join(repr(op) for op in self.operands)})"
 
-
-# ============================================================================
-# Lambda 表达式（向后兼容）
-# ============================================================================
 
 class LambdaExpression(Expression):
     """包装 Callable，用于向后兼容"""
@@ -621,9 +655,8 @@ class LambdaExpression(Expression):
     def evaluate(self, input_data: Any) -> Any:
         return self.func(input_data)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def _get_serializable_fields(self) -> Dict[str, Any]:
         return {
-            "type": "LambdaExpression",
             "name": self.func.__name__ if hasattr(self.func, "__name__") else str(self.func),
         }
 
@@ -770,8 +803,8 @@ class ExpressionBuilder:
     def evaluate(self, input_data: Any) -> Any:
         return self._expr.evaluate(input_data)
 
-    def to_dict(self) -> Dict[str, Any]:
-        return self._expr.to_dict()
+    def serialize(self) -> Dict[str, Any]:
+        return self._expr.serialize()
 
     def __call__(self, input_data: Any) -> Any:
         return self._expr.evaluate(input_data)
@@ -785,29 +818,14 @@ class ExpressionBuilder:
 # 表达式类注册表 - 用于反序列化
 # ============================================================================
 
-_EXPRESSION_CLASSES = {}
+_EXPRESSION_REGISTRY: Dict[str, Type] = {}
 
 
-def _register_expression_class(cls):
+def _register_expression_class(cls: Type) -> Type:
     """注册表达式类用于反序列化"""
-    _EXPRESSION_CLASSES[cls.__name__] = cls
+    _EXPRESSION_REGISTRY[cls.__name__] = cls
     return cls
 
-
-def _from_dict_redirect(data: Dict[str, Any]) -> Expression:
-    """从字典反序列化表达式的实际实现"""
-    expr_type = data.get("type")
-    if not expr_type:
-        raise ValueError("Missing 'type' in expression data")
-    
-    cls = _EXPRESSION_CLASSES.get(expr_type)
-    if cls is None:
-        raise ValueError(f"Unknown expression type: {expr_type}")
-    
-    return cls._from_dict_impl(data)
-
-
-Expression.from_dict = staticmethod(_from_dict_redirect)
 
 # 注册所有表达式类
 _register_expression_class(InputExpr)
@@ -821,39 +839,3 @@ _register_expression_class(UnaryOpExpr)
 _register_expression_class(ComparisonExpr)
 _register_expression_class(LogicalOpExpr)
 _register_expression_class(LambdaExpression)
-
-
-# ============================================================================
-# 初始化序列化方法
-# ============================================================================
-
-def _init_serialization():
-    """将序列化方法添加到 Expression 类"""
-    from QuantNodes.core.serialization import (
-        serialize_json, serialize_json_bytes, serialize_compact,
-        serialize_msgpack, serialize_pickle, serialize_proto,
-        serialize_encrypted,
-        deserialize_json, deserialize_compact, deserialize_msgpack,
-        deserialize_pickle, deserialize_proto, deserialize_encrypted,
-        deserialize_auto,
-    )
-
-    Expression.to_json = serialize_json
-    Expression.to_bytes = serialize_json_bytes
-    Expression.to_compact = serialize_compact
-    Expression.to_msgpack = serialize_msgpack
-    Expression.to_pickle = serialize_pickle
-    Expression.to_proto = serialize_proto
-    Expression.to_encrypted = serialize_encrypted
-
-    Expression.from_json = staticmethod(deserialize_json)
-    Expression.from_compact = staticmethod(deserialize_compact)
-    Expression.from_msgpack = staticmethod(deserialize_msgpack)
-    Expression.from_pickle = staticmethod(deserialize_pickle)
-    Expression.from_proto = staticmethod(deserialize_proto)
-    Expression.from_encrypted = staticmethod(deserialize_encrypted)
-    Expression.deserialize = staticmethod(deserialize_auto)
-
-
-_init_serialization()
-del _init_serialization

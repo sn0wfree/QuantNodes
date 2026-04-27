@@ -17,7 +17,6 @@ from QuantNodes.core.node import (
     NodeStats,
     NodeExecutionError,
     SerializationError,
-    register_node,
 )
 from QuantNodes.core.pipeline import (
     Pipeline,
@@ -46,6 +45,7 @@ from QuantNodes.core.serialization import (
     deserialize_node_encrypted,
     deserialize_node_auto,
 )
+from QuantNodes.core.serializable import serializable, Serializable
 
 __all__ = [
     # base
@@ -65,7 +65,6 @@ __all__ = [
     'NodeStats',
     'NodeExecutionError',
     'SerializationError',
-    'register_node',
 
     # pipeline
     'Pipeline',
@@ -95,4 +94,8 @@ __all__ = [
     'deserialize_node_msgpack',
     'deserialize_node_encrypted',
     'deserialize_node_auto',
+
+    # serializable
+    'serializable',
+    'Serializable',
 ]

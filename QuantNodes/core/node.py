@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import uuid
 import logging
-import warnings
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional, TypeVar, Generic, Callable, List, Type
+from typing import Any, Dict, Optional, TypeVar, Generic, Type
 
-from QuantNodes.core.base import QuantNodesBase, QuantNodesError, ValidationError
+from QuantNodes.core.base import QuantNodesBase, QuantNodesError
+from QuantNodes.core.serializable import Serializable, serializable
 
 
 T = TypeVar('T')  # 输入类型
@@ -115,7 +115,8 @@ class SerializationError(QuantNodesError):
     code = "SERIALIZATION_ERROR"
 
 
-class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
+@serializable
+class BaseNode(QuantNodesBase, Serializable, ABC, Generic[T, R]):
     """
     所有节点的统一基类
 
@@ -141,7 +142,6 @@ class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
         _enable_hooks: 是否启用钩子函数
     """
 
-    # 子类可覆盖的配置开关
     _enable_validation: bool = True
     _enable_stats: bool = True
     _enable_cache: bool = False
@@ -187,6 +187,17 @@ class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
         """
         pass
 
+    def _get_serializable_fields(self) -> Dict[str, Any]:
+        """
+        子类实现：返回需要序列化的额外字段
+
+        默认实现返回空字典。复合节点需要重写此方法。
+
+        Returns:
+            额外序列化字段字典
+        """
+        return {}
+
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'BaseNode':
         """
@@ -202,78 +213,6 @@ class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
             重建的节点实例
         """
         return cls(name=data.get("name"), config=data.get("config", {}))
-
-    # =========================================================================
-    # 序列化接口（用于保存/重建）
-    # =========================================================================
-
-    def serialize(self) -> Dict[str, Any]:
-        """
-        序列化节点配置（不含运行时数据）
-
-        用于保存到文件/数据库/传输，以及重建节点。
-        不包含运行时数据如 node_id, state, stats 等。
-
-        Returns:
-            包含节点配置的字典
-        """
-        result = {
-            "type": self.__class__.__name__,
-            "name": self.name,
-            "config": self._filter_config(self.config),
-            "_schema_version": "1.0",
-        }
-        result.update(self._get_serializable_fields())
-        return result
-
-    def _filter_config(self, config: Dict) -> Dict:
-        """
-        过滤配置字典中的不可序列化项
-
-        子类可重写以排除特定的配置项。
-        """
-        return config.copy() if config else {}
-
-    def _get_serializable_fields(self) -> Dict[str, Any]:
-        """
-        子类扩展：返回需要序列化的额外字段
-
-        默认实现返回空字典。复合节点需要重写此方法
-        以包含子节点等额外字段。
-
-        Returns:
-            额外序列化字段字典
-        """
-        return {}
-
-    @classmethod
-    def deserialize(cls, data: Dict[str, Any]) -> 'BaseNode':
-        """
-        从字典反序列化重建节点
-
-        Args:
-            data: 序列化字典
-
-        Returns:
-            重建的节点实例
-
-        Raises:
-            ValueError: 未知节点类型或数据格式错误
-        """
-        schema_version = data.get("_schema_version", "0.0")
-
-        node_type = data.get("type")
-        if not node_type:
-            raise ValueError("Missing 'type' in serialized data")
-
-        node_cls = _NODE_CLASSES.get(node_type)
-        if not node_cls:
-            raise ValueError(
-                f"Unknown node type: {node_type}. "
-                f"Available types: {list(_NODE_CLASSES.keys())}"
-            )
-
-        return node_cls._from_dict_impl(data)
 
     # =========================================================================
     # 信息导出接口（用于监控/调试）
@@ -297,24 +236,6 @@ class BaseNode(QuantNodesBase, ABC, Generic[T, R]):
             'config': self.config,
             'stats': self.stats.to_dict() if self.stats else None,
         }
-
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        导出节点信息（兼容性方法）
-
-        警告：此方法用于监控/调试目的。
-        如需序列化/重建，请使用 serialize() 方法。
-
-        Returns:
-            包含节点信息的字典
-        """
-        warnings.warn(
-            "to_dict() is for monitoring/debugging. "
-            "Use serialize() for serialization.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        return self.to_info()
 
     def execute(self, input_data: T = None, *, validate_input: bool = None, **kwargs) -> R:
         """

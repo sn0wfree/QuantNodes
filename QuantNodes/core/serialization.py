@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import zlib
 import warnings
-from typing import Any, Dict, Union, Optional
+from typing import Union, Optional
 
 from QuantNodes.core.expression import Expression
 
@@ -30,13 +30,13 @@ from QuantNodes.core.expression import Expression
 # 序列化方案
 # ============================================================================
 
-def serialize_json(expr: Expression, indent: Optional[int] = 2) -> str:
+def serialize_json(expr, indent: Optional[int] = 2) -> str:
     """
     JSON 序列化 - 默认方案
 
     特点：安全、可读、跨语言、零依赖
     """
-    return json.dumps(expr.to_dict(), indent=indent, ensure_ascii=False)
+    return json.dumps(expr.serialize(), indent=indent, ensure_ascii=False)
 
 
 def serialize_json_bytes(expr: Expression) -> bytes:
@@ -44,7 +44,7 @@ def serialize_json_bytes(expr: Expression) -> bytes:
     return serialize_json(expr, indent=None).encode('utf-8')
 
 
-def serialize_compact(expr: Expression, compress_level: int = 6) -> bytes:
+def serialize_compact(expr, compress_level: int = 6) -> bytes:
     """
     紧凑序列化 - 推荐用于网络传输
 
@@ -55,7 +55,7 @@ def serialize_compact(expr: Expression, compress_level: int = 6) -> bytes:
     return zlib.compress(json_bytes, level=compress_level)
 
 
-def serialize_msgpack(expr: Expression) -> bytes:
+def serialize_msgpack(expr) -> bytes:
     """
     msgpack 序列化 - 极致性能
 
@@ -68,7 +68,7 @@ def serialize_msgpack(expr: Expression) -> bytes:
         raise ImportError(
             "msgpack 未安装。请运行: pip install msgpack"
         ) from None
-    return msgpack.packb(expr.to_dict(), use_bin_type=True)
+    return msgpack.packb(expr.serialize(), use_bin_type=True)
 
 
 def serialize_pickle(expr: Expression, protocol: int = 4) -> bytes:
@@ -114,7 +114,7 @@ def deserialize_msgpack(data: bytes) -> Expression:
             "msgpack 未安装。请运行: pip install msgpack"
         ) from None
     expr_data = msgpack.unpackb(data, raw=False)
-    return Expression.from_dict(expr_data)
+    return Expression.deserialize(expr_data)
 
 
 def deserialize_pickle(data: bytes) -> Expression:
@@ -215,7 +215,7 @@ def _get_proto_descriptor():
     pass
 
 
-def serialize_proto(expr: Expression) -> bytes:
+def serialize_proto(expr) -> bytes:
     """
     Protobuf 序列化
 
@@ -227,14 +227,9 @@ def serialize_proto(expr: Expression) -> bytes:
             "protobuf 未安装。请运行: pip install protobuf"
         )
 
-    # 简单实现：使用 protobuf 的结构化 JSON 模式
-    # 完整 protobuf 实现需要生成 schema 并编译
-    import json
-    from google.protobuf import json_format
     from google.protobuf import struct_pb2
 
-    # 转换为 Struct 类型（通用 protobuf 结构）
-    data = expr.to_dict()
+    data = expr.serialize()
     struct = struct_pb2.Struct()
     struct.update(data)
     return struct.SerializeToString()
@@ -269,7 +264,7 @@ def deserialize_proto(data: bytes) -> Expression:
 
     # 修复被转成浮点数的整数
     data_dict = _fix_numbers(data_dict)
-    return Expression.from_dict(data_dict)
+    return Expression.deserialize(data_dict)
 
 
 # ============================================================================
@@ -499,7 +494,6 @@ def deserialize_node_compact(data: bytes):
     Returns:
         BaseNode 实例
     """
-    from QuantNodes.core.node import BaseNode
 
     json_bytes = zlib.decompress(data)
     return deserialize_node_json(json_bytes)

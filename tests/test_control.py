@@ -99,7 +99,7 @@ class TestIfNode:
             true_branch=MultiplyNode(2),
             false_branch=MultiplyNode(3),
         )
-        d = node.to_dict()
+        d = node.to_info()
         assert d['true_branch'] is not None
         assert d['false_branch'] is not None
 
@@ -185,7 +185,7 @@ class TestMapNode:
             group_by='date',
             max_workers=4,
         )
-        d = mapper.to_dict()
+        d = mapper.to_info()
         assert d['group_by'] == 'date'
         assert d['max_workers'] == 4
 
@@ -253,6 +253,6 @@ class TestWhileNode:
             body=AddOneNode(),
             max_iterations=5,
         )
-        d = loop.to_dict()
+        d = loop.to_info()
         assert d['max_iterations'] == 5
         assert d['body'] is not None

@@ -6,10 +6,11 @@ LambdaNode 便捷节点类
 """
 
 from typing import Any, Callable, Dict
-from QuantNodes.core.node import BaseNode, register_node, SerializationError
+from QuantNodes.core.node import BaseNode, SerializationError
+from QuantNodes.core.serializable import serializable
 
 
-@register_node
+@serializable
 class LambdaNode(BaseNode):
     """
     将函数包装为节点

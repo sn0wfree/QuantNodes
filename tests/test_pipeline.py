@@ -102,10 +102,10 @@ class TestPipeline:
         assert isinstance(p[0], MultiplyNode)
         assert isinstance(p[1], AddNode)
 
-    def test_pipeline_to_dict(self):
+    def test_pipeline_to_info(self):
         """测试管道导出"""
         p = Pipeline([MultiplyNode(2), AddNode(3)])
-        d = p.to_dict()
+        d = p.to_info()
         assert d['class'] == 'Pipeline'
         assert len(d['nodes']) == 2
 
@@ -147,10 +147,10 @@ class TestParallel:
         assert result['a'] == 20
         assert result['b'] == 13
 
-    def test_parallel_to_dict(self):
+    def test_parallel_to_info(self):
         """测试并行节点导出"""
         p = Parallel({'a': MultiplyNode(2)})
-        d = p.to_dict()
+        d = p.to_info()
         assert 'branches' in d
         assert 'a' in d['branches']
 
@@ -191,10 +191,10 @@ class TestJoin:
             j.execute("not a dict")
         assert "dict input" in str(excinfo.value)
 
-    def test_join_to_dict(self):
+    def test_join_to_info(self):
         """测试 Join 导出"""
         j = Join(lambda a, b: a + b)
-        d = j.to_dict()
+        d = j.to_info()
         assert 'join_func' in d
 
 

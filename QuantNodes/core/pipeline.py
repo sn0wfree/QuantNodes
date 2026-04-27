@@ -28,13 +28,13 @@ Pipeline 组合原语模块
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Callable, Optional, Union
-from functools import reduce
+from typing import Any, Dict, List, Callable, Optional
 
-from QuantNodes.core.node import BaseNode, NodeState, register_node, SerializationError
+from QuantNodes.core.node import BaseNode, SerializationError
+from QuantNodes.core.serializable import serializable
 
 
-@register_node
+@serializable
 class Pipeline(BaseNode):
     """
     线性管道节点
@@ -115,7 +115,7 @@ class Pipeline(BaseNode):
         return result
 
 
-@register_node
+@serializable
 class Parallel(BaseNode):
     """
     并行分叉节点
@@ -228,7 +228,7 @@ class Parallel(BaseNode):
         return result
 
 
-@register_node
+@serializable
 class Join(BaseNode):
     """
     聚合组合节点

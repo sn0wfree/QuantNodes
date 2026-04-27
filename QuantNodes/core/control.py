@@ -18,11 +18,10 @@ from __future__ import annotations
 import logging
 import pandas as pd
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
-from abc import abstractmethod
 
-from QuantNodes.core.node import BaseNode, register_node, SerializationError
-from QuantNodes.core.pipeline import Pipeline
+from QuantNodes.core.node import BaseNode, SerializationError
 from QuantNodes.core.expression import Expression, ExpressionBuilder, LambdaExpression
+from QuantNodes.core.serializable import serializable
 
 
 I = TypeVar('I')  # 分组输入类型
@@ -44,7 +43,7 @@ def _wrap_condition(
     raise TypeError(f"Unsupported condition type: {type(condition)}")
 
 
-@register_node
+@serializable
 class IfNode(BaseNode):
     """
     条件分支节点
@@ -110,7 +109,7 @@ class IfNode(BaseNode):
                 "Please use Cond() DSL or string expression instead."
             )
         result = {
-            "condition": self.condition.to_dict(),
+            "condition": self.condition.serialize(),
             "true_branch": self.true_branch.serialize(),
         }
         if self.false_branch:
@@ -120,7 +119,7 @@ class IfNode(BaseNode):
     @classmethod
     def _from_dict_impl(cls, data: Dict[str, Any]) -> 'IfNode':
         """从字典反序列化重建 IfNode"""
-        condition = Expression.from_dict(data["condition"])
+        condition = Expression.deserialize(data["condition"])
         true_branch = BaseNode.deserialize(data["true_branch"])
         false_branch = BaseNode.deserialize(data["false_branch"]) if data.get("false_branch") else None
 
@@ -136,14 +135,14 @@ class IfNode(BaseNode):
         """导出节点信息"""
         result = super().to_info()
         result['condition'] = repr(self.condition)
-        result['condition_dict'] = self.condition.to_dict()
+        result['condition_dict'] = self.condition.serialize()
         result['true_branch'] = self.true_branch.to_info()
         result['false_branch'] = self.false_branch.to_info() if self.false_branch else None
         result['last_branch_taken'] = self._last_branch_taken
         return result
 
 
-@register_node
+@serializable
 class MapNode(BaseNode, Generic[I, O]):
     """
     分组映射节点
@@ -262,7 +261,7 @@ class MapNode(BaseNode, Generic[I, O]):
         """返回需要序列化的额外字段"""
         return {
             "node": self.node.serialize(),
-            "group_by": self.group_by_expr if isinstance(self.group_by_expr, str) else self.group_by_expr.to_dict(),
+            "group_by": self.group_by_expr if isinstance(self.group_by_expr, str) else self.group_by_expr.serialize(),
             "max_workers": self.max_workers,
             "parallel": self.parallel,
         }
@@ -275,7 +274,7 @@ class MapNode(BaseNode, Generic[I, O]):
         node = BaseNode.deserialize(data["node"])
         group_by = data["group_by"]
         if isinstance(group_by, dict):
-            group_by = Expression.from_dict(group_by)
+            group_by = Expression.deserialize(group_by)
 
         return MapNode(
             node=node,
@@ -296,7 +295,7 @@ class MapNode(BaseNode, Generic[I, O]):
         return result
 
 
-@register_node
+@serializable
 class WhileNode(BaseNode):
     """
     条件循环节点
@@ -368,7 +367,7 @@ class WhileNode(BaseNode):
                 "Please use Cond() DSL or string expression instead."
             )
         return {
-            "condition": self.condition.to_dict(),
+            "condition": self.condition.serialize(),
             "body": self.body.serialize(),
             "max_iterations": self.max_iterations,
         }
@@ -378,7 +377,7 @@ class WhileNode(BaseNode):
         """从字典反序列化重建 WhileNode"""
         from QuantNodes.core.expression import Expression
 
-        condition = Expression.from_dict(data["condition"])
+        condition = Expression.deserialize(data["condition"])
         body = BaseNode.deserialize(data["body"])
 
         return WhileNode(
@@ -393,7 +392,7 @@ class WhileNode(BaseNode):
         """导出节点信息"""
         result = super().to_info()
         result['condition'] = repr(self.condition)
-        result['condition_dict'] = self.condition.to_dict()
+        result['condition_dict'] = self.condition.serialize()
         result['body'] = self.body.to_info()
         result['max_iterations'] = self.max_iterations
         result['last_iteration_count'] = self._iteration_count

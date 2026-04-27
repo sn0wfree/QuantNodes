@@ -171,7 +171,7 @@ class TestIfNodeWithExpression:
             condition=Cond('value') > 10,
             true_branch=MultiplyNode(2),
         )
-        d = node.to_dict()
+        d = node.to_info()
         assert 'condition' in d
         assert 'condition_dict' in d
         assert '(Cond' in d['condition'] or 'VariableExpr' in d['condition_dict']['type']
@@ -206,10 +206,10 @@ class TestWhileNodeWithExpression:
 class TestSerialization:
     """测试表达式序列化"""
 
-    def test_to_dict_basic(self):
-        """测试基础表达式 to_dict"""
+    def test_serialize_basic(self):
+        """测试基础表达式序列化"""
         expr = Cond('a') > 5
-        d = expr.to_dict()
+        d = expr.serialize()
         assert d['type'] == 'ComparisonExpr'
         assert d['op'] == '>'
 
@@ -217,9 +217,9 @@ class TestSerialization:
         """测试常量表达式序列化"""
         from QuantNodes.core.expression import ConstantExpr
         expr = ConstantExpr(42)
-        d = expr.to_dict()
+        d = expr.serialize()
         assert d['value'] == 42
-        restored = ConstantExpr.from_dict(d)
+        restored = ConstantExpr.deserialize(d)
         assert restored.evaluate(None) == 42
 
 

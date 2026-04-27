@@ -106,12 +106,12 @@ class TestBaseNode:
         assert node._last_error is None
         assert node.stats.execute_count == 0
 
-    def test_to_dict(self):
-        """测试导出字典"""
+    def test_to_info(self):
+        """测试导出运行时信息"""
         node = TestNode(name="export_test")
         node.execute(5)
 
-        d = node.to_dict()
+        d = node.to_info()
         assert d['name'] == "export_test"
         assert d['class'] == "TestNode"
         assert d['state'] == "success"
