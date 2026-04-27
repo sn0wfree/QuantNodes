@@ -70,6 +70,13 @@ class PointOperation(DerivativeFactor):
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
 
+    _DT_ID_DISPATCH = {
+        ("多时点", "多ID"): "_calcData_multi_time_multi_id",
+        ("单时点", "单ID"): "_calcData_single_time_single_id",
+        ("多时点", "单ID"): "_calcData_multi_time_single_id",
+        ("单时点", "多ID"): "_calcData_single_time_multi_id",
+    }
+
     def readData(self, ids, dts, **kwargs):
         StdData = self._calcData(ids=ids, dts=dts,
                                  descriptor_data=[iDescriptor.readData(ids=ids, dts=dts, **kwargs).values for
@@ -82,23 +89,34 @@ class PointOperation(DerivativeFactor):
             iDescriptor._QS_initOperation(dt_dict[self.Name], dt_dict, prepare_ids, id_dict)
 
     def _calcData(self, ids, dts, descriptor_data):
-        if (self.DTMode == '多时点') and (self.IDMode == '多ID'):
-            StdData = self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
-        else:
-            StdData = create_std_data(dts, ids, self.DataType)
-            if (self.DTMode == '单时点') and (self.IDMode == '单ID'):
-                for i, iDT in enumerate(dts):
-                    for j, jID in enumerate(ids):
-                        StdData[i, j] = self.Operator(self, iDT, jID, [iData[i, j] for iData in descriptor_data],
-                                                      self.ModelArgs)
-            elif (self.DTMode == '多时点') and (self.IDMode == '单ID'):
-                for j, jID in enumerate(ids):
-                    StdData[:, j] = self.Operator(self, dts, jID, [iData[:, j] for iData in descriptor_data],
-                                                  self.ModelArgs)
-            elif (self.DTMode == '单时点') and (self.IDMode == '多ID'):
-                for i, iDT in enumerate(dts):
-                    StdData[i, :] = self.Operator(self, iDT, ids, [iData[i, :] for iData in descriptor_data],
-                                                  self.ModelArgs)
+        handler_name = self._DT_ID_DISPATCH.get((self.DTMode, self.IDMode))
+        if handler_name:
+            return getattr(self, handler_name)(ids, dts, descriptor_data)
+        return create_std_data(dts, ids, self.DataType)
+
+    def _calcData_multi_time_multi_id(self, ids, dts, descriptor_data):
+        return self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
+
+    def _calcData_single_time_single_id(self, ids, dts, descriptor_data):
+        StdData = create_std_data(dts, ids, self.DataType)
+        for i, iDT in enumerate(dts):
+            for j, jID in enumerate(ids):
+                StdData[i, j] = self.Operator(self, iDT, jID, [iData[i, j] for iData in descriptor_data],
+                                              self.ModelArgs)
+        return StdData
+
+    def _calcData_multi_time_single_id(self, ids, dts, descriptor_data):
+        StdData = create_std_data(dts, ids, self.DataType)
+        for j, jID in enumerate(ids):
+            StdData[:, j] = self.Operator(self, dts, jID, [iData[:, j] for iData in descriptor_data],
+                                          self.ModelArgs)
+        return StdData
+
+    def _calcData_single_time_multi_id(self, ids, dts, descriptor_data):
+        StdData = create_std_data(dts, ids, self.DataType)
+        for i, iDT in enumerate(dts):
+            StdData[i, :] = self.Operator(self, iDT, ids, [iData[i, :] for iData in descriptor_data],
+                                          self.ModelArgs)
         return StdData
 
     def __QS_prepareCacheData__(self, ids=None):
@@ -197,6 +215,13 @@ class TimeOperation(_LookBackOperation):
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
 
+    _DT_ID_DISPATCH = {
+        ("单时点", "单ID"): "_calcData_single_time_single_id",
+        ("单时点", "多ID"): "_calcData_single_time_multi_id",
+        ("多时点", "单ID"): "_calcData_multi_time_single_id",
+        ("多时点", "多ID"): "_calcData_multi_time_multi_id",
+    }
+
     def _QS_initOperation(self, start_dt, dt_dict, prepare_ids, id_dict):
         super(_LookBackOperation, self)._QS_initOperation(start_dt, dt_dict, prepare_ids, id_dict)
         if len(self._Descriptors) > len(self.LookBack): raise __QS_Error__(
@@ -244,31 +269,41 @@ class TimeOperation(_LookBackOperation):
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
         StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, descriptor_data = \
             self._prepare_lookback_data(ids, dts, descriptor_data, dt_ruler)
-        if (self.DTMode == '单时点') and (self.IDMode == '单ID'):
-            for i, iDT in enumerate(dts):
-                iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
-                for j, jID in enumerate(ids):
-                    x = []
-                    for k, kDescriptorData in enumerate(descriptor_data):
-                        kStartInd, kLen = StartIndAndLen[k]
-                        x.append(kDescriptorData[max(0, kStartInd + 1 + i - kLen):kStartInd + 1 + i, j])
-                    StdData[iStartInd + i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
-        elif (self.DTMode == '单时点') and (self.IDMode == '多ID'):
-            for i, iDT in enumerate(dts):
-                iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
+        handler_name = self._DT_ID_DISPATCH.get((self.DTMode, self.IDMode))
+        if handler_name:
+            return getattr(self, handler_name)(StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data)
+        return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
+
+    def _calcData_single_time_single_id(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+        for i, iDT in enumerate(dts):
+            iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
+            for j, jID in enumerate(ids):
                 x = []
                 for k, kDescriptorData in enumerate(descriptor_data):
                     kStartInd, kLen = StartIndAndLen[k]
-                    x.append(kDescriptorData[max(0, kStartInd + 1 + i - kLen):kStartInd + 1 + i])
-                StdData[iStartInd + i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
-        elif (self.DTMode == '多时点') and (self.IDMode == '单ID'):
-            for j, jID in enumerate(ids):
-                StdData[iStartInd:, j] = self.Operator(self, DTRuler, jID,
-                                                       [kDescriptorData[:, j] for kDescriptorData in descriptor_data],
-                                                       self.ModelArgs)
-        else:
-            return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
+                    x.append(kDescriptorData[max(0, kStartInd + 1 + i - kLen):kStartInd + 1 + i, j])
+                StdData[iStartInd + i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
         return StdData[iStartInd:, :]
+
+    def _calcData_single_time_multi_id(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+        for i, iDT in enumerate(dts):
+            iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
+            x = []
+            for k, kDescriptorData in enumerate(descriptor_data):
+                kStartInd, kLen = StartIndAndLen[k]
+                x.append(kDescriptorData[max(0, kStartInd + 1 + i - kLen):kStartInd + 1 + i])
+            StdData[iStartInd + i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
+        return StdData[iStartInd:, :]
+
+    def _calcData_multi_time_single_id(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+        for j, jID in enumerate(ids):
+            StdData[iStartInd:, j] = self.Operator(self, DTRuler, jID,
+                                                   [kDescriptorData[:, j] for kDescriptorData in descriptor_data],
+                                                   self.ModelArgs)
+        return StdData[iStartInd:, :]
+
+    def _calcData_multi_time_multi_id(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+        return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
 
     def __QS_prepareCacheData__(self, ids=None):
         PID = self._OperationMode._iPID
@@ -310,6 +345,13 @@ class SectionOperation(DerivativeFactor):
     OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
     DescriptorSection = List(arg_type="List", label="描述子截面", order=5)
 
+    _OUTPUT_DT_DISPATCH = {
+        ("全截面", "单时点"): "_calcData_full_section_single_time",
+        ("全截面", "多时点"): "_calcData_full_section_multi_time",
+        ("单ID", "单时点"): "_calcData_single_id_single_time",
+        ("单ID", "多时点"): "_calcData_single_id_multi_time",
+    }
+
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
         self.DescriptorSection = [None] * len(self._Descriptors)
@@ -345,23 +387,31 @@ class SectionOperation(DerivativeFactor):
 
     def _calcData(self, ids, dts, descriptor_data):
         StdData = create_std_data(dts, ids, self.DataType)
-        if self.OutputMode == "全截面":
-            if self.DTMode == "单时点":
-                for i, iDT in enumerate(dts):
-                    StdData[i, :] = self.Operator(self, iDT, ids,
-                                                  [kDescriptorData[i] for kDescriptorData in descriptor_data],
-                                                  self.ModelArgs)
-            else:
-                StdData = self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
-        else:
-            if self.DTMode == "单时点":
-                for i, iDT in enumerate(dts):
-                    x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
-                    for j, jID in enumerate(ids):
-                        StdData[i, j] = self.Operator(self, iDT, jID, x, self.ModelArgs)
-            else:
-                for j, jID in enumerate(ids):
-                    StdData[:, j] = self.Operator(self, dts, jID, descriptor_data, self.ModelArgs)
+        handler_name = self._OUTPUT_DT_DISPATCH.get((self.OutputMode, self.DTMode))
+        if handler_name:
+            return getattr(self, handler_name)(StdData, ids, dts, descriptor_data)
+        return StdData
+
+    def _calcData_full_section_single_time(self, StdData, ids, dts, descriptor_data):
+        for i, iDT in enumerate(dts):
+            StdData[i, :] = self.Operator(self, iDT, ids,
+                                          [kDescriptorData[i] for kDescriptorData in descriptor_data],
+                                          self.ModelArgs)
+        return StdData
+
+    def _calcData_full_section_multi_time(self, StdData, ids, dts, descriptor_data):
+        return self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
+
+    def _calcData_single_id_single_time(self, StdData, ids, dts, descriptor_data):
+        for i, iDT in enumerate(dts):
+            x = [kDescriptorData[i] for kDescriptorData in descriptor_data]
+            for j, jID in enumerate(ids):
+                StdData[i, j] = self.Operator(self, iDT, jID, x, self.ModelArgs)
+        return StdData
+
+    def _calcData_single_id_multi_time(self, StdData, ids, dts, descriptor_data):
+        for j, jID in enumerate(ids):
+            StdData[:, j] = self.Operator(self, dts, jID, descriptor_data, self.ModelArgs)
         return StdData
 
     def __QS_prepareCacheData__(self, ids=None):
@@ -408,6 +458,13 @@ class PanelOperation(_LookBackOperation):
     DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
     OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
     DescriptorSection = List(arg_type="List", label="描述子截面", order=10)
+
+    _OUTPUT_DT_DISPATCH = {
+        ("全截面", "单时点"): "_calcData_full_section_single_time",
+        ("全截面", "多时点"): "_calcData_full_section_multi_time",
+        ("单ID", "单时点"): "_calcData_single_id_single_time",
+        ("单ID", "多时点"): "_calcData_single_id_multi_time",
+    }
 
     def __QS_initArgs__(self):
         super().__QS_initArgs__()
@@ -480,30 +537,38 @@ class PanelOperation(_LookBackOperation):
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
         StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, descriptor_data = \
             self._prepare_lookback_data(ids, dts, descriptor_data, dt_ruler)
-        if self.OutputMode == '全截面':
-            if self.DTMode == '单时点':
-                for i, iDT in enumerate(dts):
-                    iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
-                    x = []
-                    for k, kDescriptorData in enumerate(descriptor_data):
-                        kStartInd, kLen = StartIndAndLen[k]
-                        x.append(kDescriptorData[max(0, kStartInd + 1 + i - kLen):kStartInd + 1 + i])
-                    StdData[iStartInd + i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
-            else:
-                return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
-        else:
-            if self.DTMode == '单时点':
-                for i, iDT in enumerate(dts):
-                    iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
-                    x = []
-                    for k, kDescriptorData in enumerate(descriptor_data):
-                        kStartInd, kLen = StartIndAndLen[k]
-                        x.append(kDescriptorData[max(0, kStartInd + 1 + i - kLen):kStartInd + 1 + i])
-                    for j, jID in enumerate(ids):
-                        StdData[iStartInd + i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
-            else:
-                for j, jID in enumerate(ids):
-                    StdData[iStartInd:, j] = self.Operator(self, DTRuler, jID, descriptor_data, self.ModelArgs)
+        handler_name = self._OUTPUT_DT_DISPATCH.get((self.OutputMode, self.DTMode))
+        if handler_name:
+            return getattr(self, handler_name)(StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data)
+        return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
+
+    def _calcData_full_section_single_time(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+        for i, iDT in enumerate(dts):
+            iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
+            x = []
+            for k, kDescriptorData in enumerate(descriptor_data):
+                kStartInd, kLen = StartIndAndLen[k]
+                x.append(kDescriptorData[max(0, kStartInd + 1 + i - kLen):kStartInd + 1 + i])
+            StdData[iStartInd + i, :] = self.Operator(self, iDTs, ids, x, self.ModelArgs)
+        return StdData[iStartInd:, :]
+
+    def _calcData_full_section_multi_time(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+        return self.Operator(self, DTRuler, ids, descriptor_data, self.ModelArgs)
+
+    def _calcData_single_id_single_time(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+        for i, iDT in enumerate(dts):
+            iDTs = DTRuler[max(0, MaxLookBack + i + 1 - MaxLen):i + 1 + MaxLookBack]
+            x = []
+            for k, kDescriptorData in enumerate(descriptor_data):
+                kStartInd, kLen = StartIndAndLen[k]
+                x.append(kDescriptorData[max(0, kStartInd + 1 + i - kLen):kStartInd + 1 + i])
+            for j, jID in enumerate(ids):
+                StdData[iStartInd + i, j] = self.Operator(self, iDTs, jID, x, self.ModelArgs)
+        return StdData[iStartInd:, :]
+
+    def _calcData_single_id_multi_time(self, StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, ids, dts, descriptor_data):
+        for j, jID in enumerate(ids):
+            StdData[iStartInd:, j] = self.Operator(self, DTRuler, jID, descriptor_data, self.ModelArgs)
         return StdData[iStartInd:, :]
 
     def __QS_prepareCacheData__(self, ids=None):
