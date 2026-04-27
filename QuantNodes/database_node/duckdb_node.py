@@ -69,9 +69,14 @@ class DuckDBNode(BaseDBNode):
         conn.register('temp_df', df)
         if if_exists == 'replace':
             conn.execute(f"DROP TABLE IF EXISTS {table}")
-        conn.execute(f"INSERT INTO {table} SELECT * FROM temp_df"
-                     if if_exists == 'append' else
-                     f"CREATE TABLE {table} AS SELECT * FROM temp_df")
+            conn.execute(f"CREATE TABLE {table} AS SELECT * FROM temp_df")
+        elif if_exists == 'append':
+            try:
+                conn.execute(f"INSERT INTO {table} SELECT * FROM temp_df")
+            except Exception:
+                conn.execute(f"CREATE TABLE {table} AS SELECT * FROM temp_df")
+        else:
+            conn.execute(f"INSERT INTO {table} SELECT * FROM temp_df")
         conn.unregister('temp_df')
         return len(df)
 
