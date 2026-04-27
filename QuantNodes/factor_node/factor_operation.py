@@ -9,7 +9,14 @@ from traits.api import Function, Dict, Enum, List, Int, Instance
 
 from QuantNodes.core.base import FactorError as __QS_Error__
 from QuantNodes.core.factor_base import Factor
-from QuantNodes.core.tools import partition_list as partitionList, partition_list_moving_sampling as partitionListMovingSampling
+from QuantNodes.core.cache_utils import (
+    create_std_data,
+    create_empty_dataframe,
+    partition_ids_for_pid,
+    write_cache_file,
+    write_cache_files_for_all_pids,
+)
+from QuantNodes.core.tools import partition_list as partitionList
 
 
 def _DefaultOperator(f, idt, iid, x, args):
@@ -78,10 +85,7 @@ class PointOperation(DerivativeFactor):
         if (self.DTMode == '多时点') and (self.IDMode == '多ID'):
             StdData = self.Operator(self, dts, ids, descriptor_data, self.ModelArgs)
         else:
-            if self.DataType == 'double':
-                StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
-            else:
-                StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
+            StdData = create_std_data(dts, ids, self.DataType)
             if (self.DTMode == '单时点') and (self.IDMode == '单ID'):
                 for i, iDT in enumerate(dts):
                     for j, jID in enumerate(ids):
@@ -103,24 +107,15 @@ class PointOperation(DerivativeFactor):
         EndDT = self._OperationMode.DateTimes[-1]
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
         DTs = list(self._OperationMode.DTRuler[StartInd:EndInd + 1])
-        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
-        if IDs is None:
-            IDs = list(self._OperationMode._PID_IDs[PID])
-        else:
-
-            IDs = partitionListMovingSampling(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
+        IDs = partition_ids_for_pid(self._OperationMode, self._OperationMode._FactorPrepareIDs[self.Name], PID)
         if IDs:
             StdData = self._calcData(ids=IDs, dts=DTs,
                                      descriptor_data=[iDescriptor._QS_getData(DTs, pids=[PID]).values for iDescriptor in
                                                       self._Descriptors])
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
-            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType == "double" else "O"))
-        with self._OperationMode._PID_Lock[PID]:
-            with shelve.open(self._OperationMode._CacheDataDir + os.sep + PID + os.sep + self.Name + str(
-                    self._OperationMode._FactorID[self.Name])) as CacheFile:
-                CacheFile["StdData"] = StdData
-                CacheFile["_QS_IDs"] = IDs
+            StdData = create_empty_dataframe(DTs, [], self.DataType)
+        write_cache_file(self._OperationMode, PID, self.Name, self._OperationMode._FactorID[self.Name], StdData, IDs)
         self._isCacheDataOK = True
         return StdData
 
@@ -194,10 +189,7 @@ class TimeOperation(DerivativeFactor):
         return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd + 1], columns=ids).loc[dts, :]
 
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
-        if self.DataType == 'double':
-            StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
-        else:
-            StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
+        StdData = create_std_data(dts, ids, self.DataType)
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
         for i in range(len(self._Descriptors)):
             iLookBack = self.LookBack[i]
@@ -264,12 +256,7 @@ class TimeOperation(DerivativeFactor):
         EndDT = self._OperationMode.DateTimes[-1]
         StartInd, EndInd = self._OperationMode.DTRuler.index(StartDT), self._OperationMode.DTRuler.index(EndDT)
         DTs = list(self._OperationMode.DTRuler[StartInd:EndInd + 1])
-        IDs = self._OperationMode._FactorPrepareIDs[self.Name]
-        if IDs is None:
-            IDs = list(self._OperationMode._PID_IDs[PID])
-        else:
-
-            IDs = partitionListMovingSampling(IDs, len(self._OperationMode._PIDs))[self._OperationMode._PIDs.index(PID)]
+        IDs = partition_ids_for_pid(self._OperationMode, self._OperationMode._FactorPrepareIDs[self.Name], PID)
         if IDs:
             DescriptorData = []
             for i, iDescriptor in enumerate(self._Descriptors):
@@ -283,12 +270,8 @@ class TimeOperation(DerivativeFactor):
                                      dt_ruler=self._OperationMode.DTRuler)
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
-            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType == "double" else "O"))
-        with self._OperationMode._PID_Lock[PID]:
-            with shelve.open(self._OperationMode._CacheDataDir + os.sep + PID + os.sep + self.Name + str(
-                    self._OperationMode._FactorID[self.Name])) as CacheFile:
-                CacheFile["StdData"] = StdData
-                CacheFile["_QS_IDs"] = IDs
+            StdData = create_empty_dataframe(DTs, [], self.DataType)
+        write_cache_file(self._OperationMode, PID, self.Name, self._OperationMode._FactorID[self.Name], StdData, IDs)
         self._isCacheDataOK = True
         return StdData
 
@@ -341,10 +324,7 @@ class SectionOperation(DerivativeFactor):
             self._OperationMode._Event[self.Name] = (Queue(), Event())
 
     def _calcData(self, ids, dts, descriptor_data):
-        if self.DataType == "double":
-            StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype="float")
-        else:
-            StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype="O")
+        StdData = create_std_data(dts, ids, self.DataType)
         if self.OutputMode == "全截面":
             if self.DTMode == "单时点":
                 for i, iDT in enumerate(dts):
@@ -367,35 +347,26 @@ class SectionOperation(DerivativeFactor):
     def __QS_prepareCacheData__(self, ids=None):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
         IDs = self._OperationMode._FactorPrepareIDs[self.Name]
-        if IDs is None: IDs = list(self._OperationMode.IDs)
-        if len(DTs) == 0:  # 该进程未分配到计算任务
+        if IDs is None:
+            IDs = list(self._OperationMode.IDs)
+        if len(DTs) == 0:
             iDTs = [self._OperationMode.DateTimes[-1]]
             for i, iDescriptor in enumerate(self._Descriptors):
                 iDescriptor._QS_getData(iDTs, pids=None)
-            StdData = pd.DataFrame(columns=IDs, dtype=("float" if self.DataType == "double" else "O"))
+            StdData = create_empty_dataframe([], IDs, self.DataType, include_index=False)
         elif IDs:
             StdData = self._calcData(ids=IDs, dts=DTs,
                                      descriptor_data=[iDescriptor._QS_getData(DTs, pids=None).values for i, iDescriptor
                                                       in enumerate(self._Descriptors)])
             StdData = pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
-            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType == "double" else "O"))
-        if self._OperationMode._FactorPrepareIDs[self.Name] is None:
-            PID_IDs = self._OperationMode._PID_IDs
-        else:
-
-            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in
-                       enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
-        for iPID, iIDs in PID_IDs.items():
-            with self._OperationMode._PID_Lock[iPID]:
-                with shelve.open(self._OperationMode._CacheDataDir + os.sep + iPID + os.sep + self.Name + str(
-                        self._OperationMode._FactorID[self.Name])) as CacheFile:
-                    if "StdData" in CacheFile:
-                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.loc[:, iIDs]]).sort_index()
-                    else:
-                        CacheFile["StdData"] = StdData.loc[:, iIDs]
-                    CacheFile["_QS_IDs"] = iIDs
-        StdData = None  # 释放数据
+            StdData = create_empty_dataframe(DTs, [], self.DataType)
+        PID_IDs = self._OperationMode._PID_IDs if self._OperationMode._FactorPrepareIDs[self.Name] is None else \
+            {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in
+             enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
+        write_cache_files_for_all_pids(self._OperationMode, PID_IDs, self.Name,
+                                       self._OperationMode._FactorID[self.Name], StdData)
+        StdData = None
         if self._OperationMode.SubProcessNum > 0:
             Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
             Sub2MainQueue.put(1)
@@ -494,10 +465,7 @@ class PanelOperation(DerivativeFactor):
         return pd.DataFrame(StdData, index=DTRuler[StartInd:EndInd + 1], columns=SectionIDs).loc[dts, ids]
 
     def _calcData(self, ids, dts, descriptor_data, dt_ruler):
-        if self.DataType == 'double':
-            StdData = np.full(shape=(len(dts), len(ids)), fill_value=np.nan, dtype='float')
-        else:
-            StdData = np.full(shape=(len(dts), len(ids)), fill_value=None, dtype='O')
+        StdData = create_std_data(dts, ids, self.DataType)
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
         for i, iDescriptor in enumerate(self._Descriptors):
             iLookBack = self.LookBack[i]
@@ -561,12 +529,13 @@ class PanelOperation(DerivativeFactor):
     def __QS_prepareCacheData__(self, ids=None):
         DTs = list(self._PID_DTs[self._OperationMode._iPID])
         IDs = self._OperationMode._FactorPrepareIDs[self.Name]
-        if IDs is None: IDs = list(self._OperationMode.IDs)
-        if len(DTs) == 0:  # 该进程未分配到计算任务
+        if IDs is None:
+            IDs = list(self._OperationMode.IDs)
+        if len(DTs) == 0:
             iDTs = [self._OperationMode.DateTimes[-1]]
             for i, iDescriptor in enumerate(self._Descriptors):
                 iDescriptor._QS_getData(iDTs, pids=None)
-            StdData = pd.DataFrame(columns=IDs, dtype=("float" if self.DataType == "double" else "O"))
+            StdData = create_empty_dataframe([], IDs, self.DataType, include_index=False)
         elif IDs:
             DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
             for i, iDescriptor in enumerate(self._Descriptors):
@@ -580,23 +549,13 @@ class PanelOperation(DerivativeFactor):
                                      dt_ruler=self._OperationMode.DTRuler)
             DescriptorData, iDescriptorData, StdData = None, None, pd.DataFrame(StdData, index=DTs, columns=IDs)
         else:
-            StdData = pd.DataFrame(index=DTs, columns=IDs, dtype=("float" if self.DataType == "double" else "O"))
-        if self._OperationMode._FactorPrepareIDs[self.Name] is None:
-            PID_IDs = self._OperationMode._PID_IDs
-        else:
-
-            PID_IDs = {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in
-                       enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
-        for iPID, iIDs in PID_IDs.items():
-            with self._OperationMode._PID_Lock[iPID]:
-                with shelve.open(self._OperationMode._CacheDataDir + os.sep + iPID + os.sep + self.Name + str(
-                        self._OperationMode._FactorID[self.Name])) as CacheFile:
-                    if "StdData" in CacheFile:
-                        CacheFile["StdData"] = pd.concat([CacheFile["StdData"], StdData.loc[:, iIDs]]).sort_index()
-                    else:
-                        CacheFile["StdData"] = StdData.loc[:, iIDs]
-                    CacheFile["_QS_IDs"] = iIDs
-        StdData = None  # 释放数据
+            StdData = create_empty_dataframe(DTs, [], self.DataType)
+        PID_IDs = self._OperationMode._PID_IDs if self._OperationMode._FactorPrepareIDs[self.Name] is None else \
+            {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in
+             enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
+        write_cache_files_for_all_pids(self._OperationMode, PID_IDs, self.Name,
+                                       self._OperationMode._FactorID[self.Name], StdData)
+        StdData = None
         if self._OperationMode.SubProcessNum > 0:
             Sub2MainQueue, PIDEvent = self._OperationMode._Event[self.Name]
             Sub2MainQueue.put(1)
