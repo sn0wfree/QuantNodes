@@ -19,7 +19,7 @@ from multiprocessing import Lock, Process, Queue, cpu_count
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
-from traits.api import Enum, Instance, Int, List, ListStr, Str
+from traits.api import Enum, Instance, Int, List, Str
 
 from QuantNodes.core.quant_nodes_object import QuantNodesObject as _QN_Object
 from QuantNodes.core.base import FactorError
@@ -186,8 +186,8 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
 class _OperationMode(_QN_Object):
     """运算模式"""
     DateTimes = List(dt.datetime)
-    IDs = ListStr()
-    FactorNames = ListStr()
+    IDs = List(str)
+    FactorNames = List(str)
     SubProcessNum = Int(0)
     DTRuler = List(dt.datetime)
 
@@ -213,7 +213,7 @@ class _OperationMode(_QN_Object):
         super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
 
     def __QN_initArgs__(self):
-        self.add_trait("FactorNames", ListStr(arg_type="MultiOption", label="运算因子", order=2))
+        self.add_trait("FactorNames", List(str, arg_type="MultiOption", label="运算因子", order=2))
 
     def __getstate__(self):
         state = self.__dict__.copy()

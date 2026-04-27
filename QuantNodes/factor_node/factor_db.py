@@ -2,7 +2,11 @@
 """因子数据库
 
 包含 FactorDB（只读接口）和 WritableFactorDB（可写入接口）
+
+替代 QuantStudio.FactorDataBase.FactorDB.FactorDB
 """
+from typing import Any, Dict, List, Optional
+
 import pandas as pd
 from traits.api import Str
 
@@ -11,85 +15,226 @@ from QuantNodes.core.base import FactorError
 
 
 class FactorDB(_QN_Object):
-    """因子库（只读接口）
+    """因子库基类（只读接口）
 
     数据库由若干张因子表组成。
     不支持某个操作时，方法产生错误。
     没有相关数据时，方法返回 None。
+
+    Attributes:
+        Name: 因子库名称
     """
     Name = Str("因子库")
 
-    # ------------------------------数据源操作---------------------------------
-    def connect(self):
-        """链接到数据库"""
+    def connect(self) -> int:
+        """连接到数据库
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    def disconnect(self):
-        """断开到数据库的链接"""
+    def disconnect(self) -> int:
+        """断开数据库连接
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    def isAvailable(self):
-        """检查数据库是否可用"""
+    def isAvailable(self) -> bool:
+        """检查数据库是否可用
+
+        Returns:
+            True 表示可用
+        """
         return True
 
-    # -------------------------------表的操作---------------------------------
     @property
-    def TableNames(self):
-        """表名，返回: [表名]"""
+    def TableNames(self) -> List[str]:
+        """获取所有表名
+
+        Returns:
+            表名列表
+        """
         return []
 
-    def getTable(self, table_name, args={}):
-        """返回因子表对象"""
+    def getTable(self, table_name: str, args: Optional[Dict[str, Any]] = None) -> Optional["FactorTable"]:
+        """获取因子表对象
+
+        Args:
+            table_name: 表名
+            args: 额外参数
+
+        Returns:
+            FactorTable 对象，不存在返回 None
+        """
         return None
 
-    def getID(self):
-        """获取 ID 序列"""
+    def getID(self) -> List[str]:
+        """获取 ID 序列
+
+        Returns:
+            ID 列表
+        """
         return []
 
-    def getDateTime(self):
-        """获取时间点序列"""
+    def getDateTime(self) -> List[Any]:
+        """获取时间点序列
+
+        Returns:
+            时间点列表
+        """
         return []
 
 
 class WritableFactorDB(FactorDB):
     """可写入的因子数据库"""
 
-    # -------------------------------表的操作---------------------------------
-    def renameTable(self, old_table_name, new_table_name):
-        """重命名表。必须具体化"""
+    def renameTable(self, old_table_name: str, new_table_name: str) -> int:
+        """重命名表
+
+        Args:
+            old_table_name: 旧表名
+            new_table_name: 新表名
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    def deleteTable(self, table_name):
-        """删除表。必须具体化"""
+    def deleteTable(self, table_name: str) -> int:
+        """删除表
+
+        Args:
+            table_name: 表名
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    def setTableMetaData(self, table_name, key=None, value=None, meta_data=None):
-        """设置表的元数据。必须具体化"""
+    def setTableMetaData(
+        self,
+        table_name: str,
+        key: Optional[str] = None,
+        value: Optional[Any] = None,
+        meta_data: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """设置表的元数据
+
+        Args:
+            table_name: 表名
+            key: 元数据键
+            value: 元数据值
+            meta_data: 元数据字典
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    # --------------------------------因子操作-----------------------------------
-    def renameFactor(self, table_name, old_factor_name, new_factor_name):
-        """对一张表的因子进行重命名。必须具体化"""
+    def renameFactor(
+        self,
+        table_name: str,
+        old_factor_name: str,
+        new_factor_name: str,
+    ) -> int:
+        """重命名因子
+
+        Args:
+            table_name: 表名
+            old_factor_name: 旧因子名
+            new_factor_name: 新因子名
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    def deleteFactor(self, table_name, factor_names):
-        """删除一张表中的某些因子。必须具体化"""
+    def deleteFactor(self, table_name: str, factor_names: List[str]) -> int:
+        """删除因子
+
+        Args:
+            table_name: 表名
+            factor_names: 因子名列表
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    def setFactorMetaData(self, table_name, ifactor_name, key=None, value=None, meta_data=None):
-        """设置因子的元数据。必须具体化"""
+    def setFactorMetaData(
+        self,
+        table_name: str,
+        ifactor_name: str,
+        key: Optional[str] = None,
+        value: Optional[Any] = None,
+        meta_data: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """设置因子的元数据
+
+        Args:
+            table_name: 表名
+            ifactor_name: 因子名称
+            key: 元数据键
+            value: 元数据值
+            meta_data: 元数据字典
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    def writeData(self, data, table_name, if_exists="update", data_type={}, **kwargs):
-        """写入数据。必须具体化"""
+    def writeData(
+        self,
+        data: Any,
+        table_name: str,
+        if_exists: str = "update",
+        data_type: Optional[Dict[str, str]] = None,
+        **kwargs,
+    ) -> int:
+        """写入数据
+
+        Args:
+            data: 数据
+            table_name: 表名
+            if_exists: 如果存在 ("append", "update")
+            data_type: 数据类型字典 {因子名: 数据类型}
+            **kwargs: 其他参数
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    # -------------------------------数据变换------------------------------------
-    def offsetDateTime(self, lag, table_name, factor_names, args={}):
-        """时间平移，沿着时间轴将所有数据纵向移动 lag 期"""
+    def offsetDateTime(
+        self,
+        lag: int,
+        table_name: str,
+        factor_names: List[str],
+        args: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """时间平移
+
+        沿着时间轴将所有数据纵向移动 lag 期
+        lag > 0 向前移动，lag < 0 向后移动
+        空出来的地方填 nan
+
+        Args:
+            lag: 平移期数
+            table_name: 表名
+            factor_names: 因子名列表
+            args: 额外参数
+
+        Returns:
+            0 表示成功
+        """
         if lag == 0:
             return 0
         FT = self.getTable(table_name, args=args)
+        if FT is None:
+            return -1
         Data = FT.readData(
             factor_names=factor_names,
             ids=self.getID(),
@@ -109,9 +254,31 @@ class WritableFactorDB(FactorDB):
         self.writeData(Data, table_name, data_type=DataType)
         return 0
 
-    def changeData(self, table_name, factor_names, ids, dts, args={}):
-        """数据变换，通过某种变换函数得到新的时间序列和ID序列"""
+    def changeData(
+        self,
+        table_name: str,
+        factor_names: List[str],
+        ids: List[str],
+        dts: List[Any],
+        args: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """数据变换
+
+        通过某种变换函数得到新的时间序列和ID序列
+
+        Args:
+            table_name: 表名
+            factor_names: 因子名列表
+            ids: ID 列表
+            dts: 时间点列表
+            args: 额外参数
+
+        Returns:
+            0 表示成功
+        """
         FT = self.getTable(table_name, args=args)
+        if FT is None:
+            return -1
         Data = FT.readData(
             factor_names=factor_names, ids=ids, dts=dts, args=args
         )
@@ -122,28 +289,94 @@ class WritableFactorDB(FactorDB):
         self.writeData(Data, table_name, data_type=DataType)
         return 0
 
-    def fillNA(self, filled_value, table_name, factor_names, ids, dts, args={}):
-        """填充缺失值"""
-        Data = self.getTable(table_name).readData(
+    def fillNA(
+        self,
+        filled_value: Any,
+        table_name: str,
+        factor_names: List[str],
+        ids: List[str],
+        dts: List[Any],
+        args: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """填充缺失值
+
+        Args:
+            filled_value: 填充值
+            table_name: 表名
+            factor_names: 因子名列表
+            ids: ID 列表
+            dts: 时间点列表
+            args: 额外参数
+
+        Returns:
+            0 表示成功
+        """
+        FT = self.getTable(table_name, args=args)
+        if FT is None:
+            return -1
+        Data = FT.readData(
             factor_names=factor_names, ids=ids, dts=dts, args=args
         )
         Data.fillna(filled_value, inplace=True)
         self.writeData(Data, table_name, if_exists="update")
         return 0
 
-    def replaceData(self, old_value, new_value, table_name, factor_names, ids, dts, args={}):
-        """替换数据"""
-        Data = self.getTable(table_name).readData(
+    def replaceData(
+        self,
+        old_value: Any,
+        new_value: Any,
+        table_name: str,
+        factor_names: List[str],
+        ids: List[str],
+        dts: List[Any],
+        args: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """替换数据
+
+        Args:
+            old_value: 旧值
+            new_value: 新值
+            table_name: 表名
+            factor_names: 因子名列表
+            ids: ID 列表
+            dts: 时间点列表
+            args: 额外参数
+
+        Returns:
+            0 表示成功
+        """
+        FT = self.getTable(table_name, args=args)
+        if FT is None:
+            return -1
+        Data = FT.readData(
             factor_names=factor_names, ids=ids, dts=dts, args=args
         )
         Data = Data.where(Data != old_value, new_value)
         self.writeData(Data, table_name, if_exists="update")
         return 0
 
-    def optimizeData(self, table_name, factor_names):
-        """优化数据"""
+    def optimizeData(self, table_name: str, factor_names: List[str]) -> int:
+        """优化数据
+
+        Args:
+            table_name: 表名
+            factor_names: 因子名列表
+
+        Returns:
+            0 表示成功
+        """
         return 0
 
-    def fixData(self, table_name, factor_names):
-        """修复数据，依赖具体实现，不保证一定修复"""
+    def fixData(self, table_name: str, factor_names: List[str]) -> int:
+        """修复数据
+
+        依赖具体实现，不保证一定修复
+
+        Args:
+            table_name: 表名
+            factor_names: 因子名列表
+
+        Returns:
+            0 表示成功
+        """
         return 0
