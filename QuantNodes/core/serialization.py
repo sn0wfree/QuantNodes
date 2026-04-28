@@ -204,6 +204,19 @@ except ImportError:
     pass
 
 
+# TODO [未完成]: 动态生成表达式的 protobuf schema
+#
+# 设计思路：
+# - 当前实现：使用 struct_pb2.Struct 进行通用序列化（见 serialize_proto）
+# - 预期目标：大规模场景下生成专属 .proto 文件以提升性能
+#
+# 完整实现需要：
+# 1. 定义 Expression 的 protobuf 消息结构
+# 2. 动态生成 .proto 描述符
+# 3. 使用 protoc 编译或动态编译
+#
+# 当前状态：stub - 只有 pass，无实际功能
+# 优先级：低 - 当前实现已满足需求
 def _get_proto_descriptor():
     """
     动态生成表达式的 protobuf schema
@@ -677,7 +690,20 @@ def deserialize_node_encrypted(data: bytes, key: Union[str, bytes]):
 # ============================================================================
 # 更新序列化方法注册表
 # ============================================================================
-
+# TODO [已被取代]: 此函数已被 expression.py 中的直接实现取代
+#
+# 设计背景：
+# - 原始设计意图：通过 monkey patching 动态添加序列化方法
+# - 优点：避免 Expression 类直接导入 serialization 模块（循环依赖）
+# - 缺点：不够直观，难以维护
+#
+# 当前状态：
+# - Expression.to_proto / from_proto 已直接实现（expression.py:159-168）
+# - Expression.to_encrypted / from_encrypted 已直接实现（expression.py:170-179）
+# - 此函数不再被调用，保留作为历史参考
+#
+# 相关函数：
+# - add_serialization_methods() (line 179) - 同样的模式，同样的命运
 def _update_expression_serialization():
     """添加新增的序列化方法到 Expression"""
     Expression.to_proto = serialize_proto
