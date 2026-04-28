@@ -13,6 +13,7 @@
 import datetime as dt
 import inspect
 import json
+import warnings
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -1504,7 +1505,8 @@ def rolling_regress(f, idt, iid, x, args):
                 iRslt = sm.WLS(iY, iX, missing='drop').fit()
                 Rslt[i, j] = tuple(iRslt.params) + tuple(iRslt.tvalues) + (
                     iRslt.fvalue, iRslt.rsquared, iRslt.rsquared_adj)
-            except:
+            except (np.linalg.LinAlgError, RuntimeError) as e:
+                warnings.warn(f"rolling_regress 拟合失败 at [{i},{j}]: {e}")
                 Rslt[i, j] = (np.nan,) * int(X.shape[0] * 2 + 3)
     return Rslt
 
