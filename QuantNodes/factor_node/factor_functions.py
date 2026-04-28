@@ -464,11 +464,442 @@ def expanding_operator():
                 },
                 **kwargs
             )
+
+        op_name = impl_func.__name__.lstrip('_')
+        _register_operator(OperatorCategory.TIME, wrapper, op_name)
+        return wrapper
+    return decorator
+
+
+def ewm_operator(dual_factor: bool = False, has_sub_args: bool = False):
+    """
+    指数加权移动平均（EWM）运算装饰器
+    
+    统一处理 com, span, halflife, alpha 等指数加权参数
+    支持单因子和双因子算子，自动处理 SubOperatorArg 嵌套参数
+    
+    使用方式:
+        @ewm_operator()
+        def ewm_mean(f, idt, iid, x, args):
+            Data = pd.DataFrame(_genOperatorData(f, idt, iid, x, args)[0])
+            return Data.ewm(**args["OperatorArg"]).mean().values[args["OperatorArg"]["min_periods"] - 1:]
+        
+        @ewm_operator(dual_factor=True, has_sub_args=True)
+        def ewm_cov(f, idt, iid, x, args):
+            Data1, Data2 = _genOperatorData(f, idt, iid, x, args)
+            OperatorArg = args["OperatorArg"].copy()
+            SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
+            return pd.DataFrame(Data1).ewm(**OperatorArg).cov(pd.DataFrame(Data2), **SubOperatorArg).values[
+                   args["OperatorArg"]["min_periods"] - 1:]
+    """
+    def decorator(impl_func: Callable) -> Callable:
+        impl_sig = inspect.signature(impl_func)
+        impl_params = list(impl_sig.parameters.keys())
+        internal_params = {"f", "idt", "iid", "x", "args"}
+        op_params = [p for p in impl_params if p not in internal_params]
+        
+        @wraps(impl_func)
+        def wrapper(f1, f2=None, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False, bias=False, **kwargs):
+            if dual_factor:
+                Descriptors, Args = _genMultivariateOperatorInfo(f1, f2)
+            else:
+                Descriptors, Args = _genMultivariateOperatorInfo(f1)
+            
+            OperatorArg = {
+                "com": com,
+                "span": span,
+                "halflife": halflife,
+                "alpha": alpha,
+                "min_periods": min_periods,
+                "adjust": adjust,
+                "ignore_na": ignore_na,
+            }
+            
+            if has_sub_args:
+                OperatorArg["SubOperatorArg"] = {"bias": bias}
+            
+            for param in op_params:
+                if param in kwargs:
+                    OperatorArg[param] = kwargs.pop(param)
+            
+            Args["OperatorArg"] = OperatorArg
+            
+            lookback = min_periods - 1 if min_periods > 0 else 0
+            
+            return TimeOperation(
+                kwargs.pop("factor_name", str(uuid.uuid1())),
+                Descriptors,
+                {
+                    "算子": impl_func,
+                    "参数": Args,
+                    "回溯期数": [lookback] * len(Descriptors),
+                    "运算时点": _METADATA["multi_dt"],
+                    "运算ID": "多ID",
+                },
+                **kwargs
+            )
         
         op_name = impl_func.__name__.lstrip('_')
         _register_operator(OperatorCategory.TIME, wrapper, op_name)
         return wrapper
     return decorator
+
+
+def dual_factor_rolling_operator(has_sub_args: bool = False, dynamic_time_mode: bool = False):
+    """
+    双因子滚动窗口运算装饰器
+    
+    用于处理需要两个因子输入的滚动运算（如协方差、相关系数）
+    支持动态运算时点切换（单时点/多时点）和 SubOperatorArg 嵌套参数
+    
+    使用方式:
+        @dual_factor_rolling_operator(has_sub_args=True)
+        def rolling_cov(f, idt, iid, x, args):
+            Data1, Data2 = _genOperatorData(f, idt, iid, x, args)
+            OperatorArg = args["OperatorArg"].copy()
+            SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
+            return pd.DataFrame(Data1).rolling(**OperatorArg).cov(pd.DataFrame(Data2), **SubOperatorArg).values[
+                   args["OperatorArg"]["window"] - 1:]
+    """
+    def decorator(impl_func: Callable) -> Callable:
+        impl_sig = inspect.signature(impl_func)
+        impl_params = list(impl_sig.parameters.keys())
+        internal_params = {"f", "idt", "iid", "x", "args"}
+        op_params = [p for p in impl_params if p not in internal_params]
+        
+        @wraps(impl_func)
+        def wrapper(f1, f2, window, min_periods=1, win_type=None, ddof=1, method="pearson", **kwargs):
+            Descriptors, Args = _genMultivariateOperatorInfo(f1, f2)
+            
+            OperatorArg = {
+                "window": window,
+                "min_periods": min_periods,
+                "win_type": win_type,
+            }
+            
+            if has_sub_args:
+                OperatorArg["SubOperatorArg"] = {"ddof": ddof}
+            
+            if dynamic_time_mode:
+                OperatorArg["method"] = method
+            
+            for param in op_params:
+                if param in kwargs:
+                    OperatorArg[param] = kwargs.pop(param)
+            
+            Args["OperatorArg"] = OperatorArg
+            
+            lookback = window - 1
+            
+            time_mode = "多时点"
+            if dynamic_time_mode and method != "pearson":
+                time_mode = "单时点"
+            
+            return TimeOperation(
+                kwargs.pop("factor_name", str(uuid.uuid1())),
+                Descriptors,
+                {
+                    "算子": impl_func,
+                    "参数": Args,
+                    "回溯期数": [lookback] * len(Descriptors),
+                    "运算时点": time_mode,
+                    "运算ID": "多ID",
+                },
+                **kwargs
+            )
+        
+        op_name = impl_func.__name__.lstrip('_')
+        _register_operator(OperatorCategory.TIME, wrapper, op_name)
+        return wrapper
+    return decorator
+
+
+def dual_factor_expanding_operator(has_sub_args: bool = False):
+    """
+    双因子扩展窗口运算装饰器
+    
+    用于处理需要两个因子输入的扩展窗口运算（如协方差、相关系数）
+    """
+    def decorator(impl_func: Callable) -> Callable:
+        impl_sig = inspect.signature(impl_func)
+        impl_params = list(impl_sig.parameters.keys())
+        internal_params = {"f", "idt", "iid", "x", "args"}
+        op_params = [p for p in impl_params if p not in internal_params]
+        
+        @wraps(impl_func)
+        def wrapper(f1, f2, min_periods=1, ddof=1, **kwargs):
+            Descriptors, Args = _genMultivariateOperatorInfo(f1, f2)
+            
+            OperatorArg = {"min_periods": min_periods}
+            
+            if has_sub_args:
+                OperatorArg["SubOperatorArg"] = {"ddof": ddof}
+            
+            for param in op_params:
+                if param in kwargs:
+                    OperatorArg[param] = kwargs.pop(param)
+            
+            Args["OperatorArg"] = OperatorArg
+            
+            lookback = min_periods - 1
+            
+            return TimeOperation(
+                kwargs.pop("factor_name", str(uuid.uuid1())),
+                Descriptors,
+                {
+                    "算子": impl_func,
+                    "参数": Args,
+                    "回溯期数": [lookback] * len(Descriptors),
+                    "运算时点": _METADATA["multi_dt"],
+                    "运算ID": "多ID",
+                },
+                **kwargs
+            )
+        
+        op_name = impl_func.__name__.lstrip('_')
+        _register_operator(OperatorCategory.TIME, wrapper, op_name)
+        return wrapper
+    return decorator
+
+
+def time_shift_operator(lookback_param: str = "n"):
+    """
+    时间位移运算装饰器
+    
+    用于处理 lag, diff 等需要时间位移的算子
+    自动处理回溯期数计算
+    
+    使用方式:
+        @time_shift_operator(lookback_param="window")
+        def lag(f, idt, iid, x, args):
+            if args["OperatorArg"]['dt_change_fun'] is None:
+                return x[0][args["OperatorArg"]['window'] - args["OperatorArg"]['lag_period']:x[0].shape[0] - args["OperatorArg"]['lag_period']]
+            ...
+    """
+    def decorator(impl_func: Callable) -> Callable:
+        impl_sig = inspect.signature(impl_func)
+        impl_params = list(impl_sig.parameters.keys())
+        internal_params = {"f", "idt", "iid", "x", "args"}
+        op_params = [p for p in impl_params if p not in internal_params]
+        
+        @wraps(impl_func)
+        def wrapper(f, lag_period=1, window=1, n=1, dt_change_fun=None, **kwargs):
+            Descriptors, Args = _genMultivariateOperatorInfo(f)
+            
+            OperatorArg = {}
+            if "lag_period" in impl_params or lag_period != 1:
+                OperatorArg["lag_period"] = lag_period
+            if "window" in impl_params or window != 1:
+                OperatorArg["window"] = window
+            if "n" in impl_params or n != 1:
+                OperatorArg["n"] = n
+            if "dt_change_fun" in impl_params or dt_change_fun is not None:
+                OperatorArg["dt_change_fun"] = dt_change_fun
+            
+            for param in op_params:
+                if param in kwargs:
+                    OperatorArg[param] = kwargs.pop(param)
+            
+            Args["OperatorArg"] = OperatorArg
+            
+            if lookback_param == "window":
+                lookback = OperatorArg.get("window", 1)
+            else:
+                lookback = OperatorArg.get("n", 1)
+            
+            return TimeOperation(
+                kwargs.pop("factor_name", str(uuid.uuid1())),
+                Descriptors,
+                {
+                    "算子": impl_func,
+                    "参数": Args,
+                    "回溯期数": [lookback] * len(Descriptors),
+                    "运算时点": _METADATA["multi_dt"],
+                    "运算ID": "多ID",
+                },
+                **kwargs
+            )
+        
+        op_name = impl_func.__name__.lstrip('_')
+        _register_operator(OperatorCategory.TIME, wrapper, op_name)
+        return wrapper
+    return decorator
+
+
+def fillna_operator():
+    """
+    缺失值填充装饰器
+    
+    支持两种模式：
+    1. value=None: 向前填充，返回 TimeOperation
+    2. value!=None: 常值填充，返回 PointOperation
+    
+    使用方式:
+        @fillna_operator()
+        def fillna(f, idt, iid, x, args):
+            Data = _genOperatorData(f, idt, iid, x, args)[0]
+            if args["OperatorArg"]["value"] is None:
+                LookBack = args["OperatorArg"]["lookback"]
+                return pd.DataFrame(Data).fillna(method="pad", limit=LookBack).values[LookBack:]
+            else:
+                Data[pd.isnull(Data)] = args["OperatorArg"]["value"]
+                return Data
+    """
+    def decorator(impl_func: Callable) -> Callable:
+        @wraps(impl_func)
+        def wrapper(f, value=None, lookback=1, **kwargs):
+            Descriptors, Args = _genMultivariateOperatorInfo(f)
+            Args["OperatorArg"] = {"lookback": lookback, "value": value}
+            
+            if value is None:
+                return TimeOperation(
+                    kwargs.pop("factor_name", str(uuid.uuid1())),
+                    Descriptors,
+                    {
+                        "算子": impl_func,
+                        "参数": Args,
+                        "回溯期数": [lookback] * len(Descriptors),
+                        "运算时点": _METADATA["multi_dt"],
+                        "运算ID": "多ID",
+                    },
+                    **kwargs
+                )
+            else:
+                return PointOperation(
+                    kwargs.pop("factor_name", str(uuid.uuid1())),
+                    Descriptors,
+                    {
+                        "算子": impl_func,
+                        "参数": Args,
+                        "运算时点": _METADATA["multi_dt"],
+                        "运算ID": "多ID",
+                    },
+             **kwargs
+         )
+         
+        op_name = impl_func.__name__.lstrip('_')
+        _register_operator(OperatorCategory.TIME, wrapper, op_name)
+        return wrapper
+    return decorator
+
+
+def nav_operator():
+    """
+    净值（NAV）运算装饰器
+    
+    支持自身回溯模式和初始值设置
+    
+    使用方式:
+        @nav_operator()
+        def nav(f, idt, iid, x, args):
+            Price = x[0]
+            Return, = _genOperatorData(f, idt, iid, x[1:], args)
+            ...
+    """
+    def decorator(impl_func: Callable) -> Callable:
+        @wraps(impl_func)
+        def wrapper(ret, init=None, **kwargs):
+            Descriptors, Args = _genMultivariateOperatorInfo(ret)
+            return TimeOperation(
+                kwargs.pop("factor_name", str(uuid.uuid1())),
+                Descriptors,
+                {
+                    "算子": impl_func,
+                    "参数": Args,
+                    "回溯期数": [0] * len(Descriptors),
+                    "自身回溯期数": 1,
+                    "自身回溯模式": "扩张窗口",
+                    "自身初始值": init,
+                    "运算时点": _METADATA["multi_dt"],
+                    "运算ID": "多ID",
+                },
+                **kwargs
+            )
+        
+        op_name = impl_func.__name__.lstrip('_')
+        _register_operator(OperatorCategory.TIME, wrapper, op_name)
+        return wrapper
+    return decorator
+
+
+def multifactor_rolling_operator():
+    """
+    多因子滚动回归装饰器
+    
+    支持 Y + *X 模式的多因子输入，自动设置动态 dtype
+    
+    使用方式:
+        @multifactor_rolling_operator()
+        def rolling_regress(f, idt, iid, x, args):
+            X = _genOperatorData(f, idt, iid, x, args)
+            Y = X[0]
+            ...
+    """
+    def decorator(impl_func: Callable) -> Callable:
+        @wraps(impl_func)
+        def wrapper(Y, *X, window=20, constant=True, half_life=np.inf, **kwargs):
+            Descriptors, Args = _genMultivariateOperatorInfo(*((Y,) + X))
+            Args["OperatorArg"] = {"window": window, "constant": constant, "half_life": half_life}
+            nX = len(X)
+
+            f = TimeOperation(
+                kwargs.pop("factor_name", str(uuid.uuid1())),
+                Descriptors,
+                {
+                    "算子": impl_func,
+                    "参数": Args,
+                    "回溯期数": [window - 1] * len(Descriptors),
+                    "运算时点": _METADATA["multi_dt"],
+                    "运算ID": "多ID",
+                    "数据类型": "object",
+                },
+                **kwargs
+            )
+            
+            if constant:
+                DataType = [('alpha', np.float)] + [('beta' + str(i), np.float) for i in range(nX)]
+                DataType += [('t_alpha', np.float)] + [('t_beta' + str(i), np.float) for i in range(nX)]
+            else:
+                DataType = [('beta' + str(i), np.float) for i in range(nX)]
+                DataType += [('t_beta' + str(i), np.float) for i in range(nX)]
+            DataType += [('fvalue', np.float), ('rsquared', np.float), ('rsquared_adj', np.float)]
+            f.TempData["dtype"] = DataType
+            return f
+        
+        op_name = impl_func.__name__.lstrip('_')
+        _register_operator(OperatorCategory.TIME, wrapper, op_name)
+        return wrapper
+    return decorator
+
+
+def point_rolling_operator():
+    """
+    点输出滚动算子装饰器
+    
+    滚动计算但输出是单时点（如 rolling_regress_change）
+    """
+    def decorator(impl_func: Callable) -> Callable:
+        @wraps(impl_func)
+        def wrapper(f, window=20, min_periods=2, **kwargs):
+            Descriptors, Args = _genMultivariateOperatorInfo(f)
+            Args["OperatorArg"] = {"min_periods": min_periods}
+            return PointOperation(
+                kwargs.pop("factor_name", str(uuid.uuid1())),
+                Descriptors,
+                {
+                    "算子": impl_func,
+                    "参数": Args,
+                    "运算时点": "单时点",
+                    "运算ID": "多ID",
+                },
+                **kwargs
+            )
+        
+        op_name = impl_func.__name__.lstrip('_')
+        _register_operator(OperatorCategory.TIME, wrapper, op_name)
+        return wrapper
+    return decorator
+
 
 def _genMultivariateOperatorInfo(*factors):
     Args = {}
@@ -920,7 +1351,9 @@ def rolling_count(f, idt, iid, x, args):
     return Data.rolling(**args["OperatorArg"]).count().values[args["OperatorArg"]["window"] - 1:]
 
 
-def _rolling_change_rate(f, idt, iid, x, args):
+@rolling_operator()
+def rolling_change_rate(f, idt, iid, x, args):
+    """滚动变化率"""
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     Numerator = Data[args["OperatorArg"]["window"] - 1:]
     Denominator = Data[:-args["OperatorArg"]["window"] + 1]
@@ -933,26 +1366,12 @@ def _rolling_change_rate(f, idt, iid, x, args):
     return Rslt
 
 
-def rolling_change_rate(f, window, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"window": window}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _rolling_change_rate, "参数": Args, "回溯期数": [window - 1] * len(Descriptors),
-                          "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _rolling_rank(f, idt, iid, x, args):
+@rolling_operator()
+def rolling_rank(f, idt, iid, x, args):
+    """滚动排名"""
     Data = pd.DataFrame(_genOperatorData(f, idt, iid, x, args)[0])
     return Data.rolling(**args["OperatorArg"]).apply(lambda s: np.sort(s).searchsorted(s[-1])).values[
            args["OperatorArg"]["window"] - 1:]
-
-
-def rolling_rank(f, window, min_periods=1, win_type=None, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"window": window, "min_periods": min_periods, "win_type": win_type}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _rolling_rank, "参数": Args, "回溯期数": [window - 1] * len(Descriptors), "运算时点": "多时点",
-                          "运算ID": "多ID"}, **kwargs)
 
 
 @expanding_operator()
@@ -1038,55 +1457,34 @@ def expanding_count(f, idt, iid, x, args):
     return Data.expanding(**args["OperatorArg"]).count().values[args["OperatorArg"]["min_periods"] - 1:]
 
 
-def _ewm_mean(f, idt, iid, x, args):
+@ewm_operator()
+def ewm_mean(f, idt, iid, x, args):
+    """指数加权移动平均"""
     Data = pd.DataFrame(_genOperatorData(f, idt, iid, x, args)[0])
     return Data.ewm(**args["OperatorArg"]).mean().values[args["OperatorArg"]["min_periods"] - 1:]
 
 
-def ewm_mean(f, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"com": com, "span": span, "halflife": halflife, "alpha": alpha,
-                           "min_periods": min_periods, "adjust": adjust, "ignore_na": ignore_na}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _ewm_mean, "参数": Args, "回溯期数": [min_periods] * len(Descriptors), "运算时点": "多时点",
-                          "运算ID": "多ID"}, **kwargs)
-
-
-def _ewm_std(f, idt, iid, x, args):
+@ewm_operator(has_sub_args=True)
+def ewm_std(f, idt, iid, x, args):
+    """指数加权移动标准差"""
     Data = pd.DataFrame(_genOperatorData(f, idt, iid, x, args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
     return Data.ewm(**OperatorArg).std(**SubOperatorArg).values[args["OperatorArg"]["min_periods"] - 1:]
 
 
-def ewm_std(f, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False, bias=False,
-            **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"com": com, "span": span, "halflife": halflife, "alpha": alpha, "min_periods": min_periods,
-                           "adjust": adjust, "ignore_na": ignore_na, "SubOperatorArg": {"bias": bias}}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _ewm_std, "参数": Args, "回溯期数": [min_periods] * len(Descriptors), "运算时点": "多时点",
-                          "运算ID": "多ID"}, **kwargs)
-
-
-def _ewm_var(f, idt, iid, x, args):
+@ewm_operator(has_sub_args=True)
+def ewm_var(f, idt, iid, x, args):
+    """指数加权移动方差"""
     Data = pd.DataFrame(_genOperatorData(f, idt, iid, x, args)[0])
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
     return Data.ewm(**OperatorArg).var(**SubOperatorArg).values[args["OperatorArg"]["min_periods"] - 1:]
 
 
-def ewm_var(f, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False, bias=False,
-            **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"com": com, "span": span, "halflife": halflife, "alpha": alpha, "min_periods": min_periods,
-                           "adjust": adjust, "ignore_na": ignore_na, "SubOperatorArg": {"bias": bias}}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _ewm_var, "参数": Args, "回溯期数": [min_periods] * len(Descriptors), "运算时点": "多时点",
-                          "运算ID": "多ID"}, **kwargs)
-
-
-def _rolling_cov(f, idt, iid, x, args):
+@dual_factor_rolling_operator(has_sub_args=True)
+def rolling_cov(f, idt, iid, x, args):
+    """滚动协方差（双因子）"""
     Data1, Data2 = _genOperatorData(f, idt, iid, x, args)
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
@@ -1094,16 +1492,9 @@ def _rolling_cov(f, idt, iid, x, args):
            args["OperatorArg"]["window"] - 1:]
 
 
-def rolling_cov(f1, f2, window, min_periods=1, win_type=None, ddof=1, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f1, f2)
-    Args["OperatorArg"] = {"window": window, "min_periods": min_periods, "win_type": win_type,
-                           "SubOperatorArg": {"ddof": ddof}}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _rolling_cov, "参数": Args, "回溯期数": [window - 1] * len(Descriptors), "运算时点": "多时点",
-                          "运算ID": "多ID"}, **kwargs)
-
-
-def _rolling_corr(f, idt, iid, x, args):
+@dual_factor_rolling_operator(dynamic_time_mode=True)
+def rolling_corr(f, idt, iid, x, args):
+    """滚动相关系数（双因子）"""
     Data1, Data2 = _genOperatorData(f, idt, iid, x, args)
     Method = args["OperatorArg"]["method"]
     if Method == "pearson":
@@ -1117,21 +1508,9 @@ def _rolling_corr(f, idt, iid, x, args):
     return Rslt
 
 
-def rolling_corr(f1, f2, window, min_periods=1, method="pearson", win_type=None, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f1, f2)
-
-    Args["OperatorArg"] = {"window": window, "min_periods": min_periods, "win_type": win_type, "method": method}
-    if method == "pearson":
-        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                             {"算子": _rolling_corr, "参数": Args, "回溯期数": [window - 1] * len(Descriptors), "运算时点": "多时点",
-                              "运算ID": "多ID"}, **kwargs)
-    else:
-        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                             {"算子": _rolling_corr, "参数": Args, "回溯期数": [window - 1] * len(Descriptors), "运算时点": "单时点",
-                              "运算ID": "多ID"}, **kwargs)
-
-
-def _rolling_regress(f, idt, iid, x, args):
+@multifactor_rolling_operator()
+def rolling_regress(f, idt, iid, x, args):
+    """滚动回归"""
     X = _genOperatorData(f, idt, iid, x, args)
     Y = X[0]
     if args["OperatorArg"]['constant']:
@@ -1155,26 +1534,9 @@ def _rolling_regress(f, idt, iid, x, args):
     return Rslt
 
 
-def rolling_regress(Y, *X, window=20, constant=True, half_life=np.inf, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*((Y,) + X))
-    Args["OperatorArg"] = {"window": window, "constant": constant, "half_life": half_life}
-    nX = len(X)
-
-    f = TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                      {"算子": _rolling_regress, "参数": Args, "回溯期数": [window - 1] * len(Descriptors), "运算时点": "多时点",
-                       "运算ID": "多ID", "数据类型": "object"}, **kwargs)
-    if constant:
-        DataType = [('alpha', np.float)] + [('beta' + str(i), np.float) for i in range(nX)]
-        DataType += [('t_alpha', np.float)] + [('t_beta' + str(i), np.float) for i in range(nX)]
-    else:
-        DataType = [('beta' + str(i), np.float) for i in range(nX)]
-        DataType += [('t_beta' + str(i), np.float) for i in range(nX)]
-    DataType += [('fvalue', np.float), ('rsquared', np.float), ('rsquared_adj', np.float)]
-    f.TempData["dtype"] = DataType
-    return f
-
-
-def _rolling_regress_change(f, idt, iid, x, args):
+@point_rolling_operator()
+def rolling_regress_change(f, idt, iid, x, args):
+    """滚动回归斜率变化"""
     Y = _genOperatorData(f, idt, iid, x, args)[0]
     X = np.arange(Y.shape[0]).astype("float").reshape((Y.shape[0], 1)).repeat(Y.shape[1], axis=1)
     Mask = pd.isnull(Y)
@@ -1187,14 +1549,9 @@ def _rolling_regress_change(f, idt, iid, x, args):
     return Rslt
 
 
-def rolling_regress_change(f, window=20, min_periods=2, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"min_periods": min_periods}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _rolling_regress_change, "参数": Args, "运算时点": "单时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _expanding_cov(f, idt, iid, x, args):
+@dual_factor_expanding_operator(has_sub_args=True)
+def expanding_cov(f, idt, iid, x, args):
+    """扩展窗口协方差（双因子）"""
     Data1, Data2 = _genOperatorData(f, idt, iid, x, args)
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
@@ -1202,29 +1559,17 @@ def _expanding_cov(f, idt, iid, x, args):
            args["OperatorArg"]["min_periods"] - 1:]
 
 
-def expanding_cov(f1, f2, min_periods=1, ddof=1, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f1, f2)
-    Args["OperatorArg"] = {"min_periods": min_periods, "SubOperatorArg": {"ddof": ddof}}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _expanding_cov, "参数": Args, "回溯期数": [min_periods - 1] * len(Descriptors), "运算时点": "多时点",
-                          "运算ID": "多ID"}, **kwargs)
-
-
-def _expanding_corr(f, idt, iid, x, args):
+@dual_factor_expanding_operator()
+def expanding_corr(f, idt, iid, x, args):
+    """扩展窗口相关系数（双因子）"""
     Data1, Data2 = _genOperatorData(f, idt, iid, x, args)
     return pd.DataFrame(Data1).expanding(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[
            args["OperatorArg"]["min_periods"] - 1:]
 
 
-def expanding_corr(f1, f2, min_periods=1, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f1, f2)
-    Args["OperatorArg"] = {"min_periods": min_periods}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _expanding_corr, "参数": Args, "回溯期数": [min_periods - 1] * len(Descriptors),
-                          "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _ewm_cov(f, idt, iid, x, args):
+@ewm_operator(dual_factor=True, has_sub_args=True)
+def ewm_cov(f, idt, iid, x, args):
+    """指数加权移动协方差（双因子）"""
     Data1, Data2 = _genOperatorData(f, idt, iid, x, args)
     OperatorArg = args["OperatorArg"].copy()
     SubOperatorArg = OperatorArg.pop("SubOperatorArg", {})
@@ -1232,33 +1577,17 @@ def _ewm_cov(f, idt, iid, x, args):
            args["OperatorArg"]["min_periods"] - 1:]
 
 
-def ewm_cov(f1, f2, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False,
-            bias=False, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f1, f2)
-    Args["OperatorArg"] = {"com": com, "span": span, "halflife": halflife, "min_periods": min_periods,
-                           "adjust": adjust, "ignore_na": ignore_na, "SubOperatorArg": {"bias": bias}}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _ewm_cov, "参数": Args, "回溯期数": [min_periods] * len(Descriptors), "运算时点": "多时点",
-                          "运算ID": "多ID"}, **kwargs)
-
-
-def _ewm_corr(f, idt, iid, x, args):
+@ewm_operator(dual_factor=True)
+def ewm_corr(f, idt, iid, x, args):
+    """指数加权移动相关系数（双因子）"""
     Data1, Data2 = _genOperatorData(f, idt, iid, x, args)
     return pd.DataFrame(Data1).ewm(**args["OperatorArg"]).corr(pd.DataFrame(Data2)).values[
            args["OperatorArg"]["min_periods"] - 1:]
 
 
-def ewm_corr(f1, f2, com=None, span=None, halflife=None, alpha=None, min_periods=0, adjust=True, ignore_na=False,
-             **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f1, f2)
-    Args["OperatorArg"] = {"com": com, "span": span, "halflife": halflife, "min_periods": min_periods,
-                           "adjust": adjust, "ignore_na": ignore_na}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _ewm_corr, "参数": Args, "回溯期数": [min_periods] * len(Descriptors), "运算时点": "多时点",
-                          "运算ID": "多ID"}, **kwargs)
-
-
-def _lag(f, idt, iid, x, args):
+@time_shift_operator(lookback_param="window")
+def lag(f, idt, iid, x, args):
+    """滞后算子"""
     if args["OperatorArg"]['dt_change_fun'] is None: return x[0][args["OperatorArg"]['window'] - args["OperatorArg"][
         'lag_period']:x[0].shape[0] - args["OperatorArg"]['lag_period']]
     TargetDTs = args["OperatorArg"]['dt_change_fun'](idt)
@@ -1273,30 +1602,17 @@ def _lag(f, idt, iid, x, args):
     return Data.fillna(method='pad').values[args["OperatorArg"]['window']:]
 
 
-def lag(f, lag_period=1, window=1, dt_change_fun=None, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"lag_period": lag_period, "window": window, "dt_change_fun": dt_change_fun}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _lag, "参数": Args, "回溯期数": [window] * len(Descriptors), "运算时点": "多时点", "运算ID": "多ID"},
-                         **kwargs)
-
-
-def _diff(f, idt, iid, x, args):
+@time_shift_operator(lookback_param="n")
+def diff(f, idt, iid, x, args):
+    """差分算子"""
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     return np.diff(Data, n=args["OperatorArg"]['n'], axis=0)
 
 
-def diff(f, n=1, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"n": n}
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _diff, "参数": Args, "回溯期数": [n] * len(Descriptors), "运算时点": "多时点", "运算ID": "多ID"},
-                         **kwargs)
-
-
-def _fillna(f, idt, iid, x, args):
+@fillna_operator()
+def fillna(f, idt, iid, x, args):
+    """缺失值填充"""
     Data = _genOperatorData(f, idt, iid, x, args)[0]
-
     if args["OperatorArg"]["value"] is None:
         LookBack = args["OperatorArg"]["lookback"]
         return pd.DataFrame(Data).fillna(method="pad", limit=LookBack).values[LookBack:]
@@ -1305,19 +1621,9 @@ def _fillna(f, idt, iid, x, args):
         return Data
 
 
-def fillna(f, value=None, lookback=1, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"lookback": lookback, "value": value}
-    if value is None:
-        return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                             {"算子": _fillna, "参数": Args, "回溯期数": [lookback] * len(Descriptors), "运算时点": "多时点",
-                              "运算ID": "多ID"}, **kwargs)
-    else:
-        return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                              {"算子": _fillna, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nav(f, idt, iid, x, args):
+@nav_operator()
+def nav(f, idt, iid, x, args):
+    """净值（NAV）计算"""
     Price = x[0]
     Return, = _genOperatorData(f, idt, iid, x[1:], args)
     if Price.shape[0] <= Return.shape[0]:
@@ -1326,13 +1632,6 @@ def _nav(f, idt, iid, x, args):
         NAV = Price[-Return.shape[0] - 1, :] * np.nancumprod(Return + 1, axis=0)
     NAV[pd.isnull(Return)] = np.nan
     return NAV
-
-
-def nav(ret, init=None, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(ret)
-    return TimeOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                         {"算子": _nav, "参数": Args, "回溯期数": [0] * len(Descriptors), "自身回溯期数": 1, "自身回溯模式": "扩张窗口",
-                          "自身初始值": init, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
 
 
 # ----------------------单截面运算--------------------------------
@@ -1449,15 +1748,11 @@ def winsorize(f, idt, iid, x, args, winsorize_lower=0.01, winsorize_upper=0.01, 
                                                   cat_data=(CatData[i].T if CatData is not None else None),
                                                   **OperatorArg)
     return Rslt
-    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"ascending": ascending, "uniformization": uniformization, "perturbation": perturbation,
-                           "offset": offset, "other_handle": other_handle}
-    Args["OperatorArg"].update(OperatorArg)
-    return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                            {"算子": _standardizeRank, "参数": Args, "运算时点": "多时点", "输出形式": "全截面"}, **kwargs)
 
 
-def _standardizeQuantile(f, idt, iid, x, args):
+@single_section_operator()
+def standardizeQuantile(f, idt, iid, x, args, ascending=True, perturbation=False, other_handle='填充None'):
+    """分位数标准化"""
     Data = _genOperatorData(f, idt, iid, x, args)
     OperatorArg = args["OperatorArg"].copy()
     FactorData = Data[0]
@@ -1478,30 +1773,6 @@ def _standardizeQuantile(f, idt, iid, x, args):
                                                            cat_data=(CatData[i].T if CatData is not None else None),
                                                            **OperatorArg)
     return Rslt
-
-
-def standardizeQuantile(f, mask=None, cat_data=None, ascending=True, perturbation=False, other_handle='填充None',
-                        **kwargs):
-    Factors = [f]
-    OperatorArg = {}
-    if mask is not None:
-        Factors.append(mask)
-        OperatorArg["mask"] = 1
-    else:
-        OperatorArg["mask"] = None
-    if isinstance(cat_data, Factor):
-        Factors.append(cat_data)
-        OperatorArg["cat_data"] = 1
-    elif isinstance(cat_data, list):
-        Factors += cat_data
-        OperatorArg["cat_data"] = len(cat_data)
-    else:
-        OperatorArg["cat_data"] = None
-    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"ascending": ascending, "perturbation": perturbation, "other_handle": other_handle}
-    Args["OperatorArg"].update(OperatorArg)
-    return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                            {"算子": _standardizeQuantile, "参数": Args, "运算时点": "多时点", "输出形式": "全截面"}, **kwargs)
 
 
 @single_section_operator()
@@ -1604,225 +1875,6 @@ def orthogonalize(f, idt, iid, x, args, method="gram_schmidt", weight_data=None,
     return Rslt
 
 
-@single_section_operator()
-def standardizeQuantile(f, idt, iid, x, args, ascending=True, perturbation=False, other_handle='填充None'):
-    """分位数标准化"""
-    Data = _genOperatorData(f, idt, iid, x, args)
-    OperatorArg = args["OperatorArg"].copy()
-    FactorData = Data[0]
-    StartInd = 1
-    Mask = OperatorArg.pop("mask")
-    if Mask is not None:
-        Mask = (Data[StartInd] == 1)
-        StartInd += 1
-    CatData = OperatorArg.pop("cat_data")
-    if CatData == 1:
-        CatData = Data[StartInd]
-    elif CatData is not None:
-        CatData = Data[StartInd:StartInd + CatData]
-        CatData = np.array(list(zip(*CatData)))
-    Rslt = np.zeros(FactorData.shape) + np.nan
-    for i in range(FactorData.shape[0]):
-        Rslt[i] = DataPreprocessingFun.standardizeQuantile(FactorData[i], mask=(Mask[i] if Mask is not None else None),
-                                                          cat_data=(CatData[i].T if CatData is not None else None),
-                                                          **OperatorArg)
-    return Rslt
-
-
-def _fillNaNByRegress(f, idt, iid, x, args):
-    Data = _genOperatorData(f, idt, iid, x, args)
-    OperatorArg = args["OperatorArg"].copy()
-    FactorData = Data[0]
-    StartInd = 1
-    X = OperatorArg.pop("X")
-    if X == 1:
-        X = Data[StartInd]
-        StartInd += 1
-    elif X is not None:
-        X = Data[StartInd:StartInd + X]
-        StartInd += len(X)
-        X = np.array(list(zip(*X)))
-    Mask = OperatorArg.pop("mask")
-    if Mask is not None:
-        Mask = (Data[StartInd] == 1)
-        StartInd += 1
-    CatData = OperatorArg.pop("cat_data")
-    if CatData == 1:
-        CatData = Data[StartInd]
-        StartInd += 1
-    elif CatData is not None:
-        CatData = Data[StartInd:StartInd + CatData]
-        StartInd += len(CatData)
-        CatData = np.array(list(zip(*CatData)))
-    DummyData = OperatorArg.pop("dummy_data")
-    if DummyData == 1:
-        DummyData = Data[StartInd]
-    elif DummyData is not None:
-        DummyData = Data[StartInd:StartInd + DummyData]
-        StartInd += len(DummyData)
-        DummyData = np.array(list(zip(*DummyData)))
-    Rslt = np.zeros(FactorData.shape) + np.nan
-    for i in range(FactorData.shape[0]):
-        Rslt[i] = DataPreprocessingFun.fillNaNByRegress(FactorData[i], X=(X[i].T if X is not None else None),
-                                                        mask=(Mask[i] if Mask is not None else None),
-                                                        cat_data=(CatData[i].T if CatData is not None else None),
-                                                        dummy_data=(DummyData[i].T if DummyData is not None else None),
-                                                        **OperatorArg)
-    return Rslt
-
-
-def fillNaNByRegress(Y, X, mask=None, cat_data=None, constant=False, dummy_data=None, drop_dummy_na=False, **kwargs):
-    Factors = [Y]
-    OperatorArg = {}
-    if isinstance(X, Factor):
-        Factors.append(X)
-        OperatorArg["X"] = 1
-    elif isinstance(X, list):
-        Factors += X
-        OperatorArg["X"] = len(X)
-    else:
-        OperatorArg["X"] = None
-    if mask is not None:
-        Factors.append(mask)
-        OperatorArg["mask"] = 1
-    else:
-        OperatorArg["mask"] = None
-    if isinstance(cat_data, Factor):
-        Factors.append(cat_data)
-        OperatorArg["cat_data"] = 1
-    elif isinstance(cat_data, list):
-        Factors += cat_data
-        OperatorArg["cat_data"] = len(cat_data)
-    else:
-        OperatorArg["cat_data"] = None
-    if isinstance(dummy_data, Factor):
-        Factors.append(dummy_data)
-        OperatorArg["dummy_data"] = 1
-    elif isinstance(dummy_data, list):
-        Factors += dummy_data
-        OperatorArg["dummy_data"] = len(dummy_data)
-    else:
-        OperatorArg["dummy_data"] = None
-    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"drop_dummy_na": drop_dummy_na, "constant": constant}
-    Args["OperatorArg"].update(OperatorArg)
-    return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                            {"算子": _fillNaNByRegress, "参数": Args, "运算时点": "多时点", "输出形式": "全截面"}, **kwargs)
-
-
-def _winsorize(f, idt, iid, x, args):
-    Data = _genOperatorData(f, idt, iid, x, args)
-    OperatorArg = args["OperatorArg"].copy()
-    FactorData = Data[0]
-    StartInd = 1
-    Mask = OperatorArg.pop("mask")
-    if Mask is not None:
-        Mask = (Data[1] == 1)
-        StartInd += 1
-    CatData = OperatorArg.pop("cat_data")
-    if CatData == 1:
-        CatData = Data[StartInd]
-    elif CatData is not None:
-        CatData = Data[StartInd:StartInd + CatData]
-        CatData = np.array(list(zip(*CatData)))
-    Rslt = np.zeros(FactorData.shape) + np.nan
-    for i in range(FactorData.shape[0]):
-        Rslt[i] = DataPreprocessingFun.winsorize(FactorData[i], mask=(Mask[i] if Mask is not None else None),
-                                                 cat_data=(CatData[i].T if CatData is not None else None),
-                                                 **OperatorArg)
-    return Rslt
-
-
-def winsorize(f, mask=None, cat_data=None, method='截断', avg_statistics="平均值", dispersion_statistics="标准差",
-              std_multiplier=3, std_tmultiplier=3.5, other_handle='填充None', **kwargs):
-    Factors = [f]
-    OperatorArg = {}
-    if mask is not None:
-        Factors.append(mask)
-        OperatorArg["mask"] = 1
-    else:
-        OperatorArg["mask"] = None
-    if isinstance(cat_data, Factor):
-        Factors.append(cat_data)
-        OperatorArg["cat_data"] = 1
-    elif isinstance(cat_data, list):
-        Factors += cat_data
-        OperatorArg["cat_data"] = len(cat_data)
-    else:
-        OperatorArg["cat_data"] = None
-    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"method": method, "avg_statistics": avg_statistics,
-                           "dispersion_statistics": dispersion_statistics, "std_multiplier": std_multiplier,
-                           "std_tmultiplier": std_tmultiplier, "other_handle": other_handle}
-    Args["OperatorArg"].update(OperatorArg)
-    return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                            {"算子": _winsorize, "参数": Args, "运算时点": "多时点", "输出形式": "全截面"}, **kwargs)
-
-
-def _orthogonalize(f, idt, iid, x, args):
-    Data = _genOperatorData(f, idt, iid, x, args)
-    OperatorArg = args["OperatorArg"].copy()
-    FactorData = Data[0]
-    StartInd = 1
-    X = OperatorArg.pop("X")
-    if X == 1:
-        X = Data[StartInd]
-        StartInd += 1
-    elif X is not None:
-        X = Data[StartInd:StartInd + X]
-        StartInd += len(X)
-        X = np.array(list(zip(*X)))
-    Mask = OperatorArg.pop("mask")
-    if Mask is not None:
-        Mask = (Data[StartInd] == 1)
-        StartInd += 1
-    DummyData = OperatorArg.pop("dummy_data")
-    if DummyData == 1:
-        DummyData = Data[StartInd]
-    elif DummyData is not None:
-        DummyData = Data[StartInd:StartInd + DummyData]
-        DummyData = np.array(list(zip(*DummyData)))
-    Rslt = np.zeros(FactorData.shape) + np.nan
-    for i in range(FactorData.shape[0]):
-        Rslt[i] = DataPreprocessingFun.orthogonalize(FactorData[i], X=(X[i].T if X is not None else None),
-                                                     mask=(Mask[i] if Mask is not None else None),
-                                                     dummy_data=(DummyData[i].T if DummyData is not None else None),
-                                                     **OperatorArg)
-    return Rslt
-
-
-def orthogonalize(Y, X, mask=None, constant=False, dummy_data=None, drop_dummy_na=False, other_handle='填充None',
-                  **kwargs):
-    Factors = [Y]
-    OperatorArg = {}
-    if isinstance(X, Factor):
-        Factors.append(X)
-        OperatorArg["X"] = 1
-    elif isinstance(X, list):
-        Factors += X
-        OperatorArg["X"] = len(X)
-    else:
-        OperatorArg["X"] = None
-    if mask is not None:
-        Factors.append(mask)
-        OperatorArg["mask"] = 1
-    else:
-        OperatorArg["mask"] = None
-    if isinstance(dummy_data, Factor):
-        Factors.append(dummy_data)
-        OperatorArg["dummy_data"] = 1
-    elif isinstance(dummy_data, list):
-        Factors += dummy_data
-        OperatorArg["dummy_data"] = len(dummy_data)
-    else:
-        OperatorArg["dummy_data"] = None
-    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"drop_dummy_na": drop_dummy_na, "constant": constant, "other_handle": other_handle}
-    Args["OperatorArg"].update(OperatorArg)
-    return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                            {"算子": _orthogonalize, "参数": Args, "运算时点": "多时点", "输出形式": "全截面"}, **kwargs)
-
-
 # ----------------------多截面运算--------------------------------
 def _aggregate(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)
@@ -1895,6 +1947,9 @@ def disaggregate(f, aggr_ids, cat_data=None, disaggr_ids=None, **kwargs):  # 将
     return SectionOperation(FactorName, Descriptors,
                             {"算子": _disaggregate, "参数": Args, "运算时点": "多时点", "描述子截面": DescriptorIDs}, **kwargs)
 
+_register_operator(OperatorCategory.MULTI_SECTION, aggregate, "aggregate")
+_register_operator(OperatorCategory.MULTI_SECTION, disaggregate, "disaggregate")
+
 
 def _aggr_sum(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)
@@ -1949,6 +2004,7 @@ def _make_aggr_func(name, op_func, extra_params=None):
                                  **kwargs)
 
     aggr_func.__name__ = name
+    _register_operator(OperatorCategory.MULTI_SECTION, aggr_func, name)
     return aggr_func
 
 
@@ -2158,6 +2214,7 @@ def _make_aggr_mean_func(name, op_func):
                                  "描述子截面": [descriptor_ids] * len(Descriptors)},
                                 **kwargs)
     aggr_func.__name__ = name
+    _register_operator(OperatorCategory.MULTI_SECTION, aggr_func, name)
     return aggr_func
 
 
