@@ -41,7 +41,7 @@ from QuantNodes.core.cache_utils import (
     write_cache_file,
     write_cache_files_for_all_pids,
 )
-from QuantNodes.core.tools import partition_list as partitionList
+from QuantNodes.core.tools import partition_list
 
 
 def _DefaultOperator(f: Factor, idt: Any, iid: Any, x: List[np.ndarray], args: Dict[str, Any]) -> np.ndarray:
@@ -774,7 +774,7 @@ class SectionOperation(DerivativeFactor):
                 self._OperationMode.DTRuler.index(self._OperationMode.DateTimes[-1])
             )
             DTs = self._OperationMode.DTRuler[StartInd:EndInd + 1]
-            DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
+            DTPartition = partition_list(DTs, len(self._OperationMode._PIDs))
             self._PID_DTs = {iPID: DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
         PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
         if prepare_ids != PrepareIDs:
@@ -893,7 +893,7 @@ class SectionOperation(DerivativeFactor):
             if self._OperationMode._FactorPrepareIDs[self.Name] is None
             else {
                 self._OperationMode._PIDs[i]: iSubIDs
-                for i, iSubIDs in enumerate(partitionList(IDs, len(self._OperationMode._PIDs)))
+                for i, iSubIDs in enumerate(partition_list(IDs, len(self._OperationMode._PIDs)))
             }
         )
         write_cache_files_for_all_pids(
@@ -966,7 +966,7 @@ class PanelOperation(_LookBackOperation):
             if self.iLookBackMode == "扩张窗口":
                 DTPartition = [DTs] + [[]] * (len(self._OperationMode._PIDs) - 1)
             else:
-                DTPartition = partitionList(DTs, len(self._OperationMode._PIDs))
+                DTPartition = partition_list(DTs, len(self._OperationMode._PIDs))
             self._PID_DTs = {iPID: DTPartition[i] for i, iPID in enumerate(self._OperationMode._PIDs)}
         else:
             StartInd = DTRuler.index(OldStartDT)
@@ -1076,7 +1076,7 @@ class PanelOperation(_LookBackOperation):
             StdData = create_empty_dataframe(DTs, [], self.DataType)
         PID_IDs = self._OperationMode._PID_IDs if self._OperationMode._FactorPrepareIDs[self.Name] is None else \
             {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in
-             enumerate(partitionListMovingSampling(IDs, len(self._OperationMode._PIDs)))}
+             enumerate(partition_listMovingSampling(IDs, len(self._OperationMode._PIDs)))}
         write_cache_files_for_all_pids(self._OperationMode, PID_IDs, self.Name,
                                        self._OperationMode._FactorID[self.Name], StdData)
         StdData = None

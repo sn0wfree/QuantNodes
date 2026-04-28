@@ -25,7 +25,7 @@ from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject as _QN_Ob
 from QuantNodes.core.base import FactorError
 from QuantNodes.core.tools import (
     gen_available_name as genAvailableName,
-    partition_list_moving_sampling as partitionListMovingSampling,
+    partition_list_moving_sampling,
     start_multi_process as startMultiProcess,
     get_shelve_file_suffix as getShelveFileSuffix,
     test_id_filter_str as testIDFilterStr,
@@ -758,7 +758,7 @@ class FactorTable(_QN_Object):
             self.OperationMode._PIDs = []
             self.OperationMode._PID_IDs = {}
             nPrcs = min((self.OperationMode.SubProcessNum, len(self.OperationMode.IDs)))
-            SubIDs = partitionListMovingSampling(list(self.OperationMode.IDs), nPrcs)
+            SubIDs = partition_list_moving_sampling(list(self.OperationMode.IDs), nPrcs)
             self.OperationMode._PID_Lock = {}
             for i in range(nPrcs):
                 iPID = "0-" + str(i)
@@ -812,7 +812,7 @@ class FactorTable(_QN_Object):
                 PrepareIDs += [iGroups[j][2]] * ijGroupNum
                 if iGroups[j][2] is not None:
                     PID_PrepareIDs += [{self.OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in enumerate(
-                        partitionListMovingSampling(iGroups[j][2], len(self.OperationMode._PIDs)))}] * ijGroupNum
+                        partition_list_moving_sampling(iGroups[j][2], len(self.OperationMode._PIDs)))}] * ijGroupNum
                 else:
                     PID_PrepareIDs += [None] * ijGroupNum
             GroupInfo.extend(iGroupInfo)

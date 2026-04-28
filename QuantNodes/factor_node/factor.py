@@ -16,7 +16,7 @@ from traits.api import Enum, Int, Str
 from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject as _QN_Object
 from QuantNodes.core.base import FactorError
 from QuantNodes.core.tools import (
-    partition_list_moving_sampling as partitionListMovingSampling,
+    partition_list_moving_sampling,
     fill_na_by_lookback as fillNaByLookback,
 )
 
@@ -229,7 +229,7 @@ class Factor(_QN_Object):
             if PrepareIDs is None:
                 PrepareIDs = self._OperationMode._PID_IDs[self._OperationMode._iPID]
             else:
-                PrepareIDs = partitionListMovingSampling(PrepareIDs, len(self._OperationMode._PID_IDs))[
+                PrepareIDs = partition_list_moving_sampling(PrepareIDs, len(self._OperationMode._PID_IDs))[
                     self._OperationMode._PIDs.index(self._OperationMode._iPID)]
             StdData = self._FactorTable.readData(
                 factor_names=[self._NameInFT], ids=PrepareIDs, dts=DTs, args=self.Args
