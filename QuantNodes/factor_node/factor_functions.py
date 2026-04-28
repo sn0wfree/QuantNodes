@@ -180,7 +180,7 @@ def generate_documentation(output_format: str = "markdown") -> str:
 # 装饰器实现
 # ==============================================================================
 
-def point_operator(data_type: str = "double"):
+def point_operator(data_type: str = "double", multi_factor: bool = False):
     """
     单点运算装饰器
     
@@ -192,18 +192,19 @@ def point_operator(data_type: str = "double"):
         
         # 带参数的算子:
         @point_operator()
-        def log(f, idt, iid, x, args, base=np.e):  # 实现函数接收参数
+        def log(f, idt, iid, x, args, base=np.e):
             Data = _genOperatorData(f, idt, iid, x, args)[0]
             return np.log(Data) / np.log(base)
-    
-    自动处理:
-    - 注册算子到注册表
-    - 调用 _genMultivariateOperatorInfo
-    - 提取所有非内部参数到 Args["OperatorArg"]
-    - 返回 PointOperation
+        
+        # 多因子算子:
+        @point_operator(multi_factor=True)
+        def nansum(f, idt, iid, x, args, all_nan=0):
+            Data = _genOperatorData(f, idt, iid, x, args)
+            return np.nansum(np.array(Data), axis=0)
     
     Args:
         data_type: 数据类型描述
+        multi_factor: 是否接收多个因子作为参数
     """
     def decorator(impl_func: Callable) -> Callable:
         # 获取实现函数的参数列表
@@ -214,15 +215,28 @@ def point_operator(data_type: str = "double"):
         op_arg_params = [p for p in impl_params if p not in internal_params]
         
         @wraps(impl_func)
-        def wrapper(*factors, **kwargs):
+        def wrapper(*args, **kwargs):
+            if multi_factor:
+                # 多因子: 所有位置参数都是因子
+                factors = args
+                args_after = ()
+            else:
+                # 单因子: 第一个位置参数是因子，其余作为算子参数
+                factors = args[:1]
+                args_after = args[1:]
+            
             Descriptors, Args = _genMultivariateOperatorInfo(*factors)
             
             # 提取算子参数到 OperatorArg
             operator_args = {}
-            for param in op_arg_params:
+            # 先处理位置参数
+            for i, param in enumerate(op_arg_params[:len(args_after)]):
+                operator_args[param] = args_after[i]
+            # 再处理关键字参数
+            for param in op_arg_params[len(args_after):]:
                 if param in kwargs:
                     operator_args[param] = kwargs.pop(param)
-                # 还需要处理默认值吗？暂时不需要，kwargs 里有用户传入的值
+            
             Args["OperatorArg"] = operator_args
             
             return PointOperation(
@@ -279,8 +293,22 @@ def single_section_operator():
     
     统一处理 mask/cat_data/weight_data/dummy_data/X 参数
     消除 8 个算子中 95% 的重复代码
+    
+    使用方式:
+        @single_section_operator()
+        def standardizeZScore(f, idt, iid, x, args, avg_statistics="平均值", ...):
+            # 只有实际计算逻辑
+            return result
     """
     def decorator(impl_func: Callable) -> Callable:
+        impl_sig = inspect.signature(impl_func)
+        impl_params = list(impl_sig.parameters.keys())
+        internal_params = {"f", "idt", "iid", "x", "args"}
+        # 辅助因子参数
+        factor_params = {"mask", "cat_data", "weight_data", "dummy_data", "X"}
+        # 算子自定义参数
+        op_params = [p for p in impl_params if p not in internal_params and p not in factor_params]
+        
         @wraps(impl_func)
         def wrapper(f, mask=None, cat_data=None, weight_data=None,
                     dummy_data=None, X=None, **kwargs):
@@ -289,6 +317,7 @@ def single_section_operator():
             
             def add_factor(name, value):
                 if value is None:
+                    OperatorArg[name] = None
                     return None
                 if isinstance(value, Factor):
                     Factors.append(value)
@@ -296,13 +325,20 @@ def single_section_operator():
                 elif isinstance(value, list):
                     Factors.extend(value)
                     OperatorArg[name] = len(value)
-                return OperatorArg.get(name)
+                else:
+                    OperatorArg[name] = value
+                return OperatorArg[name]
             
             add_factor("mask", mask)
             add_factor("cat_data", cat_data)
             add_factor("weight_data", weight_data)
             add_factor("dummy_data", dummy_data)
             add_factor("X", X)
+            
+            # 提取算子自定义参数
+            for param in op_params:
+                if param in kwargs:
+                    OperatorArg[param] = kwargs.pop(param)
             
             Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
             Args["OperatorArg"] = OperatorArg
@@ -494,7 +530,9 @@ def clip(f, a_min, a_max, **kwargs):
                           {"算子": _clip, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
 
 
-def _nansum(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nansum(f, idt, iid, x, args, all_nan=0):
+    """忽略空值求和"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     Data = np.array(Data)
@@ -504,15 +542,9 @@ def _nansum(f, idt, iid, x, args):
     return Rslt
 
 
-def nansum(*factors, all_nan=0, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-
-    Args["OperatorArg"] = {"all_nan": all_nan}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nansum, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nanprod(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanprod(f, idt, iid, x, args, all_nan=1):
+    """忽略空值求积"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     Data = np.array(Data)
@@ -522,39 +554,25 @@ def _nanprod(f, idt, iid, x, args):
     return Rslt
 
 
-def nanprod(*factors, all_nan=1, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-
-    Args["OperatorArg"] = {"all_nan": all_nan}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanprod, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nanmax(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanmax(f, idt, iid, x, args):
+    """忽略空值求最大值"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     return np.nanmax(np.array(Data), axis=0)
 
 
-def nanmax(*factors, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanmax, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nanmin(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanmin(f, idt, iid, x, args):
+    """忽略空值求最小值"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     return np.nanmin(np.array(Data), axis=0)
 
 
-def nanmin(*factors, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanmin, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nanargmax(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanargmax(f, idt, iid, x, args):
+    """忽略空值求最大值索引"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     Data = np.array(Data)
@@ -566,13 +584,9 @@ def _nanargmax(f, idt, iid, x, args):
     return Rslt
 
 
-def nanargmax(*factors, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanargmax, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nanargmin(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanargmin(f, idt, iid, x, args):
+    """忽略空值求最小值索引"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     Data = np.array(Data)
@@ -582,12 +596,6 @@ def _nanargmin(f, idt, iid, x, args):
     Mask = (np.sum(Mask, axis=0) == Data.shape[0])
     Rslt[Mask] = np.nan
     return Rslt
-
-
-def nanargmin(*factors, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanargmin, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
 
 
 def _nanmean(f, idt, iid, x, args):
@@ -1471,7 +1479,10 @@ def nav(ret, init=None, **kwargs):
 
 
 # ----------------------单截面运算--------------------------------
-def _standardizeZScore(f, idt, iid, x, args):
+@single_section_operator()
+def standardizeZScore(f, idt, iid, x, args, avg_statistics="平均值", dispersion_statistics="标准差",
+                      other_handle='填充None'):
+    """Z-Score标准化"""
     Data = _genOperatorData(f, idt, iid, x, args)
     OperatorArg = args["OperatorArg"].copy()
     FactorData = Data[0]
@@ -1506,42 +1517,10 @@ def _standardizeZScore(f, idt, iid, x, args):
     return Rslt
 
 
-def standardizeZScore(f, mask=None, cat_data=None, avg_statistics="平均值", dispersion_statistics="标准差", avg_weight=None,
-                      dispersion_weight=None, other_handle='填充None', **kwargs):
-    Factors = [f]
-    OperatorArg = {}
-    if mask is not None:
-        Factors.append(mask)
-        OperatorArg["mask"] = 1
-    else:
-        OperatorArg["mask"] = None
-    if isinstance(cat_data, Factor):
-        Factors.append(cat_data)
-        OperatorArg["cat_data"] = 1
-    elif isinstance(cat_data, list):
-        Factors += cat_data
-        OperatorArg["cat_data"] = len(cat_data)
-    else:
-        OperatorArg["cat_data"] = None
-    if avg_weight is not None:
-        Factors.append(avg_weight)
-        OperatorArg["avg_weight"] = 1
-    else:
-        OperatorArg["avg_weight"] = None
-    if dispersion_weight is not None:
-        Factors.append(dispersion_weight)
-        OperatorArg["dispersion_weight"] = 1
-    else:
-        OperatorArg["dispersion_weight"] = None
-    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"avg_statistics": avg_statistics, "dispersion_statistics": dispersion_statistics,
-                           "other_handle": other_handle}
-    Args["OperatorArg"].update(OperatorArg)
-    return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                            {"算子": _standardizeZScore, "参数": Args, "运算时点": "多时点", "输出形式": "全截面"}, **kwargs)
-
-
-def _standardizeRank(f, idt, iid, x, args):
+@single_section_operator()
+def standardizeRank(f, idt, iid, x, args, ascending=True, uniformization=True, perturbation=False, offset=0.5,
+                    other_handle='填充None'):
+    """Rank标准化"""
     Data = _genOperatorData(f, idt, iid, x, args)
     OperatorArg = args["OperatorArg"].copy()
     FactorData = Data[0]
@@ -1564,23 +1543,55 @@ def _standardizeRank(f, idt, iid, x, args):
     return Rslt
 
 
-def standardizeRank(f, mask=None, cat_data=None, ascending=True, uniformization=True, perturbation=False, offset=0.5,
-                    other_handle='填充None', **kwargs):
-    Factors = [f]
-    OperatorArg = {}
-    if mask is not None:
-        Factors.append(mask)
-        OperatorArg["mask"] = 1
-    else:
-        OperatorArg["mask"] = None
-    if isinstance(cat_data, Factor):
-        Factors.append(cat_data)
-        OperatorArg["cat_data"] = 1
-    elif isinstance(cat_data, list):
-        Factors += cat_data
-        OperatorArg["cat_data"] = len(cat_data)
-    else:
-        OperatorArg["cat_data"] = None
+@single_section_operator()
+def fillNaNByVal(f, idt, iid, x, args, fill_value=0, fill_method="常数"):
+    """按值填充NaN"""
+    Data = _genOperatorData(f, idt, iid, x, args)
+    OperatorArg = args["OperatorArg"].copy()
+    FactorData = Data[0]
+    StartInd = 1
+    Mask = OperatorArg.pop("mask")
+    if Mask is not None:
+        Mask = (Data[StartInd] == 1)
+        StartInd += 1
+    CatData = OperatorArg.pop("cat_data")
+    if CatData == 1:
+        CatData = Data[StartInd]
+    elif CatData is not None:
+        CatData = Data[StartInd:StartInd + CatData]
+        CatData = np.array(list(zip(*CatData)))
+    Rslt = FactorData.copy()
+    for i in range(FactorData.shape[0]):
+        Rslt[i] = DataPreprocessingFun.fillNaNByValue(FactorData[i], mask=(Mask[i] if Mask is not None else None),
+                                                      cat_data=(CatData[i].T if CatData is not None else None),
+                                                      **OperatorArg)
+    return Rslt
+
+
+@single_section_operator()
+def winsorize(f, idt, iid, x, args, winsorize_lower=0.01, winsorize_upper=0.01, fill_value=None, fill_method="均值方差",
+             boundary_method="边界值", other_handle='填充None'):
+    """Winsorize处理"""
+    Data = _genOperatorData(f, idt, iid, x, args)
+    OperatorArg = args["OperatorArg"].copy()
+    FactorData = Data[0]
+    StartInd = 1
+    Mask = OperatorArg.pop("mask")
+    if Mask is not None:
+        Mask = (Data[StartInd] == 1)
+        StartInd += 1
+    CatData = OperatorArg.pop("cat_data")
+    if CatData == 1:
+        CatData = Data[StartInd]
+    elif CatData is not None:
+        CatData = Data[StartInd:StartInd + CatData]
+        CatData = np.array(list(zip(*CatData)))
+    Rslt = FactorData.copy()
+    for i in range(FactorData.shape[0]):
+        Rslt[i] = DataPreprocessingFun.winsorize(FactorData[i], mask=(Mask[i] if Mask is not None else None),
+                                                  cat_data=(CatData[i].T if CatData is not None else None),
+                                                  **OperatorArg)
+    return Rslt
     Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
     Args["OperatorArg"] = {"ascending": ascending, "uniformization": uniformization, "perturbation": perturbation,
                            "offset": offset, "other_handle": other_handle}
