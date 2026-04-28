@@ -812,6 +812,8 @@ def multifactor_rolling_operator():
     def decorator(impl_func: Callable) -> Callable:
         @wraps(impl_func)
         def wrapper(Y, *X, window=20, constant=True, half_life=np.inf, **kwargs):
+            if half_life != np.inf and half_life <= 0:
+                raise ValueError(f"half_life must be positive or np.inf, got {half_life}")
             Descriptors, Args = _genMultivariateOperatorInfo(*((Y,) + X))
             Args["OperatorArg"] = {"window": window, "constant": constant, "half_life": half_life}
             nX = len(X)

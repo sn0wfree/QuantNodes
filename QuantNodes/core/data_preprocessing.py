@@ -222,6 +222,11 @@ class DataPreprocessingFun:
         **kwargs
     ) -> np.ndarray:
         """Winsorize 去极值处理"""
+        if not (0 <= winsorize_lower <= 1) or not (0 <= winsorize_upper <= 1):
+            raise ValueError(f"winsorize bounds must be in [0, 1], got lower={winsorize_lower}, upper={winsorize_upper}")
+        if winsorize_lower + winsorize_upper > 1:
+            raise ValueError(f"winsorize_lower + winsorize_upper must be <= 1, got {winsorize_lower + winsorize_upper}")
+        
         result = data.copy().astype(float)
         valid_mask = ~np.isnan(data)
         
