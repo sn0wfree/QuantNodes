@@ -180,6 +180,8 @@ class PointOperation(DerivativeFactor):
         Returns:
             计算结果DataFrame，index为dts，columns为ids
         """
+        if len(dts) == 0:
+            return create_empty_dataframe(dts, ids, self.DataType)
         StdData = self._calcData(
             ids=ids,
             dts=dts,
@@ -501,6 +503,8 @@ class TimeOperation(_LookBackOperation):
         Returns:
             计算结果DataFrame，index为dts，columns为ids
         """
+        if len(dts) == 0:
+            return create_empty_dataframe(dts, ids, self.DataType)
         DTRuler = kwargs.get("dt_ruler", dts)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
         if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
