@@ -121,6 +121,7 @@ class Factor(_QN_Object):
     时间点数据类型是 datetime.datetime，ID 的数据类型是 str。
     """
     Name = Str("因子")
+    DataType = Enum("double", "string", "object")
 
     def __init__(self, name, ft, sys_args={}, config_file=None, **kwargs):
         self._FactorTable = ft
@@ -131,6 +132,7 @@ class Factor(_QN_Object):
         self._OperationMode = None
         self._RawDataFile = ""
         self._isCacheDataOK = False
+        self.UserData = {}
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
 
     @property

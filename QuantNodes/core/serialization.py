@@ -173,25 +173,6 @@ def deserialize_auto(data: Union[str, bytes]) -> Expression:
 
 
 # ============================================================================
-# 便捷方法 - 添加到 Expression 类
-# ============================================================================
-
-def add_serialization_methods():
-    """将序列化方法添加到 Expression 类"""
-    Expression.to_json = serialize_json
-    Expression.to_bytes = serialize_json_bytes
-    Expression.to_compact = serialize_compact
-    Expression.to_msgpack = serialize_msgpack
-    Expression.to_pickle = serialize_pickle
-
-    Expression.from_json = staticmethod(deserialize_json)
-    Expression.from_compact = staticmethod(deserialize_compact)
-    Expression.from_msgpack = staticmethod(deserialize_msgpack)
-    Expression.from_pickle = staticmethod(deserialize_pickle)
-    Expression.deserialize = staticmethod(deserialize_auto)
-
-
-# ============================================================================
 # Protobuf 序列化 - 高性能跨语言方案
 # ============================================================================
 

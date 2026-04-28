@@ -33,7 +33,7 @@ from multiprocessing import Queue, Event
 from traits.api import TraitFunction, Dict as TraitDict, Enum, List as TraitList, Int, Instance
 
 from QuantNodes.core.base import FactorError
-from QuantNodes.factor_node.factor_base import Factor
+from QuantNodes.factor_node.factor import Factor
 from QuantNodes.core.cache_utils import (
     create_std_data,
     create_empty_dataframe,
