@@ -9,27 +9,14 @@ OperatorNode 操作节点模块
 - SQLBuilderNode: SQL 构建节点
 - TableQueryNode: 表查询执行节点
 - TransformNode: 数据转换节点
-
-Examples:
-    >>> # SQL 构建
-    >>> builder = SQLBuilderNode(table="users")
-    >>> sql = builder.select(["id", "name"]).where(["active = 1"]).to_sql()
-    
-    >>> # 数据转换
-    >>> transformer = TransformNode()
-    >>> result = transformer.select(["col1", "col2"]).filter(lambda df: df["value"] > 0).execute(df)
-    
-    >>> # 链式操作
-    >>> pipeline = query_node >> TransformNode().select(["name"])
+- SQLBuilder: SQL 构建工具类
 """
 
 from QuantNodes.operator_node.base import OperatorNode, ChainOperator
 from QuantNodes.operator_node.sql_builder import SQLBuilderNode
 from QuantNodes.operator_node.query_node import TableQueryNode
 from QuantNodes.operator_node.transform import TransformNode
-from QuantNodes.operator_node.SQLUtils import SQLBuilder
-from QuantNodes.operator_node.TableNode import OperatorBaseNode, Node2
-from QuantNodes.operator_node import TableOperator
+from QuantNodes.operator_node.sql_utils import SQLBuilder
 
 __all__ = [
     'OperatorNode',
@@ -38,7 +25,4 @@ __all__ = [
     'TableQueryNode',
     'TransformNode',
     'SQLBuilder',
-    'OperatorBaseNode',
-    'Node2',
-    'TableOperator',
 ]

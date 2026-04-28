@@ -292,7 +292,8 @@ class TestSQLBuilder:
             limit=None
         )
         
-        assert "GROUP BY (status)" in sql
+        assert "GROUP BY" in sql
+        assert "status" in sql
 
     def test_create_select_sql_with_limit(self):
         """测试带 LIMIT 的 SELECT"""

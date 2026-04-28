@@ -284,4 +284,42 @@ __all__ = [
     "create_temp_dir",
     "merge_data_frames",
     "chunk_iterable",
+    "timer",
+    "retry",
 ]
+
+
+def timer(func):
+    """计时器装饰器"""
+    from functools import wraps
+    import time
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        res = func(*args, **kwargs)
+        end = time.time()
+        print(f"{func.__name__} spend: {end - start:.4f}s")
+        return res
+
+    return wrapper
+
+
+def retry(max_attempts: int = 3, delay: float = 1.0):
+    """重试装饰器"""
+    from functools import wraps
+    import time
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_attempts - 1:
+                        raise
+                    time.sleep(delay)
+            return None
+        return wrapper
+    return decorator

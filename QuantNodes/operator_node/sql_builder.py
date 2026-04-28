@@ -98,7 +98,7 @@ class SQLBuilderNode(OperatorNode):
 
     def _execute_operation(self, input_data: Any = None, **kwargs) -> str:
         """生成 SQL 语句"""
-        from QuantNodes.operator_node.SQLUtils import SQLBuilder
+        from QuantNodes.operator_node.sql_utils import SQLBuilder
 
         cols_str = ','.join(self._columns)
         db_table = self._table
