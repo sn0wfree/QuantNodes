@@ -14,7 +14,7 @@ import uuid
 
 from QuantNodes.core.base import FactorError
 from QuantNodes.factor_node.factor_base import Factor
-from QuantNodes.factor_node.operations import PointOperation, TimeOperation, SectionOperation
+from QuantNodes.factor_node.factor_operation import PointOperation, TimeOperation, SectionOperation
 
 def _genMultivariateOperatorInfo(*factors):
     Args = {}

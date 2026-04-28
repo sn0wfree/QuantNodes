@@ -48,15 +48,15 @@ from QuantNodes.core.serialization import (
 from QuantNodes.core.serializable import serializable, Serializable
 
 from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
-from QuantNodes.factor_node.factor_base import Factor, DerivativeFactor
+from QuantNodes.factor_node.factor_base import Factor
 from QuantNodes.factor_node.factor_table import FactorTable, CustomFT
 from QuantNodes.factor_node.factor_db import FactorDB, WritableFactorDB
-from QuantNodes.factor_node.operations import PointOperation, TimeOperation, SectionOperation, PanelOperation
 from QuantNodes.factor_node.factor_operation import (
-    PointOperation as FN_PointOperation,
-    TimeOperation as FN_TimeOperation,
-    SectionOperation as FN_SectionOperation,
-    PanelOperation as FN_PanelOperation,
+    DerivativeFactor,
+    PointOperation,
+    TimeOperation,
+    SectionOperation,
+    PanelOperation,
     _LookBackOperation,
 )
 from QuantNodes.core.tools import (
