@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from traits.api import Enum, Int, List as TraitList
 
-from QuantNodes.core.factor_base import DerivativeFactor
+from QuantNodes.factor_node.factor_base import DerivativeFactor
 
 
 def _default_operator(f, idt, iid, x, args):

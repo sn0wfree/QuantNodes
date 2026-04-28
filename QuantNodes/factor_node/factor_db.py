@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 from traits.api import Str
 
-from QuantNodes.core.quant_nodes_object import QuantNodesObject as _QN_Object
+from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject as _QN_Object
 from QuantNodes.core.base import FactorError
 
 

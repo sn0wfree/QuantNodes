@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from traits.api import Enum, Int, Str
 
-from QuantNodes.core.quant_nodes_object import QuantNodesObject as _QN_Object
+from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject as _QN_Object
 from QuantNodes.core.base import FactorError
 from QuantNodes.core.tools import (
     partition_list_moving_sampling as partitionListMovingSampling,

@@ -13,8 +13,8 @@ import statsmodels.api as sm
 import uuid
 
 from QuantNodes.core.base import FactorError
-from QuantNodes.core.factor_base import Factor
-from QuantNodes.core.operations import PointOperation, TimeOperation, SectionOperation
+from QuantNodes.factor_node.factor_base import Factor
+from QuantNodes.factor_node.operations import PointOperation, TimeOperation, SectionOperation
 
 def _genMultivariateOperatorInfo(*factors):
     Args = {}

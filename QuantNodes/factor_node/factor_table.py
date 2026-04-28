@@ -21,7 +21,7 @@ import pandas as pd
 from progressbar import ProgressBar
 from traits.api import Enum, Instance, Int, List, Str
 
-from QuantNodes.core.quant_nodes_object import QuantNodesObject as _QN_Object
+from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject as _QN_Object
 from QuantNodes.core.base import FactorError
 from QuantNodes.core.tools import (
     gen_available_name as genAvailableName,

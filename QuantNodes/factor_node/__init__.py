@@ -23,6 +23,10 @@ from QuantNodes.factor_node.time_factor import TimeFactorNode, ExpandingFactorNo
 from QuantNodes.factor_node.cross_section_factor import CrossSectionFactorNode, GroupRankFactorNode
 from QuantNodes.factor_node.panel_factor import PanelFactorNode, DelayFactorNode, DeltaFactorNode
 
+from QuantNodes.factor_node.factor_base import Factor as QNFactor, DerivativeFactor as QNDerivativeFactor
+from QuantNodes.factor_node.operations import PointOperation, TimeOperation, SectionOperation, PanelOperation
+from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
+
 __all__ = [
     # factor_db
     'FactorDB',
@@ -64,6 +68,13 @@ __all__ = [
     'PanelFactorNode',
     'DelayFactorNode',
     'DeltaFactorNode',
+
+    # factor_base (moved from core/)
+    'QNFactor',
+    'QNDerivativeFactor',
+
+    # operations (moved from core/)
+    'QuantNodesObject',
 ]
 
 if __name__ == '__main__':

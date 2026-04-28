@@ -14,7 +14,7 @@ import pandas as pd
 from traits.api import Callable as TraitCallable, Dict as TraitDict, Enum, Instance, List as TraitList, Str
 
 from QuantNodes.core.base import FactorError
-from QuantNodes.core.quant_nodes_object import QuantNodesObject
+from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
 
 
 def _default_operator(f, idt, iid, x, args):
