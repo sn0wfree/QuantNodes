@@ -2221,79 +2221,6 @@ def _make_aggr_mean_func(name, op_func):
 aggr_mean = _make_aggr_mean_func("aggr_mean", _aggr_mean)
 
 
-def merge_operator():
-    """
-    多因子合并装饰器
-    
-    用于合并多个因子的描述子截面
-    验证因子个数与描述子截面个数一致
-    
-    使用方式:
-        @merge_operator()
-        def merge(factors, descriptor_ids, **kwargs):
-            ...
-    """
-    def decorator(impl_func: Callable) -> Callable:
-        @wraps(impl_func)
-        def wrapper(factors, descriptor_ids, **kwargs):
-            if len(factors) != len(descriptor_ids):
-                raise FactorError("描述子个数与描述子截面个数不一致!")
-            
-            Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-            DescriptorIDs = []
-            for i in range(len(factors)):
-                StartInd, EndInd = Args.get("SepInd" + str(i), 0), Args.get("SepInd" + str(i + 1), 0)
-                DescriptorIDs += [descriptor_ids[i]] * (EndInd - StartInd)
-            
-            return SectionOperation(
-                kwargs.pop("factor_name", str(uuid.uuid1())),
-                Descriptors,
-                {"算子": impl_func, "参数": Args, "运算时点": "多时点", "描述子截面": DescriptorIDs},
-                **kwargs
-            )
-        
-        _register_operator(OperatorCategory.MULTI_SECTION, wrapper, "merge")
-        return wrapper
-    return decorator
-
-
-def section_transform_operator(with_datatype: bool = True):
-    """
-    截面变换装饰器
-    
-    用于处理需要修改描述子截面的算子
-    支持 DataType 元数据透传
-    
-    使用方式:
-        @section_transform_operator(with_datatype=True)
-        def chg_ids(f, old_ids, id_map={}, **kwargs):
-            ...
-    """
-    def decorator(impl_func: Callable) -> Callable:
-        @wraps(impl_func)
-        def wrapper(f, old_ids, id_map={}, **kwargs):
-            Descriptors, Args = _genMultivariateOperatorInfo(f)
-            Args["OperatorArg"] = {"id_map": id_map}
-            FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))
-            
-            op_kwargs = {
-                "算子": impl_func,
-                "参数": Args,
-                "运算时点": "多时点",
-                "描述子截面": [old_ids] * len(Descriptors)
-            }
-            
-            if with_datatype:
-                DataType = f.getMetaData(key="DataType") or "object"
-                op_kwargs["数据类型"] = DataType
-            
-            return SectionOperation(FactorName, Descriptors, op_kwargs, **kwargs)
-        
-        _register_operator(OperatorCategory.MULTI_SECTION, wrapper, "chg_ids")
-        return wrapper
-    return decorator
-
-
 def _aggr_std(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)
     nDT, nID = len(idt), len(iid)
@@ -2490,11 +2417,8 @@ def _merge(f, idt, iid, x, args):
     return pd.DataFrame(Rslt, columns=IDs).loc[:, iid].values
 
 
-@merge_operator()
 def merge(factors, descriptor_ids, **kwargs):
-    """合并多个因子的描述子截面"""
-    if len(factors) != len(descriptor_ids):
-        raise FactorError("描述子个数与描述子截面个数不一致!")
+    if len(factors) != len(descriptor_ids): raise FactorError("描述子个数与描述子截面个数不一致!")
     Descriptors, Args = _genMultivariateOperatorInfo(*factors)
     DescriptorIDs = []
     for i in range(len(factors)):
@@ -2517,9 +2441,7 @@ def _chg_ids(f, idt, iid, x, args):
     return Rslt
 
 
-@section_transform_operator(with_datatype=True)
-def chg_ids(f, old_ids, id_map={}, **kwargs):
-    """修改描述子ID映射"""
+def chg_ids(f, old_ids, id_map={}, **kwargs):  # id_map: {新ID:旧ID}
     Descriptors, Args = _genMultivariateOperatorInfo(f)
     Args["OperatorArg"] = {"id_map": id_map}
     FactorName = kwargs.pop("factor_name", str(uuid.uuid1()))

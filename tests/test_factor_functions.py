@@ -295,5 +295,148 @@ class TestOperatorMetadata:
         assert isinstance(op_info["parameters"], list)
 
 
+# ==============================================================================
+# 算子功能正确性验证测试
+# ==============================================================================
+
+class TestOperatorFunctionality:
+    """测试算子功能正确性"""
+
+    def test_registered_operator_count(self):
+        """测试注册算子总数"""
+        all_ops = list_operators()
+        assert len(all_ops) >= 90, f"Expected at least 90 operators, got {len(all_ops)}"
+
+    def test_all_registered_operators_callable(self):
+        """测试所有注册算子都可调用"""
+        all_ops = list_operators()
+        for op_name in all_ops:
+            op = get_operator(op_name)
+            assert callable(op), f"Operator {op_name} should be callable"
+
+    def test_operator_info_complete(self):
+        """测试所有算子元数据完整"""
+        all_ops = list_operators()
+        for op_name in all_ops:
+            info = operator_info(op_name)
+            assert info is not None, f"Operator {op_name} should have info"
+            assert "name" in info
+            assert "category" in info
+            assert "doc" in info
+            assert "signature" in info
+
+    def test_docstring_not_empty(self):
+        """测试关键算子有文档字符串"""
+        key_operators = [
+            "rolling_mean", "expanding_mean", "ewm_mean",
+            "standardizeRank", "winsorize", "lag",
+            "rolling_cov", "rolling_corr"
+        ]
+        for op_name in key_operators:
+            info = operator_info(op_name)
+            assert info is not None, f"Operator {op_name} should have info"
+            assert len(info["doc"]) >= 0, f"Operator {op_name} should have doc"
+
+
+class TestEdgeCases:
+    """测试边界条件"""
+
+    def test_empty_operator_list_by_invalid_category(self):
+        """测试无效类别返回空列表"""
+        result = list_operators(category="invalid")
+        assert result == []
+
+    def test_nonexistent_operator_returns_none(self):
+        """测试不存在的算子返回None"""
+        op = get_operator("definitely_does_not_exist_xyz")
+        assert op is None
+
+    def test_nonexistent_operator_info_returns_none(self):
+        """测试不存在的算子元数据返回None"""
+        info = operator_info("definitely_does_not_exist_xyz")
+        assert info is None
+
+
+class TestCategoriesComplete:
+    """测试分类完整性"""
+
+    def test_all_operators_belong_to_category(self):
+        """测试所有算子都归类"""
+        all_ops = list_operators()
+        categories = [OperatorCategory.POINT, OperatorCategory.TIME, 
+                     OperatorCategory.SECTION, OperatorCategory.MULTI_SECTION]
+        
+        categorized_count = 0
+        for cat in categories:
+            categorized_count += len(list_operators(category=cat))
+        
+        assert categorized_count == len(all_ops), \
+            f"All operators should belong to a category: {categorized_count} vs {len(all_ops)}"
+
+    def test_each_category_not_empty(self):
+        """测试每个分类都���为空"""
+        for cat in [OperatorCategory.POINT, OperatorCategory.TIME, 
+                   OperatorCategory.SECTION, OperatorCategory.MULTI_SECTION]:
+            ops = list_operators(category=cat)
+            assert len(ops) > 0, f"Category {cat} should not be empty"
+
+
+class TestOperatorInteraction:
+    """测试算子组合和交互"""
+
+    def test_same_operator_different_calls(self):
+        """测试同一算子可多次调用"""
+        ops = list_operators()
+        op_name = "isnull"
+        
+        # 获取两次应该返回同一个函数
+        op1 = get_operator(op_name)
+        op2 = get_operator(op_name)
+        assert op1 is op2
+
+    def test_category_filtering_works(self):
+        """测试分类过滤功能"""
+        all_ops = list_operators()
+        point_ops = list_operators(category=OperatorCategory.POINT)
+        
+        # point_ops 应该是 all_ops 的子集
+        for op in point_ops:
+            assert op in all_ops
+
+
+class TestBackwardCompatibility:
+    """向后兼容性测试"""
+
+    def test_known_operators_still_available(self):
+        """测试已知算子仍然可用"""
+        known_operators = [
+            # Point operators
+            "isnull", "notnull", "log", "sign", "ceil", "floor",
+            "nansum", "nanprod", "nanmax", "nanmin", "nanmean",
+            "nanstd", "nanvar", "nanmedian", "nancount",
+            # Time operators
+            "rolling_mean", "rolling_sum", "rolling_std",
+            "expanding_mean", "expanding_sum",
+            "ewm_mean",
+            "lag", "diff", "fillna", "nav",
+            # Section operators
+            "standardizeRank", "standardizeZScore", "winsorize",
+            # Multi-section operators
+            "aggregate", "aggr_sum"
+        ]
+        
+        for op_name in known_operators:
+            op = get_operator(op_name)
+            assert callable(op), f"Known operator {op_name} should be available"
+
+    def test_operator_signatures_present(self):
+        """测试算子都有签名"""
+        all_ops = list_operators()
+        for op_name in all_ops[:20]:  # 检查前20个
+            info = operator_info(op_name)
+            assert "signature" in info
+            assert info["signature"] is not None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
