@@ -22,6 +22,7 @@ from functools import wraps
 from typing import Callable, Dict, Any, Optional, List
 
 from QuantNodes.core.base import FactorError
+from QuantNodes.core.data_preprocessing import DataPreprocessingFun
 from QuantNodes.factor_node.factor import Factor
 from QuantNodes.factor_node.factor_operation import PointOperation, TimeOperation, SectionOperation
 
