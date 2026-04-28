@@ -259,34 +259,6 @@ def point_operator(data_type: str = "double", multi_factor: bool = False):
     return decorator
 
 
-def rolling_operator():
-    """
-    滚动窗口运算装饰器
-    
-    自动处理: window, min_periods, win_type 参数
-    """
-    def decorator(impl_func: Callable) -> Callable:
-        @wraps(impl_func)
-        def wrapper(f, window, min_periods=1, win_type=None, **kwargs):
-            Descriptors, Args = _genMultivariateOperatorInfo(f)
-            Args["OperatorArg"] = {
-                "window": window,
-                "min_periods": min_periods,
-                "win_type": win_type,
-            }
-            return TimeOperation(
-                kwargs.pop("factor_name", str(uuid.uuid1())),
-                Descriptors,
-                {"算子": impl_func, "参数": Args, "运算时点": _METADATA["multi_dt"]},
-                **kwargs
-            )
-        
-        op_name = impl_func.__name__.lstrip('_')
-        _register_operator(OperatorCategory.TIME, wrapper, op_name)
-        return wrapper
-    return decorator
-
-
 def single_section_operator():
     """
     单截面运算装饰器
@@ -1949,34 +1921,6 @@ def disaggregate(f, aggr_ids, cat_data=None, disaggr_ids=None, **kwargs):  # 将
 
 _register_operator(OperatorCategory.MULTI_SECTION, aggregate, "aggregate")
 _register_operator(OperatorCategory.MULTI_SECTION, disaggregate, "disaggregate")
-
-
-def _aggr_sum(f, idt, iid, x, args):
-    Data = _genOperatorData(f, idt, iid, x, args)
-    nDT, nID = len(idt), len(iid)
-    FactorData = Data[0]
-    if args["OperatorArg"]["Mask"]:
-        Mask = (Data[1] == 1)
-    else:
-        Mask = np.full(FactorData.shape, fill_value=True)
-    if args["OperatorArg"]["CatData"]:
-        CatData = Data[-1]
-        Rslt = np.full(shape=(nDT, nID), fill_value=np.nan)
-        if args["OperatorArg"]["SectionChged"]:
-            for i, iID in enumerate(iid):
-                iMask = ((CatData == iID) & Mask)
-                Rslt[:, i] = np.nansum(iMask * FactorData, axis=1)
-        else:
-            AllCats = pd.unique(CatData.flatten())
-            for i, iCat in enumerate(AllCats):
-                if pd.isnull(iCat):
-                    iMask = (pd.isnull(CatData) & Mask)
-                else:
-                    iMask = ((CatData == iCat) & Mask)
-                Rslt[iMask] = np.nansum(iMask * FactorData, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)[iMask]
-    else:
-        Rslt = np.nansum(FactorData * Mask, axis=1).reshape((nDT, 1)).repeat(nID, axis=1)
-    return Rslt
 
 
 def _make_aggr_func(name, op_func, extra_params=None):
