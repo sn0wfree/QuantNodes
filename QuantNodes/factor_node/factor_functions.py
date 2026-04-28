@@ -1331,9 +1331,10 @@ def rolling_change_rate(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     Numerator = Data[args["OperatorArg"]["window"] - 1:]
     Denominator = Data[:-args["OperatorArg"]["window"] + 1]
-    Rslt = (Numerator - Denominator) / np.abs(Denominator)
-    Mask = (Denominator == 0)
-    Rslt[Mask] = np.nan
+    Mask = (Denominator == 0) | np.isnan(Denominator)
+    Rslt = np.full_like(Numerator, np.nan)
+    ValidMask = ~Mask
+    Rslt[ValidMask] = (Numerator[ValidMask] - Denominator[ValidMask]) / np.abs(Denominator[ValidMask])
     Rslt[Mask & (Numerator > 0)] = 1.0
     Rslt[Mask & (Numerator < 0)] = -1.0
     Rslt[Mask & (Numerator == 0)] = 0.0
