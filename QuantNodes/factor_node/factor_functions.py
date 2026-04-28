@@ -712,7 +712,7 @@ def fillna_operator():
             Data = _genOperatorData(f, idt, iid, x, args)[0]
             if args["OperatorArg"]["value"] is None:
                 LookBack = args["OperatorArg"]["lookback"]
-                return pd.DataFrame(Data).fillna(method="pad", limit=LookBack).values[LookBack:]
+                return pd.DataFrame(Data).fillna(method="ffill", limit=LookBack).values[LookBack:]
             else:
                 Data[pd.isnull(Data)] = args["OperatorArg"]["value"]
                 return Data
@@ -829,12 +829,12 @@ def multifactor_rolling_operator():
             )
             
             if constant:
-                DataType = [('alpha', np.float)] + [('beta' + str(i), np.float) for i in range(nX)]
-                DataType += [('t_alpha', np.float)] + [('t_beta' + str(i), np.float) for i in range(nX)]
+                DataType = [('alpha', np.float64)] + [('beta' + str(i), np.float64) for i in range(nX)]
+                DataType += [('t_alpha', np.float64)] + [('t_beta' + str(i), np.float64) for i in range(nX)]
             else:
-                DataType = [('beta' + str(i), np.float) for i in range(nX)]
-                DataType += [('t_beta' + str(i), np.float) for i in range(nX)]
-            DataType += [('fvalue', np.float), ('rsquared', np.float), ('rsquared_adj', np.float)]
+                DataType = [('beta' + str(i), np.float64) for i in range(nX)]
+                DataType += [('t_beta' + str(i), np.float64) for i in range(nX)]
+            DataType += [('fvalue', np.float64), ('rsquared', np.float64), ('rsquared_adj', np.float64)]
             f.TempData["dtype"] = DataType
             return f
         
@@ -984,7 +984,7 @@ def fetch(f, idt, iid, x, args, pos=0, dtype="double"):
         return Data.astype(args["OperatorArg"]["dtype"])[args["OperatorArg"]["pos"]]
     SampleData = Data[0, 0]
     DataType = np.dtype(
-        [(str(i), (np.float if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
+        [(str(i), (np.float64 if isinstance(SampleData[i], float) else "O")) for i in range(len(SampleData))])
     return Data.astype(DataType)[str(args["OperatorArg"]["pos"])]
 
 
@@ -1001,7 +1001,7 @@ def replace(f, idt, iid, x, args, value_map=None):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     ValueMap = args["OperatorArg"]["value_map"]
     if f.DataType == "double":
-        Rslt = np.full_like(Data, fill_value=np.nan, dtype="float")
+        Rslt = np.full_like(Data, fill_value=np.nan, dtype="float64")
     else:
         Rslt = np.full_like(Data, fill_value=None, dtype="O")
     for iKey, iVal in ValueMap.items():
@@ -1165,8 +1165,10 @@ def tolist(f, idt, iid, x, args):
     """转换为列表"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
-    return pd.Panel({i: iData for i, iData in enumerate(Data)}).sort_index(axis=0).to_frame(
-        filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
+    return pd.DataFrame(
+        np.array([np.array(d).flatten() for d in Data]).T,
+        index=pd.MultiIndex.from_product([idt, iid])
+    ).apply(lambda s: s.tolist(), axis=1).unstack().values
 
 
 @point_operator()
@@ -1569,9 +1571,9 @@ def lag(f, idt, iid, x, args):
     if f.FactorDataType != "double":
         Data = pd.DataFrame(np.empty(Data.shape, dtype="O"), index=Data.index, columns=iid)
     else:
-        Data = pd.DataFrame(index=Data.index, columns=iid, dtype="float")
+        Data = pd.DataFrame(index=Data.index, columns=iid, dtype="float64")
     Data.loc[TargetDTs] = TargetData
-    return Data.fillna(method='pad').values[args["OperatorArg"]['window']:]
+    return Data.fillna(method='ffill').values[args["OperatorArg"]['window']:]
 
 
 @time_shift_operator(lookback_param="n")
@@ -1587,7 +1589,7 @@ def fillna(f, idt, iid, x, args):
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     if args["OperatorArg"]["value"] is None:
         LookBack = args["OperatorArg"]["lookback"]
-        return pd.DataFrame(Data).fillna(method="pad", limit=LookBack).values[LookBack:]
+        return pd.DataFrame(Data).fillna(method="ffill", limit=LookBack).values[LookBack:]
     else:
         Data[pd.isnull(Data)] = args["OperatorArg"]["value"]
         return Data
