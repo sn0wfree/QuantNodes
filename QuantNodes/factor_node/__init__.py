@@ -17,6 +17,12 @@ from QuantNodes.factor_node.factor_operation import (
     PanelOperation,
 )
 
+from QuantNodes.factor_node.factor_node import FactorNode, FactorPipeline
+from QuantNodes.factor_node.point_factor import PointFactorNode, ArithmeticFactorNode
+from QuantNodes.factor_node.time_factor import TimeFactorNode, ExpandingFactorNode
+from QuantNodes.factor_node.cross_section_factor import CrossSectionFactorNode, GroupRankFactorNode
+from QuantNodes.factor_node.panel_factor import PanelFactorNode, DelayFactorNode, DeltaFactorNode
+
 __all__ = [
     # factor_db
     'FactorDB',
@@ -37,6 +43,27 @@ __all__ = [
     'TimeOperation',
     'SectionOperation',
     'PanelOperation',
+
+    # FactorNode (BaseNode integration)
+    'FactorNode',
+    'FactorPipeline',
+
+    # PointFactorNode
+    'PointFactorNode',
+    'ArithmeticFactorNode',
+
+    # TimeFactorNode
+    'TimeFactorNode',
+    'ExpandingFactorNode',
+
+    # CrossSectionFactorNode
+    'CrossSectionFactorNode',
+    'GroupRankFactorNode',
+
+    # PanelFactorNode
+    'PanelFactorNode',
+    'DelayFactorNode',
+    'DeltaFactorNode',
 ]
 
 if __name__ == '__main__':

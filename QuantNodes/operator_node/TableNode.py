@@ -5,7 +5,7 @@ import copy
 from QuantNodes.operator_node.SQLUtils import SQLBuilder
 
 
-class BaseNode(SQLBuilder):
+class OperatorBaseNode(SQLBuilder):
     def __init__(self, db_table: str, cols: tuple, mode='limit'):
 
         """
@@ -219,7 +219,7 @@ class BaseNode(SQLBuilder):
         return self._table_node.query
 
 
-class Node2(BaseNode):
+class Node2(OperatorBaseNode):
     def __init__(self, table_name, settings, mode='limit'):
         super(Node2, self).__init__(table_name, settings, mode=mode)
         self._sql_str = f'select * from {self.db_table}'

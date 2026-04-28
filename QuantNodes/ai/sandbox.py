@@ -1,0 +1,308 @@
+# coding=utf-8
+"""
+代码安全沙箱
+
+提供代码安全校验和执行环境。
+"""
+from __future__ import annotations
+
+import ast
+import re
+import logging
+from typing import Any, Dict, List, Optional, Set
+from dataclasses import dataclass, field
+
+
+@dataclass
+class CodeValidationResult:
+    """代码验证结果"""
+    is_safe: bool
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    warnings_only: bool = False
+
+
+class DangerousCodeError(Exception):
+    """危险代码异常"""
+    pass
+
+
+class CodeSandbox:
+    """
+    代码安全沙箱
+
+    提供代码安全校验，防止执行危险操作。
+
+    Examples:
+        >>> sandbox = CodeSandbox()
+        >>> result = sandbox.validate("import os\\nos.system('ls')")
+        >>> print(result.is_safe)  # False
+    """
+
+    DANGEROUS_IMPORTS: Set[str] = {
+        'os', 'sys', 'subprocess', 'socket', 'urllib', 'requests',
+        'httplib', 'ftplib', 'telnetlib', 'telnet', 'poplib', 'imaplib',
+        'smtplib', 'nntplib', 'anydbm', 'dbhash', 'gdbm', 'dbm',
+        'marshal', 'pickle', 'cPickle', 'shelve', 'anydbm',
+        'threading', 'multiprocessing', 'concurrent',
+        'ctypes', 'cffi', 'mmap', 'resource', 'signal',
+        'pty', 'tty', 'termios', 'fcntl', 'grp', 'pwd',
+        'platform', 'syslog', 'crypt', 'spwd',
+        'zipfile', 'tarfile', 'gzip', 'bz2', 'lzma',
+        'tempfile', 'glob', 'fnmatch', 'linecache', 'macpath',
+        'macurl2path', 'mailcap', 'mimetypes', 'MimeWriter',
+        'mimify', 'multifile', 'mutex', 'newdir', 'rexec',
+        'robotparser', 'user', 'whichdb', 'xdrlib',
+    }
+
+    DANGEROUS_PATTERNS: List[str] = [
+        r'eval\s*\(',
+        r'exec\s*\(',
+        r'compile\s*\(',
+        r'__import__\s*\(',
+        r'getattr\s*\(',
+        r'setattr\s*\(',
+        r'delattr\s*\(',
+        r'vars\s*\(',
+        r'locals\s*\(',
+        r'globals\s*\(',
+        r'mro\s*\(',
+        r'__subclasses__\s*\(',
+        r'__bases__\s*\(',
+        r'__init__\s*\(',
+        r'open\s*\(',
+        r'file\s*\(',
+        r'input\s*\(',
+        r'raw_input\s*\(',
+        r'print\s*\(',
+        r'execfile\s*\(',
+        r'runpy\s*\(',
+        r'os\.system\s*\(',
+        r'os\.popen\s*\(',
+        r'subprocess\.',
+        r'socket\.',
+        r'shelve\.open',
+        r'pickle\.load',
+        r'pickle\.loads',
+        r'marshal\.load',
+        r'yaml\.load',
+        r'yaml\.unsafe_load',
+    ]
+
+    ALLOWED_PATTERNS: List[str] = [
+        r'^import\s+quantnodes',
+        r'^from\s+quantnodes',
+        r'^import\s+pandas',
+        r'^from\s+pandas',
+        r'^import\s+numpy',
+        r'^from\s+numpy',
+    ]
+
+    def __init__(
+        self,
+        allow_warnings: bool = False,
+        max_code_length: int = 10000,
+        **kwargs
+    ):
+        """
+        初始化代码沙箱
+
+        Args:
+            allow_warnings: 是否允许警告（不阻断执行）
+            max_code_length: 最大代码长度
+        """
+        self.allow_warnings = allow_warnings
+        self.max_code_length = max_code_length
+        self.logger = logging.getLogger(f"sandbox.{self.__class__.__name__}")
+
+    def validate(self, code: str) -> CodeValidationResult:
+        """
+        验证代码安全性
+
+        Args:
+            code: 待验证的代码
+
+        Returns:
+            CodeValidationResult 验证结果
+        """
+        result = CodeValidationResult(is_safe=True)
+
+        if not code or not code.strip():
+            result.is_safe = False
+            result.errors.append("Empty code")
+            return result
+
+        if len(code) > self.max_code_length:
+            result.is_safe = False
+            result.errors.append(f"Code exceeds max length ({self.max_code_length})")
+            return result
+
+        result.warnings.extend(self._check_dangerous_imports(code))
+        result.errors.extend(self._check_dangerous_patterns(code))
+
+        if result.errors:
+            result.is_safe = False
+        elif result.warnings and not self.allow_warnings:
+            result.is_safe = False
+            result.warnings_only = True
+
+        return result
+
+    def _check_dangerous_imports(self, code: str) -> List[str]:
+        """检查危险导入"""
+        warnings = []
+
+        try:
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.split('.')[0] in self.DANGEROUS_IMPORTS:
+                            warnings.append(f"Dangerous import: {alias.name}")
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module and node.module.split('.')[0] in self.DANGEROUS_IMPORTS:
+                        warnings.append(f"Dangerous import: from {node.module}")
+
+        except SyntaxError:
+            pass
+
+        return warnings
+
+    def _check_dangerous_patterns(self, code: str) -> List[str]:
+        """检查危险模式"""
+        errors = []
+
+        for pattern in self.DANGEROUS_PATTERNS:
+            if re.search(pattern, code, re.IGNORECASE):
+                errors.append(f"Dangerous pattern detected: {pattern}")
+
+        return errors
+
+    def validate_and_execute(
+        self,
+        code: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Any:
+        """
+        验证并执行代码
+
+        Args:
+            code: 待执行的代码
+            context: 执行上下文
+
+        Returns:
+            执行结果
+
+        Raises:
+            DangerousCodeError: 代码不安全
+            SyntaxError: 代码语法错误
+        """
+        result = self.validate(code)
+
+        if not result.is_safe:
+            if result.warnings_only:
+                self.logger.warning(f"Code has warnings: {result.warnings}")
+            else:
+                raise DangerousCodeError(f"Code validation failed: {result.errors}")
+
+        context = context or {}
+        safe_builtins = {
+            'True': True,
+            'False': False,
+            'None': None,
+            'abs': abs,
+            'all': all,
+            'any': any,
+            'ascii': ascii,
+            'bin': bin,
+            'bool': bool,
+            'bytes': bytes,
+            'chr': chr,
+            'dict': dict,
+            'dir': dir,
+            'divmod': divmod,
+            'enumerate': enumerate,
+            'filter': filter,
+            'float': float,
+            'format': format,
+            'frozenset': frozenset,
+            'hash': hash,
+            'hex': hex,
+            'id': id,
+            'int': int,
+            'isinstance': isinstance,
+            'issubclass': issubclass,
+            'iter': iter,
+            'len': len,
+            'list': list,
+            'map': map,
+            'max': max,
+            'min': min,
+            'next': next,
+            'object': object,
+            'oct': oct,
+            'ord': ord,
+            'pow': pow,
+            'print': print,
+            'range': range,
+            'repr': repr,
+            'reversed': reversed,
+            'round': round,
+            'set': set,
+            'slice': slice,
+            'sorted': sorted,
+            'str': str,
+            'sum': sum,
+            'tuple': tuple,
+            'zip': zip,
+        }
+
+        try:
+            compiled = compile(code, '<string>', 'exec')
+            exec_globals = {**safe_builtins, **context}
+            exec(compiled, exec_globals)
+            return exec_globals
+        except SyntaxError as e:
+            raise SyntaxError(f"Syntax error: {e}")
+        except Exception as e:
+            raise DangerousCodeError(f"Execution error: {e}")
+
+    def extract_imports(self, code: str) -> Dict[str, List[str]]:
+        """提取代码中的导入语句"""
+        imports = {'standard': [], 'third_party': [], 'local': []}
+
+        try:
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        name = alias.name
+                        if name.split('.')[0] in self.DANGEROUS_IMPORTS:
+                            continue
+                        imports['standard'].append(name)
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        imports['third_party'].append(node.module)
+
+        except SyntaxError:
+            pass
+
+        return imports
+
+    def extract_quantnodes_usage(self, code: str) -> List[str]:
+        """提取代码中 QuantNodes 的使用情况"""
+        usage = []
+
+        patterns = [
+            (r'from\s+QuantNodes\.(\w+)', 'module'),
+            (r'import\s+QuantNodes\.(\w+)', 'module'),
+            (r'(\w+Node)\s*\(', 'node_class'),
+            (r'(\w+Node)\s*\[', 'node_class'),
+        ]
+
+        for pattern, usage_type in patterns:
+            matches = re.findall(pattern, code)
+            for match in matches:
+                usage.append(f"{usage_type}: {match}")
+
+        return list(set(usage))
