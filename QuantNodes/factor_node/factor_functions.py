@@ -454,20 +454,17 @@ def fix(f, idt, iid, x, args):
     return np.fix(Data.astype(float))
 
 
-def _applymap(f, idt, iid, x, args):
+@point_operator()
+def applymap(f, idt, iid, x, args, func=id):
+    """应用自定义函数"""
     Data = pd.DataFrame(_genOperatorData(f, idt, iid, x, args)[0])
     Func = args["OperatorArg"]["func"]
     return Data.applymap(Func).values
 
 
-def applymap(f, func=id, data_type="double", **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"func": func}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _applymap, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": data_type}, **kwargs)
-
-
-def _fetch(f, idt, iid, x, args):
+@point_operator()
+def fetch(f, idt, iid, x, args, pos=0, dtype="double"):
+    """获取指定位置数据"""
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     if isinstance(args["OperatorArg"]["pos"], str):
         return Data.astype(args["OperatorArg"]["dtype"])[args["OperatorArg"]["pos"]]
@@ -477,27 +474,16 @@ def _fetch(f, idt, iid, x, args):
     return Data.astype(DataType)[str(args["OperatorArg"]["pos"])]
 
 
-def fetch(f, pos=0, dtype="double", **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"pos": pos, "dtype": dtype}
-    if isinstance(pos, str):
-        Args["OperatorArg"]['dtype'] = f.TempData['dtype']
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _fetch, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": dtype}, **kwargs)
-
-
-def _where(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def where(f, idt, iid, x, args):
+    """条件选择"""
     Data = _genOperatorData(f, idt, iid, x, args)
     return np.where(Data[1], Data[0], Data[2])
 
 
-def where(f, mask, other, data_type="double", **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f, mask, other)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _where, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": data_type}, **kwargs)
-
-
-def _replace(f, idt, iid, x, args):
+@point_operator()
+def replace(f, idt, iid, x, args, value_map=None):
+    """值替换"""
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     ValueMap = args["OperatorArg"]["value_map"]
     if f.DataType == "double":
@@ -512,22 +498,11 @@ def _replace(f, idt, iid, x, args):
     return Rslt
 
 
-def replace(f, value_map, data_type="double", **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"value_map": value_map}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _replace, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": data_type}, **kwargs)
-
-
-def _clip(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def clip(f, idt, iid, x, args):
+    """截断处理"""
     Data = _genOperatorData(f, idt, iid, x, args)
-    return np.clip(Data[0].atype(float), Data[1], Data[2])
-
-
-def clip(f, a_min, a_max, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f, a_min, a_max)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _clip, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
+    return np.clip(Data[0].astype(float), Data[1], Data[2])
 
 
 @point_operator(multi_factor=True)
@@ -598,7 +573,9 @@ def nanargmin(f, idt, iid, x, args):
     return Rslt
 
 
-def _nanmean(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanmean(f, idt, iid, x, args, weights=None, ignore_nan_weight=True):
+    """忽略空值求均值"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     Weights = args["OperatorArg"]["weights"]
@@ -621,153 +598,92 @@ def _nanmean(f, idt, iid, x, args):
         return Rslt / len(Data)
 
 
-def nanmean(*factors, weights=None, ignore_nan_weight=True, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    Args["OperatorArg"] = {"weights": weights, "ignore_nan_weight": ignore_nan_weight}
-    return PointOperation(kwargs.get("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanmean, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nanstd(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanstd(f, idt, iid, x, args, ddof=1):
+    """忽略空值求标准差"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     return np.nanstd(np.array(Data), axis=0, ddof=args["OperatorArg"]["ddof"])
 
 
-def nanstd(*factors, ddof=1, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    Args["OperatorArg"] = {"ddof": ddof}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanstd, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nanvar(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanvar(f, idt, iid, x, args, ddof=1):
+    """忽略空值求方差"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     return np.nanvar(np.array(Data), axis=0, ddof=args["OperatorArg"]["ddof"])
 
 
-def nanvar(*factors, ddof=1, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    Args["OperatorArg"] = {"ddof": ddof}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanvar, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nanmedian(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanmedian(f, idt, iid, x, args):
+    """忽略空值求中位数"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     return np.nanmedian(np.array(Data), axis=0)
 
 
-def nanmedian(*factors, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanmedian, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nanquantile(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nanquantile(f, idt, iid, x, args, quantile=0.5):
+    """忽略空值求分位数"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     return np.nanpercentile(np.array(Data), args["OperatorArg"]["quantile"] * 100, axis=0)
 
 
-def nanquantile(*factors, quantile=0.5, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    Args["OperatorArg"] = {"quantile": quantile}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nanquantile, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _nancount(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def nancount(f, idt, iid, x, args):
+    """统计空值数量"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     return np.nansum(pd.isnull(np.array(Data)), axis=0)
 
 
-def nancount(*factors, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _nancount, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _regress_change_rate(f, idt, iid, x, args):
-    Y = np.array(
-        [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for iData
-         in _genOperatorData(f, idt, iid, x, args)])
-    X = np.arange(Y.shape[0]).astype("float").reshape((Y.shape[0], 1, 1)).repeat(Y.shape[1], axis=1).repeat(Y.shape[2],
-                                                                                                            axis=2)
-    Denominator = np.abs(np.nanmean(Y, axis=0))
-    X[pd.isnull(Y)] = np.nan
-    X = X - np.nanmean(X, axis=0)
-    Y = Y - np.nanmean(Y, axis=0)
-    Numerator = np.nansum(X * Y, axis=0) / np.nansum(X ** 2, axis=0)
-    Rslt = Numerator / Denominator
-    Mask = (Denominator == 0)
-    Rslt[Mask] = np.sign(Numerator)[Mask]
-    Rslt[np.isinf(Rslt)] = np.nan
+@point_operator(multi_factor=True)
+def regress_change_rate(f, idt, iid, x, args):
+    """回归变化率"""
+    Rslt = np.array(DataPreprocessingFun.regressChangeRate(x), dtype=np.float64)
+    Rslt[Rslt == 0.0] = np.nan
     return Rslt
 
 
-def regress_change_rate(*factors, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _regress_change_rate, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _tolist(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def tolist(f, idt, iid, x, args):
+    """转换为列表"""
     Data = [(iData if isinstance(iData, np.ndarray) else np.full(shape=(len(idt), len(iid)), fill_value=iData)) for
             iData in _genOperatorData(f, idt, iid, x, args)]
     return pd.Panel({i: iData for i, iData in enumerate(Data)}).sort_index(axis=0).to_frame(
         filter_observations=False).apply(lambda s: s.tolist(), axis=1).unstack().values
 
 
-def tolist(*factors, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(*factors)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _tolist, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": "object"}, **kwargs)
-
-
-def _to_json(f, idt, iid, x, args):
+@point_operator()
+def to_json(f, idt, iid, x, args):
+    """转换为JSON"""
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     return pd.DataFrame(Data).applymap(lambda v: json.dumps(v, ensure_ascii=False) if pd.notnull(v) else None).values
 
 
-def to_json(f, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _to_json, "参数": Args, "运算时点": "多时点", "运算ID": "多ID", "数据类型": "string"}, **kwargs)
-
-
-def _single_quarter(f, idt, iid, x, args):
+@point_operator(multi_factor=True)
+def single_quarter(f, idt, iid, x, args):
+    """单季度处理"""
     ReportPeriod, Last, Prev = _genOperatorData(f, idt, iid, x, args)
-    f = np.vectorize(lambda x: x[-4:] == "0331")
+    f_vec = np.vectorize(lambda x: x[-4:] == "0331")
     Rslt = Last - Prev
-    Mask = f(ReportPeriod)
+    Mask = f_vec(ReportPeriod)
     Rslt[Mask] = Last[Mask]
     return Rslt
 
 
-def single_quarter(report_period, last, prev, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(report_period, last, prev)
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _single_quarter, "参数": Args, "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _strftime(f, idt, iid, x, args):
+@point_operator()
+def strftime(f, idt, iid, x, args, dt_format="%Y%m%d"):
+    """日期格式化"""
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     DTFormat = args["OperatorArg"]["dt_format"]
     return pd.DataFrame(Data).applymap(lambda x: x.strftime(DTFormat) if pd.notnull(x) else None).values
 
 
-def strftime(f, dt_format="%Y%m%d", **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"dt_format": dt_format}
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _strftime, "参数": Args, "数据类型": "string", "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
-
-
-def _strptime(f, idt, iid, x, args):
+@point_operator()
+def strptime(f, idt, iid, x, args, dt_format="%Y%m%d", is_datetime=True):
+    """字符串转日期"""
     Data = _genOperatorData(f, idt, iid, x, args)[0]
     DTFormat = args["OperatorArg"]["dt_format"]
     if args["OperatorArg"]["is_datetime"]:
@@ -776,14 +692,6 @@ def _strptime(f, idt, iid, x, args):
     else:
         return pd.DataFrame(Data).applymap(
             lambda x: dt.datetime.strptime(x, DTFormat).date() if pd.notnull(x) else None).values
-
-
-def strptime(f, dt_format="%Y%m%d", is_datetime=True, **kwargs):
-    Descriptors, Args = _genMultivariateOperatorInfo(f)
-    Args["OperatorArg"] = {"dt_format": dt_format, "is_datetime": is_datetime}
-
-    return PointOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                          {"算子": _strptime, "参数": Args, "数据类型": "object", "运算时点": "多时点", "运算ID": "多ID"}, **kwargs)
 
 
 # ----------------------时间序列运算--------------------------------
@@ -1647,43 +1555,16 @@ def standardizeQuantile(f, mask=None, cat_data=None, ascending=True, perturbatio
                             {"算子": _standardizeQuantile, "参数": Args, "运算时点": "多时点", "输出形式": "全截面"}, **kwargs)
 
 
-def _fillNaNByVal(f, idt, iid, x, args):
-    Data = _genOperatorData(f, idt, iid, x, args)
-    OperatorArg = args["OperatorArg"].copy()
-    FactorData = Data[0]
-    Mask = OperatorArg.pop("mask")
-    if Mask is not None:
-        Mask = (Data[1] == 1)
-    Rslt = np.zeros(FactorData.shape) + np.nan
-    for i in range(FactorData.shape[0]):
-        Rslt[i] = DataPreprocessingFun.fillNaNByVal(FactorData[i], mask=(Mask[i] if Mask is not None else None),
-                                                    **OperatorArg)
-    return Rslt
-
-
-def fillNaNByVal(f, mask=None, value=0.0, **kwargs):
-    Factors = [f]
-    OperatorArg = {}
-    if mask is not None:
-        Factors.append(mask)
-        OperatorArg["mask"] = 1
-    else:
-        OperatorArg["mask"] = None
-    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"value": value}
-    Args["OperatorArg"].update(OperatorArg)
-    return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                            {"算子": _fillNaNByVal, "参数": Args, "运算时点": "多时点", "输出形式": "全截面"}, **kwargs)
-
-
-def _fillNaNByFun(f, idt, iid, x, args):
+@single_section_operator()
+def fillNaNByFun(f, idt, iid, x, args, val_fun="平均值"):
+    """按函数值填充NaN"""
     Data = _genOperatorData(f, idt, iid, x, args)
     OperatorArg = args["OperatorArg"].copy()
     FactorData = Data[0]
     StartInd = 1
     Mask = OperatorArg.pop("mask")
     if Mask is not None:
-        Mask = (Data[1] == 1)
+        Mask = (Data[StartInd] == 1)
         StartInd += 1
     CatData = OperatorArg.pop("cat_data")
     if CatData == 1:
@@ -1712,27 +1593,91 @@ def _fillNaNByFun(f, idt, iid, x, args):
     return Rslt
 
 
-def fillNaNByFun(f, mask=None, cat_data=None, val_fun="平均值", **kwargs):
-    Factors = [f]
-    OperatorArg = {}
-    if mask is not None:
-        Factors.append(mask)
-        OperatorArg["mask"] = 1
-    else:
-        OperatorArg["mask"] = None
-    if isinstance(cat_data, Factor):
-        Factors.append(cat_data)
-        OperatorArg["cat_data"] = 1
-    elif isinstance(cat_data, list):
-        Factors += cat_data
-        OperatorArg["cat_data"] = len(cat_data)
-    else:
-        OperatorArg["cat_data"] = None
-    Descriptors, Args = _genMultivariateOperatorInfo(*Factors)
-    Args["OperatorArg"] = {"val_fun": val_fun}
-    Args["OperatorArg"].update(OperatorArg)
-    return SectionOperation(kwargs.pop("factor_name", str(uuid.uuid1())), Descriptors,
-                            {"算子": _fillNaNByFun, "参数": Args, "运算时点": "多时点", "输出形式": "全截面"}, **kwargs)
+@single_section_operator()
+def fillNaNByRegress(f, idt, iid, x, args, intercept=True, weight_data=None, dummy_data=None):
+    """按回归预测值填充NaN"""
+    Data = _genOperatorData(f, idt, iid, x, args)
+    OperatorArg = args["OperatorArg"].copy()
+    FactorData = Data[0]
+    StartInd = 1
+    Mask = OperatorArg.pop("mask")
+    if Mask is not None:
+        Mask = (Data[StartInd] == 1)
+        StartInd += 1
+    CatData = OperatorArg.pop("cat_data")
+    if CatData == 1:
+        CatData = Data[StartInd]
+        StartInd += 1
+    elif CatData is not None:
+        CatData = Data[StartInd:StartInd + CatData]
+        StartInd += len(CatData)
+        CatData = np.array(list(zip(*CatData)))
+    X = OperatorArg.pop("X")
+    if X == 1:
+        X = Data[StartInd]
+    elif X is not None:
+        X = Data[StartInd:StartInd + X]
+    Rslt = np.zeros(FactorData.shape) + np.nan
+    for i in range(FactorData.shape[0]):
+        Rslt[i] = DataPreprocessingFun.fillNaNByRegress(FactorData[i], mask=(Mask[i] if Mask is not None else None),
+                                                         cat_data=(CatData[i].T if CatData is not None else None),
+                                                         X=(X[i].T if X is not None else None), **OperatorArg)
+    return Rslt
+
+
+@single_section_operator()
+def orthogonalize(f, idt, iid, x, args, method="gram_schmidt", weight_data=None, dummy_data=None):
+    """正交化处理"""
+    Data = _genOperatorData(f, idt, iid, x, args)
+    OperatorArg = args["OperatorArg"].copy()
+    FactorData = Data[0]
+    StartInd = 1
+    Mask = OperatorArg.pop("mask")
+    if Mask is not None:
+        Mask = (Data[StartInd] == 1)
+        StartInd += 1
+    CatData = OperatorArg.pop("cat_data")
+    if CatData == 1:
+        CatData = Data[StartInd]
+    elif CatData is not None:
+        CatData = Data[StartInd:StartInd + CatData]
+        CatData = np.array(list(zip(*CatData)))
+    X = OperatorArg.pop("X")
+    if X == 1:
+        X = Data[StartInd]
+    elif X is not None:
+        X = Data[StartInd:StartInd + X]
+    Rslt = np.zeros(FactorData.shape) + np.nan
+    for i in range(FactorData.shape[0]):
+        Rslt[i] = DataPreprocessingFun.orthogonalize(FactorData[i], mask=(Mask[i] if Mask is not None else None),
+                                                      cat_data=(CatData[i].T if CatData is not None else None),
+                                                      X=(X[i].T if X is not None else None), **OperatorArg)
+    return Rslt
+
+
+@single_section_operator()
+def standardizeQuantile(f, idt, iid, x, args, ascending=True, perturbation=False, other_handle='填充None'):
+    """分位数标准化"""
+    Data = _genOperatorData(f, idt, iid, x, args)
+    OperatorArg = args["OperatorArg"].copy()
+    FactorData = Data[0]
+    StartInd = 1
+    Mask = OperatorArg.pop("mask")
+    if Mask is not None:
+        Mask = (Data[StartInd] == 1)
+        StartInd += 1
+    CatData = OperatorArg.pop("cat_data")
+    if CatData == 1:
+        CatData = Data[StartInd]
+    elif CatData is not None:
+        CatData = Data[StartInd:StartInd + CatData]
+        CatData = np.array(list(zip(*CatData)))
+    Rslt = np.zeros(FactorData.shape) + np.nan
+    for i in range(FactorData.shape[0]):
+        Rslt[i] = DataPreprocessingFun.standardizeQuantile(FactorData[i], mask=(Mask[i] if Mask is not None else None),
+                                                          cat_data=(CatData[i].T if CatData is not None else None),
+                                                          **OperatorArg)
+    return Rslt
 
 
 def _fillNaNByRegress(f, idt, iid, x, args):
