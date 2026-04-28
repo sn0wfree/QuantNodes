@@ -8,11 +8,13 @@ import numpy as np
 sys.path.insert(0, '/home/ll/Public/QuantNodes/QuantNodes')
 
 from core.node import BaseNode
-from factor_node.factor_node import FactorNode, FactorPipeline
-from factor_node.point_factor import PointFactorNode, ArithmeticFactorNode
-from factor_node.time_factor import TimeFactorNode, ExpandingFactorNode
-from factor_node.cross_section_factor import CrossSectionFactorNode, GroupRankFactorNode
-from factor_node.panel_factor import PanelFactorNode, DelayFactorNode, DeltaFactorNode
+from factor_node import (
+    FactorNode, FactorPipeline,
+    PointFactorNode, ArithmeticFactorNode,
+    TimeFactorNode, ExpandingFactorNode,
+    CrossSectionFactorNode, GroupRankFactorNode,
+    PanelFactorNode, DelayFactorNode, DeltaFactorNode,
+)
 
 
 @pytest.fixture
