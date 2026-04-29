@@ -189,13 +189,6 @@ def generate_documentation(output_format: str = "markdown", category: Optional[s
 # 辅助函数
 # ==============================================================================
 
-def _to_expr(f: Union[Expr, str]) -> Expr:
-    """转换为 Polars 表达式"""
-    if isinstance(f, str):
-        return pl.col(f)
-    return f
-
-
 def _ensure_expr(f: Any) -> Expr:
     """确保是表达式"""
     if isinstance(f, pl.Expr):
@@ -205,10 +198,20 @@ def _ensure_expr(f: Any) -> Expr:
     return pl.lit(f)
 
 
+_COMBINE_METHODS = {
+    "add": lambda a, b: a + b,
+    "sum": lambda a, b: a + b,
+    "mul": lambda a, b: a * b,
+    "max": lambda a, b: pl.max_horizontal(a, b),
+    "min": lambda a, b: pl.min_horizontal(a, b),
+}
+
+
 # ==============================================================================
 # 时间序列算子 - 滚动窗口
 # ==============================================================================
 
+@register_operator(OperatorCategory.TIME)
 def rolling_mean(
     f: Union[Expr, str],
     window: int = 20,
@@ -228,6 +231,7 @@ def rolling_mean(
     return TimeSeriesOperators.ts_mean(f, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_std(
     f: Union[Expr, str],
     window: int = 20,
@@ -239,6 +243,7 @@ def rolling_std(
     return TimeSeriesOperators.ts_std(f, window, min_periods, ddof)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_max(
     f: Union[Expr, str],
     window: int = 20,
@@ -249,6 +254,7 @@ def rolling_max(
     return TimeSeriesOperators.ts_max(f, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_min(
     f: Union[Expr, str],
     window: int = 20,
@@ -259,6 +265,7 @@ def rolling_min(
     return TimeSeriesOperators.ts_min(f, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_sum(
     f: Union[Expr, str],
     window: int = 20,
@@ -269,6 +276,7 @@ def rolling_sum(
     return TimeSeriesOperators.ts_sum(f, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_median(
     f: Union[Expr, str],
     window: int = 20,
@@ -279,6 +287,7 @@ def rolling_median(
     return TimeSeriesOperators.ts_median(f, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_var(
     f: Union[Expr, str],
     window: int = 20,
@@ -291,6 +300,7 @@ def rolling_var(
     return expr.rolling_var(window, min_samples=mp)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_mean(
     f: Union[Expr, str],
     window: int = 20,
@@ -300,6 +310,7 @@ def ts_mean(
     return rolling_mean(f, window, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_std(
     f: Union[Expr, str],
     window: int = 20,
@@ -309,6 +320,7 @@ def ts_std(
     return rolling_std(f, window, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_max(
     f: Union[Expr, str],
     window: int = 20,
@@ -318,6 +330,7 @@ def ts_max(
     return rolling_max(f, window, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_min(
     f: Union[Expr, str],
     window: int = 20,
@@ -327,6 +340,7 @@ def ts_min(
     return rolling_min(f, window, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_sum(
     f: Union[Expr, str],
     window: int = 20,
@@ -336,6 +350,7 @@ def ts_sum(
     return rolling_sum(f, window, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_median(
     f: Union[Expr, str],
     window: int = 20,
@@ -349,6 +364,7 @@ def ts_median(
 # 时间序列算子 - 相关系数
 # ==============================================================================
 
+@register_operator(OperatorCategory.TIME)
 def ts_corr(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -369,6 +385,7 @@ def ts_corr(
     return TimeSeriesOperators.ts_corr(f1, f2, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_cov(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -380,6 +397,7 @@ def ts_cov(
     return TimeSeriesOperators.ts_cov(f1, f2, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def correlation(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -390,6 +408,7 @@ def correlation(
     return ts_corr(f1, f2, window, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def covariance(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -404,6 +423,7 @@ def covariance(
 # 时间序列算子 - 排名
 # ==============================================================================
 
+@register_operator(OperatorCategory.TIME)
 def ts_rank(
     f: Union[Expr, str],
     window: int = 20,
@@ -422,6 +442,7 @@ def ts_rank(
     return TimeSeriesOperators.ts_rank(f, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_argmax(
     f: Union[Expr, str],
     window: int = 20,
@@ -432,6 +453,7 @@ def ts_argmax(
     return rolling_argmax(f, window, min_periods, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_argmin(
     f: Union[Expr, str],
     window: int = 20,
@@ -446,6 +468,7 @@ def ts_argmin(
 # 时间序列算子 - 差分与变化
 # ==============================================================================
 
+@register_operator(OperatorCategory.TIME)
 def ts_delta(
     f: Union[Expr, str],
     periods: int = 1,
@@ -463,6 +486,7 @@ def ts_delta(
     return TimeSeriesOperators.ts_delta(f, periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_pct_change(
     f: Union[Expr, str],
     periods: int = 1,
@@ -472,6 +496,7 @@ def ts_pct_change(
     return TimeSeriesOperators.ts_pct_change(f, periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def delta(
     f: Union[Expr, str],
     periods: int = 1,
@@ -481,6 +506,7 @@ def delta(
     return ts_delta(f, periods, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def pct_change(
     f: Union[Expr, str],
     periods: int = 1,
@@ -494,6 +520,7 @@ def pct_change(
 # 时间序列算子 - 滞后与前向
 # ==============================================================================
 
+@register_operator(OperatorCategory.TIME)
 def ts_lag(
     f: Union[Expr, str],
     periods: int = 1,
@@ -511,6 +538,7 @@ def ts_lag(
     return TimeSeriesOperators.ts_lag(f, periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def ts_lead(
     f: Union[Expr, str],
     periods: int = 1,
@@ -520,6 +548,7 @@ def ts_lead(
     return TimeSeriesOperators.ts_lead(f, periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def delay(
     f: Union[Expr, str],
     periods: int = 1,
@@ -529,6 +558,7 @@ def delay(
     return ts_lag(f, periods, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def ref(
     f: Union[Expr, str],
     periods: int = 1,
@@ -538,6 +568,7 @@ def ref(
     return delay(f, periods, **kwargs)
 
 
+@register_operator(OperatorCategory.TIME)
 def shift(
     f: Union[Expr, str],
     periods: int = 1,
@@ -551,6 +582,7 @@ def shift(
 # 时间序列算子 - 扩展窗口
 # ==============================================================================
 
+@register_operator(OperatorCategory.TIME)
 def expanding_mean(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
@@ -565,17 +597,18 @@ def expanding_mean(
     Returns:
         Polars 表达式
     """
-    expr = _to_expr(f)
-    return expr.cum_sum() / (pl.arange(0, pl.col("x").count()) + 1)
+    e = _ensure_expr(f)
+    return e.cum_sum() / (pl.int_range(0, pl.len()) + 1)
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_std(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
     **kwargs
 ) -> Expr:
     """扩展窗口标准差"""
-    e = _to_expr(f)
+    e = _ensure_expr(f)
     n = pl.int_range(0, pl.len()) + 1
     mean = e.cum_sum() / n
     mean_sq = (e ** 2).cum_sum() / n
@@ -583,16 +616,18 @@ def expanding_std(
     return (var + 1e-10).sqrt()
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_sum(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
     **kwargs
 ) -> Expr:
     """扩展窗口求和"""
-    expr = _to_expr(f)
+    expr = _ensure_expr(f)
     return expr.cum_sum()
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_max(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
@@ -603,6 +638,7 @@ def expanding_max(
     return e.cum_max()
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_min(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
@@ -613,6 +649,7 @@ def expanding_min(
     return e.cum_min()
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_median(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
@@ -645,6 +682,7 @@ def expanding_median(
     return e.map_batches(_cum_median, return_dtype=pl.Float64)
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_count(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
@@ -655,6 +693,7 @@ def expanding_count(
     return e.is_not_null().cast(pl.Int64).cum_sum()
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_var(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
@@ -668,6 +707,7 @@ def expanding_var(
     return mean_sq - mean ** 2
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_kurt(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
@@ -700,6 +740,7 @@ def expanding_kurt(
     return e.map_batches(_cum_kurt, return_dtype=pl.Float64)
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_skew(
     f: Union[Expr, str],
     min_periods: Optional[int] = None,
@@ -733,6 +774,7 @@ def expanding_skew(
     return e.map_batches(_cum_skew, return_dtype=pl.Float64)
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_quantile(
     f: Union[Expr, str],
     quantile: float = 0.5,
@@ -765,6 +807,7 @@ def expanding_quantile(
     return e.map_batches(_cum_quantile, return_dtype=pl.Float64)
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_corr(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -797,6 +840,7 @@ def expanding_corr(
     return pl.map_batches([e1, e2], _cum_corr, return_dtype=pl.Float64)
 
 
+@register_operator(OperatorCategory.TIME)
 def expanding_cov(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -833,6 +877,7 @@ def expanding_cov(
 # 时间序列算子 - 指数加权
 # ==============================================================================
 
+@register_operator(OperatorCategory.TIME)
 def ewm_mean(
     f: Union[Expr, str],
     alpha: float = 0.5,
@@ -852,6 +897,7 @@ def ewm_mean(
     return TimeSeriesOperators.ewm_mean(f, alpha, adjust=adjust)
 
 
+@register_operator(OperatorCategory.TIME)
 def ewm_std(
     f: Union[Expr, str],
     alpha: float = 0.5,
@@ -862,6 +908,7 @@ def ewm_std(
     return TimeSeriesOperators.ewm_std(f, alpha, adjust=adjust)
 
 
+@register_operator(OperatorCategory.TIME)
 def ewm_corr(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -872,6 +919,7 @@ def ewm_corr(
     return TimeSeriesOperators.ewm_corr(f1, f2, alpha=alpha)
 
 
+@register_operator(OperatorCategory.TIME)
 def ewm_var(
     f: Union[Expr, str],
     alpha: float = 0.5,
@@ -894,6 +942,7 @@ def ewm_var(
     return mean_sq - mean ** 2
 
 
+@register_operator(OperatorCategory.TIME)
 def ewm_cov(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -917,6 +966,7 @@ def ewm_cov(
     return mean12 - mean1 * mean2
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_prod(
     f: Union[Expr, str],
     window: int = 20,
@@ -936,6 +986,7 @@ def rolling_prod(
     return TimeSeriesOperators.ts_prod(f, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_skew(
     f: Union[Expr, str],
     window: int = 20,
@@ -963,6 +1014,7 @@ def rolling_skew(
     return m3 / (std ** 3 + 1e-10)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_kurt(
     f: Union[Expr, str],
     window: int = 20,
@@ -989,6 +1041,7 @@ def rolling_kurt(
     return m4 / (std ** 4 + 1e-10) - 3
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_count(
     f: Union[Expr, str],
     window: int = 20,
@@ -1010,6 +1063,7 @@ def rolling_count(
     return e.is_not_null().cast(pl.Int64).rolling_sum(window, min_samples=min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_corr(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -1031,6 +1085,7 @@ def rolling_corr(
     return TimeSeriesOperators.ts_corr(e1, e2, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_cov(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -1052,6 +1107,7 @@ def rolling_cov(
     return TimeSeriesOperators.ts_cov(e1, e2, window, min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_quantile(
     f: Union[Expr, str],
     window: int = 20,
@@ -1068,9 +1124,11 @@ def rolling_quantile(
         min_periods: 最小观测数
     """
     e = _ensure_expr(f)
-    return e.rolling_quantile(quantile, window_size=window, interpolation="nearest")
+    mp = min_periods or window
+    return e.rolling_quantile(quantile, window_size=window, interpolation="nearest", min_samples=mp)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_rank(
     f: Union[Expr, str],
     window: int = 20,
@@ -1087,7 +1145,8 @@ def rolling_rank(
         min_periods: 最小观测数
     """
     e = _ensure_expr(f)
-    return e.rolling_rank(window)
+    mp = min_periods or window
+    return e.rolling_rank(window, min_samples=mp)
 
 
 def _rolling_arg_op(f: Union[Expr, str], window: int, op: str, min_periods: Optional[int] = None) -> Expr:
@@ -1103,25 +1162,23 @@ def _rolling_arg_op(f: Union[Expr, str], window: int, op: str, min_periods: Opti
         最大值/最小值的相对偏移量（0=当前行，1=前一行...）
     """
     e = _ensure_expr(f)
-    min_periods = min_periods or max(1, window // 2)
     
-    max_window = min(window, 30)  # 限制最大窗口，避免表达式过大
+    max_window = min(window, 30)
+    is_max = op == "max"
     
-    cmp = lambda a, b: a >= b if op == "max" else a <= b
-    result = pl.lit(None, dtype=pl.Int32)
+    best_val = e.shift(0)
+    best_idx = pl.lit(0, dtype=pl.Int32)
     
-    for i in range(max_window):
-        shifted_i = e.shift(i)
-        is_best = pl.lit(True)
-        for j in range(max_window):
-            if i != j:
-                shifted_j = e.shift(j)
-                is_best = is_best & cmp(shifted_i, shifted_j)
-        result = pl.when(is_best).then(pl.lit(i, dtype=pl.Int32)).otherwise(result)
+    for i in range(1, max_window):
+        shifted = e.shift(i)
+        is_better = (shifted >= best_val) if is_max else (shifted <= best_val)
+        best_val = pl.when(is_better).then(shifted).otherwise(best_val)
+        best_idx = pl.when(is_better).then(pl.lit(i, dtype=pl.Int32)).otherwise(best_idx)
     
-    return result
+    return best_idx
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_argmax(
     f: Union[Expr, str],
     window: int = 20,
@@ -1141,6 +1198,7 @@ def rolling_argmax(
     return _rolling_arg_op(f, window, "max", min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def rolling_argmin(
     f: Union[Expr, str],
     window: int = 20,
@@ -1160,6 +1218,7 @@ def rolling_argmin(
     return _rolling_arg_op(f, window, "min", min_periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def diff(
     f: Union[Expr, str],
     periods: int = 1,
@@ -1177,6 +1236,7 @@ def diff(
     return TimeSeriesOperators.ts_delta(f, periods)
 
 
+@register_operator(OperatorCategory.TIME)
 def lag(
     f: Union[Expr, str],
     periods: int = 1,
@@ -1198,6 +1258,7 @@ def lag(
 # 截面算子
 # ==============================================================================
 
+@register_operator(OperatorCategory.SECTION)
 def standardizeZScore(
     f: Union[Expr, str],
     eps: float = 1e-8,
@@ -1215,6 +1276,7 @@ def standardizeZScore(
     return SectionOperators.zscore(f, eps)
 
 
+@register_operator(OperatorCategory.SECTION)
 def zscore(
     f: Union[Expr, str],
     eps: float = 1e-8,
@@ -1224,6 +1286,7 @@ def zscore(
     return standardizeZScore(f, eps, **kwargs)
 
 
+@register_operator(OperatorCategory.SECTION)
 def rank(
     f: Union[Expr, str],
     method: str = "dense",
@@ -1241,6 +1304,7 @@ def rank(
     return SectionOperators.rank(f, method)
 
 
+@register_operator(OperatorCategory.SECTION)
 def winsorize(
     f: Union[Expr, str],
     lower: float = 0.01,
@@ -1262,6 +1326,7 @@ def winsorize(
     return SectionOperators.winsorize(f, lower, upper, method)
 
 
+@register_operator(OperatorCategory.SECTION)
 def neutralize(
     f: Union[Expr, str],
     group: Optional[Union[Expr, str]] = None,
@@ -1281,6 +1346,7 @@ def neutralize(
     return SectionOperators.neutralize_market(f)
 
 
+@register_operator(OperatorCategory.SECTION)
 def neutralize_market(
     f: Union[Expr, str],
     **kwargs
@@ -1289,6 +1355,7 @@ def neutralize_market(
     return SectionOperators.neutralize_market(f)
 
 
+@register_operator(OperatorCategory.SECTION)
 def scale(
     f: Union[Expr, str],
     method: str = "zscore",
@@ -1306,6 +1373,7 @@ def scale(
     return SectionOperators.scale(f, method)
 
 
+@register_operator(OperatorCategory.SECTION)
 def standardizeRank(
     f: Union[Expr, str],
     **kwargs
@@ -1314,6 +1382,7 @@ def standardizeRank(
     return SectionOperators.rank(f, method="average")
 
 
+@register_operator(OperatorCategory.SECTION)
 def weightStandardize(
     f: Union[Expr, str],
     **kwargs
@@ -1322,6 +1391,7 @@ def weightStandardize(
     return standardizeZScore(f, **kwargs)
 
 
+@register_operator(OperatorCategory.SECTION)
 def ic(
     f: Union[Expr, str],
     target: Union[Expr, str],
@@ -1339,6 +1409,7 @@ def ic(
     return SectionOperators.ic(f, target)
 
 
+@register_operator(OperatorCategory.SECTION)
 def rank_ic(
     f: Union[Expr, str],
     target: Union[Expr, str],
@@ -1348,6 +1419,7 @@ def rank_ic(
     return SectionOperators.rank_ic(f, target)
 
 
+@register_operator(OperatorCategory.SECTION)
 def group_norm(
     f: Union[Expr, str],
     group: Union[Expr, str],
@@ -1367,6 +1439,7 @@ def group_norm(
     return SectionOperators.group_norm(f, group, method)
 
 
+@register_operator(OperatorCategory.SECTION)
 def group_winsorize(
     f: Union[Expr, str],
     group: Union[Expr, str],
@@ -1378,6 +1451,7 @@ def group_winsorize(
     return SectionOperators.group_winsorize(f, group, lower, upper)
 
 
+@register_operator(OperatorCategory.SECTION)
 def orthogonalize(
     f: Union[Expr, str],
     reference: Union[Expr, str],
@@ -1401,6 +1475,7 @@ def orthogonalize(
     return f - beta * reference
 
 
+@register_operator(OperatorCategory.SECTION)
 def fillNaNByFun(
     f: Union[Expr, str],
     value: Any = 0,
@@ -1421,6 +1496,7 @@ def fillNaNByFun(
     return f.fill_null(value)
 
 
+@register_operator(OperatorCategory.SECTION)
 def fillNaNByRegress(
     f: Union[Expr, str],
     reference: Union[Expr, str],
@@ -1446,6 +1522,7 @@ def fillNaNByRegress(
     return f.fill_null(predicted)
 
 
+@register_operator(OperatorCategory.POINT)
 def where(
     condition: Union[Expr, str],
     true_val: Union[Expr, str, Any],
@@ -1473,6 +1550,7 @@ def where(
     return pl.when(cond).then(t).otherwise(f)
 
 
+@register_operator(OperatorCategory.POINT)
 def fillna(
     f: Union[Expr, str],
     value: Any = None,
@@ -1502,6 +1580,7 @@ def fillna(
 # 数学算子
 # ==============================================================================
 
+@register_operator(OperatorCategory.POINT)
 def abs(
     f: Union[Expr, str],
     **kwargs
@@ -1517,6 +1596,7 @@ def abs(
     return MathOperators.abs(f)
 
 
+@register_operator(OperatorCategory.POINT)
 def log(
     f: Union[Expr, str],
     **kwargs
@@ -1532,6 +1612,7 @@ def log(
     return MathOperators.log(f)
 
 
+@register_operator(OperatorCategory.POINT)
 def sign(
     f: Union[Expr, str],
     **kwargs
@@ -1547,6 +1628,7 @@ def sign(
     return MathOperators.sign(f)
 
 
+@register_operator(OperatorCategory.POINT)
 def sqrt(
     f: Union[Expr, str],
     **kwargs
@@ -1562,6 +1644,7 @@ def sqrt(
     return MathOperators.sqrt(f)
 
 
+@register_operator(OperatorCategory.POINT)
 def square(
     f: Union[Expr, str],
     **kwargs
@@ -1577,6 +1660,7 @@ def square(
     return _ensure_expr(f) ** 2
 
 
+@register_operator(OperatorCategory.POINT)
 def pow(
     f: Union[Expr, str],
     exponent: float = 2.0,
@@ -1594,6 +1678,7 @@ def pow(
     return MathOperators.pow(f, exponent)
 
 
+@register_operator(OperatorCategory.POINT)
 def clip(
     f: Union[Expr, str],
     lower: Optional[float] = None,
@@ -1613,6 +1698,7 @@ def clip(
     return MathOperators.clip(f, lower, upper)
 
 
+@register_operator(OperatorCategory.POINT)
 def fill_null(
     f: Union[Expr, str],
     value: float = 0.0,
@@ -1630,6 +1716,7 @@ def fill_null(
     return MathOperators.fill_null(f, value)
 
 
+@register_operator(OperatorCategory.POINT)
 def fill_zero(
     f: Union[Expr, str],
     **kwargs
@@ -1638,6 +1725,7 @@ def fill_zero(
     return MathOperators.fill_zero(f)
 
 
+@register_operator(OperatorCategory.POINT)
 def nan_to_null(
     f: Union[Expr, str],
     **kwargs
@@ -1646,6 +1734,7 @@ def nan_to_null(
     return MathOperators.nan_to_null(f)
 
 
+@register_operator(OperatorCategory.POINT)
 def isnull(
     f: Union[Expr, str],
     **kwargs
@@ -1661,6 +1750,7 @@ def isnull(
     return _ensure_expr(f).is_null()
 
 
+@register_operator(OperatorCategory.POINT)
 def notnull(
     f: Union[Expr, str],
     **kwargs
@@ -1673,6 +1763,7 @@ def notnull(
 # Point 算子 (补充)
 # ==============================================================================
 
+@register_operator(OperatorCategory.POINT)
 def ceil(
     f: Union[Expr, str],
     **kwargs
@@ -1688,6 +1779,7 @@ def ceil(
     return _ensure_expr(f).ceil()
 
 
+@register_operator(OperatorCategory.POINT)
 def floor(
     f: Union[Expr, str],
     **kwargs
@@ -1703,6 +1795,7 @@ def floor(
     return _ensure_expr(f).floor()
 
 
+@register_operator(OperatorCategory.POINT)
 def fix(
     f: Union[Expr, str],
     **kwargs
@@ -1719,6 +1812,7 @@ def fix(
     return pl.when(e < 0).then(e.ceil()).otherwise(e.floor())
 
 
+@register_operator(OperatorCategory.POINT)
 def applymap(
     f: Union[Expr, str],
     func: Callable,
@@ -1736,6 +1830,7 @@ def applymap(
     return _ensure_expr(f).map_elements(func)
 
 
+@register_operator(OperatorCategory.POINT)
 def nanargmax(
     f: Union[Expr, str],
     **kwargs
@@ -1752,6 +1847,7 @@ def nanargmax(
     return e.arg_max()
 
 
+@register_operator(OperatorCategory.POINT)
 def nanargmin(
     f: Union[Expr, str],
     **kwargs
@@ -1768,6 +1864,7 @@ def nanargmin(
     return e.arg_min()
 
 
+@register_operator(OperatorCategory.POINT)
 def nanmedian(
     f: Union[Expr, str],
     **kwargs
@@ -1783,6 +1880,7 @@ def nanmedian(
     return _ensure_expr(f).median()
 
 
+@register_operator(OperatorCategory.POINT)
 def nanquantile(
     f: Union[Expr, str],
     quantile: float = 0.5,
@@ -1802,6 +1900,7 @@ def nanquantile(
     return _ensure_expr(f).quantile(quantile, interpolation=interpolation)
 
 
+@register_operator(OperatorCategory.POINT)
 def nancount(
     f: Union[Expr, str],
     **kwargs
@@ -1817,6 +1916,7 @@ def nancount(
     return _ensure_expr(f).count()
 
 
+@register_operator(OperatorCategory.POINT)
 def nanprod(
     f: Union[Expr, str],
     **kwargs
@@ -1832,6 +1932,7 @@ def nanprod(
     return _ensure_expr(f).product()
 
 
+@register_operator(OperatorCategory.POINT)
 def astype(
     f: Union[Expr, str],
     dtype: str = "float64",
@@ -1858,6 +1959,7 @@ def astype(
     return _ensure_expr(f).cast(type_map.get(dtype, pl.Float64))
 
 
+@register_operator(OperatorCategory.POINT)
 def replace(
     f: Union[Expr, str],
     old: Any,
@@ -1877,6 +1979,7 @@ def replace(
     return _ensure_expr(f).replace(old, new)
 
 
+@register_operator(OperatorCategory.POINT)
 def fetch(
     f: Union[Expr, str],
     index: int = 0,
@@ -1898,6 +2001,7 @@ def fetch(
 # NaN 跨截面聚合算子
 # ==============================================================================
 
+@register_operator(OperatorCategory.POINT)
 def nanmax(
     f: Union[Expr, str],
     **kwargs
@@ -1911,6 +2015,7 @@ def nanmax(
     return e.max()
 
 
+@register_operator(OperatorCategory.POINT)
 def nanmin(
     f: Union[Expr, str],
     **kwargs
@@ -1924,6 +2029,7 @@ def nanmin(
     return e.min()
 
 
+@register_operator(OperatorCategory.POINT)
 def nanmean(
     f: Union[Expr, str],
     **kwargs
@@ -1937,6 +2043,7 @@ def nanmean(
     return e.mean()
 
 
+@register_operator(OperatorCategory.POINT)
 def nansum(
     f: Union[Expr, str],
     **kwargs
@@ -1950,6 +2057,7 @@ def nansum(
     return e.sum()
 
 
+@register_operator(OperatorCategory.POINT)
 def nanstd(
     f: Union[Expr, str],
     ddof: int = 1,
@@ -1965,6 +2073,7 @@ def nanstd(
     return e.std(ddof=ddof)
 
 
+@register_operator(OperatorCategory.POINT)
 def nanvar(
     f: Union[Expr, str],
     ddof: int = 1,
@@ -1984,6 +2093,7 @@ def nanvar(
 # 组合算子
 # ==============================================================================
 
+@register_operator(OperatorCategory.POINT)
 def add(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -2001,6 +2111,7 @@ def add(
     return _ensure_expr(f1) + _ensure_expr(f2)
 
 
+@register_operator(OperatorCategory.POINT)
 def sub(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -2010,6 +2121,7 @@ def sub(
     return _ensure_expr(f1) - _ensure_expr(f2)
 
 
+@register_operator(OperatorCategory.POINT)
 def mul(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -2019,6 +2131,7 @@ def mul(
     return _ensure_expr(f1) * _ensure_expr(f2)
 
 
+@register_operator(OperatorCategory.POINT)
 def div(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -2028,6 +2141,7 @@ def div(
     return _ensure_expr(f1) / _ensure_expr(f2)
 
 
+@register_operator(OperatorCategory.POINT)
 def weighted_sum(
     factors: List[Union[Expr, str]],
     weights: Optional[List[float]] = None,
@@ -2045,6 +2159,7 @@ def weighted_sum(
     return CompositeOperators.weighted_sum(factors, weights)
 
 
+@register_operator(OperatorCategory.POINT)
 def combine(
     f1: Union[Expr, str],
     f2: Union[Expr, str],
@@ -2058,18 +2173,12 @@ def combine(
         f2: 第二个因子
         method: 组合方法 add/mul/max/min
     """
-    method_map = {
-        "add": lambda a, b: a + b,
-        "sum": lambda a, b: a + b,
-        "mul": lambda a, b: a * b,
-        "max": lambda a, b: pl.max_horizontal(a, b),
-        "min": lambda a, b: pl.min_horizontal(a, b),
-    }
     a = _ensure_expr(f1)
     b = _ensure_expr(f2)
-    return method_map.get(method, method_map["add"])(a, b)
+    return _COMBINE_METHODS.get(method, _COMBINE_METHODS["add"])(a, b)
 
 
+@register_operator(OperatorCategory.POINT)
 def if_then_else(
     condition: Union[Expr, str],
     then: Union[Expr, str],
@@ -2090,6 +2199,7 @@ def if_then_else(
 # 高级算子
 # ==============================================================================
 
+@register_operator(OperatorCategory.TIME)
 def regress(
     y: Union[Expr, str],
     x: Union[Expr, str],
@@ -2106,8 +2216,8 @@ def regress(
     Returns:
         残差表达式
     """
-    ey = _to_expr(y)
-    ex = _to_expr(x)
+    ey = _ensure_expr(y)
+    ex = _ensure_expr(x)
     
     y_mean = ey.rolling_mean(window)
     x_mean = ex.rolling_mean(window)
@@ -2120,6 +2230,7 @@ def regress(
     return ey - y_mean - beta * (ex - x_mean)
 
 
+@register_operator(OperatorCategory.TIME)
 def zscored(
     f: Union[Expr, str],
     window: int = 20,
@@ -2135,6 +2246,7 @@ def zscored(
     return (e - e.rolling_mean(window)) / (e.rolling_std(window) + 1e-8)
 
 
+@register_operator(OperatorCategory.TIME)
 def decay_linear(
     f: Union[Expr, str],
     window: int = 20,
@@ -2150,13 +2262,14 @@ def decay_linear(
     weights = np.arange(1, window + 1)
     weights = weights / weights.sum()
     
-    expr = _to_expr(f)
+    expr = _ensure_expr(f)
     result = expr * weights[0]
     for i in range(1, window):
         result = result + expr.shift(i) * weights[i]
     return result
 
 
+@register_operator(OperatorCategory.TIME)
 def decay_exp(
     f: Union[Expr, str],
     halflife: int = 10,
@@ -2173,13 +2286,14 @@ def decay_exp(
     weights = alpha ** np.arange(halflife)
     weights = weights / weights.sum()
     
-    expr = _to_expr(f)
+    expr = _ensure_expr(f)
     result = expr * weights[0]
     for i in range(1, len(weights)):
         result = result + expr.shift(i) * weights[i]
     return result
 
 
+@register_operator(OperatorCategory.TIME)
 def vwap(
     price: Union[Expr, str],
     volume: Union[Expr, str],
@@ -2193,11 +2307,12 @@ def vwap(
         volume: 成交量表达式或列名
         window: 窗口大小
     """
-    expr_price = _to_expr(price)
-    expr_volume = _to_expr(volume)
+    expr_price = _ensure_expr(price)
+    expr_volume = _ensure_expr(volume)
     return (expr_price * expr_volume).rolling_sum(window) / (expr_volume.rolling_sum(window) + 1e-8)
 
 
+@register_operator(OperatorCategory.POINT)
 def market_cap(
     price: Union[Expr, str],
     shares: Union[Expr, str],
@@ -2209,25 +2324,27 @@ def market_cap(
         price: 价格
         shares: 股份数
     """
-    return _to_expr(price) * _to_expr(shares)
+    return _ensure_expr(price) * _ensure_expr(shares)
 
 
+@register_operator(OperatorCategory.POINT)
 def book_to_market(
     book_value: Union[Expr, str],
     market_cap: Union[Expr, str],
     **kwargs
 ) -> Expr:
     """市净率"""
-    return _to_expr(book_value) / _to_expr(market_cap)
+    return _ensure_expr(book_value) / _ensure_expr(market_cap)
 
 
+@register_operator(OperatorCategory.POINT)
 def earnings_to_market(
     earnings: Union[Expr, str],
     market_cap: Union[Expr, str],
     **kwargs
 ) -> Expr:
     """盈利市率"""
-    return _to_expr(earnings) / _to_expr(market_cap)
+    return _ensure_expr(earnings) / _ensure_expr(market_cap)
 
 
 # ==============================================================================
@@ -2235,43 +2352,64 @@ def earnings_to_market(
 # ==============================================================================
 
 __all__ = [
-    # 滚动窗口
+    # 注册表 API
+    "OperatorCategory", "register_operator",
+    "list_operators", "get_operator", "operator_info", "generate_documentation",
+
+    # Point 算子
+    "abs", "log", "sign", "sqrt", "square", "pow", "clip",
+    "ceil", "floor", "fix", "applymap",
+    "nanargmax", "nanargmin", "nanmedian", "nanquantile", "nancount", "nanprod",
+    "astype", "replace", "fetch",
+    "fill_null", "fill_zero", "nan_to_null", "isnull", "notnull",
+    "nanmax", "nanmin", "nanmean", "nansum", "nanstd", "nanvar",
+    "where", "fillna",
+
+    # Time 算子 - 滚动窗口
     "rolling_mean", "rolling_std", "rolling_max", "rolling_min",
     "rolling_sum", "rolling_median", "rolling_var",
-    
-    # 时间序列
+    "rolling_prod", "rolling_skew", "rolling_kurt", "rolling_count",
+    "rolling_corr", "rolling_cov", "rolling_quantile", "rolling_rank",
+    "rolling_argmax", "rolling_argmin",
+
+    # Time 算子 - 时间序列
     "ts_mean", "ts_std", "ts_max", "ts_min", "ts_sum", "ts_median",
     "ts_corr", "ts_cov", "ts_rank", "ts_argmax", "ts_argmin",
     "ts_delta", "ts_pct_change", "ts_lag", "ts_lead",
-    
-    # 扩展窗口
+
+    # Time 算子 - 扩展窗口
     "expanding_mean", "expanding_std", "expanding_sum",
-    
-    # 指数加权
-    "ewm_mean", "ewm_std", "ewm_corr",
-    
-    # 截面
+    "expanding_max", "expanding_min", "expanding_median", "expanding_count",
+    "expanding_var", "expanding_kurt", "expanding_skew", "expanding_quantile",
+    "expanding_corr", "expanding_cov",
+
+    # Time 算子 - 指数加权
+    "ewm_mean", "ewm_std", "ewm_var", "ewm_corr", "ewm_cov",
+
+    # Section 算子
     "standardizeZScore", "zscore", "rank", "winsorize",
     "neutralize", "neutralize_market", "scale",
     "standardizeRank", "weightStandardize",
     "ic", "rank_ic", "group_norm", "group_winsorize",
-    
-    # 数学
-    "abs", "log", "sign", "sqrt", "square", "pow",
-    "clip", "fill_null", "fill_zero", "nan_to_null",
-    "isnull", "notnull",
-    
-    # 组合
+    "orthogonalize", "fillNaNByFun", "fillNaNByRegress",
+
+    # Multi-Section 算子
+    "aggregate", "disaggregate",
+    "aggr_sum", "aggr_prod", "aggr_max", "aggr_min", "aggr_mean",
+    "aggr_std", "aggr_var", "aggr_median", "aggr_quantile", "aggr_count",
+    "merge", "chg_ids",
+
+    # 组合算子
     "add", "sub", "mul", "div",
     "weighted_sum", "combine", "if_then_else",
-    
-    # 高级
+
+    # 高级算子
     "regress", "zscored", "decay_linear", "decay_exp",
     "vwap", "market_cap", "book_to_market", "earnings_to_market",
-    
+
     # 别名
     "correlation", "covariance", "delta", "pct_change",
-    "delay", "ref", "shift",
+    "delay", "ref", "shift", "diff", "lag",
 ]
 
 
@@ -2279,6 +2417,7 @@ __all__ = [
 # Multi-Section 算子
 # ==============================================================================
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggregate(
     f: Union[Expr, str],
     group_by: str,
@@ -2312,6 +2451,7 @@ def aggregate(
     return method_map.get(method, f.mean().over(group_by))
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def disaggregate(
     f: Union[Expr, str],
     group_by: str,
@@ -2330,6 +2470,7 @@ def disaggregate(
     return f.over(group_by)
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_sum(
     f: Union[Expr, str],
     group_by: str,
@@ -2347,6 +2488,7 @@ def aggr_sum(
     return aggregate(f, group_by, "sum")
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_prod(
     f: Union[Expr, str],
     group_by: str,
@@ -2361,11 +2503,11 @@ def aggr_prod(
     Returns:
         聚合求积表达式
     """
-    import numpy as np
     f = _ensure_expr(f)
     return f.log().sum().over(group_by).exp()
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_max(
     f: Union[Expr, str],
     group_by: str,
@@ -2383,6 +2525,7 @@ def aggr_max(
     return aggregate(f, group_by, "max")
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_min(
     f: Union[Expr, str],
     group_by: str,
@@ -2400,6 +2543,7 @@ def aggr_min(
     return aggregate(f, group_by, "min")
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_mean(
     f: Union[Expr, str],
     group_by: str,
@@ -2417,6 +2561,7 @@ def aggr_mean(
     return aggregate(f, group_by, "mean")
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_std(
     f: Union[Expr, str],
     group_by: str,
@@ -2434,6 +2579,7 @@ def aggr_std(
     return aggregate(f, group_by, "std")
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_var(
     f: Union[Expr, str],
     group_by: str,
@@ -2451,6 +2597,7 @@ def aggr_var(
     return aggregate(f, group_by, "var")
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_median(
     f: Union[Expr, str],
     group_by: str,
@@ -2468,6 +2615,7 @@ def aggr_median(
     return aggregate(f, group_by, "median")
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_quantile(
     f: Union[Expr, str],
     group_by: str,
@@ -2488,6 +2636,7 @@ def aggr_quantile(
     return f.quantile(quantile).over(group_by)
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def aggr_count(
     f: Union[Expr, str],
     group_by: str,
@@ -2505,6 +2654,7 @@ def aggr_count(
     return aggregate(f, group_by, "count")
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def merge(
     factors: List[Union[Expr, str]],
     weights: Optional[List[float]] = None,
@@ -2550,6 +2700,7 @@ def merge(
     return factors[0]
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
 def chg_ids(
     f: Union[Expr, str],
     id_map: Dict[str, str],
@@ -2570,117 +2721,3 @@ def chg_ids(
     return f.replace(old_keys, new_keys)
 
 
-# ==============================================================================
-# 自动注册：扫描模块中的所有函数并注册到注册表
-# ==============================================================================
-
-import sys
-
-def _auto_register():
-    """自动注册所有模块级函数到注册表"""
-    current_module = sys.modules[__name__]
-    
-    category_map = {
-        # Point 算子
-        "abs": OperatorCategory.POINT, "log": OperatorCategory.POINT,
-        "sign": OperatorCategory.POINT, "sqrt": OperatorCategory.POINT,
-        "square": OperatorCategory.POINT, "pow": OperatorCategory.POINT,
-        "clip": OperatorCategory.POINT, "ceil": OperatorCategory.POINT,
-        "floor": OperatorCategory.POINT, "fix": OperatorCategory.POINT,
-        "applymap": OperatorCategory.POINT, "nanargmax": OperatorCategory.POINT,
-        "nanargmin": OperatorCategory.POINT, "nanmedian": OperatorCategory.POINT,
-        "nanquantile": OperatorCategory.POINT, "nancount": OperatorCategory.POINT,
-        "nanprod": OperatorCategory.POINT, "nan_to_null": OperatorCategory.POINT,
-        "astype": OperatorCategory.POINT, "replace": OperatorCategory.POINT,
-        "fetch": OperatorCategory.POINT, "fill_null": OperatorCategory.POINT,
-        "fill_zero": OperatorCategory.POINT, "isnull": OperatorCategory.POINT,
-        "notnull": OperatorCategory.POINT,
-        "nanmax": OperatorCategory.POINT, "nanmin": OperatorCategory.POINT,
-        "nanmean": OperatorCategory.POINT, "nansum": OperatorCategory.POINT,
-        "nanstd": OperatorCategory.POINT, "nanvar": OperatorCategory.POINT,
-        "where": OperatorCategory.POINT, "fillna": OperatorCategory.POINT,
-        
-        # Time 算子
-        "rolling_mean": OperatorCategory.TIME, "rolling_std": OperatorCategory.TIME,
-        "rolling_max": OperatorCategory.TIME, "rolling_min": OperatorCategory.TIME,
-        "rolling_sum": OperatorCategory.TIME, "rolling_median": OperatorCategory.TIME,
-        "rolling_var": OperatorCategory.TIME, "rolling_prod": OperatorCategory.TIME,
-        "rolling_skew": OperatorCategory.TIME, "rolling_kurt": OperatorCategory.TIME,
-        "rolling_count": OperatorCategory.TIME, "rolling_argmax": OperatorCategory.TIME,
-        "rolling_argmin": OperatorCategory.TIME,
-        "rolling_corr": OperatorCategory.TIME, "rolling_cov": OperatorCategory.TIME,
-        "rolling_quantile": OperatorCategory.TIME, "rolling_rank": OperatorCategory.TIME,
-        "ts_mean": OperatorCategory.TIME, "ts_std": OperatorCategory.TIME,
-        "ts_max": OperatorCategory.TIME, "ts_min": OperatorCategory.TIME,
-        "ts_sum": OperatorCategory.TIME, "ts_median": OperatorCategory.TIME,
-        "ts_corr": OperatorCategory.TIME, "ts_cov": OperatorCategory.TIME,
-        "ts_rank": OperatorCategory.TIME, "ts_argmax": OperatorCategory.TIME,
-        "ts_argmin": OperatorCategory.TIME, "ts_delta": OperatorCategory.TIME,
-        "ts_pct_change": OperatorCategory.TIME, "ts_lag": OperatorCategory.TIME,
-        "ts_lead": OperatorCategory.TIME,
-        "correlation": OperatorCategory.TIME, "covariance": OperatorCategory.TIME,
-        "delta": OperatorCategory.TIME, "pct_change": OperatorCategory.TIME,
-        "diff": OperatorCategory.TIME, "lag": OperatorCategory.TIME,
-        "delay": OperatorCategory.TIME, "ref": OperatorCategory.TIME,
-        "shift": OperatorCategory.TIME,
-        "expanding_mean": OperatorCategory.TIME, "expanding_std": OperatorCategory.TIME,
-        "expanding_sum": OperatorCategory.TIME,
-        "expanding_max": OperatorCategory.TIME, "expanding_min": OperatorCategory.TIME,
-        "expanding_median": OperatorCategory.TIME, "expanding_count": OperatorCategory.TIME,
-        "expanding_var": OperatorCategory.TIME, "expanding_kurt": OperatorCategory.TIME,
-        "expanding_skew": OperatorCategory.TIME, "expanding_quantile": OperatorCategory.TIME,
-        "expanding_corr": OperatorCategory.TIME, "expanding_cov": OperatorCategory.TIME,
-        "ewm_mean": OperatorCategory.TIME, "ewm_std": OperatorCategory.TIME,
-        "ewm_var": OperatorCategory.TIME, "ewm_corr": OperatorCategory.TIME,
-        "ewm_cov": OperatorCategory.TIME,
-        
-        # Section 算子
-        "standardizeZScore": OperatorCategory.SECTION, "zscore": OperatorCategory.SECTION,
-        "rank": OperatorCategory.SECTION, "winsorize": OperatorCategory.SECTION,
-        "neutralize": OperatorCategory.SECTION, "neutralize_market": OperatorCategory.SECTION,
-        "scale": OperatorCategory.SECTION, "orthogonalize": OperatorCategory.SECTION,
-        "fillNaNByFun": OperatorCategory.SECTION, "fillNaNByRegress": OperatorCategory.SECTION,
-        "ic": OperatorCategory.SECTION, "rank_ic": OperatorCategory.SECTION,
-        "group_norm": OperatorCategory.SECTION, "group_winsorize": OperatorCategory.SECTION,
-        "standardizeRank": OperatorCategory.SECTION, "weightStandardize": OperatorCategory.SECTION,
-        
-        # Multi-Section 算子
-        "aggregate": OperatorCategory.MULTI_SECTION,
-        "disaggregate": OperatorCategory.MULTI_SECTION,
-        "aggr_sum": OperatorCategory.MULTI_SECTION,
-        "aggr_prod": OperatorCategory.MULTI_SECTION,
-        "aggr_max": OperatorCategory.MULTI_SECTION,
-        "aggr_min": OperatorCategory.MULTI_SECTION,
-        "aggr_mean": OperatorCategory.MULTI_SECTION,
-        "aggr_std": OperatorCategory.MULTI_SECTION,
-        "aggr_var": OperatorCategory.MULTI_SECTION,
-        "aggr_median": OperatorCategory.MULTI_SECTION,
-        "aggr_quantile": OperatorCategory.MULTI_SECTION,
-        "aggr_count": OperatorCategory.MULTI_SECTION,
-        "merge": OperatorCategory.MULTI_SECTION,
-        "chg_ids": OperatorCategory.MULTI_SECTION,
-        
-        # 组合算子
-        "add": OperatorCategory.POINT, "sub": OperatorCategory.POINT,
-        "mul": OperatorCategory.POINT, "div": OperatorCategory.POINT,
-        "weighted_sum": OperatorCategory.POINT, "combine": OperatorCategory.POINT,
-        "if_then_else": OperatorCategory.POINT,
-        "regress": OperatorCategory.TIME, "zscored": OperatorCategory.TIME,
-        "decay_linear": OperatorCategory.TIME, "decay_exp": OperatorCategory.TIME,
-        "vwap": OperatorCategory.TIME,
-    }
-    
-    for name, category in category_map.items():
-        func = getattr(current_module, name, None)
-        if func is not None and callable(func) and name not in _OPERATOR_REGISTRY[category]:
-            sig = inspect.signature(func)
-            _OPERATOR_REGISTRY[category][name] = {
-                "name": name,
-                "category": category,
-                "func": func,
-                "doc": inspect.getdoc(func) or "",
-                "signature": str(sig),
-                "parameters": list(sig.parameters.keys()),
-            }
-
-_auto_register()
