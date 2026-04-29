@@ -59,7 +59,7 @@ class TimeSeriesOperators:
         if isinstance(expr, str):
             expr = pl.col(expr)
         min_periods = min_periods or max(1, window // 2)
-        return expr.rolling_mean(window, min_periods=min_periods)
+        return expr.rolling_mean(window, min_samples=min_periods)
     
     @staticmethod
     def ts_std(
@@ -83,7 +83,7 @@ class TimeSeriesOperators:
         if isinstance(expr, str):
             expr = pl.col(expr)
         min_periods = min_periods or max(1, window // 2)
-        return expr.rolling_std(window, min_periods=min_periods)
+        return expr.rolling_std(window, min_samples=min_periods)
     
     @staticmethod
     def ts_max(
@@ -102,7 +102,7 @@ class TimeSeriesOperators:
         if isinstance(expr, str):
             expr = pl.col(expr)
         min_periods = min_periods or max(1, window // 2)
-        return expr.rolling_max(window, min_periods=min_periods)
+        return expr.rolling_max(window, min_samples=min_periods)
     
     @staticmethod
     def ts_min(
@@ -121,7 +121,7 @@ class TimeSeriesOperators:
         if isinstance(expr, str):
             expr = pl.col(expr)
         min_periods = min_periods or max(1, window // 2)
-        return expr.rolling_min(window, min_periods=min_periods)
+        return expr.rolling_min(window, min_samples=min_periods)
     
     @staticmethod
     def ts_sum(
@@ -140,7 +140,25 @@ class TimeSeriesOperators:
         if isinstance(expr, str):
             expr = pl.col(expr)
         min_periods = min_periods or max(1, window // 2)
-        return expr.rolling_sum(window, min_periods=min_periods)
+        return expr.rolling_sum(window, min_samples=min_periods)
+    
+    @staticmethod
+    def ts_prod(
+        expr: Union[Expr, str],
+        window: int = 20,
+        min_periods: Optional[int] = None
+    ) -> Expr:
+        """滚动求积（log-sum-exp 方法）
+        
+        Args:
+            expr: 表达式或列名
+            window: 窗口大小
+            min_periods: 最小观测数
+        """
+        if isinstance(expr, str):
+            expr = pl.col(expr)
+        min_periods = min_periods or max(1, window // 2)
+        return expr.log().rolling_sum(window, min_samples=min_periods).exp()
     
     @staticmethod
     def ts_median(
@@ -159,7 +177,7 @@ class TimeSeriesOperators:
         if isinstance(expr, str):
             expr = pl.col(expr)
         min_periods = min_periods or max(1, window // 2)
-        return expr.rolling_median(window, min_periods=min_periods)
+        return expr.rolling_median(window, min_samples=min_periods)
     
     @staticmethod
     def ts_corr(
@@ -182,7 +200,12 @@ class TimeSeriesOperators:
         if isinstance(expr_b, str):
             expr_b = pl.col(expr_b)
         min_periods = min_periods or max(1, window // 2)
-        return expr_a.rolling_corr(expr_b, window, min_periods=min_periods)
+        
+        cov = expr_a.rolling_var(window, min_samples=min_periods)
+        std_a = expr_a.rolling_std(window, min_samples=min_periods)
+        std_b = expr_b.rolling_std(window, min_samples=min_periods)
+        
+        return cov / (std_a * std_b + 1e-8)
     
     @staticmethod
     def ts_cov(
@@ -204,8 +227,11 @@ class TimeSeriesOperators:
             expr_a = pl.col(expr_a)
         if isinstance(expr_b, str):
             expr_b = pl.col(expr_b)
-        min_periods = min_periods or max(1, window // 2)
-        return expr_a.rolling_cov(expr_b, window, min_periods=min_periods)
+        
+        mean_a = expr_a.rolling_mean(window)
+        mean_b = expr_b.rolling_mean(window)
+        
+        return ((expr_a - mean_a) * (expr_b - mean_b)).rolling_mean(window)
     
     @staticmethod
     def ts_rank(
@@ -223,8 +249,7 @@ class TimeSeriesOperators:
         """
         if isinstance(expr, str):
             expr = pl.col(expr)
-        min_periods = min_periods or max(1, window // 2)
-        return expr.rolling_rank(window, min_periods=min_periods)
+        return expr.rolling_rank(window)
     
     @staticmethod
     def ts_delta(
@@ -318,7 +343,7 @@ class TimeSeriesOperators:
         """
         if isinstance(expr, str):
             expr = pl.col(expr)
-        return expr.ewm_mean(alpha, adjust=adjust)
+        return expr.ewm_mean(alpha=alpha, adjust=adjust)
     
     @staticmethod
     def ewm_std(
@@ -336,7 +361,7 @@ class TimeSeriesOperators:
         """
         if isinstance(expr, str):
             expr = pl.col(expr)
-        return expr.ewm_std(alpha, adjust=adjust)
+        return expr.ewm_std(alpha=alpha, adjust=adjust)
     
     @staticmethod
     def ewm_corr(
@@ -356,4 +381,9 @@ class TimeSeriesOperators:
             expr_a = pl.col(expr_a)
         if isinstance(expr_b, str):
             expr_b = pl.col(expr_b)
-        return expr_a.ewm_corr(expr_b, alpha)
+        mean_a = expr_a.ewm_mean(alpha=alpha)
+        mean_b = expr_b.ewm_mean(alpha=alpha)
+        var_a = expr_a.ewm_var(alpha=alpha)
+        var_b = expr_b.ewm_var(alpha=alpha)
+        cov = (expr_a * expr_b).ewm_mean(alpha=alpha) - mean_a * mean_b
+        return cov / ((var_a * var_b).sqrt() + 1e-10)

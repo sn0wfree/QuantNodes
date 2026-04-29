@@ -2,7 +2,8 @@
 """因子表
 
 包含 FactorTable（因子表接口）和 CustomFT（自定义因子表）
-以及相关的遍历模式、运算模式和多进程辅助函数。
+以及相关的遍历模式、运算模式。
+v2.0: 移除 traits 和 multiprocessing，使用 dataclass + concurrent.futures
 """
 import datetime as dt
 import gc
@@ -14,45 +15,41 @@ import tempfile
 import time
 import uuid
 from collections import OrderedDict
-from multiprocessing import Lock, Process, Queue, cpu_count
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from enum import Enum
+from os import cpu_count
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 from progressbar import ProgressBar
-from traits.api import Enum, Instance, Int, List, Str
 
-from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject as _QN_Object
-from QuantNodes.core.base import FactorError
-from QuantNodes.core.tools import (
-    gen_available_name as genAvailableName,
-    partition_list_moving_sampling,
-    start_multi_process as startMultiProcess,
-    get_shelve_file_suffix as getShelveFileSuffix,
-    test_id_filter_str as testIDFilterStr,
-)
+from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
 
 
-class _ErgodicMode(_QN_Object):
+class ErgodicModeType(Enum):
     """遍历模式"""
-    ForwardPeriod = Int(600, arg_type="Integer", label="向前缓冲时点数", order=0)
-    BackwardPeriod = Int(1, arg_type="Integer", label="向后缓冲时点数", order=1)
-    CacheMode = Enum("因子", "ID", arg_type="SingleOption", label="缓冲模式", order=2)
-    MaxFactorCacheNum = Int(60, arg_type="Integer", label="最大缓冲因子数", order=3)
-    MaxIDCacheNum = Int(10000, arg_type="Integer", label="最大缓冲ID数", order=4)
-    CacheSize = Int(300, arg_type="Integer", label="缓冲区大小", order=5)
-    ErgodicDTs = List(arg_type="DateTimeList", label="遍历时点", order=6)
-    ErgodicIDs = List(arg_type="IDList", label="遍历ID", order=7)
+    FACTOR = "因子"
+    ID = "ID"
 
-    def __init__(self, sys_args={}, **kwargs):
+
+@dataclass
+class _ErgodicMode(QuantNodesObject):
+    """遍历模式"""
+    forward_period: int = 600
+    backward_period: int = 1
+    cache_mode: ErgodicModeType = ErgodicModeType.FACTOR
+    max_factor_cache_num: int = 60
+    max_id_cache_num: int = 10000
+    cache_size: int = 300
+    ergodic_dts: List = field(default_factory=list)
+    ergodic_ids: List = field(default_factory=list)
+
+    def __init__(self, sys_args: Dict = None, **kwargs):
         super().__init__(sys_args=sys_args, **kwargs)
         self._isStarted = False
         self._CurDT = None
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        if "_CacheDataProcess" in state:
-            state["_CacheDataProcess"] = None
-        return state
 
 
 def _prepareMMAPFactorCacheData(ft, mmap_cache):
@@ -183,15 +180,16 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
     return 0
 
 
-class _OperationMode(_QN_Object):
+@dataclass
+class _OperationMode(QuantNodesObject):
     """运算模式"""
-    DateTimes = List(dt.datetime)
-    IDs = List(str)
-    FactorNames = List(str)
-    SubProcessNum = Int(0)
-    DTRuler = List(dt.datetime)
+    date_times: List = field(default_factory=list)
+    ids: List = field(default_factory=list)
+    factor_names: List = field(default_factory=list)
+    sub_process_num: int = 0
+    dt_ruler: List = field(default_factory=list)
 
-    def __init__(self, ft, sys_args={}, config_file=None, **kwargs):
+    def __init__(self, ft, sys_args: Dict = None, config_file: str = None, **kwargs):
         self._FT = ft
         self._isStarted = False
         self._Factors = []
@@ -207,13 +205,11 @@ class _OperationMode(_QN_Object):
         self._RawDataDir = ""
         self._CacheDataDir = ""
         self._Event = {}
-        self._FileSuffix = getShelveFileSuffix()
+        from QuantNodes.core.tools import get_shelve_file_suffix
+        self._FileSuffix = get_shelve_file_suffix()
         if self._FileSuffix:
             self._FileSuffix = "." + self._FileSuffix
         super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
-
-    def __QN_initArgs__(self):
-        self.add_trait("FactorNames", List(str, arg_type="MultiOption", label="运算因子", order=2))
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -394,23 +390,21 @@ def _calculate(args):
     return 0
 
 
-class FactorTable(_QN_Object):
+class FactorTable(QuantNodesObject):
     """因子表（接口类）
 
     因子表可看做一个独立的数据集或命名空间，
     可看做 Panel(items=[因子], major_axis=[时间点], minor_axis=[ID])。
     """
-    ErgodicMode = Instance(_ErgodicMode, arg_type="ArgObject", label="遍历模式", order=-3)
-    OperationMode = Instance(_OperationMode)
+    ergodic_mode: _ErgodicMode = None
+    operation_mode: _OperationMode = None
 
     def __init__(self, name, fdb=None, sys_args={}, config_file=None, **kwargs):
         self._Name = name
         self._FactorDB = fdb
+        self.ergodic_mode = _ErgodicMode()
+        self.operation_mode = _OperationMode(ft=self)
         return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
-
-    def __QN_initArgs__(self):
-        self.ErgodicMode = _ErgodicMode()
-        self.OperationMode = _OperationMode(ft=self)
 
     @property
     def Name(self):
@@ -431,14 +425,8 @@ class FactorTable(_QN_Object):
 
     def getFactor(self, ifactor_name, args={}, new_name=None):
         from QuantNodes.factor_node.factor import Factor
-        iFactor = Factor(name=ifactor_name, ft=self, logger=self._QN_Logger)
-        for iArgName in self.ArgNames:
-            if iArgName not in ("遍历模式", "运算模式"):
-                iTraitName, iTrait = self.getTrait(iArgName)
-                iFactor.add_trait(iTraitName, iTrait)
-                iFactor[iArgName] = args.get(iArgName, self[iArgName])
-        if new_name is not None:
-            iFactor.Name = new_name
+        iFactor = Factor(name=ifactor_name, ft=self)
+        iFactor.name = new_name or ifactor_name
         return iFactor
 
     def getFactorMetaData(self, factor_names, key=None, args={}):

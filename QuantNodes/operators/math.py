@@ -277,7 +277,7 @@ class MathOperators:
         """
         if isinstance(expr, str):
             expr = pl.col(expr)
-        return expr.fill_nan(other=None)
+        return expr.fill_nan(None)
     
     @staticmethod
     def fill_null(

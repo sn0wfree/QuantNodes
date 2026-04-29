@@ -47,7 +47,7 @@ QuantNodes/
 │   │
 │   ├── factor_node/               # 因子引擎
 │   │   ├── factor.py             # Factor, DerivativeFactor
-│   │   ├── factor_functions.py    # 97+ 算子 + 注册表
+│   │   ├── factor_functions.py # 142+ 算子 + 注册表 (Polars)
 │   │   └── factor_operation.py    # Point/Time/Section/PanelOperation
 │   │
 │   ├── database_node/             # 数据库节点
@@ -92,7 +92,7 @@ from QuantNodes.core.node import BaseNode, Pipeline
 from QuantNodes.factor_node.factor_functions import get_operator, list_operators
 
 # 列出所有算子
-print(list_operators())  # ['abs', 'add', 'add_constant', ...]
+print(list_operators())  # ['abs', 'add', 'aggr_count', ...]
 
 # 获取算子
 rolling_mean = get_operator('rolling_mean', 'time')
@@ -111,7 +111,7 @@ result = pipeline.execute()
 ### 因子计算示例
 
 ```python
-from QuantNodes.factor_node.factor_functions import rolling_mean, rolling_std
+from QuantNodes.factor_node.factor_functions import rolling_mean, rolling_std, zscore
 
 # 滚动均值
 result = rolling_mean(factor_data, window=20)
@@ -120,7 +120,7 @@ result = rolling_mean(factor_data, window=20)
 std = rolling_std(factor_data, window=20)
 
 # Z-Score 标准化
-zscore = (factor_data - rolling_mean) / rolling_std
+zscore = zscore(factor_data)
 ```
 
 ## 算子注册表 API

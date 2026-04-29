@@ -2,94 +2,59 @@
 """
 QuantNodes 对象基类
 
-替代 QuantStudio.__QS_Object__，继承自 traits.HasTraits
+使用 dataclass 替代 traits.HasTraits
 """
 
 import logging
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-from traits.api import HasTraits, Str
 
-
-class QuantNodesObject(HasTraits):
+@dataclass
+class QuantNodesObject:
     """
     QuantNodes 基础对象类
-
-    继承自 traits.HasTraits，提供配置属性系统
-
+    
+    使用 dataclass 提供配置属性系统
+    
     Attributes:
-        Name: 对象名称
-        _QN_logger: 日志记录器
+        name: 对象名称
+        config: 配置字典
     """
 
-    Name = Str("QuantNodes对象")
+    name: str = "QuantNodesObject"
+    config: Dict[str, Any] = field(default_factory=dict)
+    _logger: logging.Logger = field(default=None, repr=False)
 
-    _QN_logger = logging.getLogger("QuantNodes")
+    def __post_init__(self):
+        if self._logger is None:
+            self._logger = logging.getLogger(f"QuantNodes.{self.__class__.__name__}")
 
-    def __init__(
-        self,
-        sys_args: Optional[Dict[str, Any]] = None,
-        config_file: Optional[str] = None,
-        **kwargs,
-    ):
+    def get_config(self, key: str, default: Any = None) -> Any:
         """
-        初始化 QuantNodesObject
-
+        获取配置值
+        
         Args:
-            sys_args: 系统参数字典，用于配置对象属性
-            config_file: 配置文件路径（暂未实现）
-            **kwargs: 其他关键字参数
-        """
-        super().__init__(**kwargs)
-        self._init_logger()
-        self.__QN_initArgs__(sys_args=sys_args or {})
-
-    def _init_logger(self) -> None:
-        """初始化日志记录器"""
-        self._QN_logger = logging.getLogger(f"QuantNodes.{self.__class__.__name__}")
-
-    def __QN_initArgs__(self, sys_args: Optional[Dict[str, Any]] = None) -> None:
-        """
-        初始化配置参数
-
-        子类应重写此方法以初始化自己的配置
-
-        Args:
-            sys_args: 系统参数字典
-        """
-        pass
-
-    def get_trait(self, name: str) -> Any:
-        """
-        获取 trait 属性值
-
-        Args:
-            name: 属性名
-
+            key: 配置键
+            default: 默认值
+        
         Returns:
-            属性值
-
-        Raises:
-            AttributeError: 属性不存在
+            配置值
         """
-        if self.trait(name) is None:
-            raise AttributeError(f"'{self.__class__.__name__}' 对象没有属性 '{name}'")
-        return getattr(self, name)
+        return self.config.get(key, default)
 
-    def set_trait(self, name: str, value: Any) -> None:
+    def set_config(self, key: str, value: Any) -> None:
         """
-        设置 trait 属性值
-
+        设置配置值
+        
         Args:
-            name: 属性名
-            value: 属性值
+            key: 配置键
+            value: 配置值
         """
-        if self.trait(name) is None:
-            raise AttributeError(f"'{self.__class__.__name__}' 对象没有属性 '{name}'")
-        setattr(self, name, value)
+        self.config[key] = value
 
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}: {self.Name}>"
+        return f"<{self.__class__.__name__}: {self.name}>"
 
     def __str__(self) -> str:
         return self.__repr__()

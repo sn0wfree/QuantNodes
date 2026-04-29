@@ -59,7 +59,7 @@ class SectionOperators:
         elif method == "min":
             return (expr.rank() - expr.rank().min()) / (expr.rank().max() - expr.rank().min())
         elif method == "average":
-            return (expr.rank(inclusive=True) - 1) / (expr.count() - 1)
+            return (expr.rank() - 1) / (expr.count() - 1)
         else:
             return expr.rank() / expr.count()
     
@@ -222,7 +222,7 @@ class SectionOperators:
         if isinstance(target, str):
             target = pl.col(target)
         
-        return (expr.rank().corr(target.rank()))
+        return pl.corr(expr.rank(), target.rank())
     
     @staticmethod
     def ic(
@@ -244,7 +244,7 @@ class SectionOperators:
         if isinstance(target, str):
             target = pl.col(target)
         
-        return expr.corr(target)
+        return pl.corr(expr, target)
     
     @staticmethod
     def group_norm(

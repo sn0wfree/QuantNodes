@@ -27,6 +27,8 @@ from QuantNodes.factor_node.factor_nodes import (
 
 from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
 
+from QuantNodes.factor_node import factor_functions as ff
+
 __all__ = [
     # factor_db
     'FactorDB',
@@ -71,6 +73,9 @@ __all__ = [
 
     # operations (moved from core/)
     'QuantNodesObject',
+
+    # factor_functions
+    'ff',
 ]
 
 if __name__ == '__main__':

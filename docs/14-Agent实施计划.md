@@ -2,7 +2,7 @@
 
 **版本**: v1.0  
 **创建日期**: 2026-04-29  
-**状态**: Phase 1 已完成 ✅ | Phase 2 待开始  
+**状态**: Phase 1 已完成 ✅ | Phase 2 已完成 ✅ | Phase 3 待开始  
 **作者**: sn0wfree
 
 ---
@@ -16,6 +16,7 @@
 3. **复用现有组件** - LLM、Sandbox、StrategyGenerator直接复用
 4. **标准MCP协议** - 通过MCP桥接llmwikify知识管理
 5. **回测安全优先** - Phase 1-3全局锁，后期改为Docker隔离并发
+6. **Polars新架构** - Phase 3 迁移到Polars + 配置文件驱动（v2.0）
 
 ### 1.2 实施目标
 
@@ -136,13 +137,13 @@ hello world
 
 | 序号 | 任务 | 文件 | 预估代码量 | 依赖 | 验收标准 | 状态 |
 |------|------|------|-----------|------|----------|------|
-| 2.1 | 沙箱工具 | `tools/sandbox.py` | ~100行 | Phase 1 | 可安全执行Python代码 | ⬜ 待开始 |
-| 2.2 | Pipeline工具 | `tools/pipeline.py` | ~150行 | 2.1 | 可构建、验证FactorPipeline | ⬜ 待开始 |
-| 2.3 | 策略生成工具 | `tools/strategy.py` | ~150行 | 2.2 | 封装StrategyGenerator | ⬜ 待开始 |
-| 2.4 | 回测运行工具 | `tools/backtest.py` | ~200行 | 2.3 | 调用回测引擎，返回结果摘要 | ⬜ 待开始 |
-| 2.5 | 因子分析工具 | `tools/factor.py` | ~150行 | 2.2 | IC分析、相关性分析 | ⬜ 待开始 |
-| 2.6 | 端到端测试 | `tests/agent/test_e2e.py` | ~100行 | 2.1-2.5 | 完整流程测试通过 | ⬜ 待开始 |
-| 2.7 | Web界面 | `web/app.py` (Streamlit) | ~300行 | 2.1-2.5 | 浏览器可用Agent | ⬜ 待开始 |
+| 2.1 | 沙箱工具 | `tools/sandbox.py` | ~100行 | Phase 1 | 可安全执行Python代码 | ✅ 已完成 |
+| 2.2 | Pipeline工具 | `tools/pipeline.py` | ~150行 | 2.1 | 可构建、验证FactorPipeline | ✅ 已完成 |
+| 2.3 | 策略生成工具 | `tools/strategy.py` | ~150行 | 2.2 | 封装StrategyGenerator | ✅ 已完成 |
+| 2.4 | 回测运行工具 | `tools/backtest.py` | ~200行 | 2.3 | 调用回测引擎，返回结果摘要 | ✅ 已完成 |
+| 2.5 | 因子分析工具 | `tools/factor.py` | ~150行 | 2.2 | IC分析、相关性分析 | ✅ 已完成 |
+| 2.6 | 端到端测试 | `tests/agent/test_e2e.py` | ~100行 | 2.1-2.5 | 完整流程测试通过 | ✅ 已完成 |
+| 2.7 | Web界面 | `web/app.py` (Streamlit) | ~300行 | 2.1-2.5 | 浏览器可用Agent | ✅ 已完成 |
 
 **Phase 2 总计**: ~1150行代码
 
@@ -160,7 +161,7 @@ Agent:
 
 ### Phase 3: llmwikify知识沉淀（1周）
 
-**目标**: 通过MCP连接llmwikify，自动沉淀研究结果
+**目标**: 通过MCP连接llmwikify，自动沉淀研究结果 + Polars架构迁移
 
 | 序号 | 任务 | 文件 | 预估代码量 | 依赖 | 验收标准 | 状态 |
 |------|------|------|-----------|------|----------|------|
@@ -170,7 +171,13 @@ Agent:
 | 3.4 | Wiki查询工具 | `wiki/query.py` | ~100行 | 3.2 | 可检索历史策略/因子 | ⬜ 待开始 |
 | 3.5 | 并发升级 | `core/loop.py` 启用Semaphore=3 | ~50行 | Phase 1 | 跨会话并发工作 | ⬜ 待开始 |
 
-**Phase 3 总计**: ~500行代码
+**Phase 3 新架构 (v2.0)**:
+
+| 序号 | 任务 | 文件 | 预估代码量 | 依赖 | 验收标准 | 状态 |
+|------|------|------|-----------|------|----------|------|
+| 3.6 | Polars算子库 | `operators/time_series.py` 等 | ~400行 | Phase 1 | 20+ 算子可配置 | ✅ 已完成 |
+
+**Phase 3 总计**: ~1050行 (v2.0已完成)
 
 **最终验收**:
 ```
@@ -195,6 +202,32 @@ Agent:
 | 4.6 | 工具级并发 | `core/runner.py` 扩展 | ~100行 | Phase 1 | 只读工具并行执行 | ⬜ 待开始 |
 
 **Phase 4 总计**: ~1400行代码
+
+---
+
+### Phase 5: FactorNode Polars 统一迁移 (8天)
+
+**目标**: 统一到 Polars 技术栈，移除 traits 和 multiprocessing 依赖
+
+**设计文档**: `docs/17-QuantNodes-Polars统一迁移方案.md`
+
+| 序号 | 任务 | 文件 | 预估代码量 | 依赖 | 验收标准 | 状态 |
+|------|------|------|-----------|------|----------|------|
+| 5.1 | factor_functions_v2.py | `factor_functions_v2.py` | ~600行 | Phase 3 | 20+ 函数可用的 | ⬜ 待开始 |
+| 5.2 | 改写 quant_nodes_object.py | `quant_nodes_object.py` | ~100行 | 5.1 | 移除traits | ⬜ 待开始 |
+| 5.3 | 改写 factor.py | `factor.py` | ~100行 | 5.2 | 移除traits | ⬜ 待开始 |
+| 5.4 | 简化 factor_operation.py | `factor_operation.py` | ~200行 | 5.3 | 移除multiprocessing | ⬜ 待开始 |
+| 5.5 | 修改 factor_table.py/factor_db.py | 同名文件 | ~150行 | 5.4 | 移除multiprocessing | ⬜ 待开始 |
+| 5.6 | 统一 __init__.py | `__init__.py` | ~50行 | 5.5 | 清理导出 | ⬜ 待开始 |
+| 5.7 | 测试验证 | `tests/*.py` | - | 5.6 | 测试通过 | ⬜ 待开始 |
+
+**Phase 5 总计**: ~1200行代码 (8天)
+
+**最终验收**:
+```bash
+python -m pytest tests/test_factor_functions.py -v  # 全部通过
+python -m pytest tests/test_factor_node.py -v     # 全部通过
+```
 
 ---
 
@@ -422,9 +455,10 @@ class Tool(ABC):
 |------|--------|---------|-----------|
 | Phase 1 | ~3900行 | 1-2周 | 可对话的Agent核心 |
 | Phase 2 | ~1150行 | 2周 | 策略生成→回测闭环 |
-| Phase 3 | ~500行 | 1周 | Wiki知识沉淀 |
+| Phase 3 | ~1050行 | 1周 | Wiki知识沉淀 + Polars v2.0 |
 | Phase 4 | ~1400行 | 1-2周 | 技能系统+完整并发 |
-| **总计** | **~6950行** | **5-7周** | |
+| Phase 5 | ~1200行 | 8天 | Polars 统一迁移 (移除traits) |
+| **总计** | ~8700行 | **7-9周** | |
 
 ---
 

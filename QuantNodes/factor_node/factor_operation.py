@@ -3,6 +3,7 @@
 因子运算模块
 
 提供因子运算操作类，包括单点运算、时间序列运算、截面运算和面板运算。
+v2.0: 移除 traits 和 multiprocessing 依赖，使用纯 Python/Polars
 
 Classes:
     DerivativeFactor: 因子运算基类
@@ -10,38 +11,17 @@ Classes:
     TimeOperation: 时间序列运算，对描述子进行时间序列运算（滚动/扩展窗口）
     SectionOperation: 截面运算，对描述子进行截面运算
     PanelOperation: 面板运算，结合时间序列和截面运算
-
-Operator Signature:
-    f: 该算子所属的因子（因子对象）
-    idt: 当前待计算的时点，如果运算时点为多时点，则该值为[时点]
-    iid: 当前待计算的ID，如果运算ID为多ID，则该值为[ID]
-    x: 描述子当期的数据，类型取决于DTMode和IDMode组合
-    args: 参数字典 {参数名: 参数值}
-
-Mode Combinations:
-    - 单时点 + 单ID: x元素为单个描述子值，返回单个元素
-    - 单时点 + 多ID: x元素为array(shape=(nID,))，返回array(shape=(nID,))
-    - 多时点 + 单ID: x元素为array(shape=(nDT,))，返回array(shape=(nID,))
-    - 多时点 + 多ID: x元素为array(shape=(nDT, nID))，返回array(shape=(nDT, nID))
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from typing import Any, Dict, List, Optional, Tuple, Callable
-from multiprocessing import Queue, Event
-from traits.api import TraitFunction, Dict as TraitDict, Enum, List as TraitList, Int, Instance
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from QuantNodes.core.base import FactorError
-from QuantNodes.factor_node.factor import Factor
-from QuantNodes.core.cache_utils import (
-    create_std_data,
-    create_empty_dataframe,
-    partition_ids_for_pid,
-    write_cache_file,
-    write_cache_files_for_all_pids,
-)
-from QuantNodes.core.tools import partition_list
+from QuantNodes.factor_node.factor import Factor, DataType
 
 
 def _DefaultOperator(f: Factor, idt: Any, iid: Any, x: List[np.ndarray], args: Dict[str, Any]) -> np.ndarray:
@@ -49,31 +29,52 @@ def _DefaultOperator(f: Factor, idt: Any, iid: Any, x: List[np.ndarray], args: D
     return np.nan
 
 
+class DataOperationType(Enum):
+    """数据类型枚举"""
+    DOUBLE = "double"
+    STRING = "string"
+    OBJECT = "object"
+
+
+@dataclass
 class DerivativeFactor(Factor):
     """因子运算基类
 
     所有因子运算类的基类，提供描述子管理和通用接口。
-
+    
     Attributes:
         Operator: 运算函数，签名为 (f, idt, iid, x, args) -> result
         ModelArgs: 参数字典
-        DataType: 数据类型 ("double", "string", "object")
-
-    Args:
-        name: 因子名称
-        descriptors: 描述子列表
-        sys_args: 系统参数字典
-        **kwargs: 其他关键字参数
-
-    Example:
-        >>> def my_op(f, idt, iid, x, args):
-        ...     return x[0] + x[1]
-        >>> factor = PointOperation(name="my_factor", descriptors=[f1, f2])
-        >>> factor.Operator = my_op
+        DataType: 数据类型
     """
-    Operator = TraitFunction(_DefaultOperator)
-    ModelArgs = TraitDict(arg_type="Dict", label="参数", order=1)
-    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=2)
+    operator: Callable = field(default=_DefaultOperator)
+    model_args: Dict[str, Any] = field(default_factory=dict)
+    data_type: DataOperationType = DataOperationType.DOUBLE
+    _descriptors: List[Factor] = field(default_factory=list)
+
+    def __init__(self, name: str = "", descriptors: List[Factor] = None, sys_args: Dict[str, Any] = None, **kwargs):
+        self._descriptors = descriptors if descriptors else []
+        self.UserData = {}
+        self.name = name
+        self.model_args = sys_args or {}
+        self.operator = kwargs.get('operator', _DefaultOperator)
+        
+        if descriptors and hasattr(descriptors[0], '_logger'):
+            self._logger = descriptors[0]._logger
+        
+        super().__init__(name=name, ft=None, sys_args=sys_args)
+
+    @property
+    def Descriptors(self) -> List[Factor]:
+        return self._descriptors
+
+    @property
+    def Operator(self) -> Callable:
+        return self.operator
+
+    @Operator.setter
+    def Operator(self, value: Callable):
+        self.operator = value
 
     def __init__(self, name: str = "", descriptors: List[Factor] = None, sys_args: Dict[str, Any] = None, **kwargs):
         self._Descriptors = descriptors if descriptors else []
@@ -139,35 +140,33 @@ class DerivativeFactor(Factor):
 # 如果运算时点参数为单时点, 运算ID参数为多ID, 那么 x 元素为 array(shape=(nID, )), 注意并发时 ID 并不是全截面, 返回 array(shape=(nID,))
 # 如果运算时点参数为多时点, 运算ID参数为单ID, 那么 x 元素为 array(shape=(nDT, )), 返回 array(shape=(nID, ))
 # 如果运算时点参数为多时点, 运算ID参数为多ID, 那么 x 元素为 array(shape=(nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
+from enum import Enum
+
+
+class DTModeType(Enum):
+    """运算时点模式"""
+    SINGLE = "单时点"
+    MULTI = "多时点"
+
+
+class IDModeType(Enum):
+    """运算ID模式"""
+    SINGLE = "单ID"
+    MULTI = "多ID"
+
+
+@dataclass
 class PointOperation(DerivativeFactor):
     """单点运算
 
     对描述子进行单点运算，即每个时点-ID组合独立计算。
-
+    
     Attributes:
-        DTMode: 运算时点模式 ("单时点" 或 "多时点")
-        IDMode: 运算ID模式 ("单ID" 或 "多ID")
-
-    Args:
-        name: 因子名称
-        descriptors: 描述子列表
-        sys_args: 系统参数字典
-
-    Example:
-        >>> op = PointOperation(name="add", descriptors=[f1, f2])
-        >>> op.DTMode = "单时点"
-        >>> op.IDMode = "单ID"
-        >>> op.Operator = lambda f, idt, iid, x, args: x[0] + x[1]
+        dt_mode: 运算时点模式
+        id_mode: 运算ID模式
     """
-    DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-    IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
-
-    _DT_ID_DISPATCH: Dict[Tuple[str, str], str] = {
-        ("多时点", "多ID"): "_calcData_multi_time_multi_id",
-        ("单时点", "单ID"): "_calcData_single_time_single_id",
-        ("多时点", "单ID"): "_calcData_multi_time_single_id",
-        ("单时点", "多ID"): "_calcData_single_time_multi_id",
-    }
+    dt_mode: DTModeType = DTModeType.SINGLE
+    id_mode: IDModeType = IDModeType.SINGLE
 
     def readData(self, ids: List[Any], dts: List[Any], **kwargs) -> pd.DataFrame:
         """读取并计算数据
@@ -319,35 +318,41 @@ class PointOperation(DerivativeFactor):
         return StdData
 
 
+class LookBackMode(Enum):
+    """回溯模式"""
+    ROLLING = "滚动窗口"
+    EXPANDING = "扩张窗口"
+
+
+@dataclass
 class _LookBackOperation(DerivativeFactor):
     """带 LookBack 窗口运算的基类
     
     提取 TimeOperation 和 PanelOperation 中相同的 LookBack 窗口计算逻辑。
     子类需要实现具体的 _calcData 方法或使用策略分派模式。
-
+    
     Attributes:
-        LookBack: 回溯期数列表，对应每个描述子
-        LookBackMode: 回溯模式列表 ("滚动窗口" 或 "扩张窗口")
-        iLookBack: 自身回溯期数
-        iLookBackMode: 自身回溯模式 ("滚动窗口" 或 "扩张窗口")
-        iInitData: 自身初始值DataFrame，用于填充回溯窗口前的数据
-
-    Args:
-        name: 因子名称
-        descriptors: 描述子列表
-        sys_args: 系统参数字典
+        look_back: 回溯期数列表，对应每个描述子
+        look_back_mode: 回溯模式列表
+        i_look_back: 自身回溯期数
+        i_look_back_mode: 自身回溯模式
+        i_init_data: 自身初始值DataFrame
     """
-    LookBack = TraitList(arg_type="ArgList", label="回溯期数", order=5)
-    LookBackMode = TraitList(Enum("滚动窗口", "扩张窗口"), arg_type="ArgList", label="回溯模式", order=6)
-    iLookBack = Int(0, arg_type="Integer", label="自身回溯期数", order=7)
-    iLookBackMode = Enum("滚动窗口", "扩张窗口", arg_type="SingleOption", label="自身回溯模式", order=8)
-    iInitData = Instance(pd.DataFrame, arg_type="DataFrame", label="自身初始值", order=9)
+    look_back: List[int] = field(default_factory=list)
+    look_back_mode: List[LookBackMode] = field(default_factory=list)
+    i_look_back: int = 0
+    i_look_back_mode: LookBackMode = LookBackMode.ROLLING
+    i_init_data: Optional[pd.DataFrame] = None
 
-    def __QN_initArgs__(self) -> None:
-        """初始化参数"""
-        n = len(self._Descriptors)
-        self.LookBack = [0] * n
-        self.LookBackMode = ["滚动窗口"] * n
+    def __init__(self, name: str = "", descriptors: List[Factor] = None, sys_args: Dict = None, **kwargs):
+        super().__init__(name=name, descriptors=descriptors, sys_args=sys_args, **kwargs)
+        self._init_lookback()
+
+    def _init_lookback(self) -> None:
+        """初始化回溯参数"""
+        n = len(self._descriptors)
+        self.look_back = [0] * n
+        self.look_back_mode = [LookBackMode.ROLLING] * n
 
     def _prepare_lookback_data(
         self,
@@ -379,8 +384,8 @@ class _LookBackOperation(DerivativeFactor):
         StdData = create_std_data(dts, ids, self.DataType)
         StartIndAndLen, MaxLookBack, MaxLen = [], 0, 1
         for i in range(len(self._Descriptors)):
-            iLookBack = self.LookBack[i]
-            if self.LookBackMode[i] == "滚动窗口":
+            iLookBack = self.look_back[i]
+            if self.look_back_mode[i] == "滚动窗口":
                 StartIndAndLen.append((iLookBack, iLookBack + 1))
                 MaxLen = max(MaxLen, iLookBack + 1)
             else:
@@ -388,23 +393,23 @@ class _LookBackOperation(DerivativeFactor):
                 MaxLen = np.inf
             MaxLookBack = max(MaxLookBack, iLookBack)
         iStartInd = 0
-        if (self.iLookBackMode == "扩张窗口") or (self.iLookBack != 0):
-            if self.iInitData is not None:
+        if (self.i_look_back_mode == LookBackMode.EXPANDING) or (self.i_look_back != 0):
+            if self.i_init_data is not None:
                 iInitData = self.iInitData.loc[self.iInitData.index < dts[0], :]
                 if iInitData.shape[0] > 0:
                     if iInitData.columns.intersection(ids).shape[0] > 0:
                         iInitData = iInitData.loc[:, ids].values.astype(StdData.dtype)
                     else:
                         iInitData = np.full(shape=(iInitData.shape[0], len(ids)), dtype=StdData.dtype)
-                    iStartInd = min(self.iLookBack, iInitData.shape[0])
+                    iStartInd = min(self.i_look_back, iInitData.shape[0])
                     StdData = np.r_[iInitData[-iStartInd:], StdData]
-            if self.iLookBackMode == "扩张窗口":
+            if self.i_look_backMode == "扩张窗口":
                 StartIndAndLen.insert(0, (iStartInd - 1, np.inf))
                 MaxLen = np.inf
             else:
-                StartIndAndLen.insert(0, (iStartInd - 1, self.iLookBack))
-                MaxLen = max(MaxLen, self.iLookBack + 1)
-            MaxLookBack = max(MaxLookBack, self.iLookBack)
+                StartIndAndLen.insert(0, (iStartInd - 1, self.i_look_back))
+                MaxLen = max(MaxLen, self.i_look_back + 1)
+            MaxLookBack = max(MaxLookBack, self.i_look_back)
             descriptor_data.insert(0, StdData)
         start_ind = dt_ruler.index(dts[0])
         if start_ind >= MaxLookBack:
@@ -424,35 +429,17 @@ class _LookBackOperation(DerivativeFactor):
 # 如果运算时点参数为单时点, 运算ID参数为多ID, 那么x元素为array(shape=(回溯期数, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nID, ))
 # 如果运算时点参数为多时点, 运算ID参数为单ID, 那么x元素为array(shape=(回溯期数+nDT, )), 返回 array(shape=(nDate,))
 # 如果运算时点参数为多时点, 运算ID参数为多ID, 那么x元素为array(shape=(回溯期数+nDT, nID)), 注意并发时 ID 并不是全截面, 返回 array(shape=(nDT, nID))
+class OutputModeType(Enum):
+    """输出模式"""
+    FULL_SECTION = "全截面"
+    SINGLE_ID = "单ID"
+
+
+@dataclass
 class TimeOperation(_LookBackOperation):
-    """时间序列运算
-    
-    对描述子进行时间序列运算，支持滚动窗口和扩展窗口模式。
-
-    Attributes:
-        DTMode: 运算时点模式 ("单时点" 或 "多时点")
-        IDMode: 运算ID模式 ("单ID" 或 "多ID")
-
-    Operator Signature:
-        - 单时点 + 单ID: x元素为array(shape=(回溯期数,))，返回单个元素
-        - 单时点 + 多ID: x元素为array(shape=(回溯期数, nID))，返回array(shape=(nID,))
-        - 多时点 + 单ID: x元素为array(shape=(回溯期数+nDT,))，返回array(shape=(nDT,))
-        - 多时点 + 多ID: x元素为array(shape=(回溯期数+nDT, nID))，返回array(shape=(nDT, nID))
-
-    Args:
-        name: 因子名称
-        descriptors: 描述子列表
-        sys_args: 系统参数字典
-    """
-    DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-    IDMode = Enum("单ID", "多ID", arg_type="SingleOption", label="运算ID", order=4)
-
-    _DT_ID_DISPATCH: Dict[Tuple[str, str], str] = {
-        ("单时点", "单ID"): "_calcData_single_time_single_id",
-        ("单时点", "多ID"): "_calcData_single_time_multi_id",
-        ("多时点", "单ID"): "_calcData_multi_time_single_id",
-        ("多时点", "多ID"): "_calcData_multi_time_multi_id",
-    }
+    """时间序列运算"""
+    dt_mode: DTModeType = DTModeType.SINGLE
+    id_mode: IDModeType = IDModeType.SINGLE
 
     def _QN_init_operation(
         self,
@@ -476,7 +463,7 @@ class TimeOperation(_LookBackOperation):
             )
         StartDT = dt_dict[self.Name]
         StartInd = self._OperationMode.DTRuler.index(StartDT)
-        if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
+        if (self.i_look_backMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
             if self.iInitData.index[-1] not in self._OperationMode.DTRuler:
                 self._QN_logger.warning(
                     "注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,)
@@ -484,7 +471,7 @@ class TimeOperation(_LookBackOperation):
             else:
                 StartInd = min(StartInd, self._OperationMode.DTRuler.index(self.iInitData.index[-1]) + 1)
         for i, iDescriptor in enumerate(self._Descriptors):
-            iStartInd = StartInd - self.LookBack[i]
+            iStartInd = StartInd - self.look_back[i]
             if iStartInd < 0:
                 self._QN_logger.warning(
                     "注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足, 不足的部分将填充 nan!" % (self.Name, iDescriptor.Name)
@@ -507,7 +494,7 @@ class TimeOperation(_LookBackOperation):
             return create_empty_dataframe(dts, ids, self.DataType)
         DTRuler = kwargs.get("dt_ruler", dts)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
-        if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
+        if (self.i_look_backMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
             if self.iInitData.index[-1] not in DTRuler:
                 self._QN_logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
             else:
@@ -518,13 +505,13 @@ class TimeOperation(_LookBackOperation):
         nID = len(ids)
         DescriptorData = []
         for i, iDescriptor in enumerate(self._Descriptors):
-            iDTs = DTRuler[max(StartInd - self.LookBack[i], 0):EndInd + 1]
+            iDTs = DTRuler[max(StartInd - self.look_back[i], 0):EndInd + 1]
             if iDTs:
                 iDescriptorData = iDescriptor.readData(ids=ids, dts=iDTs, **kwargs).values
             else:
                 iDescriptorData = np.full((0, nID), np.nan)
-            if StartInd < self.LookBack[i]:
-                iLookBackData = np.full((self.LookBack[i] - StartInd, nID), np.nan)
+            if StartInd < self.look_back[i]:
+                iLookBackData = np.full((self.look_back[i] - StartInd, nID), np.nan)
                 iDescriptorData = np.r_[iLookBackData, iDescriptorData]
             DescriptorData.append(iDescriptorData)
         StdData = self._calcData(
@@ -665,7 +652,7 @@ class TimeOperation(_LookBackOperation):
         if IDs:
             DescriptorData = []
             for i, iDescriptor in enumerate(self._Descriptors):
-                iStartInd = StartInd - self.LookBack[i]
+                iStartInd = StartInd - self.look_back[i]
                 iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
                 iDescriptorData = iDescriptor._QN_get_data(iDTs, pids=[PID]).values
                 if iStartInd < 0:
@@ -701,38 +688,20 @@ class SectionOperation(DerivativeFactor):
     """截面运算
     
     对描述子进行截面运算，即在同一时点对全截面ID进行计算。
-
+    
     Attributes:
-        DTMode: 运算时点模式 ("单时点" 或 "多时点")
-        OutputMode: 输出形式 ("全截面" 或 "单ID")
-        DescriptorSection: 描述子截面列表
-
-    Operator Signature:
-        - 单时点 + 全截面: x元素为array(shape=(nID,))，返回array(shape=(nID,))
-        - 单时点 + 单ID: x元素为array(shape=(nID,))，返回单个值
-        - 多时点 + 全截面: x元素为array(shape=(nDT, nID))，返回array(shape=(nDT, nID))
-        - 多时点 + 单ID: x元素为array(shape=(nDT, nID))，返回array(shape=(nDT,))
-
-    Args:
-        name: 因子名称
-        descriptors: 描述子列表
-        sys_args: 系统参数字典
+        dt_mode: 运算时点模式
+        output_mode: 输出形式
+        descriptor_section: 描述子截面列表
     """
-    DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-    OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
-    DescriptorSection = TraitList(arg_type="List", label="描述子截面", order=5)
+    dt_mode: DTModeType = DTModeType.SINGLE
+    output_mode: OutputModeType = OutputModeType.FULL_SECTION
+    descriptor_section: List = None
 
-    _OUTPUT_DT_DISPATCH: Dict[Tuple[str, str], str] = {
-        ("全截面", "单时点"): "_calcData_full_section_single_time",
-        ("全截面", "多时点"): "_calcData_full_section_multi_time",
-        ("单ID", "单时点"): "_calcData_single_id_single_time",
-        ("单ID", "多时点"): "_calcData_single_id_multi_time",
-    }
-
-    def __QN_initArgs__(self) -> None:
-        """初始化参数"""
-        super().__QN_initArgs__()
-        self.DescriptorSection = [None] * len(self._Descriptors)
+    def __init__(self, name: str = "", descriptors: List[Factor] = None, sys_args: Dict = None, **kwargs):
+        super().__init__(name=name, descriptors=descriptors, sys_args=sys_args, **kwargs)
+        if descriptors:
+            self.descriptor_section = [None] * len(descriptors)
 
     def readData(self, ids: List[Any], dts: List[Any], **kwargs) -> pd.DataFrame:
         """读取并计算数据
@@ -925,49 +894,36 @@ class PanelOperation(_LookBackOperation):
     """面板运算
     
     结合时间序列和截面运算，对描述子进行面板数据计算。
-
+    
     Attributes:
-        DTMode: 运算时点模式 ("单时点" 或 "多时点")
-        OutputMode: 输出形式 ("全截面" 或 "单ID")
-        DescriptorSection: 描述子截面列表
-
-    Operator Signature:
-        - 单时点 + 全截面: x元素为array(shape=(回溯期数, nID))，返回array(shape=(nID,))
-        - 单时点 + 单ID: x元素为array(shape=(回溯期数, nID))，返回单个值
-        - 多时点 + 全截面: x元素为array(shape=(回溯期数+nDT, nID))，返回array(shape=(nDT, nID))
-        - 多时点 + 单ID: x元素为array(shape=(回溯期数+nDT, nID))，返回array(shape=(nDT,))
+        dt_mode: 运算时点模式
+        output_mode: 输出形式
+        descriptor_section: 描述子截面列表
     """
-    DTMode = Enum("单时点", "多时点", arg_type="SingleOption", label="运算时点", order=3)
-    OutputMode = Enum("全截面", "单ID", arg_type="SingleOption", label="输出形式", order=4)
-    DescriptorSection = TraitList(arg_type="List", label="描述子截面", order=10)
+    dt_mode: DTModeType = DTModeType.SINGLE
+    output_mode: OutputModeType = OutputModeType.FULL_SECTION
+    descriptor_section: List = None
 
-    _OUTPUT_DT_DISPATCH: Dict[Tuple[str, str], str] = {
-        ("全截面", "单时点"): "_calcData_full_section_single_time",
-        ("全截面", "多时点"): "_calcData_full_section_multi_time",
-        ("单ID", "单时点"): "_calcData_single_id_single_time",
-        ("单ID", "多时点"): "_calcData_single_id_multi_time",
-    }
-
-    def __QN_initArgs__(self) -> None:
-        """初始化参数"""
-        super().__QN_initArgs__()
-        self.DescriptorSection = [None] * len(self._Descriptors)
+    def __init__(self, name: str = "", descriptors: List[Factor] = None, sys_args: Dict = None, **kwargs):
+        super().__init__(name=name, descriptors=descriptors, sys_args=sys_args, **kwargs)
+        if descriptors:
+            self.descriptor_section = [None] * len(descriptors)
 
     def _QN_init_operation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        if len(self._Descriptors) > len(self.LookBack): raise FactorError(
-            "面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.Name)
+        if len(self._descriptors) > len(self.look_back): raise FactorError(
+            "面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.name)
         OldStartDT = dt_dict.get(self.Name, None)
         DTRuler = self._OperationMode.DTRuler
         if (OldStartDT is None) or (start_dt < OldStartDT):
             StartDT = dt_dict[self.Name] = start_dt
             StartInd, EndInd = DTRuler.index(StartDT), DTRuler.index(self._OperationMode.DateTimes[-1])
-            if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
+            if (self.i_look_backMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
                 if self.iInitData.index[-1] not in self._OperationMode.DTRuler:
                     self._QN_logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
                 else:
                     StartInd = min(StartInd, self._OperationMode.DTRuler.index(self.iInitData.index[-1]) + 1)
             DTs = DTRuler[StartInd:EndInd + 1]
-            if self.iLookBackMode == "扩张窗口":
+            if self.i_look_backMode == "扩张窗口":
                 DTPartition = [DTs] + [[]] * (len(self._OperationMode._PIDs) - 1)
             else:
                 DTPartition = partition_list(DTs, len(self._OperationMode._PIDs))
@@ -977,7 +933,7 @@ class PanelOperation(_LookBackOperation):
         PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
         if prepare_ids != PrepareIDs: raise FactorError("因子 %s 指定了不同的截面!" % self.Name)
         for i, iDescriptor in enumerate(self._Descriptors):
-            iStartInd = StartInd - self.LookBack[i]
+            iStartInd = StartInd - self.look_back[i]
             if iStartInd < 0: self._QN_logger.warning(
                 "注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
             iStartDT = DTRuler[max(0, iStartInd)]
@@ -992,7 +948,7 @@ class PanelOperation(_LookBackOperation):
         DTRuler = kwargs.get("dt_ruler", dts)
         SectionIDs = kwargs.pop("section_ids", ids)
         StartInd = (DTRuler.index(dts[0]) if dts[0] in DTRuler else 0)
-        if (self.iLookBackMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
+        if (self.i_look_backMode == "扩张窗口") and (self.iInitData is not None) and (self.iInitData.shape[0] > 0):
             if self.iInitData.index[-1] not in DTRuler:
                 self._QN_logger.warning("注意: 因子 '%s' 的初始值不在时点标尺的范围内, 初始值和时点标尺之间的时间间隔将被忽略!" % (self.Name,))
             else:
@@ -1001,7 +957,7 @@ class PanelOperation(_LookBackOperation):
         if StartInd > EndInd: return pd.DataFrame(index=dts, columns=ids)
         DescriptorData = []
         for i, iDescriptor in enumerate(self._Descriptors):
-            iDTs = DTRuler[max(StartInd - self.LookBack[i], 0):EndInd + 1]
+            iDTs = DTRuler[max(StartInd - self.look_back[i], 0):EndInd + 1]
             iSectionIDs = self.DescriptorSection[i]
             if iSectionIDs is None: iSectionIDs = SectionIDs
             iIDNum = len(iSectionIDs)
@@ -1009,8 +965,8 @@ class PanelOperation(_LookBackOperation):
                 iDescriptorData = iDescriptor.readData(ids=iSectionIDs, dts=iDTs, **kwargs).values
             else:
                 iDescriptorData = np.full((0, iIDNum), np.nan)
-            if StartInd < self.LookBack[i]:
-                iLookBackData = np.full((self.LookBack[i] - StartInd, iIDNum), np.nan)
+            if StartInd < self.look_back[i]:
+                iLookBackData = np.full((self.look_back[i] - StartInd, iIDNum), np.nan)
                 iDescriptorData = np.r_[iLookBackData, iDescriptorData]
             DescriptorData.append(iDescriptorData)
         StdData = self._calcData(ids=SectionIDs, dts=DTRuler[StartInd:EndInd + 1], descriptor_data=DescriptorData,
@@ -1067,7 +1023,7 @@ class PanelOperation(_LookBackOperation):
         elif IDs:
             DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
             for i, iDescriptor in enumerate(self._Descriptors):
-                iStartInd = StartInd - self.LookBack[i]
+                iStartInd = StartInd - self.look_back[i]
                 iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
                 iDescriptorData = iDescriptor._QN_get_data(iDTs, pids=None).values
                 if iStartInd < 0: iDescriptorData = np.r_[

@@ -2,29 +2,26 @@
 """因子数据库
 
 包含 FactorDB（只读接口）和 WritableFactorDB（可写入接口）
-
-替代 QuantStudio.FactorDataBase.FactorDB.FactorDB
+v2.0: 移除 traits 依赖
 """
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from traits.api import Str
 
-from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject as _QN_Object
+from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
 from QuantNodes.core.base import FactorError
 
 
-class FactorDB(_QN_Object):
+@dataclass
+class FactorDB(QuantNodesObject):
     """因子库基类（只读接口）
 
     数据库由若干张因子表组成。
     不支持某个操作时，方法产生错误。
     没有相关数据时，方法返回 None。
-
-    Attributes:
-        Name: 因子库名称
     """
-    Name = Str("因子库")
+    name: str = "FactorDB"
 
     def connect(self) -> int:
         """连接到数据库

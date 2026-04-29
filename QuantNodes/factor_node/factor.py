@@ -3,22 +3,31 @@
 
 包含 Factor（因子基类实现）和 DataFactor（数据因子）
 以及因子运算符辅助函数。
+
+v2.0: 移除 traits 依赖，使用 dataclass 和 Enum
 """
 import gc
 import os
 import shelve
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from traits.api import Enum, Int, Str
 
-from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject as _QN_Object
+from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
 from QuantNodes.core.base import FactorError
 from QuantNodes.core.tools import (
     partition_list_moving_sampling,
     fill_na_by_lookback as fillNaByLookback,
 )
+
+
+class DataType(Enum):
+    """数据类型枚举"""
+    DOUBLE = "double"
+    STRING = "string"
+    OBJECT = "object"
 
 
 def Factorize(factor_object, factor_name, args={}, **kwargs):
@@ -114,26 +123,31 @@ def _BinaryOperator(f, idt, iid, x, args):
         raise FactorError("尚不支持的多因子运算符: %s" % OperatorType)
 
 
-class Factor(_QN_Object):
+class Factor(QuantNodesObject):
     """因子
 
     因子可看做一个 DataFrame(index=[时间点], columns=[ID])。
     时间点数据类型是 datetime.datetime，ID 的数据类型是 str。
     """
-    Name = Str("因子")
-    DataType = Enum("double", "string", "object")
+    data_type: DataType = DataType.DOUBLE
 
-    def __init__(self, name, ft, sys_args={}, config_file=None, **kwargs):
+    def __init__(self, name: str, ft=None, sys_args: dict = None, config_file: str = None, **kwargs):
         self._FactorTable = ft
         self._NameInFT = name
-        self.Name = name
+        self.name = name
         self._isStarted = False
         self._CacheData = None
         self._OperationMode = None
         self._RawDataFile = ""
         self._isCacheDataOK = False
         self.UserData = {}
-        return super().__init__(sys_args=sys_args, config_file=config_file, **kwargs)
+        self._Args = sys_args or {}
+        super().__init__(name=name, config=sys_args or {})
+
+    @property
+    def Args(self) -> Dict:
+        """获取参数"""
+        return self.get_config('args', {})
 
     @property
     def FactorTable(self):
@@ -446,10 +460,9 @@ class Factor(_QN_Object):
 
 class DataFactor(Factor):
     """直接赋予数据产生的因子"""
-    DataType = Enum("double", "string", "object", arg_type="SingleOption", label="数据类型", order=0)
-    LookBack = Int(0, arg_type="Integer", label="回溯天数", order=1)
+    LookBack: int = 0
 
-    def __init__(self, name, data, sys_args={}, config_file=None, **kwargs):
+    def __init__(self, name: str, data, sys_args: dict = None, config_file: str = None, **kwargs):
         if isinstance(data, pd.Series):
             if data.index.is_all_dates:
                 self._DataContent = "DateTime"
