@@ -78,3 +78,87 @@ class TestLLMProvider:
         result = LLMProvider._enforce_role_alternation(messages)
         assert len(result) == 1
         # 有tool_calls的assistant消息优先保留
+
+    def test_enforce_role_alternation_mixed_content_types(self):
+        messages = [
+            {"role": "user", "content": [{"type": "text", "text": "hello"}]},
+            {"role": "user", "content": "world"},
+        ]
+        result = LLMProvider._enforce_role_alternation(messages)
+        assert len(result) == 1
+        assert result[0]["content"] == "world"
+
+    def test_enforce_role_alternation_alternate_roles(self):
+        messages = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "world"},
+        ]
+        result = LLMProvider._enforce_role_alternation(messages)
+        assert len(result) == 3
+
+    def test_enforce_role_alternation_three_consecutive(self):
+        messages = [
+            {"role": "user", "content": "a"},
+            {"role": "user", "content": "b"},
+            {"role": "user", "content": "c"},
+        ]
+        result = LLMProvider._enforce_role_alternation(messages)
+        assert len(result) == 1
+        assert "a" in result[0]["content"]
+        assert "b" in result[0]["content"]
+        assert "c" in result[0]["content"]
+
+
+class TestLLMProviderStreaming:
+    def test_chat_stream_calls_callback(self):
+        import asyncio
+
+        callback_calls = []
+
+        async def callback(content):
+            callback_calls.append(content)
+
+        async def _test():
+            provider = MockLLMProvider()
+            response = await provider.chat_stream(
+                messages=[{"role": "user", "content": "hello"}],
+                on_content_delta=callback,
+            )
+            return response
+
+        result = asyncio.run(_test())
+        assert len(callback_calls) == 1
+        assert callback_calls[0] == "Mock response"
+        assert result.content == "Mock response"
+
+    def test_chat_stream_no_callback(self):
+        import asyncio
+
+        async def _test():
+            provider = MockLLMProvider()
+            response = await provider.chat_stream(
+                messages=[{"role": "user", "content": "hello"}],
+            )
+            return response
+
+        result = asyncio.run(_test())
+        assert result.content == "Mock response"
+
+    def test_chat_stream_empty_content_no_callback(self):
+        import asyncio
+
+        class EmptyContentProvider(LLMProvider):
+            async def chat(self, messages, tools=None, model=None, **kwargs):
+                return LLMResponse(content=None)
+
+        async def _test():
+            provider = EmptyContentProvider()
+            response = await provider.chat_stream(
+                messages=[{"role": "user", "content": "hello"}],
+                on_content_delta=lambda x: None,
+            )
+            return response
+
+        result = asyncio.run(_test())
+        assert result.content is None

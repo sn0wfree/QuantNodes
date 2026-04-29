@@ -130,3 +130,135 @@ class TestAgentLoop:
                 assert s2.messages[0]["content"] == "M2"
 
         asyncio.run(_test())
+
+    def test_concurrent_chat_same_session_serialized(self):
+        async def _test():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                bus = MessageBus()
+                provider = MockProvider(response="R")
+                loop = AgentLoop(bus, provider, Path(tmpdir))
+
+                tasks = [
+                    loop.chat(f"M{i}", session_id="same_session")
+                    for i in range(5)
+                ]
+                await asyncio.gather(*tasks)
+
+                session = loop.session_manager.get_session("same_session")
+                assert len(session.messages) == 10
+
+        asyncio.run(_test())
+
+    def test_concurrent_chat_different_sessions(self):
+        async def _test():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                bus = MessageBus()
+                provider = MockProvider(response="R")
+                loop = AgentLoop(bus, provider, Path(tmpdir))
+
+                tasks = [
+                    loop.chat(f"M{i}", session_id=f"s{i}")
+                    for i in range(5)
+                ]
+                await asyncio.gather(*tasks)
+
+                for i in range(5):
+                    session = loop.session_manager.get_session(f"s{i}")
+                    assert len(session.messages) == 2
+
+        asyncio.run(_test())
+
+    def test_message_bus_publish_outbound(self):
+        from QuantNodes.agent.bus.events import InboundMessage, OutboundMessage
+
+        async def _test():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                bus = MessageBus()
+                provider = MockProvider(response="Test response")
+                loop = AgentLoop(bus, provider, Path(tmpdir))
+
+                msg = InboundMessage(
+                    channel="cli",
+                    sender_id="user",
+                    chat_id="chat1",
+                    content="Hello"
+                )
+
+                await bus.publish_inbound(msg)
+
+                task = asyncio.create_task(loop.run())
+
+                outbound = await asyncio.wait_for(bus.consume_outbound(), timeout=2.0)
+
+                assert isinstance(outbound, OutboundMessage)
+                assert outbound.content == "Test response"
+                assert outbound.channel == "cli"
+                assert outbound.chat_id == "chat1"
+
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        asyncio.run(_test())
+
+    def test_message_bus_multiple_messages(self):
+        from QuantNodes.agent.bus.events import InboundMessage
+
+        async def _test():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                bus = MessageBus()
+                provider = MockProvider(response="OK")
+                loop = AgentLoop(bus, provider, Path(tmpdir))
+
+                for i in range(3):
+                    msg = InboundMessage(
+                        channel="cli",
+                        sender_id="user",
+                        chat_id=f"c{i}",
+                        content=f"M{i}"
+                    )
+                    await bus.publish_inbound(msg)
+
+                task = asyncio.create_task(loop.run())
+
+                for i in range(3):
+                    await asyncio.wait_for(bus.consume_outbound(), timeout=2.0)
+
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+                for i in range(3):
+                    session = loop.session_manager.get_session(f"cli:c{i}")
+                    assert len(session.messages) == 2
+
+        asyncio.run(_test())
+
+    def test_stop_loop(self):
+        async def _test():
+            with tempfile.TemporaryDirectory() as tmpdir:
+                bus = MessageBus()
+                provider = MockProvider()
+                loop = AgentLoop(bus, provider, Path(tmpdir))
+
+                assert loop._running is False
+
+                task = asyncio.create_task(loop.run())
+                await asyncio.sleep(0.01)
+
+                assert loop._running is True
+
+                loop.stop()
+                await asyncio.sleep(0.01)
+
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        asyncio.run(_test())

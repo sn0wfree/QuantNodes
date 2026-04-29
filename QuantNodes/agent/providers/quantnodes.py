@@ -25,14 +25,22 @@ class QuantNodesLLMProvider(LLMProvider):
         """将OpenAI格式消息转换为QuantNodes格式"""
         result = []
         for msg in messages:
-            role = MessageRole(msg.get("role", "user"))
+            role_str = msg.get("role", "user")
+            try:
+                role = MessageRole(role_str)
+            except ValueError:
+                role = MessageRole.USER
             content = msg.get("content", "")
+            if content is None:
+                content = ""
             result.append(QNMessage(role=role, content=content))
         return result
 
-    def _parse_tool_calls(self, response_content: str) -> List[ToolCallRequest]:
+    def _parse_tool_calls(self, response_content: str | None) -> List[ToolCallRequest]:
         """从响应中解析工具调用"""
         tool_calls = []
+        if response_content is None:
+            return tool_calls
         content = response_content.strip()
 
         if "```tool_call" in content:

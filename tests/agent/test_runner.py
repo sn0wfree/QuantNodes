@@ -116,3 +116,247 @@ class TestAgentRunner:
             assert provider.call_count == 1
 
         asyncio.run(_test())
+
+    def test_run_with_tool_execution(self):
+        from QuantNodes.agent.providers.base import ToolCallRequest
+
+        class MockToolProvider(LLMProvider):
+            def __init__(self):
+                super().__init__()
+                self.call_count = 0
+
+            async def chat(self, messages, tools=None, model=None, **kwargs):
+                self.call_count += 1
+                if self.call_count == 1:
+                    return LLMResponse(
+                        content="Let me check that",
+                        tool_calls=[ToolCallRequest(id="call_1", name="echo", arguments={"message": "test"})],
+                        finish_reason="tool_calls",
+                    )
+                return LLMResponse(content="Done with tool execution")
+
+        async def _test():
+            provider = MockToolProvider()
+            runner = AgentRunner(provider)
+            registry = ToolRegistry()
+            registry.register(EchoTool())
+
+            spec = AgentRunSpec(
+                initial_messages=[{"role": "user", "content": "Hello"}],
+                tools=registry,
+                max_iterations=2,
+            )
+
+            result = await runner.run(spec)
+
+            assert result.stop_reason == "completed"
+            assert "echo" in result.tools_used
+            assert len(result.messages) == 4  # user, assistant, tool, assistant
+            assert provider.call_count == 2
+
+        asyncio.run(_test())
+
+    def test_run_with_error_response(self):
+        class MockErrorProvider(LLMProvider):
+            async def chat(self, messages, tools=None, model=None, **kwargs):
+                return LLMResponse(content=None, error="API Error")
+
+        async def _test():
+            provider = MockErrorProvider()
+            runner = AgentRunner(provider)
+            registry = ToolRegistry()
+
+            spec = AgentRunSpec(
+                initial_messages=[{"role": "user", "content": "Hello"}],
+                tools=registry,
+                max_iterations=2,
+            )
+
+            result = await runner.run(spec)
+
+            assert result.stop_reason == "error"
+            assert result.error == "API Error"
+
+        asyncio.run(_test())
+
+    def test_run_with_concurrent_tools(self):
+        from QuantNodes.agent.providers.base import ToolCallRequest
+
+        class MockConcurrentProvider(LLMProvider):
+            def __init__(self):
+                super().__init__()
+                self.call_count = 0
+
+            async def chat(self, messages, tools=None, model=None, **kwargs):
+                self.call_count += 1
+                if self.call_count == 1:
+                    return LLMResponse(
+                        content="Checking concurrently",
+                        tool_calls=[
+                            ToolCallRequest(id="call_1", name="echo", arguments={"message": "test1"}),
+                            ToolCallRequest(id="call_2", name="echo", arguments={"message": "test2"}),
+                        ],
+                        finish_reason="tool_calls",
+                    )
+                return LLMResponse(content="All done")
+
+        async def _test():
+            provider = MockConcurrentProvider()
+            runner = AgentRunner(provider)
+            registry = ToolRegistry()
+            registry.register(EchoTool())
+
+            spec = AgentRunSpec(
+                initial_messages=[{"role": "user", "content": "Hello"}],
+                tools=registry,
+                max_iterations=2,
+                concurrent_tools=True,
+            )
+
+            result = await runner.run(spec)
+
+            assert result.stop_reason == "completed"
+            assert "echo" in result.tools_used
+            assert provider.call_count == 2
+
+        asyncio.run(_test())
+
+    def test_run_with_checkpoint_callback(self):
+        checkpoint_calls = []
+
+        async def checkpoint_callback(state):
+            checkpoint_calls.append(state)
+
+        async def _test():
+            provider = MockProvider(["Hello"])
+            runner = AgentRunner(provider)
+            registry = ToolRegistry()
+
+            spec = AgentRunSpec(
+                initial_messages=[{"role": "user", "content": "Hello"}],
+                tools=registry,
+                max_iterations=1,
+                checkpoint_callback=checkpoint_callback,
+            )
+
+            await runner.run(spec)
+
+        asyncio.run(_test())
+
+    def test_run_with_injection_callback(self):
+        from QuantNodes.agent.providers.base import ToolCallRequest
+
+        injection_messages = [{"role": "user", "content": "Additional context"}]
+
+        async def injection_callback():
+            return injection_messages
+
+        class MockInjectionProvider(LLMProvider):
+            def __init__(self):
+                super().__init__()
+                self.call_count = 0
+
+            async def chat(self, messages, tools=None, model=None, **kwargs):
+                self.call_count += 1
+                if self.call_count == 1:
+                    return LLMResponse(
+                        content="Check",
+                        tool_calls=[ToolCallRequest(id="call_1", name="echo", arguments={"message": "test"})],
+                        finish_reason="tool_calls",
+                    )
+                return LLMResponse(content="Final")
+
+        async def _test():
+            provider = MockInjectionProvider()
+            runner = AgentRunner(provider)
+            registry = ToolRegistry()
+            registry.register(EchoTool())
+
+            spec = AgentRunSpec(
+                initial_messages=[{"role": "user", "content": "Hello"}],
+                tools=registry,
+                max_iterations=3,
+                injection_callback=injection_callback,
+            )
+
+            result = await runner.run(spec)
+
+            assert result.had_injections is True
+            assert provider.call_count == 2
+
+        asyncio.run(_test())
+
+    def test_tool_result_truncation(self):
+        from QuantNodes.agent.providers.base import ToolCallRequest
+
+        class MockTruncateProvider(LLMProvider):
+            def __init__(self):
+                super().__init__()
+                self.call_count = 0
+
+            async def chat(self, messages, tools=None, model=None, **kwargs):
+                self.call_count += 1
+                if self.call_count == 1:
+                    return LLMResponse(
+                        content="Processing",
+                        tool_calls=[ToolCallRequest(id="call_1", name="echo", arguments={"message": "x" * 10000})],
+                        finish_reason="tool_calls",
+                    )
+                return LLMResponse(content="Done")
+
+        async def _test():
+            provider = MockTruncateProvider()
+            runner = AgentRunner(provider)
+            registry = ToolRegistry()
+            registry.register(EchoTool())
+
+            spec = AgentRunSpec(
+                initial_messages=[{"role": "user", "content": "Hello"}],
+                tools=registry,
+                max_iterations=2,
+                max_tool_result_chars=1000,
+            )
+
+            result = await runner.run(spec)
+
+            tool_msg = next(m for m in result.messages if m["role"] == "tool")
+            assert len(tool_msg["content"]) <= 1000 + len("... (truncated)")
+
+        asyncio.run(_test())
+
+    def test_merge_usage(self):
+        runner = AgentRunner(MockProvider())
+        total = {"prompt_tokens": 100, "completion_tokens": 50}
+        usage = {"prompt_tokens": 200, "completion_tokens": 150}
+
+        merged = runner._merge_usage(total, usage)
+
+        assert merged["prompt_tokens"] == 300
+        assert merged["completion_tokens"] == 200
+
+    def test_build_assistant_message_with_tools(self):
+        from QuantNodes.agent.providers.base import ToolCallRequest
+
+        runner = AgentRunner(MockProvider())
+        response = LLMResponse(
+            content="Let me check",
+            tool_calls=[ToolCallRequest(id="call_1", name="test_tool", arguments={"param": "value"})],
+        )
+
+        msg = runner._build_assistant_message(response)
+
+        assert msg["role"] == "assistant"
+        assert msg["content"] == "Let me check"
+        assert "tool_calls" in msg
+        assert len(msg["tool_calls"]) == 1
+        assert msg["tool_calls"][0]["function"]["name"] == "test_tool"
+
+    def test_build_assistant_message_without_tools(self):
+        runner = AgentRunner(MockProvider())
+        response = LLMResponse(content="Just text")
+
+        msg = runner._build_assistant_message(response)
+
+        assert msg["role"] == "assistant"
+        assert msg["content"] == "Just text"
+        assert "tool_calls" not in msg

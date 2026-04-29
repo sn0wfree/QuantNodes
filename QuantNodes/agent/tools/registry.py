@@ -107,7 +107,8 @@ class ToolRegistry:
 
         # 串行执行有副作用工具
         for call in write_calls:
-            result = await self.execute_tool(call["name"], **call.get("arguments", {}))
+            name = call.get("name", "")
+            result = await self.execute_tool(name, **call.get("arguments", {}))
             results.append(result)
 
         return results
