@@ -78,10 +78,14 @@ class AgentRunner:
             if response.error:
                 error = response.error
                 stop_reason = "error"
+                assistant_msg = self._build_assistant_message(response)
+                messages.append(assistant_msg)
                 break
 
             if not response.should_execute_tools:
                 stop_reason = "completed"
+                assistant_msg = self._build_assistant_message(response)
+                messages.append(assistant_msg)
                 break
 
             await self.hook.before_execute_tools(context)
