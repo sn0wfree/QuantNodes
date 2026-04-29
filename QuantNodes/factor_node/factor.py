@@ -30,8 +30,10 @@ class DataType(Enum):
     OBJECT = "object"
 
 
-def Factorize(factor_object, factor_name, args={}, **kwargs):
+def Factorize(factor_object, factor_name, args=None, **kwargs):
     """将运算结果转换成真正的可以存储的因子"""
+    if args is None:
+        args = {}
     factor_object.Name = factor_name
     for iArg, iVal in args.items():
         factor_object[iArg] = iVal
@@ -157,7 +159,9 @@ class Factor(QuantNodesObject):
     def Descriptors(self):
         return []
 
-    def getMetaData(self, key=None, args={}):
+    def getMetaData(self, key=None, args=None):
+        if args is None:
+            args = {}
         Args = self.Args
         Args.update(args)
         return self._FactorTable.getFactorMetaData(factor_names=[self._NameInFT], key=key, args=Args).loc[
@@ -196,7 +200,7 @@ class Factor(QuantNodesObject):
                 dts=NewDTs,
                 args=self.Args,
             ).loc[self._NameInFT]
-            self._CacheData = self._CacheData.append(NewCacheData).loc[dts]
+            self._CacheData = pd.concat([self._CacheData, NewCacheData]).loc[dts]
         NewIDs = sorted(set(ids).difference(self._CacheData.columns))
         if NewIDs:
             NewCacheData = self._FactorTable.readData(
@@ -463,43 +467,42 @@ class DataFactor(Factor):
     LookBack: int = 0
 
     def __init__(self, name: str, data, sys_args: dict = None, config_file: str = None, **kwargs):
+        if sys_args is None:
+            sys_args = {}
+
+        def _detect_dtype(val):
+            """Detect if value can be cast to float, set '数据类型' accordingly."""
+            try:
+                float(val)
+            except (ValueError, TypeError):
+                sys_args["数据类型"] = "object"
+            else:
+                sys_args["数据类型"] = "double"
+
         if isinstance(data, pd.Series):
             if data.index.is_all_dates:
                 self._DataContent = "DateTime"
             else:
                 self._DataContent = "ID"
             if "数据类型" not in sys_args:
-                try:
-                    data = data.astype(np.float)
-                except:
-                    sys_args["数据类型"] = "object"
-                else:
-                    sys_args["数据类型"] = "double"
+                _detect_dtype(data)
         elif isinstance(data, pd.DataFrame):
             self._DataContent = "Factor"
             if "数据类型" not in sys_args:
-                try:
-                    data = data.astype(np.float)
-                except:
-                    sys_args["数据类型"] = "object"
-                else:
-                    sys_args["数据类型"] = "double"
+                _detect_dtype(data)
         else:
             self._DataContent = "Value"
             if "数据类型" not in sys_args:
                 if isinstance(data, str):
                     sys_args["数据类型"] = "string"
                 else:
-                    try:
-                        data = float(data)
-                    except:
-                        sys_args["数据类型"] = "object"
-                    else:
-                        sys_args["数据类型"] = "double"
+                    _detect_dtype(data)
         self._Data = data
         return super().__init__(name=name, ft=None, sys_args=sys_args, config_file=None, **kwargs)
 
-    def getMetaData(self, key=None, args={}):
+    def getMetaData(self, key=None, args=None):
+        if args is None:
+            args = {}
         DataType = args.get("数据类型", self.DataType)
         if key is None:
             return pd.Series({"DataType": DataType})
@@ -537,7 +540,7 @@ class DataFactor(Factor):
         else:
             Data = self._Data
         if (Data.columns.intersection(ids).shape[0] == 0) or (Data.index.intersection(dts).shape[0] == 0):
-            return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType != "double" else np.float))
+            return pd.DataFrame(index=dts, columns=ids, dtype=("O" if self.DataType != "double" else float))
         if self.LookBack == 0:
             return Data.loc[dts, ids]
         else:

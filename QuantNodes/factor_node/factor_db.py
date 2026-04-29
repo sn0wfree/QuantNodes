@@ -243,12 +243,47 @@ class WritableFactorDB(FactorDB):
             Data.iloc[:, :lag, :] = None
         elif lag < 0:
             Data.iloc[:, :lag, :] = Data.iloc[:, -lag:, :].values
-            Data.iloc[:, :lag, :] = None
+            Data.iloc[:, lag:, :] = None
         DataType = FT.getFactorMetaData(
             factor_names, key="DataType", args=args
         ).to_dict()
         self.deleteFactor(table_name, factor_names)
         self.writeData(Data, table_name, data_type=DataType)
+        return 0
+
+    def _read_transform_write(
+        self,
+        table_name: str,
+        factor_names: List[str],
+        ids: List[str],
+        dts: List[Any],
+        transform_fn,
+        args: Optional[Dict[str, Any]] = None,
+        if_exists: str = "update",
+    ) -> int:
+        """通用读取-变换-写入模式
+
+        Args:
+            table_name: 表名
+            factor_names: 因子名列表
+            ids: ID 列表
+            dts: 时间点列表
+            transform_fn: 变换函数，接收 (Data, FT) 返回变换后的 Data
+            args: 额外参数
+            if_exists: 写入模式
+
+        Returns:
+            0 表示成功, -1 表示表不存在
+        """
+        FT = self.getTable(table_name, args=args)
+        if FT is None:
+            return -1
+        Data = FT.readData(
+            factor_names=factor_names, ids=ids, dts=dts, args=args
+        )
+        Data = transform_fn(Data, FT)
+        if Data is not None:
+            self.writeData(Data, table_name, if_exists=if_exists)
         return 0
 
     def changeData(
@@ -273,18 +308,14 @@ class WritableFactorDB(FactorDB):
         Returns:
             0 表示成功
         """
-        FT = self.getTable(table_name, args=args)
-        if FT is None:
-            return -1
-        Data = FT.readData(
-            factor_names=factor_names, ids=ids, dts=dts, args=args
-        )
-        DataType = FT.getFactorMetaData(
-            factor_names, key="DataType", args=args
-        ).to_dict()
-        self.deleteFactor(table_name, factor_names)
-        self.writeData(Data, table_name, data_type=DataType)
-        return 0
+        def _transform(Data, FT):
+            DataType = FT.getFactorMetaData(
+                factor_names, key="DataType", args=args
+            ).to_dict()
+            self.deleteFactor(table_name, factor_names)
+            self.writeData(Data, table_name, data_type=DataType)
+            return None  # Already written
+        return self._read_transform_write(table_name, factor_names, ids, dts, _transform, args)
 
     def fillNA(
         self,
@@ -308,15 +339,12 @@ class WritableFactorDB(FactorDB):
         Returns:
             0 表示成功
         """
-        FT = self.getTable(table_name, args=args)
-        if FT is None:
-            return -1
-        Data = FT.readData(
-            factor_names=factor_names, ids=ids, dts=dts, args=args
+        def _transform(Data, FT):
+            Data.fillna(filled_value, inplace=True)
+            return Data
+        return self._read_transform_write(
+            table_name, factor_names, ids, dts, _transform, args
         )
-        Data.fillna(filled_value, inplace=True)
-        self.writeData(Data, table_name, if_exists="update")
-        return 0
 
     def replaceData(
         self,
@@ -342,15 +370,11 @@ class WritableFactorDB(FactorDB):
         Returns:
             0 表示成功
         """
-        FT = self.getTable(table_name, args=args)
-        if FT is None:
-            return -1
-        Data = FT.readData(
-            factor_names=factor_names, ids=ids, dts=dts, args=args
+        def _transform(Data, FT):
+            return Data.where(Data != old_value, new_value)
+        return self._read_transform_write(
+            table_name, factor_names, ids, dts, _transform, args
         )
-        Data = Data.where(Data != old_value, new_value)
-        self.writeData(Data, table_name, if_exists="update")
-        return 0
 
     def optimizeData(self, table_name: str, factor_names: List[str]) -> int:
         """优化数据

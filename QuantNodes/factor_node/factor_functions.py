@@ -27,6 +27,7 @@ import inspect
 import functools
 from typing import Any, Dict, List, Optional, Union, Callable
 
+import numpy as np
 import polars as pl
 from polars import Expr
 
@@ -273,7 +274,6 @@ def _expanding_var_expr(f: Union[Expr, str]) -> Expr:
 
 def _apply_weights(f: Union[Expr, str], weights) -> Expr:
     """通用加权移动算子（decay_linear / decay_exp 共用）"""
-    import numpy as np
     expr = _ensure_expr(f)
     result = expr * weights[0]
     for i in range(1, len(weights)):
@@ -306,7 +306,6 @@ def _cum_single_median(window):
 
 
 def _cum_single_kurt(window):
-    import numpy as np
     if len(window) < 4:
         return None
     arr = np.array(window, dtype=np.float64)
@@ -318,7 +317,6 @@ def _cum_single_kurt(window):
 
 
 def _cum_single_skew(window):
-    import numpy as np
     if len(window) < 3:
         return None
     arr = np.array(window, dtype=np.float64)
@@ -351,7 +349,6 @@ def _cumulative_map_batches_dual(e1: Expr, e2: Expr, func_name: str,
                                  return_dtype=pl.Float64) -> Expr:
     """双因子扩展窗口 map_batches 通用包装"""
     def _cum_stat(args: list) -> pl.Series:
-        import numpy as np
         s1, s2 = args[0], args[1]
         v1 = s1.to_list()
         v2 = s2.to_list()
@@ -369,13 +366,11 @@ def _cumulative_map_batches_dual(e1: Expr, e2: Expr, func_name: str,
 
 
 def _cum_dual_corr(arr1, arr2):
-    import numpy as np
     c = np.corrcoef(arr1, arr2)[0, 1]
     return float(c) if np.isfinite(c) else None
 
 
 def _cum_dual_cov(arr1, arr2):
-    import numpy as np
     c = np.cov(arr1, arr2)[0, 1]
     return float(c) if np.isfinite(c) else None
 
@@ -586,14 +581,6 @@ _make_dual_rolling_wrapper(
     "rolling_cov", "ts_cov",
     "滚动窗口协方差（双因子）\n\n    Args:\n        f1: 第一个表达式\n        f2: 第二个表达式\n        window: 窗口大小\n        min_periods: 最小观测数"
 )
-_make_dual_rolling_wrapper(
-    "ts_corr", "ts_corr",
-    "滚动相关系数\n\n    Args:\n        f1: 第一个表达式\n        f2: 第二个表达式\n        window: 窗口大小"
-)
-_make_dual_rolling_wrapper(
-    "ts_cov", "ts_cov",
-    "滚动协方差\n\n    Args:\n        f1: 第一个表达式\n        f2: 第二个表达式\n        window: 窗口大小"
-)
 
 
 # ==============================================================================
@@ -614,6 +601,11 @@ def _make_alias(name: str, target_func: Callable, doc: str,
     _inject(name, _alias)
     return _alias
 
+
+_make_alias("ts_corr", get_operator("rolling_corr"),
+            "滚动相关系数 (rolling_corr 别名)")
+_make_alias("ts_cov", get_operator("rolling_cov"),
+            "滚动协方差 (rolling_cov 别名)")
 
 _make_alias("correlation", get_operator("ts_corr"),
             "相关系数 (ts_corr 别名)")
@@ -874,9 +866,6 @@ def scale(f: Union[Expr, str], method: str = "zscore", **kwargs) -> Expr:
     """归一化"""
     return SectionOperators.scale(f, method)
 
-
-_make_alias("standardizeRank", SectionOperators.rank, "标准化排名")
-_make_alias("weightStandardize", standardizeZScore, "加权标准化")
 
 
 @register_operator(OperatorCategory.SECTION)
@@ -1230,7 +1219,6 @@ def zscored(f: Union[Expr, str], window: int = 20, **kwargs) -> Expr:
 @register_operator(OperatorCategory.TIME)
 def decay_linear(f: Union[Expr, str], window: int = 20, **kwargs) -> Expr:
     """线性衰减加权"""
-    import numpy as np
     weights = np.arange(1, window + 1)
     weights = weights / weights.sum()
     return _apply_weights(f, weights)
@@ -1239,7 +1227,6 @@ def decay_linear(f: Union[Expr, str], window: int = 20, **kwargs) -> Expr:
 @register_operator(OperatorCategory.TIME)
 def decay_exp(f: Union[Expr, str], halflife: int = 10, **kwargs) -> Expr:
     """指数衰减加权"""
-    import numpy as np
     alpha = 0.5 ** (1 / halflife)
     weights = alpha ** np.arange(halflife)
     weights = weights / weights.sum()

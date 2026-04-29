@@ -86,47 +86,162 @@ class ConfigExecutor:
         
         bt = config.backtest
         
-        # 筛选日期
-        start_parts = list(map(int, bt.start_date.split("-")))
-        end_parts = list(map(int, bt.end_date.split("-")))
-        data = data.filter(
-            pl.col("date").str.to_date() >= pl.date(start_parts[0], start_parts[1], start_parts[2])
-        ).filter(
-            pl.col("date").str.to_date() <= pl.date(end_parts[0], end_parts[1], end_parts[2])
-        )
-        
-        # 计算信号 (取最后一个因子作为信号)
-        signal_name = config.composite[-1].name if config.composite else \
-                   config.operations[-1].name if config.operations else \
-                   config.factors[-1].name if config.factors else None
-        
-        if signal_name:
-            expr = self._expressions.get(signal_name)
-            if expr:
-                # 生成交易信号
-                data = data.with_columns([
-                    pl.when(expr > 0.05).then(1)
-                    .when(expr < -0.03).then(-1)
-                    .otherwise(0).alias("signal")
-                ])
-                
-                result.backtest = {
-                    "signals": data.select("date", "code", "signal"),
-                }
+        try:
+            # 筛选日期
+            start_parts = list(map(int, bt.start_date.split("-")))
+            end_parts = list(map(int, bt.end_date.split("-")))
+            data = data.filter(
+                pl.col("date").str.to_date() >= pl.date(start_parts[0], start_parts[1], start_parts[2])
+            ).filter(
+                pl.col("date").str.to_date() <= pl.date(end_parts[0], end_parts[1], end_parts[2])
+            )
+            
+            # 计算信号 (取最后一个因子作为信号)
+            signal_name = config.composite[-1].name if config.composite else \
+                       config.operations[-1].name if config.operations else \
+                       config.factors[-1].name if config.factors else None
+            
+            if signal_name:
+                expr = self._expressions.get(signal_name)
+                if expr:
+                    # 使用配置中的信号阈值，或使用默认值
+                    long_threshold = bt.signals.get("long_threshold", 0.05)
+                    short_threshold = bt.signals.get("short_threshold", -0.03)
+                    
+                    # 生成交易信号
+                    data = data.with_columns([
+                        pl.when(expr > long_threshold).then(1)
+                        .when(expr < short_threshold).then(-1)
+                        .otherwise(0).alias("signal")
+                    ])
+                    
+                    result.backtest = {
+                        "signals": data.select("date", "code", "signal"),
+                        "config": {
+                            "start_date": bt.start_date,
+                            "end_date": bt.end_date,
+                            "initial_cash": bt.initial_cash,
+                            "commission": bt.commission,
+                            "slippage": bt.slippage,
+                        }
+                    }
+        except Exception as e:
+            result.warnings.append(f"回测配置解析警告: {str(e)}")
         
         return result
     
     def _parse_expr(self, expr_str: str) -> pl.Expr:
         """解析表达式字符串
         
-        简化实现：��持基本列引用和方法链
+        支持格式:
+        - 简单列引用: "close"
+        - 函数调用: "rolling_mean(close, 20)"
+        - 方法链: "close.rolling_mean(20)"
+        - 组合: "rolling_mean(close, 20) + volume"
         """
-        # 处理列引用
-        result = pl.col(expr_str)
+        import re
+        from QuantNodes.factor_node.factor_functions import get_operator
         
-        # 处理方法链 (简化)
-        # TODO: 实现完整解析器
-        return result
+        expr_str = expr_str.strip()
+        
+        # 尝试作为简单列引用
+        if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', expr_str):
+            return pl.col(expr_str)
+        
+        # 尝试匹配函数调用模式: func_name(arg1, arg2, ...)
+        func_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\((.+)\)$', expr_str, re.DOTALL)
+        if func_match:
+            func_name = func_match.group(1)
+            args_str = func_match.group(2)
+            
+            # 查找算子函数
+            op_func = get_operator(func_name)
+            if op_func is not None:
+                # 解析参数
+                args, kwargs = self._parse_func_args(args_str)
+                # 将第一个参数作为表达式
+                if args:
+                    first_arg = self._parse_expr(args[0])
+                    return op_func(first_arg, **kwargs)
+        
+        # 尝试匹配方法链模式: expr.method(args)
+        method_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\((.+)\)$', expr_str, re.DOTALL)
+        if method_match:
+            col_name = method_match.group(1)
+            method_name = method_match.group(2)
+            args_str = method_match.group(3)
+            
+            op_func = get_operator(method_name)
+            if op_func is not None:
+                first_arg = pl.col(col_name)
+                args, kwargs = self._parse_func_args(args_str)
+                return op_func(first_arg, **kwargs)
+        
+        # 回退到简单列引用
+        return pl.col(expr_str)
+    
+    def _parse_func_args(self, args_str: str):
+        """解析函数参数字符串
+        
+        Returns:
+            (positional_args, keyword_args)
+        """
+        import re
+        
+        positional = []
+        keyword = {}
+        
+        if not args_str.strip():
+            return positional, keyword
+        
+        # 简单分割（不处理嵌套括号）
+        parts = []
+        depth = 0
+        current = ""
+        for ch in args_str:
+            if ch == '(':
+                depth += 1
+                current += ch
+            elif ch == ')':
+                depth -= 1
+                current += ch
+            elif ch == ',' and depth == 0:
+                parts.append(current.strip())
+                current = ""
+            else:
+                current += ch
+        if current.strip():
+            parts.append(current.strip())
+        
+        for part in parts:
+            # 检查是否是 keyword=value 格式
+            kw_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$', part)
+            if kw_match:
+                key = kw_match.group(1)
+                value = self._parse_value(kw_match.group(2).strip())
+                keyword[key] = value
+            else:
+                positional.append(self._parse_value(part))
+        
+        return positional, keyword
+    
+    def _parse_value(self, value_str: str):
+        """解析单个值"""
+        # 尝试解析为数字
+        try:
+            return int(value_str)
+        except ValueError:
+            pass
+        try:
+            return float(value_str)
+        except ValueError:
+            pass
+        # 去除引号
+        if (value_str.startswith('"') and value_str.endswith('"')) or \
+           (value_str.startswith("'") and value_str.endswith("'")):
+            return value_str[1:-1]
+        # 尝试作为列引用
+        return pl.col(value_str)
     
     def _apply_operator(self, op) -> pl.Expr:
         """应用算子"""

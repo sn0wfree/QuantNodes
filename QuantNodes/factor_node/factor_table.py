@@ -18,6 +18,7 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
+from multiprocessing import Queue, Event, Process, Lock
 from os import cpu_count
 from typing import Any, Dict, List, Optional
 
@@ -106,8 +107,8 @@ def _prepareMMAPFactorCacheData(ft, mmap_cache):
                                                               dts=NewCacheDTs), factor_names=CacheFactorNames,
                             ids=ft.ErgodicMode._IDs, dts=NewCacheDTs)
                     else:
-                        NewCacheData = pd.Panel(items=CacheFactorNames, major_axis=NewCacheDTs,
-                                                minor_axis=ft.ErgodicMode._IDs)
+                        NewCacheData = {name: pd.DataFrame(index=NewCacheDTs, columns=ft.ErgodicMode._IDs)
+                                        for name in CacheFactorNames}
                     for iFactorName in CacheData:
                         if isDisjoint:
                             CacheData[iFactorName] = NewCacheData[iFactorName]
@@ -169,7 +170,8 @@ def _prepareMMAPIDCacheData(ft, mmap_cache):
                                                               dts=NewCacheDTs), factor_names=ft.FactorNames,
                             ids=CacheIDs, dts=NewCacheDTs)
                     else:
-                        NewCacheData = pd.Panel(items=ft.FactorNames, major_axis=NewCacheDTs, minor_axis=CacheIDs)
+                        NewCacheData = {name: pd.DataFrame(index=NewCacheDTs, columns=CacheIDs)
+                                        for name in ft.FactorNames}
                     for iID in CacheData:
                         if isDisjoint:
                             CacheData[iID] = NewCacheData.loc[:, :, iID]
@@ -305,7 +307,7 @@ def _write_panel_batch(iDB, iTableName, iFactors, iTargetFactorNames, FT, PID, n
                 if j == 0:
                     TaskCount += 0.5
                     ProgBar.update(TaskCount)
-            jData = pd.Panel(jData).loc[iTargetFactorNames]
+            jData = {name: jData[name] for name in iTargetFactorNames if name in jData}
             iDB.writeData(jData, iTableName, if_exists=if_exists, data_type=iDataTypes)
             jData = None
         TaskCount += 0.5
@@ -343,7 +345,7 @@ def _write_panel_single(iDB, iTableName, iFactors, iTargetFactorNames, FT, args,
                 jData[iTargetFactorNames[k]] = ijkData
                 if j == 0:
                     args["Sub2MainQueue"].put((args["PID"], 0.5, None))
-            jData = pd.Panel(jData).loc[iTargetFactorNames]
+            jData = {name: jData[name] for name in iTargetFactorNames if name in jData}
             iDB.writeData(jData, iTableName, if_exists=args["if_exists"], data_type=iDataTypes)
             jData = None
         args["Sub2MainQueue"].put((args["PID"], 0.5, None))
@@ -514,14 +516,13 @@ class FactorTable(QuantNodesObject):
             Data.update(iData)
             self.ErgodicMode._CacheData.update(iData)
         self.ErgodicMode._Queue2SubProcess.put((None, (CacheFactorNames, PopFactorNames)))
-        Data = pd.Panel(Data)
-        if Data.shape[0] > 0:
-            Data = Data.loc[:, dts, ids]
+        if len(Data) > 0:
+            Data = {name: df.loc[dts, ids] for name, df in Data.items() if isinstance(df, pd.DataFrame)}
         if not DataFactorNames:
-            return Data.loc[factor_names]
+            return {name: Data[name] for name in factor_names if name in Data}
         return self.__QN_calc_data__(
             raw_data=self.__QN_prepare_raw_data__(factor_names=DataFactorNames, ids=ids, dts=dts, args=args),
-            factor_names=DataFactorNames, ids=ids, dts=dts, args=args).join(Data).loc[factor_names]
+            factor_names=DataFactorNames, ids=ids, dts=dts, args=args)
 
     def _readIDData(self, iid, factor_names, dts, args={}):
         self.ErgodicMode._IDReadNum[iid] = self.ErgodicMode._IDReadNum.get(iid, 0) + 1
@@ -562,8 +563,8 @@ class FactorTable(QuantNodesObject):
     def _readData_ErgodicMode(self, factor_names, ids, dts, args={}):
         if self.ErgodicMode.CacheMode == "因子":
             return self._readData_FactorCacheMode(factor_names=factor_names, ids=ids, dts=dts, args=args)
-        return pd.Panel(
-            {iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}).swapaxes(0, 2)
+        # pd.Panel removed - return dict of DataFrames keyed by ID
+        return {iID: self._readIDData(iID, factor_names=factor_names, dts=dts, args=args) for iID in ids}
 
     def start(self, dts, **kwargs):
         if self.ErgodicMode._isStarted:
@@ -711,7 +712,7 @@ class FactorTable(QuantNodesObject):
         try:
             DTs = pd.Series(np.arange(0, len(self.OperationMode.DTRuler)), index=list(self.OperationMode.DTRuler)).loc[
                 list(self.OperationMode.DateTimes)]
-        except:
+        except (KeyError, IndexError):
             raise FactorError("运算时点序列超出了时点标尺!")
         if pd.isnull(DTs).sum() > 0:
             raise FactorError("运算时点序列超出了时点标尺!")
@@ -967,9 +968,9 @@ class CustomFT(FactorTable):
         return eval("temp[" + CompiledFilterStr + "].index.tolist()")
 
     def __QN_calc_data__(self, raw_data, factor_names, ids, dts, args={}):
-        return pd.Panel({iFactorName: self._Factors[iFactorName].readData(ids=ids, dts=dts, dt_ruler=self._DateTimes,
-                                                                          section_ids=self._IDs) for iFactorName in
-                         factor_names}).loc[factor_names]
+        return {iFactorName: self._Factors[iFactorName].readData(ids=ids, dts=dts, dt_ruler=self._DateTimes,
+                                                                 section_ids=self._IDs) for iFactorName in
+                factor_names}
 
     def write2FDB(self, factor_names, ids, dts, factor_db, table_name, if_exists="update",
                   subprocess_num=cpu_count() - 1, dt_ruler=None, section_ids=None, specific_target={}, **kwargs):
