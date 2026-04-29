@@ -173,12 +173,28 @@ def _ensure_expr(f: Any) -> Expr:
     return pl.lit(f)
 
 
+def _combo_add(a: Expr, b: Expr) -> Expr:
+    return a + b
+
+
+def _combo_mul(a: Expr, b: Expr) -> Expr:
+    return a * b
+
+
+def _combo_max(a: Expr, b: Expr) -> Expr:
+    return pl.max_horizontal(a, b)
+
+
+def _combo_min(a: Expr, b: Expr) -> Expr:
+    return pl.min_horizontal(a, b)
+
+
 _COMBO_METHODS = {
-    "add": lambda a, b: a + b,
-    "sum": lambda a, b: a + b,
-    "mul": lambda a, b: a * b,
-    "max": lambda a, b: pl.max_horizontal(a, b),
-    "min": lambda a, b: pl.min_horizontal(a, b),
+    "add": _combo_add,
+    "sum": _combo_add,
+    "mul": _combo_mul,
+    "max": _combo_max,
+    "min": _combo_min,
 }
 
 
