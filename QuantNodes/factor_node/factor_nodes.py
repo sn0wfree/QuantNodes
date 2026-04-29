@@ -15,6 +15,60 @@ import numpy as np
 
 from QuantNodes.core.node import BaseNode
 
+
+# ---------------------------------------------------------------------------
+# 共用算子函数（消除 lambda 重复）
+# ---------------------------------------------------------------------------
+
+def _zscore_fn(x):
+    """Z-score 标准化"""
+    std = x.std()
+    return (x - x.mean()) / std if std > 0 else x - x.mean()
+
+
+def _demean_fn(x):
+    """去均值"""
+    return x - x.mean()
+
+
+def _mad_fn(x):
+    """Median Absolute Deviation"""
+    return (x - x.median()).abs().median() * 1.4826
+
+
+def _add(a, b):
+    return a + b
+
+
+def _sub(a, b):
+    return a - b
+
+
+def _mul(a, b):
+    return a * b
+
+
+def _div(a, b):
+    return a / b
+
+
+_ARITH_OPS = {"add": _add, "sub": _sub, "mul": _mul, "div": _div}
+
+_EXPANDING_ATTRS = {"mean": "mean", "std": "std", "sum": "sum", "min": "min", "max": "max"}
+
+_CS_OPS = {"rank", "zscore", "demean", "mad", "percentile"}
+
+
+def _groupby_transform(df, column, dt_key, func, groupby=None):
+    """通用 groupby + transform"""
+    keys = [dt_key] + ([groupby] if groupby else [])
+    return df.groupby(keys)[column].transform(func)
+
+
+# ---------------------------------------------------------------------------
+# FactorNode 基类
+# ---------------------------------------------------------------------------
+
 class FactorNode(BaseNode, ABC):
     """
     因子计算节点基类
@@ -37,44 +91,57 @@ class FactorNode(BaseNode, ABC):
 
     @abstractmethod
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """
-        执行因子计算
-
-        Args:
-            input_data: 输入数据（DataFrame 或数据库连接）
-            **kwargs: 额外执行参数
-
-        Returns:
-            因子计算结果 DataFrame
-        """
         pass
 
     def _execute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行因子计算"""
         self._result = self._compute(input_data, **kwargs)
         return self._result
 
     def __rshift__(self, other: 'FactorNode') -> 'FactorPipeline':
-        """重载 >> 运算符用于因子组合"""
         return FactorPipeline([self, other])
 
     def then(self, other: 'FactorNode') -> 'FactorPipeline':
-        """链式调用"""
         return FactorPipeline([self, other])
 
+    # -- 辅助方法（消除子类重复代码） --
+
+    def _validate_input(self, input_data):
+        """校验 + copy DataFrame"""
+        if input_data is None:
+            raise ValueError(f"input_data is required for {self.__class__.__name__}")
+        if not isinstance(input_data, pd.DataFrame):
+            raise TypeError(f"Expected DataFrame, got {type(input_data)}")
+        return input_data.copy()
+
+    def _finalize(self, result):
+        """命名 + to_frame"""
+        result.name = self.name
+        return result.to_frame()
+
+    @staticmethod
+    def _get_dt_key(df):
+        """获取日期分组 key"""
+        return 'dt' if 'dt' in df.columns else df.index
+
+    @staticmethod
+    def _extract_first_col(base_result):
+        """从 base_factor 结果提取第一列"""
+        if isinstance(base_result, pd.DataFrame):
+            return base_result.iloc[:, 0]
+        return base_result
+
+
+# ---------------------------------------------------------------------------
+# FactorPipeline
+# ---------------------------------------------------------------------------
 
 class FactorPipeline:
-    """
-    因子管道
-
-    将多个因子节点组合在一起计算。
-    """
+    """因子管道"""
 
     def __init__(self, factors: List[FactorNode]):
         self.factors = factors
 
     def execute(self, input_data: Any = None, **kwargs) -> Dict[str, pd.DataFrame]:
-        """执行所有因子计算"""
         results = {}
         for i, factor in enumerate(self.factors):
             name = factor.name if hasattr(factor, 'name') else f"Factor{i}"
@@ -84,11 +151,14 @@ class FactorPipeline:
         return results
 
     def __rshift__(self, other: FactorNode) -> 'FactorPipeline':
-        """重载 >> 运算符"""
         if isinstance(other, FactorPipeline):
             return FactorPipeline(self.factors + other.factors)
         return FactorPipeline(self.factors + [other])
 
+
+# ---------------------------------------------------------------------------
+# PointFactorNode
+# ---------------------------------------------------------------------------
 
 class PointFactorNode(FactorNode):
     """
@@ -115,29 +185,13 @@ class PointFactorNode(FactorNode):
         config: Dict[str, Any] = None,
         **kwargs
     ):
-        """
-        Args:
-            expression: 计算表达式，如 "close / open - 1"
-            func: 自定义计算函数，接受 row 或整个 DataFrame
-            result_name: 结果列名
-            name: 节点名称
-            config: 额外配置
-            **kwargs: 额外参数
-        """
         super().__init__(Name=name or "PointFactor", config=config, **kwargs)
         self.expression = expression
         self.func = func
         self.result_name = result_name
 
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行单点运算"""
-        if input_data is None:
-            raise ValueError("input_data is required for PointFactorNode")
-        
-        if not isinstance(input_data, pd.DataFrame):
-            raise TypeError(f"Expected DataFrame, got {type(input_data)}")
-
-        df = input_data.copy()
+        df = self._validate_input(input_data)
 
         if self.func is not None:
             if self.func.__code__.co_argcount == 1:
@@ -156,6 +210,10 @@ class PointFactorNode(FactorNode):
             return f"<PointFactorNode expression='{self.expression}'>"
         return f"<PointFactorNode func={self.func.__name__ if self.func else None}>"
 
+
+# ---------------------------------------------------------------------------
+# ArithmeticFactorNode
+# ---------------------------------------------------------------------------
 
 class ArithmeticFactorNode(FactorNode):
     """
@@ -178,40 +236,18 @@ class ArithmeticFactorNode(FactorNode):
         config: Dict[str, Any] = None,
         **kwargs
     ):
-        """
-        Args:
-            factors: 要组合的因子列表
-            operator: 运算符 "add", "sub", "mul", "div"
-            name: 节点名称
-            config: 额外配置
-            **kwargs: 额外参数
-        """
         super().__init__(Name=name or f"Arithmetic{operator.capitalize()}", config=config, **kwargs)
         self.factors = factors
         self.operator = operator
 
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行算术运算"""
         if len(self.factors) < 2:
             raise ValueError("At least 2 factors are required")
 
         results = [f.execute(input_data, **kwargs) for f in self.factors]
-        
-        def extract_series(df):
-            if isinstance(df, pd.DataFrame):
-                return df.iloc[:, 0]
-            return df
+        series_list = [FactorNode._extract_first_col(r) for r in results]
 
-        series_list = [extract_series(r) for r in results]
-        
-        op_funcs = {
-            "add": lambda a, b: a + b,
-            "sub": lambda a, b: a - b,
-            "mul": lambda a, b: a * b,
-            "div": lambda a, b: a / b,
-        }
-        
-        op_func = op_funcs.get(self.operator)
+        op_func = _ARITH_OPS.get(self.operator)
         if op_func is None:
             raise ValueError(f"Unknown operator: {self.operator}")
 
@@ -219,12 +255,15 @@ class ArithmeticFactorNode(FactorNode):
         for s in series_list[1:]:
             result = op_func(result, s)
 
-        result.name = self.name
-        return result.to_frame()
+        return self._finalize(result)
 
     def __repr__(self) -> str:
         return f"<ArithmeticFactorNode operator='{self.operator}' factors={len(self.factors)}>"
 
+
+# ---------------------------------------------------------------------------
+# TimeFactorNode
+# ---------------------------------------------------------------------------
 
 class TimeFactorNode(FactorNode):
     """
@@ -234,20 +273,15 @@ class TimeFactorNode(FactorNode):
 
     Examples:
         >>> # 移动平均
-        >>> factor = TimeFactorNode(
-        ...     window=20,
-        ...     operation="mean",
-        ...     column="close"
-        ... )
+        >>> factor = TimeFactorNode(window=20, operation="mean", column="close")
         >>> result = factor.execute(df)
         >>>
         >>> # 滚动相关系数
-        >>> factor = TimeFactorNode(
-        ...     window=60,
-        ...     operation="corr",
-        ...     columns=["close", "volume"]
-        ... )
+        >>> factor = TimeFactorNode(window=60, operation="corr", columns=["close", "volume"])
     """
+
+    _SINGLE_COL_OPS = {"mean", "std", "sum", "min", "max"}
+    _DUAL_COL_OPS = {"corr", "cov"}
 
     def __init__(
         self,
@@ -260,17 +294,6 @@ class TimeFactorNode(FactorNode):
         config: Dict[str, Any] = None,
         **kwargs
     ):
-        """
-        Args:
-            window: 窗口大小
-            operation: 运算类型 "mean", "std", "sum", "min", "max", "corr", "cov", "rolling"
-            column: 要操作的列名（单列操作）
-            columns: 要操作的列名列表（多列操作，如 corr）
-            min_periods: 最小观测数
-            name: 节点名称
-            config: 额外配置
-            **kwargs: 额外参数
-        """
         super().__init__(Name=name or f"Time{operation.capitalize()}", config=config, **kwargs)
         self.window = window
         self.operation = operation
@@ -279,78 +302,45 @@ class TimeFactorNode(FactorNode):
         self.min_periods = min_periods or window
 
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行时间序列运算"""
-        if input_data is None:
-            raise ValueError("input_data is required for TimeFactorNode")
+        df = self._validate_input(input_data)
 
-        if not isinstance(input_data, pd.DataFrame):
-            raise TypeError(f"Expected DataFrame, got {type(input_data)}")
+        if self.operation in self._SINGLE_COL_OPS:
+            if not self.column:
+                raise ValueError(f"column is required for {self.operation} operation")
+            result = getattr(
+                df[self.column].rolling(window=self.window, min_periods=self.min_periods),
+                self.operation,
+            )()
 
-        df = input_data.copy()
-
-        if self.operation == "mean":
-            if self.column:
-                result = df[self.column].rolling(window=self.window, min_periods=self.min_periods).mean()
-            else:
-                raise ValueError("column is required for mean operation")
-
-        elif self.operation == "std":
-            if self.column:
-                result = df[self.column].rolling(window=self.window, min_periods=self.min_periods).std()
-            else:
-                raise ValueError("column is required for std operation")
-
-        elif self.operation == "sum":
-            if self.column:
-                result = df[self.column].rolling(window=self.window, min_periods=self.min_periods).sum()
-            else:
-                raise ValueError("column is required for sum operation")
-
-        elif self.operation == "min":
-            if self.column:
-                result = df[self.column].rolling(window=self.window, min_periods=self.min_periods).min()
-            else:
-                raise ValueError("column is required for min operation")
-
-        elif self.operation == "max":
-            if self.column:
-                result = df[self.column].rolling(window=self.window, min_periods=self.min_periods).max()
-            else:
-                raise ValueError("column is required for max operation")
-
-        elif self.operation == "corr":
-            if self.columns and len(self.columns) == 2:
-                result = df[self.columns[0]].rolling(window=self.window, min_periods=self.min_periods).corr(
-                    df[self.columns[1]]
+        elif self.operation in self._DUAL_COL_OPS:
+            if not self.columns or len(self.columns) != 2:
+                raise ValueError(
+                    f"columns must be a list of 2 column names for {self.operation} operation"
                 )
-            else:
-                raise ValueError("columns must be a list of 2 column names for corr operation")
-
-        elif self.operation == "cov":
-            if self.columns and len(self.columns) == 2:
-                result = df[self.columns[0]].rolling(window=self.window, min_periods=self.min_periods).cov(
-                    df[self.columns[1]]
-                )
-            else:
-                raise ValueError("columns must be a list of 2 column names for cov operation")
+            result = getattr(
+                df[self.columns[0]].rolling(window=self.window, min_periods=self.min_periods),
+                self.operation,
+            )(df[self.columns[1]])
 
         elif self.operation == "rolling":
-            if callable(getattr(self, '_custom_func', None)):
-                result = df[self.column].rolling(window=self.window, min_periods=self.min_periods).apply(
-                    self._custom_func, raw=False
-                )
-            else:
+            if not callable(getattr(self, '_custom_func', None)):
                 raise ValueError("rolling operation requires _custom_func to be set")
+            result = df[self.column].rolling(
+                window=self.window, min_periods=self.min_periods
+            ).apply(self._custom_func, raw=False)
 
         else:
             raise ValueError(f"Unknown operation: {self.operation}")
 
-        result.name = self.name
-        return result.to_frame()
+        return self._finalize(result)
 
     def __repr__(self) -> str:
         return f"<TimeFactorNode window={self.window} operation='{self.operation}'>"
 
+
+# ---------------------------------------------------------------------------
+# ExpandingFactorNode
+# ---------------------------------------------------------------------------
 
 class ExpandingFactorNode(FactorNode):
     """
@@ -374,38 +364,24 @@ class ExpandingFactorNode(FactorNode):
         self.min_periods = min_periods
 
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行扩展窗口运算"""
-        if input_data is None:
-            raise ValueError("input_data is required for ExpandingFactorNode")
+        df = self._validate_input(input_data)
 
-        if not isinstance(input_data, pd.DataFrame):
-            raise TypeError(f"Expected DataFrame, got {type(input_data)}")
-
-        df = input_data.copy()
-        
-        op_funcs = {
-            "mean": lambda col: col.expanding(min_periods=self.min_periods).mean(),
-            "std": lambda col: col.expanding(min_periods=self.min_periods).std(),
-            "sum": lambda col: col.expanding(min_periods=self.min_periods).sum(),
-            "min": lambda col: col.expanding(min_periods=self.min_periods).min(),
-            "max": lambda col: col.expanding(min_periods=self.min_periods).max(),
-        }
-
-        op_func = op_funcs.get(self.operation)
-        if op_func is None:
+        attr = _EXPANDING_ATTRS.get(self.operation)
+        if attr is None:
             raise ValueError(f"Unknown operation: {self.operation}")
-
-        if self.column:
-            result = op_func(df[self.column])
-        else:
+        if not self.column:
             raise ValueError("column is required")
 
-        result.name = self.name
-        return result.to_frame()
+        result = getattr(df[self.column].expanding(min_periods=self.min_periods), attr)()
+        return self._finalize(result)
 
     def __repr__(self) -> str:
         return f"<ExpandingFactorNode operation='{self.operation}'>"
 
+
+# ---------------------------------------------------------------------------
+# CrossSectionFactorNode
+# ---------------------------------------------------------------------------
 
 class CrossSectionFactorNode(FactorNode):
     """
@@ -415,17 +391,11 @@ class CrossSectionFactorNode(FactorNode):
 
     Examples:
         >>> # 横截面排名
-        >>> factor = CrossSectionFactorNode(
-        ...     operation="rank",
-        ...     column="return"
-        ... )
+        >>> factor = CrossSectionFactorNode(operation="rank", column="return")
         >>> result = factor.execute(df)
         >>>
         >>> # 横截面去均值
-        >>> factor = CrossSectionFactorNode(
-        ...     operation="demean",
-        ...     column="return"
-        ... )
+        >>> factor = CrossSectionFactorNode(operation="demean", column="return")
     """
 
     def __init__(
@@ -437,78 +407,47 @@ class CrossSectionFactorNode(FactorNode):
         config: Dict[str, Any] = None,
         **kwargs
     ):
-        """
-        Args:
-            operation: 运算类型 "rank", "zscore", "demean", "mad", "percentile"
-            column: 要操作的列名
-            groupby: 分组列名（如行业分组）
-            name: 节点名称
-            config: 额外配置
-            **kwargs: 额外参数
-        """
         super().__init__(Name=name or f"CrossSection{operation.capitalize()}", config=config, **kwargs)
         self.operation = operation
         self.column = column
         self.groupby = groupby
 
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行截面运算"""
-        if input_data is None:
-            raise ValueError("input_data is required for CrossSectionFactorNode")
-
-        if not isinstance(input_data, pd.DataFrame):
-            raise TypeError(f"Expected DataFrame, got {type(input_data)}")
-
-        df = input_data.copy()
+        df = self._validate_input(input_data)
 
         if self.column is None:
             raise ValueError("column is required for CrossSectionFactorNode")
 
+        dt_key = self._get_dt_key(df)
+
         if self.operation == "rank":
-            result = df.groupby('dt' if 'dt' in df.columns else df.index)[self.column].rank(
-                pct=True if 'pct' in str(kwargs.get('mode', '')) else False
-            )
+            pct = 'pct' in str(kwargs.get('mode', ''))
+            result = df.groupby(dt_key)[self.column].rank(pct=pct)
 
         elif self.operation == "zscore":
-            def zscore(x):
-                return (x - x.mean()) / x.std() if x.std() > 0 else x - x.mean()
-            
-            if self.groupby:
-                result = df.groupby(['dt' if 'dt' in df.columns else df.index, self.groupby])[self.column].transform(zscore)
-            else:
-                result = df.groupby('dt' if 'dt' in df.columns else df.index)[self.column].transform(zscore)
+            result = _groupby_transform(df, self.column, dt_key, _zscore_fn, self.groupby)
 
         elif self.operation == "demean":
-            if self.groupby:
-                result = df.groupby(['dt' if 'dt' in df.columns else df.index, self.groupby])[self.column].transform(
-                    lambda x: x - x.mean()
-                )
-            else:
-                result = df.groupby('dt' if 'dt' in df.columns else df.index)[self.column].transform(
-                    lambda x: x - x.mean()
-                )
+            result = _groupby_transform(df, self.column, dt_key, _demean_fn, self.groupby)
 
         elif self.operation == "mad":
-            def mad(x):
-                return (x - x.median()).abs().median() * 1.4826
-            
-            if self.groupby:
-                result = df.groupby(['dt' if 'dt' in df.columns else df.index, self.groupby])[self.column].transform(mad)
-            else:
-                result = df.groupby('dt' if 'dt' in df.columns else df.index)[self.column].transform(mad)
+            result = _groupby_transform(df, self.column, dt_key, _mad_fn, self.groupby)
 
         elif self.operation == "percentile":
-            result = df.groupby('dt' if 'dt' in df.columns else df.index)[self.column].rank(pct=True)
+            result = df.groupby(dt_key)[self.column].rank(pct=True)
 
         else:
             raise ValueError(f"Unknown operation: {self.operation}")
 
-        result.name = self.name
-        return result.to_frame()
+        return self._finalize(result)
 
     def __repr__(self) -> str:
         return f"<CrossSectionFactorNode operation='{self.operation}' column='{self.column}'>"
 
+
+# ---------------------------------------------------------------------------
+# GroupRankFactorNode
+# ---------------------------------------------------------------------------
 
 class GroupRankFactorNode(FactorNode):
     """
@@ -532,26 +471,23 @@ class GroupRankFactorNode(FactorNode):
         self.ascending = ascending
 
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行分组排名"""
-        if input_data is None:
-            raise ValueError("input_data is required for GroupRankFactorNode")
+        df = self._validate_input(input_data)
 
-        if not isinstance(input_data, pd.DataFrame):
-            raise TypeError(f"Expected DataFrame, got {type(input_data)}")
-
-        df = input_data.copy()
-
+        dt_key = self._get_dt_key(df)
         if 'dt' in df.columns:
             result = df.groupby(['dt', self.groupby])[self.column].rank(ascending=self.ascending)
         else:
             result = df.groupby(self.groupby)[self.column].rank(ascending=self.ascending)
 
-        result.name = self.name
-        return result.to_frame()
+        return self._finalize(result)
 
     def __repr__(self) -> str:
         return f"<GroupRankFactorNode column='{self.column}' groupby='{self.groupby}'>"
 
+
+# ---------------------------------------------------------------------------
+# PanelFactorNode
+# ---------------------------------------------------------------------------
 
 class PanelFactorNode(FactorNode):
     """
@@ -579,49 +515,25 @@ class PanelFactorNode(FactorNode):
         config: Dict[str, Any] = None,
         **kwargs
     ):
-        """
-        Args:
-            operations: 操作列表，每项为 (operation_name, params) 元组
-            combine: 组合方式 "add", "mul", "mean"
-            name: 节点名称
-            config: 额外配置
-            **kwargs: 额外参数
-        """
         super().__init__(Name=name or "PanelFactor", config=config, **kwargs)
         self.operations = operations or []
         self.combine = combine
 
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行面板运算"""
-        if input_data is None:
-            raise ValueError("input_data is required for PanelFactorNode")
+        df = self._validate_input(input_data)
 
-        if not isinstance(input_data, pd.DataFrame):
-            raise TypeError(f"Expected DataFrame, got {type(input_data)}")
-
-        df = input_data.copy()
         results = []
-
         for op_name, params in self.operations:
+            column = params.get("column")
+            groupby = params.get("groupby")
+
             if op_name == "zscore":
-                column = params.get("column")
-                groupby = params.get("groupby")
-                result = self._zscore(df, column, groupby)
-                results.append(result)
-
+                results.append(self._zscore(df, column, groupby))
             elif op_name == "demean":
-                column = params.get("column")
-                groupby = params.get("groupby")
-                result = self._demean(df, column, groupby)
-                results.append(result)
-
+                results.append(self._demean(df, column, groupby))
             elif op_name == "rank":
-                column = params.get("column")
-                groupby = params.get("groupby")
                 pct = params.get("pct", True)
-                result = self._rank(df, column, groupby, pct)
-                results.append(result)
-
+                results.append(self._rank(df, column, groupby, pct))
             else:
                 raise ValueError(f"Unknown operation: {op_name}")
 
@@ -630,37 +542,18 @@ class PanelFactorNode(FactorNode):
 
         return self._combine_results(results)
 
-    def _zscore(self, df: pd.DataFrame, column: str, groupby: Optional[str] = None) -> pd.Series:
-        """Z-score 标准化"""
-        if groupby:
-            return df.groupby(['dt' if 'dt' in df.columns else df.index, groupby])[column].transform(
-                lambda x: (x - x.mean()) / x.std() if x.std() > 0 else 0
-            )
-        else:
-            return df.groupby('dt' if 'dt' in df.columns else df.index)[column].transform(
-                lambda x: (x - x.mean()) / x.std() if x.std() > 0 else 0
-            )
+    def _zscore(self, df, column, groupby=None):
+        return _groupby_transform(df, column, self._get_dt_key(df), _zscore_fn, groupby)
 
-    def _demean(self, df: pd.DataFrame, column: str, groupby: Optional[str] = None) -> pd.Series:
-        """去均值"""
-        if groupby:
-            return df.groupby(['dt' if 'dt' in df.columns else df.index, groupby])[column].transform(
-                lambda x: x - x.mean()
-            )
-        else:
-            return df.groupby('dt' if 'dt' in df.columns else df.index)[column].transform(
-                lambda x: x - x.mean()
-            )
+    def _demean(self, df, column, groupby=None):
+        return _groupby_transform(df, column, self._get_dt_key(df), _demean_fn, groupby)
 
-    def _rank(self, df: pd.DataFrame, column: str, groupby: Optional[str] = None, pct: bool = True) -> pd.Series:
-        """排名"""
-        if groupby:
-            return df.groupby(['dt' if 'dt' in df.columns else df.index, groupby])[column].rank(pct=pct)
-        else:
-            return df.groupby('dt' if 'dt' in df.columns else df.index)[column].rank(pct=pct)
+    def _rank(self, df, column, groupby=None, pct=True):
+        dt_key = self._get_dt_key(df)
+        keys = [dt_key] + ([groupby] if groupby else [])
+        return df.groupby(keys)[column].rank(pct=pct)
 
-    def _combine_results(self, results: List[pd.Series]) -> pd.DataFrame:
-        """合并多个结果"""
+    def _combine_results(self, results):
         if self.combine == "add":
             combined = sum(results)
         elif self.combine == "mul":
@@ -672,12 +565,15 @@ class PanelFactorNode(FactorNode):
         else:
             raise ValueError(f"Unknown combine method: {self.combine}")
 
-        combined.name = self.name
-        return combined.to_frame()
+        return self._finalize(combined)
 
     def __repr__(self) -> str:
         return f"<PanelFactorNode operations={len(self.operations)}>"
 
+
+# ---------------------------------------------------------------------------
+# DelayFactorNode
+# ---------------------------------------------------------------------------
 
 class DelayFactorNode(FactorNode):
     """
@@ -699,24 +595,21 @@ class DelayFactorNode(FactorNode):
         self.periods = periods
 
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行延迟操作"""
         if input_data is None:
             raise ValueError("input_data is required for DelayFactorNode")
 
         base_result = self.base_factor.execute(input_data, **kwargs)
-        
-        if isinstance(base_result, pd.DataFrame):
-            col = base_result.iloc[:, 0]
-        else:
-            col = base_result
-            
+        col = self._extract_first_col(base_result)
         result = col.shift(self.periods)
-        result.name = self.name
-        return result.to_frame()
+        return self._finalize(result)
 
     def __repr__(self) -> str:
         return f"<DelayFactorNode periods={self.periods}>"
 
+
+# ---------------------------------------------------------------------------
+# DeltaFactorNode
+# ---------------------------------------------------------------------------
 
 class DeltaFactorNode(FactorNode):
     """
@@ -734,31 +627,17 @@ class DeltaFactorNode(FactorNode):
         config: Dict[str, Any] = None,
         **kwargs
     ):
-        """
-        Args:
-            base_factor: 基础因子
-            periods: 滞后期数
-            mode: "diff" (差分) 或 "pct_change" (百分比变化)
-            name: 节点名称
-            config: 额外配置
-            **kwargs: 额外参数
-        """
         super().__init__(Name=name or f"Delta{mode.capitalize()}", config=config, **kwargs)
         self.base_factor = base_factor
         self.periods = periods
         self.mode = mode
 
     def _compute(self, input_data: Any = None, **kwargs) -> pd.DataFrame:
-        """执行差分/变化率操作"""
         if input_data is None:
             raise ValueError("input_data is required for DeltaFactorNode")
 
         base_result = self.base_factor.execute(input_data, **kwargs)
-        
-        if isinstance(base_result, pd.DataFrame):
-            col = base_result.iloc[:, 0]
-        else:
-            col = base_result
+        col = self._extract_first_col(base_result)
 
         if self.mode == "diff":
             result = col.diff(self.periods)
@@ -767,8 +646,7 @@ class DeltaFactorNode(FactorNode):
         else:
             raise ValueError(f"Unknown mode: {self.mode}")
 
-        result.name = self.name
-        return result.to_frame()
+        return self._finalize(result)
 
     def __repr__(self) -> str:
         return f"<DeltaFactorNode periods={self.periods} mode='{self.mode}'>"
