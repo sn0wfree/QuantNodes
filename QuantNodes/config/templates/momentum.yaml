@@ -1,0 +1,86 @@
+# strategy_momentum.yaml
+# 动量因子策略配置
+
+version: "1.0"
+name: "momentum_20d"
+description: "20日动量因子策略"
+
+# 1. 数据源定义
+data:
+  source: "csv"
+  path: "data/stock_data.csv"
+  columns:
+    - date
+    - code
+    - open
+    - high
+    - low
+    - close
+    - volume
+  date_column: "date"
+  code_column: "code"
+
+# 2. 因子定义
+factors:
+  - name: returns_20d
+    expr: "(close / close.shift(20) - 1)"
+    description: "20日收益率"
+
+# 3. 因子运算
+operations:
+  - type: time_series
+    name: momentum_ma
+    category: ts_mean
+    inputs: [returns_20d]
+    params:
+      window: 20
+      min_periods: 10
+
+  - type: section
+    name: momentum_rank
+    category: rank
+    inputs: [momentum_ma]
+
+# 4. 组合因子
+composite:
+  - name: alpha
+    formula: "rank(momentum_ma)"
+    normalize: true
+    winsorize:
+      lower: 0.01
+      upper: 0.01
+
+# 5. 回测配置
+backtest:
+  start_date: "2023-01-01"
+  end_date: "2024-12-31"
+  initial_cash: 1000000
+  commission: 0.001
+  slippage: 0.001
+
+  signals:
+    buy_threshold: 0.05
+    sell_threshold: -0.03
+
+  positions:
+    max_positions: 10
+    rebalance_freq: "weekly"
+
+# 6. 验证配置
+validation:
+  run_tests: true
+  test_files:
+    - "tests/test_factor*.py"
+
+  metrics:
+    ic_threshold: 0.02
+    max_correlation: 0.7
+    min_samples: 100
+
+# 7. 输出配置
+output:
+  format: "parquet"
+  path: "outputs/momentum_result.parquet"
+  save_signals: true
+  save_positions: true
+  save_equity_curve: true

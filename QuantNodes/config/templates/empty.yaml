@@ -1,0 +1,56 @@
+# strategy.yaml
+# 策略配置文件模板
+
+version: "1.0"
+name: "my_strategy"
+description: "策略描述"
+
+# 数据源 (可选)
+# data:
+#   source: "csv"
+#   path: "data/data.csv"
+#   columns: [date, code, open, high, low, close, volume]
+#   date_column: "date"
+#   code_column: "code"
+
+# 因子定义 (可选)
+# factors:
+#   - name: factor_name
+#     expr: "close / close.shift(20) - 1"
+#     description: "因子描述"
+
+# 运算配置 (可选)
+# operations:
+#   - type: time_series  # time_series / section / math / composite
+#     name: op_name
+#     category: ts_mean  # 具体算子
+#     inputs: [factor_name]
+#     params:
+#       window: 20
+
+# 组合因子 (可选)
+# composite:
+#   - name: alpha
+#     formula: "rank(factor_name)"
+#     normalize: true
+
+# 回测配置 (可选)
+# backtest:
+#   start_date: "2023-01-01"
+#   end_date: "2024-12-31"
+#   initial_cash: 1000000
+#   commission: 0.001
+#   slippage: 0.001
+
+# 验证配置 (可选)
+# validation:
+#   run_tests: true
+#   metrics:
+#     ic_threshold: 0.02
+#     max_correlation: 0.7
+
+# 输出配置 (可选)
+# output:
+#   format: "parquet"
+#   path: "outputs/result.parquet"
+#   save_signals: true
