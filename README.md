@@ -12,9 +12,10 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 ### 核心特性
 
 - **统一节点架构**: 万物皆 Node，Pipeline 是唯一组合原语
-- **97+ 内置算子**: 涵盖时间序列、截面运算、多截面聚合等
+- **143+ 内置算子**: 涵盖时间序列、截面运算、多截面聚合等，装饰器注册表模式
 - **多数据库支持**: ClickHouse、DuckDB、MySQL、SQLite、CSV、Parquet
 - **AI 原生设计**: 内置策略生成器和 Pipeline 优化器
+- **Config-Driven 回测**: YAML 配置文件驱动回测，支持算子扩展
 - **零 QuantStudio 依赖**: 完全自主实现，代码清晰可控
 
 ## 架构概览
@@ -46,8 +47,8 @@ QuantNodes/
 │   │   └── pandas_utils.py        # Pandas 工具函数
 │   │
 │   ├── factor_node/               # 因子引擎
-│   │   ├── factor.py             # Factor, DerivativeFactor
-│   │   ├── factor_functions.py   # 143+ 算子 + 注册表 (Polars)
+│   │   ├── factor.py              # Factor, DerivativeFactor
+│   │   ├── factor_functions.py    # 143+ 算子 + 注册表 (Polars)
 │   │   └── factor_operation.py    # Point/Time/Section/PanelOperation
 │   │
 │   ├── database_node/             # 数据库节点
@@ -72,7 +73,7 @@ QuantNodes/
 │   ├── ui_node/                   # UI 数据准备节点
 │   └── app/                       # Streamlit 应用
 │
-├── tests/                        # 测试套件 (413 tests)
+├── tests/                        # 测试套件
 ├── examples/                     # 示例代码
 └── docs/                        # 设计文档
 ```
@@ -177,8 +178,18 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - [统一架构最终方案](docs/06-统一架构最终方案.md)
 - [执行清单](docs/07-执行清单.md)
 - [移除 QuantStudio 依赖重构方案](docs/09-移除QuantStudio依赖重构方案.md)
+- [算子构建规范](docs/23-算子构建规范.md)
+- [算子扩展机制设计](docs/22-算子扩展机制设计.md)
 
 ## 变更日志
+
+### v0.3.0 (2026-04-30)
+
+- ✅ 实现 config-driven 回测的算子扩展机制（通用 fallback + custom_operators 加载）
+- ✅ 迁移 6 个独有算子到 factor_functions（mad, weighted_aggr_mean, fill_null_by_strategy 等）
+- ✅ 删除 factor_nodes.py，统一算子系统（-1274 行）
+- ✅ ts_corr 协方差公式修复 + group_winsorize 实现
+- ✅ 算子构建规范文档
 
 ### v0.2.0 (2026-04-28)
 
@@ -194,8 +205,26 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 
 - ✅ 完成 9/9 阶段重构
 - ✅ 97+ 因子算子实现
-- ✅ 完整测试套件 (413 tests)
+- ✅ 完整测试套件
 - ✅ 多数据库支持
+
+## 致谢
+
+### QuantStudio
+
+本项目的因子计算系统设计深受 **QuantStudio** 启发。QuantStudio 是由银河证券开发的量化研究平台，提供了丰富的因子计算和回测功能。QuantNodes 在其设计模式基础上进行了重构和优化：
+
+- **因子计算范式**: 继承自 QuantStudio 的 PointOperation/TimeOperation/SectionOperation 分类体系
+- **算子注册机制**: 参考 QuantStudio 的算子组织方式，采用装饰器注册表模式实现
+- **数据预处理**: 基于 QuantStudio 的 DataPreprocessingFun 设计，移除外部依赖后自主实现
+
+QuantNodes 已完全移除对 QuantStudio 的依赖，实现了自主可控的因子计算引擎，但始终铭记其设计思想的贡献。
+
+### 开源社区
+
+- [Polars](https://pola.rs/) - 高性能 DataFrame 库
+- [Streamlit](https://streamlit.io/) - 快速构建数据应用
+- [DuckDB](https://duckdb.org/) - 嵌入式分析型数据库
 
 ## 许可证
 
