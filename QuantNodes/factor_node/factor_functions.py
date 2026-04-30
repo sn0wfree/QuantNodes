@@ -47,6 +47,7 @@ class OperatorCategory:
     TIME = "time"
     SECTION = "section"
     MULTI_SECTION = "multi_section"
+    TALIB = "talib"
 
 
 # ==============================================================================
@@ -58,6 +59,7 @@ _OPERATOR_REGISTRY: Dict[str, Dict[str, Dict[str, Any]]] = {
     OperatorCategory.TIME: {},
     OperatorCategory.SECTION: {},
     OperatorCategory.MULTI_SECTION: {},
+    OperatorCategory.TALIB: {},
 }
 
 
@@ -1452,6 +1454,312 @@ def mad(f: Union[Expr, str], **kwargs) -> Expr:
 
 
 # ==============================================================================
+# TA-Lib 算子 (技术分析指标)
+# ==============================================================================
+
+try:
+    from QuantNodes.operators.talib import TaLibOperators as _talib
+
+    # -- Overlap Studies --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_sma(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 简单移动平均 (Simple Moving Average)"""
+        return _talib.sma(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ema(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 指数移动平均 (Exponential Moving Average)"""
+        return _talib.ema(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_wma(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 加权移动平均 (Weighted Moving Average)"""
+        return _talib.wma(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_dema(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 双重指数移动平均 (Double EMA)"""
+        return _talib.dema(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_tema(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 三重指数移动平均 (Triple EMA)"""
+        return _talib.tema(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_trima(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 三角移动平均 (Triangular MA)"""
+        return _talib.trima(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_kama(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 考夫曼自适应移动平均 (KAMA)"""
+        return _talib.kama(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_t3(f: Union[Expr, str], timeperiod: int = 5, vfactor: float = 0.7, **kwargs) -> Expr:
+        """TA-Lib T3 移动平均"""
+        return _talib.t3(f, timeperiod, vfactor)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ht_trendline(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 希尔伯特变换趋势线"""
+        return _talib.ht_trendline(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_bbands_upper(f: Union[Expr, str], timeperiod: int = 5, nbdevup: float = 2.0,
+                           nbdevdn: float = 2.0, matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 布林带上轨"""
+        return _talib.bbands_upper(f, timeperiod, nbdevup, nbdevdn, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_bbands_middle(f: Union[Expr, str], timeperiod: int = 5, nbdevup: float = 2.0,
+                            nbdevdn: float = 2.0, matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 布林带中轨"""
+        return _talib.bbands_middle(f, timeperiod, nbdevup, nbdevdn, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_bbands_lower(f: Union[Expr, str], timeperiod: int = 5, nbdevup: float = 2.0,
+                           nbdevdn: float = 2.0, matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 布林带下轨"""
+        return _talib.bbands_lower(f, timeperiod, nbdevup, nbdevdn, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ma(f: Union[Expr, str], timeperiod: int = 30, matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 通用移动平均 (0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA)"""
+        return _talib.ma(f, timeperiod, matype)
+
+    # -- Momentum Indicators --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_rsi(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 相对强弱指标 (RSI)"""
+        return _talib.rsi(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_macd_line(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                        signalperiod: int = 9, **kwargs) -> Expr:
+        """TA-Lib MACD 线"""
+        return _talib.macd_line(f, fastperiod, slowperiod, signalperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_macd_signal(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                          signalperiod: int = 9, **kwargs) -> Expr:
+        """TA-Lib MACD 信号线"""
+        return _talib.macd_signal(f, fastperiod, slowperiod, signalperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_macd_hist(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                        signalperiod: int = 9, **kwargs) -> Expr:
+        """TA-Lib MACD 柱状图"""
+        return _talib.macd_hist(f, fastperiod, slowperiod, signalperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cci(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 商品通道指标 (CCI)"""
+        return _talib.cci(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_willr(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 威廉指标 (Williams %R)"""
+        return _talib.willr(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_roc(f: Union[Expr, str], timeperiod: int = 10, **kwargs) -> Expr:
+        """TA-Lib 变动率 (Rate of Change)"""
+        return _talib.roc(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_mom(f: Union[Expr, str], timeperiod: int = 10, **kwargs) -> Expr:
+        """TA-Lib 动量 (Momentum)"""
+        return _talib.mom(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_adx(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 平均趋向指标 (ADX)"""
+        return _talib.adx(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_adxr(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 平均趋向指标评估 (ADXR)"""
+        return _talib.adxr(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_apo(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                  matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 绝对价格震荡 (APO)"""
+        return _talib.apo(f, fastperiod, slowperiod, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ppo(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                  matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 百分比价格震荡 (PPO)"""
+        return _talib.ppo(f, fastperiod, slowperiod, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cmo(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 钱德动量摆动指标 (CMO)"""
+        return _talib.cmo(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_trix(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 三重指数平滑变动率 (TRIX)"""
+        return _talib.trix(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stochrsi_k(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 随机 RSI %K"""
+        return _talib.stochrsi_k(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stochrsi_d(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 随机 RSI %D"""
+        return _talib.stochrsi_d(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ultosc(f: Union[Expr, str], timeperiod1: int = 7, timeperiod2: int = 14,
+                     timeperiod3: int = 28, **kwargs) -> Expr:
+        """TA-Lib 终极振荡指标 (Ultimate Oscillator)"""
+        return _talib.ultosc(f, timeperiod1=timeperiod1, timeperiod2=timeperiod2, timeperiod3=timeperiod3)
+
+    # -- Volatility --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_atr(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 平均真实范围 (ATR)"""
+        return _talib.atr(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_natr(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 归一化平均真实范围 (NATR)"""
+        return _talib.natr(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_trange(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 真实范围 (True Range)"""
+        return _talib.trange(f)
+
+    # -- Volume --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_obv(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 能量潮 (On Balance Volume)"""
+        return _talib.obv(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ad(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 累积/派发线 (Accumulation/Distribution Line)"""
+        return _talib.ad(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_adosc(f: Union[Expr, str], fastperiod: int = 3, slowperiod: int = 10, **kwargs) -> Expr:
+        """TA-Lib 累积/派发震荡 (Chaikin A/D Oscillator)"""
+        return _talib.adosc(f, fastperiod=fastperiod, slowperiod=slowperiod)
+
+    # -- Pattern Recognition --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_doji(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 十字星 (Doji)"""
+        return _talib.cdl_doji(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_hammer(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 锤子线 (Hammer)"""
+        return _talib.cdl_hammer(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_engulfing(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 吞没形态 (Engulfing)"""
+        return _talib.cdl_engulfing(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_morningstar(f: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """TA-Lib 晨星 (Morning Star)"""
+        return _talib.cdl_morningstar(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_eveningstar(f: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """TA-Lib 暮星 (Evening Star)"""
+        return _talib.cdl_eveningstar(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_hangingman(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 上吊线 (Hanging Man)"""
+        return _talib.cdl_hangingman(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_shootingstar(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 射击之星 (Shooting Star)"""
+        return _talib.cdl_shootingstar(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_harami(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 孕线形态 (Harami)"""
+        return _talib.cdl_harami(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_piercing(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 刺透形态 (Piercing)"""
+        return _talib.cdl_piercing(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_darkcloudcover(f: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """TA-Lib 乌云盖顶 (Dark Cloud Cover)"""
+        return _talib.cdl_darkcloudcover(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_spinningtop(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 纺锤顶 (Spinning Top)"""
+        return _talib.cdl_spinningtop(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_3whitesoldiers(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 三只白兵 (Three White Soldiers)"""
+        return _talib.cdl_3whitesoldiers(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_3blackcrows(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 三只乌鸦 (Three Black Crows)"""
+        return _talib.cdl_3blackcrows(f)
+
+    # -- Statistic Functions --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stddev(f: Union[Expr, str], timeperiod: int = 5, nbdev: int = 1, **kwargs) -> Expr:
+        """TA-Lib 标准差 (Standard Deviation)"""
+        return _talib.stddev(f, timeperiod, nbdev)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_var(f: Union[Expr, str], timeperiod: int = 5, nbdev: int = 1, **kwargs) -> Expr:
+        """TA-Lib 方差 (Variance)"""
+        return _talib.var(f, timeperiod, nbdev)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_linearreg(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 线性回归值"""
+        return _talib.linearreg(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_linearreg_slope(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 线性回归斜率"""
+        return _talib.linearreg_slope(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_linearreg_angle(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 线性回归角度"""
+        return _talib.linearreg_angle(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_linearreg_intercept(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 线性回归截距"""
+        return _talib.linearreg_intercept(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_tsf(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 时间序列预测 (Time Series Forecast)"""
+        return _talib.tsf(f, timeperiod)
+
+except ImportError:
+    pass  # TA-Lib 未安装时跳过注册
+
+
+# ==============================================================================
 # 导出
 # ==============================================================================
 
@@ -1517,4 +1825,23 @@ __all__ = [
     # 别名
     "correlation", "covariance", "delta", "pct_change",
     "delay", "ref", "shift", "diff", "lag",
+
+    # TA-Lib 算子
+    "talib_sma", "talib_ema", "talib_wma", "talib_dema", "talib_tema",
+    "talib_trima", "talib_kama", "talib_t3", "talib_ht_trendline",
+    "talib_bbands_upper", "talib_bbands_middle", "talib_bbands_lower", "talib_ma",
+    "talib_rsi", "talib_macd_line", "talib_macd_signal", "talib_macd_hist",
+    "talib_cci", "talib_willr", "talib_roc", "talib_mom",
+    "talib_adx", "talib_adxr", "talib_apo", "talib_ppo",
+    "talib_cmo", "talib_trix", "talib_stochrsi_k", "talib_stochrsi_d",
+    "talib_ultosc",
+    "talib_atr", "talib_natr", "talib_trange",
+    "talib_obv", "talib_ad", "talib_adosc",
+    "talib_cdl_doji", "talib_cdl_hammer", "talib_cdl_engulfing",
+    "talib_cdl_morningstar", "talib_cdl_eveningstar", "talib_cdl_hangingman",
+    "talib_cdl_shootingstar", "talib_cdl_harami", "talib_cdl_piercing",
+    "talib_cdl_darkcloudcover", "talib_cdl_spinningtop",
+    "talib_cdl_3whitesoldiers", "talib_cdl_3blackcrows",
+    "talib_stddev", "talib_var", "talib_linearreg", "talib_linearreg_slope",
+    "talib_linearreg_angle", "talib_linearreg_intercept", "talib_tsf",
 ]

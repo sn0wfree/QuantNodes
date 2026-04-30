@@ -9,9 +9,10 @@ Modules:
     section: 截面算子 (rank, zscore, winsorize...)
     math: 数学算子 (add, mul, log, pow...)
     composite: 组合算子 (weighted_sum, combine...)
+    talib: TA-Lib 技术分析指标 (rsi, sma, macd, bbands, ...)
 
 Usage:
-    from QuantNodes.operators import ts, sec, math
+    from QuantNodes.operators import ts, sec, math, talib_ops
     
     # 时间序列
     result = ts.ts_mean(pl.col("close"), 20)
@@ -21,6 +22,9 @@ Usage:
     
     # 数学
     result = math.add(pl.col("factor"), 1.0)
+    
+    # TA-Lib
+    result = talib_ops.rsi(pl.col("close"), timeperiod=14)
 """
 
 from .time_series import TimeSeriesOperators as _ts
@@ -34,4 +38,12 @@ sec = _sec()
 math = _math()
 composite = _composite()
 
-__all__ = ["ts", "sec", "math", "composite", "TimeSeriesOperators", "SectionOperators", "MathOperators", "CompositeOperators"]
+# TA-Lib (可选)
+try:
+    from .talib import TaLibOperators as _talib
+    talib_ops = _talib()
+except ImportError:
+    talib_ops = None
+
+__all__ = ["ts", "sec", "math", "composite", "talib_ops",
+           "TimeSeriesOperators", "SectionOperators", "MathOperators", "CompositeOperators"]

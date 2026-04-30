@@ -248,6 +248,7 @@ class ConfigExecutor:
         "section": "section",
         "math": "point",
         "composite": "point",
+        "talib": "talib",
     }
     
     def __init__(self):
@@ -561,6 +562,8 @@ class ConfigExecutor:
             result = self._apply_math_operator(category, input_exprs[0], params)
         elif op_type == "composite":
             result = self._apply_composite_operator(category, input_exprs, params)
+        elif op_type == "talib":
+            result = self._apply_talib_operator(category, input_exprs, params)
         
         if result is not None:
             return result
@@ -788,6 +791,27 @@ class ConfigExecutor:
         elif category == "rank_sort":
             return composite.rank_sort(exprs, params.get("weights"))
         
+        return None
+
+    def _apply_talib_operator(
+        self,
+        category: str,
+        input_exprs: List[pl.Expr],
+        params: Dict[str, Any]
+    ) -> pl.Expr:
+        """应用 TA-Lib 技术分析算子
+
+        直接从 factor_functions 注册表查找 talib_* 算子。
+        YAML 配置示例:
+            type: talib
+            category: talib_rsi
+            inputs: [close]
+            params: {timeperiod: 14}
+        """
+        from QuantNodes.factor_node.factor_functions import get_operator
+        op_func = get_operator(category)
+        if op_func is not None:
+            return op_func(*input_exprs, **params)
         return None
     
     def _execute_plan(

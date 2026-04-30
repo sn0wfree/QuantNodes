@@ -1743,5 +1743,6 @@ class TestRegistryComprehensive:
             assert info["name"] == op_name
             assert info["category"] in [
                 OperatorCategory.POINT, OperatorCategory.TIME,
-                OperatorCategory.SECTION, OperatorCategory.MULTI_SECTION
+                OperatorCategory.SECTION, OperatorCategory.MULTI_SECTION,
+                OperatorCategory.TALIB,
             ]
