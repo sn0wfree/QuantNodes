@@ -111,10 +111,7 @@ class CompositeOperators:
             else:
                 exprs.append(f)
         
-        result = exprs[0]
-        for e in exprs[1:]:
-            result = result.max(e)
-        return result
+        return pl.max_horizontal(exprs)
     
     @staticmethod
     def min(
@@ -133,10 +130,7 @@ class CompositeOperators:
             else:
                 exprs.append(f)
         
-        result = exprs[0]
-        for e in exprs[1:]:
-            result = result.min(e)
-        return result
+        return pl.min_horizontal(exprs)
     
     @staticmethod
     def abs_max(
@@ -155,10 +149,7 @@ class CompositeOperators:
             else:
                 exprs.append(f.abs())
         
-        result = exprs[0]
-        for e in exprs[1:]:
-            result = result.max(e)
-        return result
+        return pl.max_horizontal(exprs)
     
     @staticmethod
     def blend(

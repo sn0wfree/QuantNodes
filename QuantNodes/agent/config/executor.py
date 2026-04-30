@@ -359,6 +359,7 @@ class ConfigExecutor:
                         "buy_threshold": buy_threshold,
                         "sell_threshold": sell_threshold,
                     }
+                    result.data = data.select(data.collect_schema().names())
         except Exception as e:
             result.warnings.append(f"回测配置解析警告: {str(e)}")
         
@@ -475,9 +476,9 @@ class ConfigExecutor:
         
         # 根据类型选择算子
         if op_type == "time_series":
-            return self._apply_ts_operator(category, input_exprs[0], params)
+            return self._apply_ts_operator(category, input_exprs, params)
         elif op_type == "section":
-            return self._apply_sec_operator(category, input_exprs[0], params)
+            return self._apply_sec_operator(category, input_exprs, params)
         elif op_type == "math":
             return self._apply_math_operator(category, input_exprs[0], params)
         elif op_type == "composite":
@@ -485,15 +486,30 @@ class ConfigExecutor:
         
         return input_exprs[0]
     
+    def _get_op(self, name: str):
+        """懒加载获取 factor_functions 算子"""
+        from QuantNodes.factor_node.factor_functions import get_operator
+        return get_operator(name)
+
     def _apply_ts_operator(
         self,
         category: str,
-        expr: pl.Expr,
+        input_exprs: List[pl.Expr],
         params: Dict[str, Any]
     ) -> pl.Expr:
-        """应用时间序列算子"""
-        window = params.get("window", 20)
+        """应用时间序列算子
         
+        Args:
+            category: 算子名称
+            input_exprs: 输入表达式列表（单输入算子取 [0]，双输入算子取 [0],[1]）
+            params: 参数字典
+        """
+        expr = input_exprs[0]
+        window = params.get("window", 20)
+        alpha = params.get("alpha", 0.5)
+        periods = params.get("periods", 1)
+
+        # 单输入滚动算子
         if category == "ts_mean":
             return ts.ts_mean(expr, window)
         elif category == "ts_std":
@@ -504,26 +520,56 @@ class ConfigExecutor:
             return ts.ts_min(expr, window)
         elif category == "ts_sum":
             return ts.ts_sum(expr, window)
+        elif category == "ts_prod":
+            return ts.ts_prod(expr, window)
+        elif category == "ts_median":
+            return ts.ts_median(expr, window)
         elif category == "ts_rank":
             return ts.ts_rank(expr, window)
-        elif category == "ts_delta":
-            return ts.ts_delta(expr, params.get("periods", 1))
-        elif category == "ts_pct_change":
-            return ts.ts_pct_change(expr, params.get("periods", 1))
+        elif category == "ts_argmax":
+            return self._get_op("ts_argmax")(expr, window)
+        elif category == "ts_argmin":
+            return self._get_op("ts_argmin")(expr, window)
+
+        # 双输入滚动算子
+        elif category == "ts_cov":
+            return ts.ts_cov(expr, input_exprs[1], window)
         elif category == "ts_corr":
-            return expr
+            return ts.ts_corr(expr, input_exprs[1], window)
+
+        # 差分与变化
+        elif category == "ts_delta":
+            return ts.ts_delta(expr, periods)
+        elif category == "ts_pct_change":
+            return ts.ts_pct_change(expr, periods)
         elif category == "ts_lag":
-            return ts.ts_lag(expr, params.get("periods", 1))
-        
+            return ts.ts_lag(expr, periods)
+
+        # 指数加权移动算子（单输入）
+        elif category == "ewm_mean":
+            return ts.ewm_mean(expr, alpha=alpha)
+        elif category == "ewm_std":
+            return ts.ewm_std(expr, alpha=alpha)
+        elif category == "ewm_var":
+            return self._get_op("ewm_var")(expr, alpha=alpha)
+
+        # 指数加权移动算子（双输入）
+        elif category == "ewm_corr":
+            return ts.ewm_corr(expr, input_exprs[1], alpha=alpha)
+        elif category == "ewm_cov":
+            return self._get_op("ewm_cov")(expr, input_exprs[1], alpha=alpha)
+
         return expr
     
     def _apply_sec_operator(
         self,
         category: str,
-        expr: pl.Expr,
+        input_exprs: List[pl.Expr],
         params: Dict[str, Any]
     ) -> pl.Expr:
         """应用截面算子"""
+        expr = input_exprs[0]
+
         if category == "rank":
             return sec.rank(expr)
         elif category == "zscore":
@@ -540,7 +586,20 @@ class ConfigExecutor:
             return sec.scale(expr)
         elif category == "percentile":
             return sec.percentile(expr)
-        
+        elif category == "rank_ic":
+            return sec.rank_ic(expr, input_exprs[1])
+        elif category == "ic":
+            return sec.ic(expr, input_exprs[1])
+        elif category == "group_norm":
+            return sec.group_norm(
+                expr, pl.col(params["group"]), params.get("method", "zscore")
+            )
+        elif category == "group_winsorize":
+            return sec.group_winsorize(
+                expr, pl.col(params["group"]),
+                params.get("lower", 0.01), params.get("upper", 0.01)
+            )
+
         return expr
     
     def _apply_math_operator(
@@ -566,6 +625,38 @@ class ConfigExecutor:
             return math.abs(expr)
         elif category == "pow":
             return math.pow(expr, params.get("exponent", 2))
+        elif category == "log1p":
+            return math.log1p(expr)
+        elif category == "sqrt":
+            return math.sqrt(expr)
+        elif category == "sign":
+            return math.sign(expr)
+        elif category == "clip":
+            return math.clip(expr, params.get("lower"), params.get("upper"))
+        elif category == "floor":
+            return math.floor(expr)
+        elif category == "ceil":
+            return math.ceil(expr)
+        elif category == "round":
+            return math.round(expr, params.get("decimals", 2))
+        elif category == "nan_to_null":
+            return math.nan_to_null(expr)
+        elif category == "fill_null":
+            return math.fill_null(expr, params.get("value", 0.0))
+        elif category == "fill_zero":
+            return math.fill_zero(expr)
+        elif category == "sin":
+            return math.sin(expr)
+        elif category == "cos":
+            return math.cos(expr)
+        elif category == "tan":
+            return math.tan(expr)
+        elif category == "arcsin":
+            return math.arcsin(expr)
+        elif category == "arccos":
+            return math.arccos(expr)
+        elif category == "arctan":
+            return math.arctan(expr)
         
         return expr
     
@@ -589,6 +680,22 @@ class ConfigExecutor:
         elif category == "blend":
             alpha = params.get("alpha", 0.5)
             return composite.blend(exprs[0], exprs[1], alpha)
+        elif category == "abs_max":
+            return composite.abs_max(exprs)
+        elif category == "combine":
+            return composite.combine(exprs, params.get("method", "sum"))
+        elif category == "select_top":
+            return composite.select_top(
+                exprs[0], params.get("n", 10), params.get("ascending", False)
+            )
+        elif category == "filter_positive":
+            return composite.filter_positive(exprs[0])
+        elif category == "filter_negative":
+            return composite.filter_negative(exprs[0])
+        elif category == "abs_filter":
+            return composite.abs_filter(exprs[0], params.get("threshold", 0.0))
+        elif category == "rank_sort":
+            return composite.rank_sort(exprs, params.get("weights"))
         
         return exprs[0] if exprs else pl.lit(0)
     

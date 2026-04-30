@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Dict, Any, Optional
 import yaml
 from pathlib import Path
@@ -23,6 +24,7 @@ from .types import (
     CoverageReport,
 )
 from QuantNodes.factor_node.factor_functions import list_operators as _list_operators
+from QuantNodes.factor_node.factor_functions import get_operator as _get_operator
 
 
 class ConfigLoader:
@@ -161,6 +163,13 @@ class ConfigLoader:
         # 获取所有已注册的算子名称
         all_operators = set(_list_operators())
         
+        # 已定义的列名（factors + operations 的输出）
+        defined_names = set()
+        for factor in config.factors:
+            defined_names.add(factor.name)
+        for op in config.operations:
+            defined_names.add(op.name)
+        
         # 检查因子定义
         for factor in config.factors:
             if factor.expr:
@@ -176,6 +185,31 @@ class ConfigLoader:
                 covered.append("op:%s" % category)
             else:
                 unresolved.append("op:%s" % category)
+        
+        # 检查组合因子公式
+        for comp in config.composite:
+            if not comp.formula:
+                unresolved.append("composite:%s" % comp.name)
+                continue
+            
+            covered.append("composite:%s" % comp.name)
+            
+            # 提取公式中调用的函数名
+            func_names = re.findall(r'\b([a-zA-Z_]\w*)\s*\(', comp.formula)
+            for fn in func_names:
+                if fn not in all_operators and fn not in defined_names:
+                    unresolved.append("composite:%s:unknown_func:%s" % (comp.name, fn))
+            
+            # 提取公式中引用的标识符（非函数调用的）
+            # 移除函数调用部分后，提取剩余的标识符
+            formula_no_funcs = re.sub(r'\b\w+\s*\([^)]*\)', '', comp.formula)
+            ref_names = re.findall(r'\b([a-zA-Z_]\w*)\b', formula_no_funcs)
+            for rn in ref_names:
+                # 跳过 Python 关键字和数字
+                if rn in ('true', 'false', 'null', 'and', 'or', 'not', 'None'):
+                    continue
+                if rn not in defined_names and rn not in all_operators:
+                    unresolved.append("composite:%s:unknown_ref:%s" % (comp.name, rn))
         
         return CoverageReport(covered=covered, unresolved=unresolved)
     
@@ -244,7 +278,34 @@ class ConfigLoader:
                 "commission": config.backtest.commission,
                 "slippage": config.backtest.slippage,
             }
-        
+            if config.backtest.universe != "A_stock":
+                data["backtest"]["universe"] = config.backtest.universe
+            if config.backtest.signals:
+                data["backtest"]["signals"] = config.backtest.signals
+            if config.backtest.positions:
+                data["backtest"]["positions"] = config.backtest.positions
+
+        if config.validation:
+            v = config.validation
+            data["validation"] = {
+                "run_tests": v.run_tests,
+            }
+            if v.test_files:
+                data["validation"]["test_files"] = v.test_files
+            if v.metrics:
+                data["validation"]["metrics"] = v.metrics
+            if v.custom_operators:
+                data["validation"]["custom_operators"] = v.custom_operators
+
+        if config.output:
+            data["output"] = {
+                "format": config.output.format,
+                "path": config.output.path,
+                "save_signals": config.output.save_signals,
+                "save_positions": config.output.save_positions,
+                "save_equity_curve": config.output.save_equity_curve,
+            }
+
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
 

@@ -200,7 +200,7 @@ class SectionOperators:
         if isinstance(expr, str):
             expr = pl.col(expr)
         
-        return expr.quantile(rank=expr.rank() / expr.count())
+        return expr.rank() / expr.count()
     
     @staticmethod
     def rank_ic(

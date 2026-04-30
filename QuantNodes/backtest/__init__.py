@@ -34,6 +34,8 @@ from QuantNodes.backtest.risk_node import (
     CashRiskNode,
     CompositeRiskNode,
 )
+from QuantNodes.backtest.config_strategy import ConfigStrategyNode
+from QuantNodes.backtest.config_runner import ConfigBacktestRunner
 
 __all__ = [
     'BacktestNode',
@@ -57,4 +59,6 @@ __all__ = [
     'StopLossRiskNode',
     'CashRiskNode',
     'CompositeRiskNode',
+    'ConfigStrategyNode',
+    'ConfigBacktestRunner',
 ]
