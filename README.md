@@ -210,15 +210,7 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 
 ## 致谢
 
-### QuantStudio
-
-本项目的因子计算系统设计深受 **QuantStudio** 启发。QuantStudio 是由银河证券开发的量化研究平台，提供了丰富的因子计算和回测功能。QuantNodes 在其设计模式基础上进行了重构和优化：
-
-- **因子计算范式**: 继承自 QuantStudio 的 PointOperation/TimeOperation/SectionOperation 分类体系
-- **算子注册机制**: 参考 QuantStudio 的算子组织方式，采用装饰器注册表模式实现
-- **数据预处理**: 基于 QuantStudio 的 DataPreprocessingFun 设计，移除外部依赖后自主实现
-
-QuantNodes 已完全移除对 QuantStudio 的依赖，实现了自主可控的因子计算引擎，但始终铭记其设计思想的贡献。
+本项目的因子计算系统设计深受 **QuantStudio** 启发。
 
 ### 开源社区
 
