@@ -209,12 +209,9 @@ class TestCodeSandbox(unittest.TestCase):
     def test_safe_quantnodes_code(self):
         """测试安全的 QuantNodes 代码"""
         code = """
-from QuantNodes.core import BaseNode
-from QuantNodes.factor_node import FactorNode
+from QuantNodes.factor_node import factor_functions as ff
 
-class MyFactor(FactorNode):
-    def _compute(self, input_data):
-        return input_data
+result = ff.rolling_mean("close", 20)
 """
         result = self.sandbox.validate(code)
         self.assertTrue(result.is_safe)
@@ -233,13 +230,15 @@ from QuantNodes.core import BaseNode
     def test_extract_quantnodes_usage(self):
         """测试提取 QuantNodes 使用"""
         code = """
-from QuantNodes.factor_node import FactorNode
+from QuantNodes.factor_node import factor_functions as ff
 from QuantNodes.backtest import BacktestNode
 
-node = FactorNode()
+node = BacktestNode()
+result = ff.rolling_mean("close", 20)
 """
         usage = self.sandbox.extract_quantnodes_usage(code)
         usage_types = [u.split(":")[0] for u in usage]
+        self.assertIn("module", usage_types)
         self.assertIn("node_class", usage_types)
 
     def test_validate_and_execute_safe(self):
@@ -302,9 +301,9 @@ class TestPipelineAnalyzer(unittest.TestCase):
         """测试分析简单代码"""
         analyzer = PipelineAnalyzer()
         code = """
-from QuantNodes.factor_node import FactorNode
+from QuantNodes.factor_node import factor_functions as ff
 
-factor = FactorNode(name="test")
+factor = ff.rolling_mean("close", 20)
 """
         analyses = analyzer.analyze(code)
         self.assertIsInstance(analyses, list)

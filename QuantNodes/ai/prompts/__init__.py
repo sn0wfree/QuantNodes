@@ -31,7 +31,7 @@ QuantNodes Framework Overview:
 - BaseNode: Unified node base class with execute() method
 - Pipeline: Chain nodes together using >> operator
 - DatabaseNode: Query data from various databases (SQLite, DuckDB, MySQL, ClickHouse)
-- FactorNode: Calculate financial factors (PointFactor, TimeFactor, CrossSectionFactor, PanelFactor)
+- factor_functions: 140+ Polars-based operators (rolling_mean, zscore, rank, etc.)
 - BacktestNode: Run backtesting simulations
 - OperatorNode: SQL operations and data transformations
 
@@ -40,6 +40,7 @@ Key Conventions:
 - Use >> to chain nodes in a pipeline
 - Configuration passed via config dict in constructor
 - Input/output data is typically pandas DataFrame
+- Factor computation uses factor_functions (ff) module
 
 Your task is to generate valid Python code that creates QuantNodes pipelines based on user requests.
 """
@@ -52,7 +53,7 @@ STRATEGY_GENERATION_PROMPT = PromptTemplate(
 
 Requirements:
 - Use Python code
-- Create appropriate nodes (DatabaseNode, FactorNode, BacktestNode, etc.)
+- Create appropriate nodes (DatabaseNode, BacktestNode, etc.) and use factor_functions for factor computation
 - Use the >> operator to chain nodes
 - Include necessary configuration
 

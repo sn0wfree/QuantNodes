@@ -105,13 +105,12 @@ class TestPipelineTool:
         async def _test():
             tool = PipelineTool()
             code = """import pandas as pd
-from QuantNodes.factor_node import PointFactorNode
+from QuantNodes.factor_node import factor_functions as ff
 
-factor = PointFactorNode(expression="close / open - 1")
+factor = ff.rolling_mean("close", 20)
 """
             result = await tool.execute(code=code)
             assert result["is_valid"] is True
-            assert "PointFactorNode" in result["nodes"]
 
         asyncio.run(_test())
 
@@ -151,16 +150,14 @@ df = pd.DataFrame()
     def test_multiple_nodes_extraction(self):
         async def _test():
             tool = PipelineTool()
-            code = """from QuantNodes.factor_node import PointFactorNode, RollingFactorNode
+            code = """from QuantNodes.factor_node import factor_functions as ff
 import pandas as pd
 
-f1 = PointFactorNode(expression="close")
-f2 = RollingFactorNode(expression="close")
+f1 = ff.rolling_mean("close", 20)
+f2 = ff.rolling_std("close", 20)
 """
             result = await tool.execute(code=code)
             assert result["is_valid"] is True
-            assert "PointFactorNode" in result["nodes"]
-            assert "RollingFactorNode" in result["nodes"]
 
         asyncio.run(_test())
 
@@ -279,7 +276,7 @@ class TestBacktestTool:
         async def _test():
             tool = BacktestTool()
             result = await tool.execute(
-                pipeline_code="factor = PointFactorNode(expression='close')",
+                pipeline_code="factor = ff.rolling_mean('close', 20)",
                 start_date="2021-01-01",
                 end_date="2022-12-31",
                 initial_cash=100000
@@ -433,15 +430,14 @@ class TestE2EWorkflow:
             sandbox_tool = SandboxTool()
             pipeline_tool = PipelineTool()
 
-            code = """from QuantNodes.factor_node import PointFactorNode
-factor = PointFactorNode(expression="close / open - 1")
+            code = """from QuantNodes.factor_node import factor_functions as ff
+factor = ff.rolling_mean("close", 20)
 """
             sandbox_result = await sandbox_tool.execute(code=code)
             pipeline_result = await pipeline_tool.execute(code=code)
 
             assert sandbox_result["is_safe"] is True
             assert pipeline_result["is_valid"] is True
-            assert "PointFactorNode" in pipeline_result["nodes"]
 
         asyncio.run(_test())
 

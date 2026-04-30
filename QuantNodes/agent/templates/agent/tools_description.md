@@ -48,10 +48,9 @@
 - `nodes` (list): 提取到的Node类型列表
 - `errors` (list): 错误列表
 
-**支持的Node类型**:
-- PointFactorNode
-- RollingFactorNode
-- GroupFactorNode
+**支持的因子计算方式**:
+- factor_functions 模块 (ff.rolling_mean, ff.zscore, ff.rank 等)
+- Polars 表达式
 
 ---
 
