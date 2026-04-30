@@ -116,6 +116,7 @@ class ExecutionResult:
     backtest: Optional[Dict[str, Any]] = None
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    data: Any = None  # 计算后的 LazyFrame
     
     @property
     def is_success(self) -> bool:

@@ -23,7 +23,7 @@ data:
 # 2. 因子定义
 factors:
   - name: returns_20d
-    expr: "(close / close.shift(20) - 1)"
+    expr: "close / ts_lag(close, 20) - 1"
     description: "20日收益率"
 
 # 3. 因子运算
@@ -34,7 +34,6 @@ operations:
     inputs: [returns_20d]
     params:
       window: 20
-      min_periods: 10
 
   - type: section
     name: momentum_rank
@@ -45,10 +44,6 @@ operations:
 composite:
   - name: alpha
     formula: "rank(momentum_ma)"
-    normalize: true
-    winsorize:
-      lower: 0.01
-      upper: 0.01
 
 # 5. 回测配置
 backtest:

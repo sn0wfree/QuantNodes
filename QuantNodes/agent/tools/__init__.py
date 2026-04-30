@@ -13,6 +13,7 @@ from .pipeline import PipelineTool
 from .strategy import StrategyTool
 from .backtest import BacktestTool
 from .factor import FactorTool
+from .config_backtest import ConfigBacktestTool
 
 __all__ = [
     "Tool",
@@ -24,4 +25,5 @@ __all__ = [
     "StrategyTool",
     "BacktestTool",
     "FactorTool",
+    "ConfigBacktestTool",
 ]

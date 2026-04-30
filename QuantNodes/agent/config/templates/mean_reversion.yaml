@@ -7,26 +7,39 @@ description: "均值回复策略"
 
 # 因子定义
 factors:
-  - name: close_ma_diff
-    expr: "(close - close.rolling(20).mean()) / close.rolling(20).std()"
-    description: "价格偏离度"
+  - name: close_ma
+    expr: "ts_mean(close, 20)"
+    description: "20日均线"
+
+  - name: close_std
+    expr: "ts_std(close, 20)"
+    description: "20日标准差"
 
 # 运算
 operations:
   - type: section
-    name: zscore_rank
+    name: zscore_value
+    category: zscore
+    inputs: [close_ma]
+
+  - type: section
+    name: alpha_rank
     category: rank
-    inputs: [close_ma_diff]
+    inputs: [zscore_value]
 
 # 组合
 composite:
   - name: alpha
-    formula: "-rank(close_ma_diff)"  # 负rank表示均值回复
+    formula: "-1 * alpha_rank"
 
 backtest:
   start_date: "2023-01-01"
   end_date: "2024-12-31"
   initial_cash: 1000000
+
+  signals:
+    buy_threshold: 0.05
+    sell_threshold: -0.03
 
 validation:
   run_tests: true

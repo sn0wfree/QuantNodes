@@ -45,6 +45,7 @@ class Agent:
         from .tools.strategy import StrategyTool
         from .tools.backtest import BacktestTool
         from .tools.factor import FactorTool
+        from .tools.config_backtest import ConfigBacktestTool
 
         config = config or {}
         workspace_path = Path(workspace)
@@ -59,6 +60,7 @@ class Agent:
         tool_registry.register(StrategyTool())
         tool_registry.register(BacktestTool())
         tool_registry.register(FactorTool())
+        tool_registry.register(ConfigBacktestTool())
 
         provider = self._create_provider(config)
 

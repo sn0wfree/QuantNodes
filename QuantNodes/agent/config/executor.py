@@ -7,11 +7,234 @@
 
 from __future__ import annotations
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 import polars as pl
 
 from .types import StrategyConfig, ExecutionResult
 from QuantNodes.operators import ts, sec, math, composite
+
+
+class ExprParser:
+    """递归下降表达式解析器
+    
+    支持:
+    - 简单列引用: "close"
+    - 数字字面量: "20", "3.14"
+    - 函数调用: "rolling_mean(close, 20)"
+    - 方法链: "close.rolling_mean(20)"
+    - 算术运算: "close / close.shift(20) - 1"
+    - 一元运算: "-rank(close_ma_diff)"
+    - 括号分组: "(close + volume) / 2"
+    """
+    
+    def __init__(self, executor: 'ConfigExecutor'):
+        self.executor = executor
+        self._get_operator = None
+    
+    def _lazy_import(self):
+        if self._get_operator is None:
+            from QuantNodes.factor_node.factor_functions import get_operator
+            self._get_operator = get_operator
+    
+    def parse(self, expr_str: str) -> pl.Expr:
+        """解析表达式字符串为 Polars Expr"""
+        self._pos = 0
+        self._expr = expr_str.strip()
+        result = self._parse_additive()
+        return result
+    
+    def _current(self) -> str:
+        self._skip_whitespace()
+        if self._pos >= len(self._expr):
+            return ''
+        return self._expr[self._pos]
+    
+    def _skip_whitespace(self):
+        while self._pos < len(self._expr) and self._expr[self._pos] in ' \t':
+            self._pos += 1
+    
+    def _consume(self, ch: str):
+        self._skip_whitespace()
+        if self._pos < len(self._expr) and self._expr[self._pos] == ch:
+            self._pos += 1
+        else:
+            raise ValueError(
+                f"Expected '{ch}' at position {self._pos}, "
+                f"got '{self._expr[self._pos] if self._pos < len(self._expr) else 'EOF'}'"
+            )
+    
+    def _parse_additive(self) -> pl.Expr:
+        """加减法: term (('+' | '-') term)*"""
+        left = self._parse_multiplicative()
+        
+        while self._current() in ('+', '-'):
+            op = self._current()
+            self._pos += 1
+            right = self._parse_multiplicative()
+            
+            if op == '+':
+                left = left + right
+            else:
+                left = left - right
+        
+        return left
+    
+    def _parse_multiplicative(self) -> pl.Expr:
+        """乘除法: unary (('*' | '/') unary)*"""
+        left = self._parse_unary()
+        
+        while self._current() in ('*', '/'):
+            op = self._current()
+            self._pos += 1
+            right = self._parse_unary()
+            
+            if op == '*':
+                left = left * right
+            else:
+                left = left / right
+        
+        return left
+    
+    def _parse_unary(self) -> pl.Expr:
+        """一元运算: ('-' | '+') primary | primary"""
+        if self._current() == '-':
+            self._pos += 1
+            operand = self._parse_primary()
+            return pl.lit(0) - operand
+        elif self._current() == '+':
+            self._pos += 1
+            return self._parse_primary()
+        return self._parse_primary()
+    
+    def _parse_primary(self) -> pl.Expr:
+        """主项: number | column | function_call | method_chain | '(' expr ')'"""
+        self._skip_whitespace()
+        
+        # 括号表达式
+        if self._current() == '(':
+            self._consume('(')
+            expr = self._parse_additive()
+            self._consume(')')
+            return expr
+        
+        # 数字字面量
+        if self._current().isdigit() or (self._current() == '.' and self._pos + 1 < len(self._expr) and self._expr[self._pos + 1].isdigit()):
+            return self._parse_number()
+        
+        # 标识符 (列名/函数名/方法名)
+        if self._current().isalpha() or self._current() == '_':
+            return self._parse_identifier()
+        
+        raise ValueError(f"Unexpected character '{self._current()}' at position {self._pos}")
+    
+    def _parse_number(self) -> pl.Expr:
+        """解析数字字面量"""
+        start = self._pos
+        while self._pos < len(self._expr) and (self._expr[self._pos].isdigit() or self._expr[self._pos] == '.'):
+            self._pos += 1
+        
+        num_str = self._expr[start:self._pos]
+        if '.' in num_str:
+            return pl.lit(float(num_str))
+        return pl.lit(int(num_str))
+    
+    def _parse_identifier(self) -> pl.Expr:
+        """解析标识符 (可能是列名、函数调用或方法链)"""
+        name = self._parse_name()
+        
+        self._skip_whitespace()
+        
+        # 函数调用: name(args)
+        if self._current() == '(':
+            return self._parse_func_call(name)
+        
+        # 方法链: name.method(args) 或 name.method
+        if self._current() == '.':
+            return self._parse_method_chain(name)
+        
+        # 简单列引用
+        return pl.col(name)
+    
+    def _parse_name(self) -> str:
+        """解析标识符名称"""
+        start = self._pos
+        while self._pos < len(self._expr) and (self._expr[self._pos].isalnum() or self._expr[self._pos] == '_'):
+            self._pos += 1
+        
+        if self._pos == start:
+            raise ValueError(f"Expected identifier at position {self._pos}")
+        
+        return self._expr[start:self._pos]
+    
+    def _parse_func_call(self, func_name: str) -> pl.Expr:
+        """解析函数调用: func_name(arg1, arg2, ...)"""
+        self._consume('(')
+        
+        # 读取原始参数字符串，使用 executor 的 _parse_func_args 解析
+        # 这样数字参数会返回 Python int/float，列名会返回 pl.col()
+        args_str = self._read_func_args()
+        args, kwargs = self.executor._parse_func_args(args_str)
+        
+        # 查找算子函数
+        self._lazy_import()
+        op_func = self._get_operator(func_name) if self._get_operator else None
+        
+        if op_func is not None and args:
+            # 将第一个参数转换为表达式（如果还不是的话）
+            first_arg = args[0] if isinstance(args[0], pl.Expr) else pl.col(str(args[0]))
+            rest_args = args[1:]
+            return op_func(first_arg, *rest_args, **kwargs)
+        
+        # 如果没有找到算子，尝试作为 Polars 方法
+        if args:
+            first_arg = args[0] if isinstance(args[0], pl.Expr) else pl.col(str(args[0]))
+            rest_args = args[1:]
+            return getattr(first_arg, func_name)(*rest_args, **kwargs)
+        
+        return pl.col(func_name)
+    
+    def _read_func_args(self) -> str:
+        """读取函数参数字符串（从当前位置到匹配的右括号，消耗 ')')
+        
+        注意: 此方法会消耗右括号 ')'，调用后不需要再 consume ')'
+        """
+        start = self._pos
+        depth = 1
+        while self._pos < len(self._expr) and depth > 0:
+            if self._expr[self._pos] == '(':
+                depth += 1
+            elif self._expr[self._pos] == ')':
+                depth -= 1
+            self._pos += 1
+        # 返回括号内的内容（不含两端括号）
+        return self._expr[start:self._pos - 1]
+    
+    def _parse_method_chain(self, obj_name: str) -> pl.Expr:
+        """解析方法链: obj.method(args) 或 obj.method"""
+        self._consume('.')
+        method_name = self._parse_name()
+        
+        self._skip_whitespace()
+        
+        if self._current() == '(':
+            # 方法调用: obj.method(args)
+            # 注意: _read_func_args 已经消耗了 ')'
+            args_str = self._read_func_args()
+            
+            self._lazy_import()
+            op_func = self._get_operator(method_name) if self._get_operator else None
+            
+            first_arg = pl.col(obj_name)
+            args, kwargs = self.executor._parse_func_args(args_str)
+            
+            if op_func is not None:
+                return op_func(first_arg, *args, **kwargs)
+            
+            # 回退到 Polars 原生方法
+            return getattr(first_arg, method_name)(*args, **kwargs)
+        
+        # 属性访问: obj.method (不支持，回退到列引用)
+        return pl.col(f"{obj_name}.{method_name}")
 
 
 class ConfigExecutor:
@@ -88,30 +311,39 @@ class ConfigExecutor:
         
         try:
             # 筛选日期
-            start_parts = list(map(int, bt.start_date.split("-")))
-            end_parts = list(map(int, bt.end_date.split("-")))
-            data = data.filter(
-                pl.col("date").str.to_date() >= pl.date(start_parts[0], start_parts[1], start_parts[2])
-            ).filter(
-                pl.col("date").str.to_date() <= pl.date(end_parts[0], end_parts[1], end_parts[2])
-            )
+            if bt.start_date:
+                start_parts = list(map(int, bt.start_date.split("-")))
+                data = data.filter(
+                    pl.col("date").str.to_date() >= pl.date(start_parts[0], start_parts[1], start_parts[2])
+                )
+            if bt.end_date:
+                end_parts = list(map(int, bt.end_date.split("-")))
+                data = data.filter(
+                    pl.col("date").str.to_date() <= pl.date(end_parts[0], end_parts[1], end_parts[2])
+                )
             
             # 计算信号 (取最后一个因子作为信号)
-            signal_name = config.composite[-1].name if config.composite else \
-                       config.operations[-1].name if config.operations else \
-                       config.factors[-1].name if config.factors else None
+            signal_name = None
+            if config.composite:
+                signal_name = config.composite[-1].name
+            elif config.operations:
+                signal_name = config.operations[-1].name
+            elif config.factors:
+                signal_name = config.factors[-1].name
             
-            if signal_name:
+            if signal_name is not None:
                 expr = self._expressions.get(signal_name)
-                if expr:
-                    # 使用配置中的信号阈值，或使用默认值
-                    long_threshold = bt.signals.get("long_threshold", 0.05)
-                    short_threshold = bt.signals.get("short_threshold", -0.03)
+                if expr is not None:
+                    # 兼容两种阈值命名
+                    buy_threshold = bt.signals.get("buy_threshold",
+                                   bt.signals.get("long_threshold", 0.05))
+                    sell_threshold = bt.signals.get("sell_threshold",
+                                    bt.signals.get("short_threshold", -0.03))
                     
                     # 生成交易信号
                     data = data.with_columns([
-                        pl.when(expr > long_threshold).then(1)
-                        .when(expr < short_threshold).then(-1)
+                        pl.when(expr > buy_threshold).then(1)
+                        .when(expr < sell_threshold).then(-1)
                         .otherwise(0).alias("signal")
                     ])
                     
@@ -123,7 +355,9 @@ class ConfigExecutor:
                             "initial_cash": bt.initial_cash,
                             "commission": bt.commission,
                             "slippage": bt.slippage,
-                        }
+                        },
+                        "buy_threshold": buy_threshold,
+                        "sell_threshold": sell_threshold,
                     }
         except Exception as e:
             result.warnings.append(f"回测配置解析警告: {str(e)}")
@@ -133,54 +367,18 @@ class ConfigExecutor:
     def _parse_expr(self, expr_str: str) -> pl.Expr:
         """解析表达式字符串
         
-        支持格式:
+        使用递归下降解析器，支持:
         - 简单列引用: "close"
         - 函数调用: "rolling_mean(close, 20)"
         - 方法链: "close.rolling_mean(20)"
-        - 组合: "rolling_mean(close, 20) + volume"
+        - 算术运算: "close / close.shift(20) - 1"
+        - 一元运算: "-rank(close_ma_diff)"
+        - 括号分组: "(close + volume) / 2"
         """
-        import re
-        from QuantNodes.factor_node.factor_functions import get_operator
-        
-        expr_str = expr_str.strip()
-        
-        # 尝试作为简单列引用
-        if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', expr_str):
-            return pl.col(expr_str)
-        
-        # 尝试匹配函数调用模式: func_name(arg1, arg2, ...)
-        func_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\((.+)\)$', expr_str, re.DOTALL)
-        if func_match:
-            func_name = func_match.group(1)
-            args_str = func_match.group(2)
-            
-            # 查找算子函数
-            op_func = get_operator(func_name)
-            if op_func is not None:
-                # 解析参数
-                args, kwargs = self._parse_func_args(args_str)
-                # 将第一个参数作为表达式
-                if args:
-                    first_arg = self._parse_expr(args[0])
-                    return op_func(first_arg, **kwargs)
-        
-        # 尝试匹配方法链模式: expr.method(args)
-        method_match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*)\.([a-zA-Z_][a-zA-Z0-9_]*)\((.+)\)$', expr_str, re.DOTALL)
-        if method_match:
-            col_name = method_match.group(1)
-            method_name = method_match.group(2)
-            args_str = method_match.group(3)
-            
-            op_func = get_operator(method_name)
-            if op_func is not None:
-                first_arg = pl.col(col_name)
-                args, kwargs = self._parse_func_args(args_str)
-                return op_func(first_arg, **kwargs)
-        
-        # 回退到简单列引用
-        return pl.col(expr_str)
+        parser = ExprParser(self)
+        return parser.parse(expr_str)
     
-    def _parse_func_args(self, args_str: str):
+    def _parse_func_args(self, args_str: str) -> Tuple[List, Dict]:
         """解析函数参数字符串
         
         Returns:
@@ -194,7 +392,7 @@ class ConfigExecutor:
         if not args_str.strip():
             return positional, keyword
         
-        # 简单分割（不处理嵌套括号）
+        # 处理嵌套括号的分割
         parts = []
         depth = 0
         current = ""
@@ -226,20 +424,34 @@ class ConfigExecutor:
         return positional, keyword
     
     def _parse_value(self, value_str: str):
-        """解析单个值"""
-        # 尝试解析为数字
-        try:
-            return int(value_str)
-        except ValueError:
-            pass
-        try:
-            return float(value_str)
-        except ValueError:
-            pass
+        """解析单个值
+        
+        注意: 对于数字，返回 Python 原生类型（int/float），
+        而不是 Polars 表达式。这是为了正确传递参数给算子函数。
+        """
+        value_str = value_str.strip()
+        
         # 去除引号
         if (value_str.startswith('"') and value_str.endswith('"')) or \
            (value_str.startswith("'") and value_str.endswith("'")):
             return value_str[1:-1]
+        
+        # 尝试解析为整数
+        try:
+            return int(value_str)
+        except ValueError:
+            pass
+        
+        # 尝试解析为浮点数
+        try:
+            return float(value_str)
+        except ValueError:
+            pass
+        
+        # 纯数字字符串（可能是字符串格式的数字）
+        if value_str.isdigit():
+            return int(value_str)
+        
         # 尝试作为列引用
         return pl.col(value_str)
     
@@ -299,7 +511,7 @@ class ConfigExecutor:
         elif category == "ts_pct_change":
             return ts.ts_pct_change(expr, params.get("periods", 1))
         elif category == "ts_corr":
-            return expr  # 需要第二个输入
+            return expr
         elif category == "ts_lag":
             return ts.ts_lag(expr, params.get("periods", 1))
         
@@ -385,14 +597,23 @@ class ConfigExecutor:
         data: pl.LazyFrame,
         result: ExecutionResult
     ) -> None:
-        """执行计算计划"""
-        # 收集需要计算的列
-        select_cols = []
-        for name, expr in self._expressions.items():
-            select_cols.append(expr.alias(name))
+        """执行计算计划
         
-        if select_cols:
-            result.data = data.select(select_cols)
+        保留原始列 (date, code, close等) 并添加计算的因子列。
+        """
+        # 保留原始列
+        original_col_names = data.collect_schema().names()
+        original_cols = [pl.col(c) for c in original_col_names]
+        
+        # 添加计算的因子列
+        computed_cols = []
+        for name, expr in self._expressions.items():
+            computed_cols.append(expr.alias(name))
+        
+        if computed_cols:
+            result.data = data.select(original_cols + computed_cols)
+        else:
+            result.data = data
     
     def get_expressions(self) -> Dict[str, pl.Expr]:
         """获取生成的表达式"""
