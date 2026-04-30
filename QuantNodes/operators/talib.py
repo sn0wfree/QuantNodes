@@ -21,9 +21,8 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple
 
-import numpy as np
 import polars as pl
 from polars import Expr
 
@@ -155,7 +154,6 @@ class TaLibOperators:
         """移动平均变动周期 (MA with Variable Period)"""
         import talib
         e = _ensure_expr(expr)
-        p = _ensure_expr(periods)
         return e.map_batches(
             lambda s: pl.Series(talib.MAVP(s.to_numpy(), s.to_numpy(), minperiod=minperiod, maxperiod=maxperiod)),
             return_dtype=pl.Float64,
@@ -1173,6 +1171,782 @@ class TaLibOperators:
         return e.map_batches(
             lambda s: pl.Series(talib.HT_TRENDMODE(s.to_numpy())),
             return_dtype=pl.Float64,
+        )
+
+
+    # ======================================================================
+    # Math Operators (数学运算)
+    # ======================================================================
+
+    @staticmethod
+    def acos(expr: Union[Expr, str]) -> Expr:
+        """反余弦 (Inverse Cosine)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.ACOS(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def asin(expr: Union[Expr, str]) -> Expr:
+        """反正弦 (Inverse Sine)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.ASIN(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def atan(expr: Union[Expr, str]) -> Expr:
+        """反正切 (Inverse Tangent)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.ATAN(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def cos(expr: Union[Expr, str]) -> Expr:
+        """余弦 (Cosine)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.COS(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def cosh(expr: Union[Expr, str]) -> Expr:
+        """双曲余弦 (Hyperbolic Cosine)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.COSH(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def sin(expr: Union[Expr, str]) -> Expr:
+        """正弦 (Sine)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.SIN(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def sinh(expr: Union[Expr, str]) -> Expr:
+        """双曲正弦 (Hyperbolic Sine)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.SINH(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def sqrt(expr: Union[Expr, str]) -> Expr:
+        """平方根 (Square Root)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.SQRT(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def tan(expr: Union[Expr, str]) -> Expr:
+        """正切 (Tangent)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.TAN(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def tanh(expr: Union[Expr, str]) -> Expr:
+        """双曲正切 (Hyperbolic Tangent)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.TANH(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def exp(expr: Union[Expr, str]) -> Expr:
+        """指数函数 (Exponential)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.EXP(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def ln(expr: Union[Expr, str]) -> Expr:
+        """自然对数 (Natural Logarithm)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.LN(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def log10(expr: Union[Expr, str]) -> Expr:
+        """常用对数 (Base-10 Logarithm)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.LOG10(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def ceil(expr: Union[Expr, str]) -> Expr:
+        """向上取整 (Ceiling)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.CEIL(s.to_numpy())), return_dtype=pl.Float64)
+
+    @staticmethod
+    def floor(expr: Union[Expr, str]) -> Expr:
+        """向下取整 (Floor)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(lambda s: pl.Series(talib.FLOOR(s.to_numpy())), return_dtype=pl.Float64)
+
+    # ======================================================================
+    # Arithmetic Operators (算术运算)
+    # ======================================================================
+
+    @staticmethod
+    def add(expr_a: Union[Expr, str], expr_b: Union[Expr, str]) -> Expr:
+        """加法 (Addition)"""
+        import talib
+        a = _ensure_expr(expr_a)
+        return a.map_batches(
+            lambda s: pl.Series(talib.ADD(s.to_numpy(), _ensure_expr(expr_b).to_frame().to_numpy().flatten())),
+            return_dtype=pl.Float64,
+        )
+
+    @staticmethod
+    def sub(expr_a: Union[Expr, str], expr_b: Union[Expr, str]) -> Expr:
+        """减法 (Subtraction)"""
+        import talib
+        a = _ensure_expr(expr_a)
+        return a.map_batches(
+            lambda s: pl.Series(talib.SUB(s.to_numpy(), _ensure_expr(expr_b).to_frame().to_numpy().flatten())),
+            return_dtype=pl.Float64,
+        )
+
+    @staticmethod
+    def mult(expr_a: Union[Expr, str], expr_b: Union[Expr, str]) -> Expr:
+        """乘法 (Multiplication)"""
+        import talib
+        a = _ensure_expr(expr_a)
+        return a.map_batches(
+            lambda s: pl.Series(talib.MULT(s.to_numpy(), _ensure_expr(expr_b).to_frame().to_numpy().flatten())),
+            return_dtype=pl.Float64,
+        )
+
+    @staticmethod
+    def div(expr_a: Union[Expr, str], expr_b: Union[Expr, str]) -> Expr:
+        """除法 (Division)"""
+        import talib
+        a = _ensure_expr(expr_a)
+        return a.map_batches(
+            lambda s: pl.Series(talib.DIV(s.to_numpy(), _ensure_expr(expr_b).to_frame().to_numpy().flatten())),
+            return_dtype=pl.Float64,
+        )
+
+    # ======================================================================
+    # Aggregation / Min / Max (聚合/极值)
+    # ======================================================================
+
+    @staticmethod
+    def max(expr: Union[Expr, str], timeperiod: int = 30) -> Expr:
+        """滚动最大值 (Rolling Maximum)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.MAX(s.to_numpy(), timeperiod=timeperiod)),
+            return_dtype=pl.Float64,
+        )
+
+    @staticmethod
+    def min(expr: Union[Expr, str], timeperiod: int = 30) -> Expr:
+        """滚动最小值 (Rolling Minimum)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.MIN(s.to_numpy(), timeperiod=timeperiod)),
+            return_dtype=pl.Float64,
+        )
+
+    @staticmethod
+    def sum(expr: Union[Expr, str], timeperiod: int = 30) -> Expr:
+        """滚动求和 (Rolling Sum)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.SUM(s.to_numpy(), timeperiod=timeperiod)),
+            return_dtype=pl.Float64,
+        )
+
+    @staticmethod
+    def maxindex(expr: Union[Expr, str], timeperiod: int = 30) -> Expr:
+        """滚动最大值位置 (Rolling Maximum Index)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.MAXINDEX(s.to_numpy(), timeperiod=timeperiod)),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def minindex(expr: Union[Expr, str], timeperiod: int = 30) -> Expr:
+        """滚动最小值位置 (Rolling Minimum Index)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.MININDEX(s.to_numpy(), timeperiod=timeperiod)),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def minmax(expr: Union[Expr, str], timeperiod: int = 30) -> Tuple[Expr, Expr]:
+        """滚动最小/最大值 — 返回 (min, max)"""
+        import talib
+        e = _ensure_expr(expr)
+        return (
+            e.map_batches(lambda s: pl.Series(talib.MINMAX(s.to_numpy(), timeperiod=timeperiod)[0]), return_dtype=pl.Float64),
+            e.map_batches(lambda s: pl.Series(talib.MINMAX(s.to_numpy(), timeperiod=timeperiod)[1]), return_dtype=pl.Float64),
+        )
+
+    @staticmethod
+    def minmaxindex(expr: Union[Expr, str], timeperiod: int = 30) -> Tuple[Expr, Expr]:
+        """滚动最小/最大值位置 — 返回 (min_index, max_index)"""
+        import talib
+        e = _ensure_expr(expr)
+        return (
+            e.map_batches(lambda s: pl.Series(talib.MINMAXINDEX(s.to_numpy(), timeperiod=timeperiod)[0]), return_dtype=pl.Int32),
+            e.map_batches(lambda s: pl.Series(talib.MINMAXINDEX(s.to_numpy(), timeperiod=timeperiod)[1]), return_dtype=pl.Int32),
+        )
+
+    @staticmethod
+    def avgdev(expr: Union[Expr, str], timeperiod: int = 30) -> Expr:
+        """平均绝对偏差 (Average Deviation)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.AVGDEV(s.to_numpy(), timeperiod=timeperiod)),
+            return_dtype=pl.Float64,
+        )
+
+    # ======================================================================
+    # Other Indicators (其他指标)
+    # ======================================================================
+
+    @staticmethod
+    def sarext(expr: Union[Expr, str], high_col: str = "high", low_col: str = "low",
+               startvalue: float = 0.0, offsetonreverse: float = 0.0,
+               accelerationinitlong: float = 0.02, accelerationlong: float = 0.02,
+               accelerationmaxlong: float = 0.2, accelerationinitshort: float = 0.02,
+               accelerationshort: float = 0.02, accelerationmaxshort: float = 0.2) -> Expr:
+        """扩展抛物线 SAR (Parabolic SAR - Extended)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.SAREXT(s.to_numpy(), s.to_numpy(),
+                startvalue=startvalue, offsetonreverse=offsetonreverse,
+                accelerationinitlong=accelerationinitlong, accelerationlong=accelerationlong,
+                accelerationmaxlong=accelerationmaxlong, accelerationinitshort=accelerationinitshort,
+                accelerationshort=accelerationshort, accelerationmaxshort=accelerationmaxshort)),
+            return_dtype=pl.Float64,
+        )
+
+    @staticmethod
+    def accbands(expr: Union[Expr, str], high_col: str = "high", low_col: str = "low",
+                 timeperiod: int = 20) -> Expr:
+        """加速带 (Acceleration Bands) — 返回上轨"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.ACCBANDS(s.to_numpy(), s.to_numpy(), s.to_numpy(), timeperiod=timeperiod)[0]),
+            return_dtype=pl.Float64,
+        )
+
+    @staticmethod
+    def accbands_upper(expr: Union[Expr, str], high_col: str = "high", low_col: str = "low",
+                       timeperiod: int = 20) -> Expr:
+        """加速带上轨"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.ACCBANDS(s.to_numpy(), s.to_numpy(), s.to_numpy(), timeperiod=timeperiod)[0]),
+            return_dtype=pl.Float64,
+        )
+
+    @staticmethod
+    def imi(expr: Union[Expr, str], high_col: str = "high", low_col: str = "low") -> Expr:
+        """日本蜡烛图: 身体指标 (Japanese Candlestick: Body Size)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.IMI(s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Float64,
+        )
+
+    # ======================================================================
+    # Remaining Candlestick Patterns (剩余K线形态)
+    # ======================================================================
+
+    @staticmethod
+    def cdl_2crows(expr: Union[Expr, str], **kwargs) -> Expr:
+        """两只乌鸦 (Two Crows)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDL2CROWS(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_3inside(expr: Union[Expr, str], **kwargs) -> Expr:
+        """三内部上涨/下跌 (Three Inside Up/Down)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDL3INSIDE(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_3linestrike(expr: Union[Expr, str], **kwargs) -> Expr:
+        """三线打击 (Three Line Strike)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDL3LINESTRIKE(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_3outside(expr: Union[Expr, str], **kwargs) -> Expr:
+        """三外部上涨/下跌 (Three Outside Up/Down)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDL3OUTSIDE(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_3starsinsouth(expr: Union[Expr, str], **kwargs) -> Expr:
+        """南方三星 (Three Stars In The South)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDL3STARSINSOUTH(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_abandonedbaby(expr: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """弃婴 (Abandoned Baby)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLABANDONEDBABY(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy(), penetration=penetration)),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_advanceblock(expr: Union[Expr, str], **kwargs) -> Expr:
+        """大敌当前 (Advance Block)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLADVANCEBLOCK(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_belthold(expr: Union[Expr, str], **kwargs) -> Expr:
+        """腰带线 (Belt-hold)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLBELTHOLD(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_breakaway(expr: Union[Expr, str], **kwargs) -> Expr:
+        """脱离 (Breakaway)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLBREAKAWAY(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_closingmarubozu(expr: Union[Expr, str], **kwargs) -> Expr:
+        """收盘光头光脚阴线 (Closing Marubozu)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLCLOSINGMARUBOZU(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_concealbabyswall(expr: Union[Expr, str], **kwargs) -> Expr:
+        """藏婴吞没 (Concealing Baby Swallow)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLCONCEALBABYSWALL(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_counterattack(expr: Union[Expr, str], **kwargs) -> Expr:
+        """反击线 (Counterattack)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLCOUNTERATTACK(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_dojistar(expr: Union[Expr, str], **kwargs) -> Expr:
+        """十字孕线 (Doji Star)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLDOJISTAR(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_dragonflydoji(expr: Union[Expr, str], **kwargs) -> Expr:
+        """蜻蜓十字 (Dragonfly Doji)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLDRAGONFLYDOJI(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_eveningdojistar(expr: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """十字暮星 (Evening Doji Star)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLEVENINGDOJISTAR(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy(), penetration=penetration)),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_gapsidesidewhite(expr: Union[Expr, str], **kwargs) -> Expr:
+        """向上跳空并列阳线 (Up/Down Gap Two Crows / Side-by-Side White Lines)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLGAPSIDESIDEWHITE(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_gravestonedoji(expr: Union[Expr, str], **kwargs) -> Expr:
+        """墓碑十字 (Gravestone Doji)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLGRAVESTONEDOJI(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_haramicross(expr: Union[Expr, str], **kwargs) -> Expr:
+        """十字孕线形态 (Harami Cross)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLHARAMICROSS(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_highwave(expr: Union[Expr, str], **kwargs) -> Expr:
+        """长影线 (High Wave)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLHIGHWAVE(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_hikkake(expr: Union[Expr, str], **kwargs) -> Expr:
+        """伪装 (Hikkake Pattern)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLHIKKAKE(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_hikkakemod(expr: Union[Expr, str], **kwargs) -> Expr:
+        """修正伪装 (Modified Hikkake Pattern)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLHIKKAKEMOD(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_homingpigeon(expr: Union[Expr, str], **kwargs) -> Expr:
+        """归巢鸽 (Homing Pigeon)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLHOMINGPIGEON(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_identical3crows(expr: Union[Expr, str], **kwargs) -> Expr:
+        """相同三乌鸦 (Identical Three Crows)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLIDENTICAL3CROWS(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_inneck(expr: Union[Expr, str], **kwargs) -> Expr:
+        """颈部线 (In-Neck Pattern)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLINNECK(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_invertedhammer(expr: Union[Expr, str], **kwargs) -> Expr:
+        """倒锤子线 (Inverted Hammer)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLINVERTEDHAMMER(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_kicking(expr: Union[Expr, str], **kwargs) -> Expr:
+        """踢出 (Kicking)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLKICKING(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_kickingbylength(expr: Union[Expr, str], **kwargs) -> Expr:
+        """踢出按长度 (Kicking - long leg)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLKICKINGBYLENGTH(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_ladderbottom(expr: Union[Expr, str], **kwargs) -> Expr:
+        """梯底 (Ladder Bottom)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLLADDERBOTTOM(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_longleggeddoji(expr: Union[Expr, str], **kwargs) -> Expr:
+        """长腿十字 (Long Legged Doji)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLLONGLEGGEDDOJI(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_longline(expr: Union[Expr, str], **kwargs) -> Expr:
+        """长线 (Long Line)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLLONGLINE(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_marubozu(expr: Union[Expr, str], **kwargs) -> Expr:
+        """光头光脚阳线/阴线 (Marubozu)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLMARUBOZU(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_matchinglow(expr: Union[Expr, str], **kwargs) -> Expr:
+        """相同低价 (Matching Low)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLMATCHINGLOW(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_mathold(expr: Union[Expr, str], penetration: float = 0.5, **kwargs) -> Expr:
+        """持有一线 (Mat Hold)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLMATHOLD(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy(), penetration=penetration)),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_morningdojistar(expr: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """十字晨星 (Morning Doji Star)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLMORNINGDOJISTAR(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy(), penetration=penetration)),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_onneck(expr: Union[Expr, str], **kwargs) -> Expr:
+        """颈部线 (On-Neck Pattern)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLONNECK(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_rickshawman(expr: Union[Expr, str], **kwargs) -> Expr:
+        """黄包车夫 (Rickshaw Man)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLRICKSHAWMAN(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_risefall3methods(expr: Union[Expr, str], **kwargs) -> Expr:
+        """上升/下降三法 (Rising Three Methods / Falling Three Methods)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLRISEFALL3METHODS(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_separatinglines(expr: Union[Expr, str], **kwargs) -> Expr:
+        """分离线 (Separating Lines)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLSEPARATINGLINES(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_shortline(expr: Union[Expr, str], **kwargs) -> Expr:
+        """短线 (Short Line)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLSHORTLINE(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_stalledpattern(expr: Union[Expr, str], **kwargs) -> Expr:
+        """受阻形态 (Stalled Pattern)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLSTALLEDPATTERN(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_sticksandwich(expr: Union[Expr, str], **kwargs) -> Expr:
+        """三明治形态 (Stick Sandwich)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLSTICKSANDWICH(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_takuri(expr: Union[Expr, str], **kwargs) -> Expr:
+        """探水竿 (Takuri Line)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLTAKURI(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_tasukigap(expr: Union[Expr, str], **kwargs) -> Expr:
+        """跳空并列阴阳线 (Tasuki Gap)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLTASUKIGAP(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_thrusting(expr: Union[Expr, str], **kwargs) -> Expr:
+        """插入线 (Thrusting Pattern)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLTHRUSTING(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_tristar(expr: Union[Expr, str], **kwargs) -> Expr:
+        """三星 (Tristar Pattern)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLTRISTAR(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_uniqueriver(expr: Union[Expr, str], **kwargs) -> Expr:
+        """独特三河底 (Unique 3 River)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLUNIQUE3RIVER(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_upsidegap2crows(expr: Union[Expr, str], **kwargs) -> Expr:
+        """向上跳空两只乌鸦 (Upside Gap Two Crows)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLUPSIDEGAP2CROWS(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
+        )
+
+    @staticmethod
+    def cdl_xsidegap3methods(expr: Union[Expr, str], **kwargs) -> Expr:
+        """向上/向下跳空三法 (Upside/Downside Gap Three Methods)"""
+        import talib
+        e = _ensure_expr(expr)
+        return e.map_batches(
+            lambda s: pl.Series(talib.CDLXSIDEGAP3METHODS(s.to_numpy(), s.to_numpy(), s.to_numpy(), s.to_numpy())),
+            return_dtype=pl.Int32,
         )
 
 
