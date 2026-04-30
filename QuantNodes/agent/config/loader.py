@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import re
+import importlib.util
+import warnings
 from typing import Dict, Any, Optional
 import yaml
 from pathlib import Path
@@ -25,6 +27,14 @@ from .types import (
 )
 from QuantNodes.factor_node.factor_functions import list_operators as _list_operators
 from QuantNodes.factor_node.factor_functions import get_operator as _get_operator
+
+# executor category → registry category 映射
+_CATEGORY_MAP = {
+    "time_series": "time",
+    "section": "section",
+    "math": "point",
+    "composite": "point",
+}
 
 
 class ConfigLoader:
@@ -146,10 +156,62 @@ class ConfigLoader:
         
         return config
     
+    def _preload_custom_operators(self, custom_operators: list) -> None:
+        """预加载自定义算子到 registry
+        
+        在 check_coverage 之前调用，确保自定义算子被识别。
+        
+        Args:
+            custom_operators: ValidationConfig.custom_operators 列表
+        """
+        if not custom_operators:
+            return
+        
+        from QuantNodes.factor_node.factor_functions import register_operator
+        
+        for entry in custom_operators:
+            if isinstance(entry, str):
+                source_path = entry
+                category = "point"
+                functions = None
+            else:
+                source_path = entry.get("source", "")
+                category = entry.get("category", "point")
+                functions = entry.get("functions")
+            
+            if not source_path:
+                continue
+            
+            try:
+                spec = importlib.util.spec_from_file_location("custom_ops", source_path)
+                if spec is None or spec.loader is None:
+                    warnings.warn(f"无法加载自定义算子文件: {source_path}")
+                    continue
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            except Exception as e:
+                warnings.warn(f"加载自定义算子文件失败 {source_path}: {e}")
+                continue
+            
+            for name in dir(module):
+                if name.startswith("_"):
+                    continue
+                if functions and name not in functions:
+                    continue
+                if not functions and not name.startswith("custom_"):
+                    continue
+                
+                func = getattr(module, name)
+                if not callable(func):
+                    continue
+                
+                register_operator(_CATEGORY_MAP.get(category, "point"), name=name)(func)
+    
     def check_coverage(self, config: StrategyConfig) -> CoverageReport:
         """检查配置覆盖度
         
         使用 factor_functions 的真实注册表检查算子是否存在。
+        会先加载 custom_operators 以确保自定义算子被识别。
         
         Args:
             config: 策略配置
@@ -157,6 +219,9 @@ class ConfigLoader:
         Returns:
             CoverageReport 对象
         """
+        # 预加载自定义算子
+        self._preload_custom_operators(config.validation.custom_operators)
+        
         covered = []
         unresolved = []
         

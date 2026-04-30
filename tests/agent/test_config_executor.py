@@ -1016,3 +1016,235 @@ class TestCompositeOperatorsExtended:
         ], ops)
         assert result.status == "success"
         assert "c_ws" in result.factors
+
+
+class TestOperatorFallback:
+    """通用 fallback 测试 - 验证未硬编码的 registry 算子可通过 OperationConfig 使用"""
+
+    def _make_data(self):
+        return pl.LazyFrame({
+            "date": ["2024-01-01"] * 5,
+            "code": ["A"] * 5,
+            "close": [100.0, 102.0, 101.0, 103.0, 105.0],
+            "volume": [1000, 1200, 1100, 1300, 1400],
+        })
+
+    def test_fallback_rolling_quantile(self):
+        """rolling_quantile 不在硬编码 dispatch 中，应通过 fallback 从 registry 查找"""
+        executor = ConfigExecutor()
+        config = StrategyConfig(
+            name="test",
+            operations=[
+                OperationConfig(
+                    type="time_series", name="rq",
+                    category="rolling_quantile", inputs=["close"],
+                    params={"window": 3, "quantile": 0.5}
+                )
+            ]
+        )
+        result = executor.run(config, self._make_data())
+        assert result.status == "success"
+        assert "rq" in result.factors
+
+    def test_fallback_expanding_sum(self):
+        """expanding_sum 不在硬编码 dispatch 中，应通过 fallback 工作"""
+        executor = ConfigExecutor()
+        config = StrategyConfig(
+            name="test",
+            operations=[
+                OperationConfig(
+                    type="time_series", name="es",
+                    category="expanding_sum", inputs=["close"],
+                    params={}
+                )
+            ]
+        )
+        result = executor.run(config, self._make_data())
+        assert result.status == "success"
+        assert "es" in result.factors
+
+    def test_fallback_preserves_hardcoded_priority(self):
+        """硬编码 dispatch 应优先于 fallback"""
+        executor = ConfigExecutor()
+        config = StrategyConfig(
+            name="test",
+            operations=[
+                OperationConfig(
+                    type="time_series", name="ts_mean_val",
+                    category="ts_mean", inputs=["close"],
+                    params={"window": 3}
+                )
+            ]
+        )
+        result = executor.run(config, self._make_data())
+        assert result.status == "success"
+        assert "ts_mean_val" in result.factors
+
+    def test_unknown_operator_returns_input(self):
+        """完全未知的算子应返回原始输入"""
+        executor = ConfigExecutor()
+        config = StrategyConfig(
+            name="test",
+            operations=[
+                OperationConfig(
+                    type="time_series", name="unknown",
+                    category="totally_unknown_op_xyz", inputs=["close"],
+                    params={}
+                )
+            ]
+        )
+        result = executor.run(config, self._make_data())
+        assert result.status == "success"
+        assert "unknown" in result.factors
+
+
+class TestCustomOperatorsLoading:
+    """自定义算子加载测试"""
+
+    def _make_data(self):
+        return pl.LazyFrame({
+            "date": ["2024-01-01"] * 3,
+            "code": ["A"] * 3,
+            "close": [100.0, 102.0, 101.0],
+        })
+
+    def test_load_custom_ops_simple_format(self, tmp_path):
+        """简单格式: str 路径，自动发现 custom_* 函数"""
+        # 创建自定义算子文件
+        custom_file = tmp_path / "my_ops.py"
+        custom_file.write_text("""
+import polars as pl
+
+def custom_double(f, **kwargs):
+    return f * 2
+
+def custom_triple(f, **kwargs):
+    return f * 3
+
+def not_custom_func(f, **kwargs):
+    return f
+""")
+
+        executor = ConfigExecutor()
+        executor._load_custom_operators([str(custom_file)])
+
+        config = StrategyConfig(
+            name="test",
+            operations=[
+                OperationConfig(
+                    type="math", name="doubled", category="custom_double",
+                    inputs=["close"], params={}
+                )
+            ]
+        )
+        result = executor.run(config, self._make_data())
+        assert result.status == "success"
+        assert "doubled" in result.factors
+
+    def test_load_custom_ops_dict_format(self, tmp_path):
+        """详细格式: dict 指定 category 和 functions"""
+        custom_file = tmp_path / "my_ts_ops.py"
+        custom_file.write_text("""
+import polars as pl
+
+def custom_rolling_mean(f, window=5, **kwargs):
+    return f.rolling_mean(window)
+
+def unused_func(f, **kwargs):
+    return f
+""")
+
+        executor = ConfigExecutor()
+        executor._load_custom_operators([{
+            "source": str(custom_file),
+            "category": "time_series",
+            "functions": ["custom_rolling_mean"],
+        }])
+
+        config = StrategyConfig(
+            name="test",
+            operations=[
+                OperationConfig(
+                    type="time_series", name="crm",
+                    category="custom_rolling_mean", inputs=["close"],
+                    params={"window": 3}
+                )
+            ]
+        )
+        result = executor.run(config, self._make_data())
+        assert result.status == "success"
+        assert "crm" in result.factors
+
+    def test_custom_ops_file_not_found(self, tmp_path):
+        """文件不存在时应打印警告，不崩溃"""
+        executor = ConfigExecutor()
+        executor._load_custom_operators(["/nonexistent/path.py"])
+
+        config = StrategyConfig(
+            name="test",
+            factors=[FactorConfig(name="ret", expr="close / 100")],
+        )
+        result = executor.run(config, self._make_data())
+        assert result.status == "success"
+
+    def test_custom_ops_category_routing(self, tmp_path):
+        """自定义算子按指定 category 路由到正确 dispatch"""
+        custom_file = tmp_path / "section_ops.py"
+        custom_file.write_text("""
+import polars as pl
+
+def custom_rank(f, **kwargs):
+    return f.rank()
+""")
+
+        executor = ConfigExecutor()
+        executor._load_custom_operators([{
+            "source": str(custom_file),
+            "category": "section",
+        }])
+
+        config = StrategyConfig(
+            name="test",
+            operations=[
+                OperationConfig(
+                    type="section", name="cr",
+                    category="custom_rank", inputs=["close"],
+                    params={}
+                )
+            ]
+        )
+        result = executor.run(config, self._make_data())
+        assert result.status == "success"
+        assert "cr" in result.factors
+
+
+class TestCheckCoverageWithCustomOps:
+    """check_coverage 集成 custom_operators 测试"""
+
+    def test_custom_ops_recognized_in_coverage(self, tmp_path):
+        from QuantNodes.agent.config.loader import ConfigLoader
+
+        custom_file = tmp_path / "my_ops.py"
+        custom_file.write_text("""
+def custom_momentum(f, window=10, **kwargs):
+    return f / f.shift(window) - 1
+""")
+
+        config = StrategyConfig(
+            name="test",
+            factors=[FactorConfig(name="ret", expr="close / open - 1")],
+            operations=[
+                OperationConfig(
+                    type="time_series", name="mom",
+                    category="custom_momentum", inputs=["close"],
+                    params={"window": 10}
+                )
+            ],
+            validation=ValidationConfig(
+                custom_operators=[str(custom_file)]
+            ),
+        )
+
+        loader = ConfigLoader()
+        report = loader.check_coverage(config)
+        assert report.is_complete

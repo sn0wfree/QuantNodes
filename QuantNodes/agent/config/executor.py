@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+import warnings
 from typing import Dict, Any, Optional, List, Tuple
 import polars as pl
 
@@ -240,9 +242,78 @@ class ExprParser:
 class ConfigExecutor:
     """配置执行器"""
     
+    # executor category → registry category 映射
+    _CATEGORY_MAP = {
+        "time_series": "time",
+        "section": "section",
+        "math": "point",
+        "composite": "point",
+    }
+    
     def __init__(self):
         self._expressions: Dict[str, pl.Expr] = {}
         self._cache: Dict[str, Any] = {}
+    
+    def _load_custom_operators(self, custom_operators: List) -> None:
+        """加载自定义算子
+        
+        支持两种配置格式:
+        - str: 文件路径，自动发现 custom_* 函数，注册到 point 分类
+        - dict: {source, category, functions} 显式指定分类和函数列表
+        
+        Args:
+            custom_operators: ValidationConfig.custom_operators 列表
+        """
+        if not custom_operators:
+            return
+        
+        from QuantNodes.factor_node.factor_functions import register_operator
+        
+        for entry in custom_operators:
+            # 解析配置
+            if isinstance(entry, str):
+                source_path = entry
+                category = "point"
+                functions = None
+            else:
+                source_path = entry.get("source", "")
+                category = entry.get("category", "point")
+                functions = entry.get("functions")
+            
+            if not source_path:
+                continue
+            
+            # importlib 动态加载
+            try:
+                spec = importlib.util.spec_from_file_location("custom_ops", source_path)
+                if spec is None or spec.loader is None:
+                    warnings.warn(f"无法加载自定义算子文件: {source_path}")
+                    continue
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            except Exception as e:
+                warnings.warn(f"加载自定义算子文件失败 {source_path}: {e}")
+                continue
+            
+            # 注册算子
+            registered = 0
+            for name in dir(module):
+                if name.startswith("_"):
+                    continue
+                if functions and name not in functions:
+                    continue
+                if not functions and not name.startswith("custom_"):
+                    continue
+                
+                func = getattr(module, name)
+                if not callable(func):
+                    continue
+                
+                register_operator(self._CATEGORY_MAP.get(category, "point"), name=name)(func)
+                registered += 1
+            
+            if registered > 0:
+                print(f"[ConfigExecutor] 已注册 {registered} 个自定义算子 (来源: {source_path}, 分类: {category})")
     
     def run(
         self,
@@ -261,6 +332,9 @@ class ConfigExecutor:
         result = ExecutionResult(status="success")
         
         try:
+            # 0. 加载自定义算子
+            self._load_custom_operators(config.validation.custom_operators)
+            
             # 1. 生成因子表达式
             for factor in config.factors:
                 expr = self._parse_expr(factor.expr)
@@ -457,7 +531,10 @@ class ConfigExecutor:
         return pl.col(value_str)
     
     def _apply_operator(self, op) -> pl.Expr:
-        """应用算子"""
+        """应用算子
+        
+        优先级: 硬编码 dispatch > registry fallback > 最终兜底
+        """
         op_type = op.type
         category = op.category
         inputs = op.inputs
@@ -474,16 +551,30 @@ class ConfigExecutor:
         if not input_exprs:
             return pl.col(inputs[0]) if inputs else pl.lit(0)
         
-        # 根据类型选择算子
+        # 1. 硬编码 dispatch（优先）
+        result = None
         if op_type == "time_series":
-            return self._apply_ts_operator(category, input_exprs, params)
+            result = self._apply_ts_operator(category, input_exprs, params)
         elif op_type == "section":
-            return self._apply_sec_operator(category, input_exprs, params)
+            result = self._apply_sec_operator(category, input_exprs, params)
         elif op_type == "math":
-            return self._apply_math_operator(category, input_exprs[0], params)
+            result = self._apply_math_operator(category, input_exprs[0], params)
         elif op_type == "composite":
-            return self._apply_composite_operator(category, input_exprs, params)
+            result = self._apply_composite_operator(category, input_exprs, params)
         
+        if result is not None:
+            return result
+        
+        # 2. registry fallback: 从 factor_functions 查找
+        try:
+            from QuantNodes.factor_node.factor_functions import get_operator
+            op_func = get_operator(category)
+            if op_func is not None:
+                return op_func(*input_exprs, **params)
+        except Exception:
+            pass
+        
+        # 3. 最终兜底
         return input_exprs[0]
     
     def _get_op(self, name: str):
@@ -559,7 +650,7 @@ class ConfigExecutor:
         elif category == "ewm_cov":
             return self._get_op("ewm_cov")(expr, input_exprs[1], alpha=alpha)
 
-        return expr
+        return None
     
     def _apply_sec_operator(
         self,
@@ -600,7 +691,7 @@ class ConfigExecutor:
                 params.get("lower", 0.01), params.get("upper", 0.01)
             )
 
-        return expr
+        return None
     
     def _apply_math_operator(
         self,
@@ -658,7 +749,7 @@ class ConfigExecutor:
         elif category == "arctan":
             return math.arctan(expr)
         
-        return expr
+        return None
     
     def _apply_composite_operator(
         self,
@@ -697,7 +788,7 @@ class ConfigExecutor:
         elif category == "rank_sort":
             return composite.rank_sort(exprs, params.get("weights"))
         
-        return exprs[0] if exprs else pl.lit(0)
+        return None
     
     def _execute_plan(
         self,
