@@ -47,7 +47,7 @@ QuantNodes/
 │   │
 │   ├── factor_node/               # 因子引擎
 │   │   ├── factor.py             # Factor, DerivativeFactor
-│   │   ├── factor_functions.py # 142+ 算子 + 注册表 (Polars)
+│   │   ├── factor_functions.py   # 143+ 算子 + 注册表 (Polars)
 │   │   └── factor_operation.py    # Point/Time/Section/PanelOperation
 │   │
 │   ├── database_node/             # 数据库节点
@@ -165,7 +165,7 @@ pytest tests/ -v
 
 # 运行特定测试
 pytest tests/test_factor_functions.py -v
-pytest tests/test_factor_node.py -v
+pytest tests/agent/test_config_executor.py -v
 
 # 查看覆盖率
 pytest tests/ --cov=QuantNodes --cov-report=html
