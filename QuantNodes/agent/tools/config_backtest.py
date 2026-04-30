@@ -139,7 +139,16 @@ class ConfigBacktestTool(Tool):
                 "final_cash": bt_result.final_cash,
                 "total_commission": bt_result.statistics.get("total_commission", 0),
                 "total_return": bt_result.total_return,
+                "sharpe_ratio": bt_result.sharpe_ratio,
+                "max_drawdown": bt_result.max_drawdown,
                 "win_rate": bt_result.win_rate,
+                "annualized_return": bt_result.statistics.get("annualized_return", 0),
+                "annualized_volatility": bt_result.statistics.get("annualized_volatility", 0),
+                "sortino_ratio": bt_result.statistics.get("sortino_ratio", 0),
+                "calmar_ratio": bt_result.statistics.get("calmar_ratio", 0),
+                "profit_factor": bt_result.statistics.get("profit_factor", 0),
+                "avg_trade_pnl": bt_result.statistics.get("avg_trade_pnl", 0),
+                "trading_days": bt_result.statistics.get("trading_days", 0),
             }
 
             # 7. 附加配置信息

@@ -703,6 +703,101 @@ class TestConfigBacktestRunner:
 
         assert result is not None
 
+    def test_equity_curve_not_empty(self):
+        from QuantNodes.backtest.config_runner import ConfigBacktestRunner
+
+        config = StrategyConfig(
+            name="test",
+            factors=[FactorConfig(name="ret", expr="close / open - 1")],
+            backtest=BacktestConfig(
+                start_date="2024-01-01",
+                end_date="2024-01-02",
+                initial_cash=1000000,
+                commission=0.001,
+                slippage=0.001,
+                signals={"buy_threshold": 0.005, "sell_threshold": -0.005},
+            ),
+        )
+        runner = ConfigBacktestRunner()
+        result = runner.run(config, self._make_data())
+
+        assert not result.equity_curve.empty
+        assert "equity" in result.equity_curve.columns
+        assert "cash" in result.equity_curve.columns
+        assert "position_value" in result.equity_curve.columns
+        assert result.equity_curve["date"].nunique() == 2
+
+    def test_equity_curve_start_equals_initial(self):
+        from QuantNodes.backtest.config_runner import ConfigBacktestRunner
+
+        config = StrategyConfig(
+            name="test",
+            factors=[FactorConfig(name="ret", expr="close / open - 1")],
+            backtest=BacktestConfig(
+                start_date="2024-01-01",
+                end_date="2024-01-02",
+                initial_cash=500000,
+                commission=0.0,
+                slippage=0.0,
+                signals={"buy_threshold": 0.99, "sell_threshold": -0.99},
+            ),
+        )
+        runner = ConfigBacktestRunner()
+        result = runner.run(config, self._make_data())
+
+        assert not result.equity_curve.empty
+        assert result.equity_curve.iloc[0]["equity"] == 500000.0
+
+    def test_performance_stats_present(self):
+        from QuantNodes.backtest.config_runner import ConfigBacktestRunner
+
+        config = StrategyConfig(
+            name="test",
+            factors=[FactorConfig(name="ret", expr="close / open - 1")],
+            backtest=BacktestConfig(
+                start_date="2024-01-01",
+                end_date="2024-01-02",
+                initial_cash=1000000,
+                commission=0.001,
+                slippage=0.001,
+                signals={"buy_threshold": 0.005, "sell_threshold": -0.005},
+            ),
+        )
+        runner = ConfigBacktestRunner()
+        result = runner.run(config, self._make_data())
+
+        stats = result.statistics
+        assert "sharpe_ratio" in stats
+        assert "max_drawdown" in stats
+        assert "annualized_return" in stats
+        assert "annualized_volatility" in stats
+        assert "sortino_ratio" in stats
+        assert "calmar_ratio" in stats
+        assert "win_rate" in stats
+        assert "profit_factor" in stats
+        assert "trading_days" in stats
+        assert result.sharpe_ratio == stats["sharpe_ratio"]
+        assert result.max_drawdown == stats["max_drawdown"]
+
+    def test_max_drawdown_non_positive(self):
+        from QuantNodes.backtest.config_runner import ConfigBacktestRunner
+
+        config = StrategyConfig(
+            name="test",
+            factors=[FactorConfig(name="ret", expr="close / open - 1")],
+            backtest=BacktestConfig(
+                start_date="2024-01-01",
+                end_date="2024-01-02",
+                initial_cash=1000000,
+                commission=0.001,
+                signals={"buy_threshold": 0.005, "sell_threshold": -0.005},
+            ),
+        )
+        runner = ConfigBacktestRunner()
+        result = runner.run(config, self._make_data())
+
+        assert result.max_drawdown <= 0.0
+
 
 class TestConfigBacktestTool:
     """ConfigBacktestTool 测试"""

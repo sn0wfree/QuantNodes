@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -133,39 +133,172 @@ class ConfigBacktestRunner:
     def _compute_statistics(
         self, trade_result, df: pd.DataFrame, config: StrategyConfig
     ) -> BacktestResult:
-        """计算绩效统计"""
+        """计算绩效统计（含权益曲线和风险指标）"""
         bt = config.backtest
-        initial_cash = bt.initial_cash if bt else 1000000
+        initial_cash = bt.initial_cash if bt else 1_000_000
 
         trades_df = trade_result.to_dataframe()
 
-        # 计算总收益率
-        total_return = (trade_result.cash - initial_cash) / initial_cash
+        # ── 1. 权益曲线 ──────────────────────────────────────────────
+        equity_curve = self._build_equity_curve(trades_df, df, initial_cash)
 
-        # 计算胜率
-        win_rate = 0.0
-        if len(trades_df) > 0:
-            # 按 code 分组计算盈亏（简化版）
-            trade_pnls = []
-            for code in trades_df["code"].unique():
-                code_trades = trades_df[trades_df["code"] == code]
-                buy_cost = code_trades[code_trades["side"] == "buy"]["adjusted_price"].sum()
-                sell_revenue = code_trades[code_trades["side"] == "sell"]["adjusted_price"].sum()
-                pnl = sell_revenue - buy_cost
-                trade_pnls.append(pnl)
-            if trade_pnls:
-                win_rate = sum(1 for p in trade_pnls if p > 0) / len(trade_pnls)
+        # ── 2. 日收益率序列 ──────────────────────────────────────────
+        daily_returns = equity_curve["equity"].pct_change().fillna(0.0)
+
+        # ── 3. 基础指标 ──────────────────────────────────────────────
+        final_equity = equity_curve["equity"].iloc[-1] if len(equity_curve) > 0 else initial_cash
+        total_return = (final_equity - initial_cash) / initial_cash
+
+        n_days = len(equity_curve)
+        n_years = n_days / 252 if n_days > 0 else 0
+        annualized_return = ((1 + total_return) ** (1 / n_years) - 1) if n_years > 0 else 0.0
+
+        # ── 4. 风险指标 ──────────────────────────────────────────────
+        ann_vol = daily_returns.std() * np.sqrt(252) if len(daily_returns) > 1 else 0.0
+        risk_free = 0.03
+        sharpe = (
+            (daily_returns.mean() - risk_free / 252) / daily_returns.std() * np.sqrt(252)
+            if daily_returns.std() > 1e-12 else 0.0
+        )
+        downside = daily_returns[daily_returns < 0]
+        sortino = (
+            (daily_returns.mean() - risk_free / 252) / downside.std() * np.sqrt(252)
+            if len(downside) > 0 and downside.std() > 1e-12 else 0.0
+        )
+        max_drawdown = self._max_drawdown(equity_curve["equity"])
+        calmar = annualized_return / abs(max_drawdown) if abs(max_drawdown) > 1e-12 else 0.0
+
+        # ── 5. 交易统计 ──────────────────────────────────────────────
+        total_trades = len(trade_result.trades)
+        trade_pnls = self._compute_trade_pnl(trades_df)
+        wins = [p for p in trade_pnls if p > 0]
+        losses = [p for p in trade_pnls if p < 0]
+        win_rate = len(wins) / len(trade_pnls) if trade_pnls else 0.0
+        profit_factor = (
+            abs(sum(wins)) / abs(sum(losses))
+            if losses else float("inf") if wins else 0.0
+        )
+        avg_win = np.mean(wins) if wins else 0.0
+        avg_loss = np.mean(losses) if losses else 0.0
+        avg_trade_pnl = np.mean(trade_pnls) if trade_pnls else 0.0
+
+        statistics = {
+            "total_trades": total_trades,
+            "total_commission": trade_result.commission,
+            "executed_value": trade_result.executed_value,
+            "annualized_return": annualized_return,
+            "annualized_volatility": ann_vol,
+            "sharpe_ratio": sharpe,
+            "sortino_ratio": sortino,
+            "max_drawdown": max_drawdown,
+            "calmar_ratio": calmar,
+            "win_rate": win_rate,
+            "profit_factor": profit_factor,
+            "avg_trade_pnl": avg_trade_pnl,
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "num_wins": len(wins),
+            "num_losses": len(losses),
+            "trading_days": n_days,
+        }
 
         return BacktestResult(
             trades=trades_df,
             orders=pd.DataFrame(),
-            equity_curve=pd.DataFrame(),
-            statistics={
-                "total_trades": len(trade_result.trades),
-                "total_commission": trade_result.commission,
-                "executed_value": trade_result.executed_value,
-            },
+            equity_curve=equity_curve,
+            statistics=statistics,
             final_cash=trade_result.cash,
+            final_positions=trade_result.to_dataframe().groupby("code").apply(
+                lambda g: (g["size"] * np.where(g["side"] == "buy", 1, -1)).sum()
+            ).to_dict() if len(trades_df) > 0 else {},
             total_return=total_return,
+            sharpe_ratio=sharpe,
+            max_drawdown=max_drawdown,
             win_rate=win_rate,
         )
+
+    # ── helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_equity_curve(
+        trades_df: pd.DataFrame,
+        quote_df: pd.DataFrame,
+        initial_cash: float,
+    ) -> pd.DataFrame:
+        """从交易记录和行情数据重建逐日权益曲线。
+
+        对每个交易日：
+        1. 回放截至当日的交易 → 得到持仓 + 可用现金
+        2. 用当日收盘价 mark-to-market → equity = cash + sum(pos * close)
+        """
+        if quote_df.empty:
+            return pd.DataFrame(columns=["date", "equity", "cash", "position_value"])
+
+        dates = sorted(quote_df["date"].unique())
+
+        # 构建 close 价格查找表: {date: {code: close}}
+        close_map: Dict[str, Dict[str, float]] = {}
+        for d, grp in quote_df.groupby("date"):
+            close_map[str(d)] = dict(zip(grp["Code"], grp["Close"]))
+
+        # 逐日回放交易
+        positions: Dict[str, float] = {}
+        cash = initial_cash
+        records: List[Dict[str, Any]] = []
+
+        trade_idx = 0
+        trades_sorted = (
+            trades_df.sort_values("dt").to_dict("records")
+            if len(trades_df) > 0 else []
+        )
+
+        for d in dates:
+            d_str = str(d)
+
+            # 处理当日交易
+            while trade_idx < len(trades_sorted) and str(trades_sorted[trade_idx]["dt"]) == d_str:
+                t = trades_sorted[trade_idx]
+                sign = 1.0 if t["side"] == "buy" else -1.0
+                qty = t["size"] * sign
+                cash -= t["adjusted_price"] * qty + t["fee"] * sign
+                positions[t["code"]] = positions.get(t["code"], 0.0) + qty
+                trade_idx += 1
+
+            # mark-to-market
+            c_map = close_map.get(d_str, {})
+            pos_value = sum(
+                positions[code] * c_map.get(code, 0.0) for code in positions
+            )
+            equity = cash + pos_value
+            records.append({
+                "date": d,
+                "equity": equity,
+                "cash": cash,
+                "position_value": pos_value,
+            })
+
+        return pd.DataFrame(records)
+
+    @staticmethod
+    def _compute_trade_pnl(trades_df: pd.DataFrame) -> List[float]:
+        """按 code 分组配对买卖，计算每轮盈亏。"""
+        if trades_df.empty:
+            return []
+
+        pnls: List[float] = []
+        for code, grp in trades_df.groupby("code"):
+            buys = grp[grp["side"] == "buy"]
+            sells = grp[grp["side"] == "sell"]
+            total_buy_cost = (buys["adjusted_price"] * buys["size"]).sum()
+            total_sell_rev = (sells["adjusted_price"] * sells["size"]).sum()
+            pnls.append(total_sell_rev - total_buy_cost)
+        return pnls
+
+    @staticmethod
+    def _max_drawdown(equity_series: pd.Series) -> float:
+        """计算最大回撤（返回负值，如 -0.05 表示 5% 回撤）。"""
+        if equity_series.empty:
+            return 0.0
+        peak = equity_series.expanding().max()
+        dd = (equity_series - peak) / peak
+        return float(dd.min())

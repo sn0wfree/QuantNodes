@@ -539,7 +539,7 @@ refactor: 统一 factor_node 导出
 
 ## 七、待确认事项
 
-1. **是否保留 factor_nodes.py** 中的 pandas 版本？ → 建议保留但标记弃用
+1. ~~**是否保留 factor_nodes.py** 中的 pandas 版本？~~ → **已完成**：factor_nodes.py 已删除，Pandas OOP 层已废弃
 2. **是否需要测试并行性能**？ → 后续做
 3. **预期完成日期**？
 
