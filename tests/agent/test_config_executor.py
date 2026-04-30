@@ -265,7 +265,30 @@ class TestTsOperatorsExtended:
         assert result.status == "success"
         assert "corr_val" in result.factors
 
-    def test_ts_cov_two_inputs(self):
+    def test_ts_corr_values_in_range(self):
+        """ts_corr 修复后应产生 [-1, 1] 范围内的相关系数"""
+        executor = ConfigExecutor()
+        data = pl.LazyFrame({
+            "date": ["2024-01-01"] * 10,
+            "code": ["A"] * 10,
+            "close": list(range(100, 110)),
+            "volume": list(range(200, 210)),
+        })
+        config = StrategyConfig(
+            name="test",
+            operations=[
+                OperationConfig(
+                    type="time_series", name="corr_val",
+                    category="ts_corr", inputs=["close", "volume"],
+                    params={"window": 5}
+                )
+            ]
+        )
+        result = executor.run(config, data)
+        assert result.status == "success"
+        df = result.data.collect()
+        corr_vals = df["corr_val"].drop_nulls().to_list()
+        assert all(-1.0 <= v <= 1.0 for v in corr_vals), f"Correlation out of range: {corr_vals}"
         executor = ConfigExecutor()
         config = StrategyConfig(
             name="test",

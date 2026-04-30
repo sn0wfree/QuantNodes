@@ -201,9 +201,12 @@ class TimeSeriesOperators:
             expr_b = pl.col(expr_b)
         min_periods = min_periods or max(1, window // 2)
         
-        cov = expr_a.rolling_var(window, min_samples=min_periods)
-        std_a = expr_a.rolling_std(window, min_samples=min_periods)
-        std_b = expr_b.rolling_std(window, min_samples=min_periods)
+        mean_a = expr_a.rolling_mean(window, min_samples=min_periods)
+        mean_b = expr_b.rolling_mean(window, min_samples=min_periods)
+        mean_ab = (expr_a * expr_b).rolling_mean(window, min_samples=min_periods)
+        cov = mean_ab - mean_a * mean_b
+        std_a = expr_a.rolling_std(window, min_samples=min_periods, ddof=0)
+        std_b = expr_b.rolling_std(window, min_samples=min_periods, ddof=0)
         
         return cov / (std_a * std_b + 1e-8)
     

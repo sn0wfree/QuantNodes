@@ -301,5 +301,6 @@ class SectionOperators:
         if isinstance(group, str):
             group = pl.col(group)
         
-        # 简化实现：先分组再 clip
-        return expr
+        q_low = expr.quantile(lower).over(group)
+        q_high = expr.quantile(1 - upper).over(group)
+        return expr.clip(lower_bound=q_low, upper_bound=q_high)

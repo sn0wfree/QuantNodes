@@ -1088,7 +1088,7 @@ class PanelOperation(_LookBackOperation):
             StdData = create_empty_dataframe(DTs, [], self.DataType)
         PID_IDs = self._OperationMode._PID_IDs if self._OperationMode._FactorPrepareIDs[self.Name] is None else \
             {self._OperationMode._PIDs[i]: iSubIDs for i, iSubIDs in
-             enumerate(partition_listMovingSampling(IDs, len(self._OperationMode._PIDs)))}
+             enumerate(partition_list_moving_sampling(IDs, len(self._OperationMode._PIDs)))}
         write_cache_files_for_all_pids(self._OperationMode, PID_IDs, self.Name,
                                        self._OperationMode._FactorID[self.Name], StdData)
         StdData = None
