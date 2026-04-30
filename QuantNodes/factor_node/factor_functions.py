@@ -1001,6 +1001,24 @@ def fill_null(f: Union[Expr, str], value: float = 0.0, **kwargs) -> Expr:
 
 
 @register_operator(OperatorCategory.POINT)
+def fill_null_by_strategy(f: Union[Expr, str], strategy: str = "mean", **kwargs) -> Expr:
+    """按策略填充 null
+    
+    strategy: mean / median / max / min / zero / one
+    """
+    f = _ensure_expr(f)
+    strategy_map = {
+        "mean": f.fill_null(f.mean()),
+        "median": f.fill_null(f.median()),
+        "max": f.fill_null(f.max()),
+        "min": f.fill_null(f.min()),
+        "zero": f.fill_null(0),
+        "one": f.fill_null(1),
+    }
+    return strategy_map.get(strategy, f.fill_null(0))
+
+
+@register_operator(OperatorCategory.POINT)
 def fill_zero(f: Union[Expr, str], **kwargs) -> Expr:
     """填充 0"""
     return MathOperators.fill_zero(f)
@@ -1241,6 +1259,21 @@ def vwap(price: Union[Expr, str], volume: Union[Expr, str],
     return (ep * ev).rolling_sum(window) / (ev.rolling_sum(window) + 1e-8)
 
 
+@register_operator(OperatorCategory.TIME)
+def rolling_change_rate(f: Union[Expr, str], window: int = 20, **kwargs) -> Expr:
+    """滚动变化率（符号保持）
+    
+    当分子分母异号时保持符号：正/负→1，负/正→-1，零→0
+    """
+    f = _ensure_expr(f)
+    numerator = f - f.shift(window)
+    denominator = f.shift(window)
+    rate = numerator / (denominator.abs() + 1e-8)
+    # 符号保持：异号时置为 ±1
+    same_sign = (numerator * denominator) >= 0
+    return pl.when(same_sign).then(rate).when(numerator > 0).then(pl.lit(1.0)).when(numerator < 0).then(pl.lit(-1.0)).otherwise(pl.lit(0.0))
+
+
 @register_operator(OperatorCategory.POINT)
 def market_cap(price: Union[Expr, str], shares: Union[Expr, str], **kwargs) -> Expr:
     """市值"""
@@ -1257,6 +1290,32 @@ def book_to_market(book_value: Union[Expr, str], market_cap: Union[Expr, str], *
 def earnings_to_market(earnings: Union[Expr, str], market_cap: Union[Expr, str], **kwargs) -> Expr:
     """盈利市率"""
     return _ensure_expr(earnings) / _ensure_expr(market_cap)
+
+
+@register_operator(OperatorCategory.POINT)
+def nav(price: Union[Expr, str], **kwargs) -> Expr:
+    """净值 (Net Asset Value)
+    
+    基于价格序列计算累积净值：NAV = price[0] * cumprod(1 + returns)
+    其中 returns = price / price.shift(1) - 1
+    """
+    p = _ensure_expr(price)
+    returns = p / p.shift(1) - 1
+    return p.shift(1) * (1 + returns).cum_prod()
+
+
+@register_operator(OperatorCategory.POINT)
+def single_quarter(earnings: Union[Expr, str], report_period: Union[Expr, str], **kwargs) -> Expr:
+    """单季报调整
+    
+    Q1 报告期（以 0331 结尾）直接使用当期值，其他季度使用差值。
+    用于将累积财报转换为单季度财报。
+    """
+    e = _ensure_expr(earnings)
+    rp = _ensure_expr(report_period)
+    prev = e.shift(1)
+    is_q1 = rp.str.ends_with("0331")
+    return pl.when(is_q1).then(e).otherwise(e - prev)
 
 
 # ==============================================================================
@@ -1357,6 +1416,17 @@ def chg_ids(f: Union[Expr, str], id_map: Dict[str, str], **kwargs) -> Expr:
     return f.replace(list(id_map.keys()), list(id_map.values()))
 
 
+@register_operator(OperatorCategory.MULTI_SECTION)
+def weighted_aggr_mean(f: Union[Expr, str], group_by: str,
+                       weight: Union[Expr, str, None] = None, **kwargs) -> Expr:
+    """带权重的分组均值"""
+    f = _ensure_expr(f)
+    if weight is not None:
+        w = _ensure_expr(weight)
+        return (f * w).sum().over(group_by) / (w.sum().over(group_by) + 1e-8)
+    return f.mean().over(group_by)
+
+
 # ==============================================================================
 # 别名: standardizeRank, weightStandardize 需要用 SectionOperators.rank
 # ==============================================================================
@@ -1371,6 +1441,14 @@ def standardizeRank(f: Union[Expr, str], **kwargs) -> Expr:
 def weightStandardize(f: Union[Expr, str], **kwargs) -> Expr:
     """加权标准化"""
     return standardizeZScore(f, **kwargs)
+
+
+@register_operator(OperatorCategory.SECTION)
+def mad(f: Union[Expr, str], **kwargs) -> Expr:
+    """Median Absolute Deviation (中位绝对偏差)"""
+    f = _ensure_expr(f)
+    median = f.median()
+    return (f - median).abs().median() * 1.4826
 
 
 # ==============================================================================
@@ -1415,7 +1493,7 @@ __all__ = [
     # Section 算子
     "standardizeZScore", "zscore", "rank", "winsorize",
     "neutralize", "neutralize_market", "scale",
-    "standardizeRank", "weightStandardize",
+    "standardizeRank", "weightStandardize", "mad",
     "ic", "rank_ic", "group_norm", "group_winsorize",
     "orthogonalize", "fillNaNByFun", "fillNaNByRegress",
 
@@ -1423,7 +1501,7 @@ __all__ = [
     "aggregate", "disaggregate",
     "aggr_sum", "aggr_prod", "aggr_max", "aggr_min", "aggr_mean",
     "aggr_std", "aggr_var", "aggr_median", "aggr_quantile", "aggr_count",
-    "merge", "chg_ids",
+    "merge", "chg_ids", "weighted_aggr_mean",
 
     # 组合算子
     "add", "sub", "mul", "div",
@@ -1431,7 +1509,10 @@ __all__ = [
 
     # 高级算子
     "regress", "zscored", "decay_linear", "decay_exp",
-    "vwap", "market_cap", "book_to_market", "earnings_to_market",
+    "vwap", "rolling_change_rate",
+    "market_cap", "book_to_market", "earnings_to_market",
+    "nav", "single_quarter",
+    "fill_null_by_strategy",
 
     # 别名
     "correlation", "covariance", "delta", "pct_change",
