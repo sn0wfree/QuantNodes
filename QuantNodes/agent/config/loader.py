@@ -22,6 +22,7 @@ from .types import (
     OutputConfig,
     CoverageReport,
 )
+from QuantNodes.factor_node.factor_functions import list_operators as _list_operators
 
 
 class ConfigLoader:
@@ -146,6 +147,8 @@ class ConfigLoader:
     def check_coverage(self, config: StrategyConfig) -> CoverageReport:
         """检查配置覆盖度
         
+        使用 factor_functions 的真实注册表检查算子是否存在。
+        
         Args:
             config: 策略配置
         
@@ -155,22 +158,24 @@ class ConfigLoader:
         covered = []
         unresolved = []
         
+        # 获取所有已注册的算子名称
+        all_operators = set(_list_operators())
+        
         # 检查因子定义
         for factor in config.factors:
             if factor.expr:
-                covered.append(f"factor:{factor.name}")
+                covered.append("factor:%s" % factor.name)
             else:
-                unresolved.append(f"factor:{factor.name}")
+                unresolved.append("factor:%s" % factor.name)
         
-        # 检查算子
+        # 检查算子 - 使用 factor_functions 真实注册表
         for op in config.operations:
             category = op.category
             
-            # 检查是否在注册表中
-            if category in _OPERATOR_REGISTRY:
-                covered.append(f"op:{category}")
+            if category in all_operators:
+                covered.append("op:%s" % category)
             else:
-                unresolved.append(f"op:{category}")
+                unresolved.append("op:%s" % category)
         
         return CoverageReport(covered=covered, unresolved=unresolved)
     
@@ -242,46 +247,6 @@ class ConfigLoader:
         
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, allow_unicode=True, sort_keys=False)
-
-
-# 简单算子注册表
-_OPERATOR_REGISTRY = {
-    # 时间序列算子
-    "ts_mean": "time_series",
-    "ts_std": "time_series",
-    "ts_max": "time_series",
-    "ts_min": "time_series",
-    "ts_sum": "time_series",
-    "ts_median": "time_series",
-    "ts_corr": "time_series",
-    "ts_cov": "time_series",
-    "ts_rank": "time_series",
-    "ts_delta": "time_series",
-    "ts_pct_change": "time_series",
-    "ts_lag": "time_series",
-    # 截面算子
-    "rank": "section",
-    "zscore": "section",
-    "winsorize": "section",
-    "neutralize": "section",
-    "scale": "section",
-    "percentile": "section",
-    # 算术算子
-    "add": "math",
-    "sub": "math",
-    "mul": "math",
-    "div": "math",
-    "log": "math",
-    "abs": "math",
-    "pow": "math",
-    # 组合算子
-    "weighted_sum": "composite",
-    "weighted_avg": "composite",
-    "max": "composite",
-    "min": "composite",
-    "blend": "composite",
-}
-
 
 def load_config(path: str) -> StrategyConfig:
     """便捷加载函数

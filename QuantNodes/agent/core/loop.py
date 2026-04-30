@@ -17,6 +17,8 @@ from ..tools.registry import ToolRegistry
 from .context import ContextBuilder
 from .runner import AgentRunner, AgentRunSpec
 from .hook import AgentHook, CompositeHook
+from .memory import MemoryStore
+from .autocompact import truncate_history
 
 
 class AgentLoop:
@@ -30,6 +32,7 @@ class AgentLoop:
         model: str | None = None,
         max_iterations: int = 5,
         session_manager: SessionManager | None = None,
+        tool_registry: ToolRegistry | None = None,
         hook: AgentHook | None = None,
     ):
         self.bus = bus
@@ -45,7 +48,8 @@ class AgentLoop:
 
         self.context_builder = ContextBuilder(templates_dir)
         self.session_manager = session_manager or SessionManager(self.workspace)
-        self.tool_registry = ToolRegistry()
+        self.tool_registry = tool_registry or ToolRegistry()
+        self.memory = MemoryStore(self.workspace)
         self.runner = AgentRunner(provider, hook=self.hook)
 
         self._concurrency_gate = asyncio.Semaphore(1)
@@ -90,6 +94,7 @@ class AgentLoop:
             m for m in session.messages
             if m.get("role") in ("user", "assistant", "tool")
         ]
+        history = truncate_history(history, max_messages=20)
 
         messages = self.context_builder.build_messages(
             history=history,
@@ -98,6 +103,10 @@ class AgentLoop:
             channel=msg.channel,
             chat_id=msg.chat_id,
         )
+
+        memory_ctx = self.memory.get_memory_context()
+        if memory_ctx and messages and messages[0].get("role") == "system":
+            messages[0]["content"] += f"\n\n{memory_ctx}"
 
         spec = AgentRunSpec(
             initial_messages=messages,
@@ -111,6 +120,12 @@ class AgentLoop:
         session.add_message("user", msg.content)
         if result.final_content:
             session.add_message("assistant", result.final_content)
+
+        self.memory.append_history({
+            "session_key": msg.session_key,
+            "user": msg.content[:200],
+            "assistant": (result.final_content or "")[:200],
+        })
 
         self.session_manager.save_session(session)
 
@@ -130,11 +145,16 @@ class AgentLoop:
             m for m in session.messages
             if m.get("role") in ("user", "assistant", "tool")
         ]
+        history = truncate_history(history, max_messages=20)
 
         messages = self.context_builder.build_messages(
             history=history,
             current_message=message,
         )
+
+        memory_ctx = self.memory.get_memory_context()
+        if memory_ctx and messages and messages[0].get("role") == "system":
+            messages[0]["content"] += f"\n\n{memory_ctx}"
 
         spec = AgentRunSpec(
             initial_messages=messages,
@@ -148,6 +168,12 @@ class AgentLoop:
         session.add_message("user", message)
         if result.final_content:
             session.add_message("assistant", result.final_content)
+
+        self.memory.append_history({
+            "session_key": session_id,
+            "user": message[:200],
+            "assistant": (result.final_content or "")[:200],
+        })
 
         self.session_manager.save_session(session)
 

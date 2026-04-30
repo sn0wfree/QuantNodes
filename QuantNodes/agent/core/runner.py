@@ -13,6 +13,7 @@ from ..providers.base import LLMProvider, LLMResponse
 from ..tools.registry import ToolRegistry
 from ..utils.helpers import truncate_text
 from .hook import AgentHook, AgentHookContext, CompositeHook
+from .autocompact import truncate_history, microcompact
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,9 @@ class AgentRunner:
                 usage=dict(total_usage),
             )
             await self.hook.before_iteration(context)
+
+            messages = truncate_history(messages, max_messages=30)
+            messages = microcompact(messages, max_tool_result_chars=spec.max_tool_result_chars)
 
             tool_schemas = spec.tools.get_tool_schemas()
 

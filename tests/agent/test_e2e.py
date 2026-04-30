@@ -246,18 +246,19 @@ class TestBacktestTool:
         tool = BacktestTool()
         params = tool.parameters
         assert "pipeline_code" in params["required"]
-        assert "start_date" in params["required"]
-        assert "end_date" in params["required"]
+        assert "start_date" not in params["required"]
+        assert "end_date" not in params["required"]
 
-    def test_execute_returns_placeholder(self):
+    def test_execute_returns_result(self):
         async def _test():
             tool = BacktestTool()
             result = await tool.execute(
-                pipeline_code="code",
+                pipeline_code="x = 1",
                 start_date="2020-01-01",
                 end_date="2023-12-31"
             )
-            assert "message" in result
+            assert result["status"] == "error"
+            assert "errors" in result
 
         asyncio.run(_test())
 
@@ -265,12 +266,12 @@ class TestBacktestTool:
         async def _test():
             tool = BacktestTool()
             result = await tool.execute(
-                pipeline_code="code",
+                pipeline_code="x = 1",
                 start_date="2020-01-01",
                 end_date="2023-12-31",
                 initial_cash=500000
             )
-            assert "message" in result
+            assert result["config"]["initial_cash"] == 500000
 
         asyncio.run(_test())
 
@@ -283,7 +284,7 @@ class TestBacktestTool:
                 end_date="2022-12-31",
                 initial_cash=100000
             )
-            assert result["status"] == "pending"
+            assert result["status"] == "error"
 
         asyncio.run(_test())
 
@@ -295,12 +296,12 @@ class TestBacktestTool:
         async def _test():
             tool = BacktestTool()
             result = await tool.execute(
-                pipeline_code="code",
+                pipeline_code="x = 1",
                 start_date="2020-01-01",
                 end_date="2023-12-31",
                 unknown_param="ignored"
             )
-            assert "message" in result
+            assert result["status"] == "error"
 
         asyncio.run(_test())
 
@@ -318,14 +319,15 @@ class TestFactorTool:
         params = tool.parameters
         assert params["properties"]["analysis_type"]["enum"] == ["ic", "correlation", "both"]
 
-    def test_execute_returns_placeholder(self):
+    def test_execute_returns_result(self):
         async def _test():
             tool = FactorTool()
             result = await tool.execute(
-                factor_code="close / open - 1",
+                factor_code="x = 1",
                 analysis_type="ic"
             )
-            assert "message" in result
+            assert result["status"] == "error"
+            assert "errors" in result
 
         asyncio.run(_test())
 
@@ -333,12 +335,12 @@ class TestFactorTool:
         async def _test():
             tool = FactorTool()
             result = await tool.execute(
-                factor_code="close / open",
+                factor_code="x = 1",
                 analysis_type="both",
                 start_date="2020-01-01",
                 end_date="2023-12-31"
             )
-            assert "message" in result
+            assert result["status"] == "error"
 
         asyncio.run(_test())
 
@@ -346,10 +348,10 @@ class TestFactorTool:
         async def _test():
             tool = FactorTool()
             result = await tool.execute(
-                factor_code="returns",
+                factor_code="x = 1",
                 analysis_type="ic"
             )
-            assert "message" in result
+            assert result["status"] == "error"
 
         asyncio.run(_test())
 
@@ -357,10 +359,10 @@ class TestFactorTool:
         async def _test():
             tool = FactorTool()
             result = await tool.execute(
-                factor_code="momentum",
+                factor_code="x = 1",
                 analysis_type="correlation"
             )
-            assert "message" in result
+            assert result["status"] == "error"
 
         asyncio.run(_test())
 
@@ -368,10 +370,10 @@ class TestFactorTool:
         async def _test():
             tool = FactorTool()
             result = await tool.execute(
-                factor_code="volume",
+                factor_code="x = 1",
                 analysis_type="both"
             )
-            assert "message" in result
+            assert result["status"] == "error"
 
         asyncio.run(_test())
 
@@ -379,10 +381,10 @@ class TestFactorTool:
         async def _test():
             tool = FactorTool()
             result = await tool.execute(
-                factor_code="close",
+                factor_code="x = 1",
                 analysis_type="ic"
             )
-            assert "message" in result
+            assert result["status"] == "error"
 
         asyncio.run(_test())
 

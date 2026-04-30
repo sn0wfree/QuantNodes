@@ -5,10 +5,10 @@ Web界面
 基于 Streamlit 的 Agent Web 界面。
 """
 
+import asyncio
 import streamlit as st
 
 from QuantNodes.agent import Agent
-from QuantNodes.agent.bus.events import InboundMessage
 
 
 def init_session():
@@ -65,7 +65,11 @@ def main():
         with st.chat_message("assistant"):
             with st.spinner("思考中..."):
                 try:
-                    response = st.session_state.agent.run(prompt)
+                    loop = asyncio.new_event_loop()
+                    response = loop.run_until_complete(
+                        st.session_state.agent.run(prompt)
+                    )
+                    loop.close()
                     st.write(response)
                     st.session_state.messages.append({
                         "role": "assistant",

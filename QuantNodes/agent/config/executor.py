@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, List
 import polars as pl
 
 from .types import StrategyConfig, ExecutionResult
-from ..operators import ts, sec, math, composite
+from QuantNodes.operators import ts, sec, math, composite
 
 
 class ConfigExecutor:

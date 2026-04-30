@@ -16,13 +16,13 @@ class StrategyTool(Tool):
 
     将自然语言描述转换为 QuantNodes Pipeline 代码。
 
-    注意：此工具需要 LLM 客户端配置。
+    需要配置 LLM 客户端才能使用。如果未配置，将返回提示信息。
     """
 
     CODE_BLOCK_PATTERN = re.compile(r'```(?:python)?\s*(.*?)```', re.DOTALL)
 
-    def __init__(self):
-        pass
+    def __init__(self, llm_client=None):
+        self._llm_client = llm_client
 
     @property
     def name(self) -> str:
@@ -55,8 +55,6 @@ class StrategyTool(Tool):
         return False
 
     async def execute(self, description: str, validate: bool = True, **kwargs) -> Dict[str, Any]:
-        from QuantNodes.ai.strategy_gen import StrategyGenerator, GenerationResult
-
         result = {
             "code": "",
             "is_valid": False,
@@ -65,6 +63,41 @@ class StrategyTool(Tool):
             "description": description
         }
 
-        result["message"] = "Strategy generation requires LLM client configuration. This is a placeholder implementation."
+        if self._llm_client is None:
+            result["message"] = (
+                "Strategy generation requires LLM client configuration. "
+                "Please provide an LLM client when initializing StrategyTool."
+            )
+            result["status"] = "needs_configuration"
+            return result
+
+        try:
+            from QuantNodes.ai.strategy_gen import StrategyGenerator
+            from QuantNodes.ai.sandbox import CodeSandbox
+
+            generator = StrategyGenerator(
+                llm_client=self._llm_client,
+                code_sandbox=CodeSandbox()
+            )
+
+            gen_result = generator.generate(description, validate=validate)
+
+            result["code"] = gen_result.code
+            result["is_valid"] = gen_result.is_valid
+
+            if gen_result.error_message:
+                result["errors"].append(gen_result.error_message)
+
+            if gen_result.warnings:
+                result["warnings"] = gen_result.warnings
+
+            result["status"] = "success"
+
+        except ImportError as e:
+            result["status"] = "error"
+            result["errors"] = ["AI module not available: %s" % str(e)]
+        except Exception as e:
+            result["status"] = "error"
+            result["errors"] = [str(e)]
 
         return result
