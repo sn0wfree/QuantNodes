@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """database_node 单元测试"""
 import os
+import configparser
 import pytest
 import pandas as pd
 from pathlib import Path
@@ -14,6 +15,20 @@ from QuantNodes.database_node import (
     CSVNode,
     ParquetNode,
 )
+
+
+def _load_conn_ini(section: str, defaults: dict) -> dict:
+    """从 conn.ini 读取连接配置，fallback 到 defaults"""
+    conn_ini = os.getenv("TEST_CONN_INI", "conn.ini")
+    ini_path = Path(conn_ini)
+    if ini_path.exists():
+        parser = configparser.ConfigParser()
+        parser.read(str(ini_path), encoding="utf-8")
+        if section in parser:
+            result = dict(defaults)
+            result.update(dict(parser.items(section)))
+            return result
+    return defaults
 
 
 class TestBaseDBNode:
@@ -316,13 +331,20 @@ class TestMySQLNodeIntegration:
 
     @pytest.fixture
     def mysql_node(self):
-        """MySQL 测试节点"""
+        """MySQL 测试节点 - 优先读 conn.ini，fallback 到环境变量"""
+        conn_params = _load_conn_ini("MySQL", {
+            "host": "localhost",
+            "port": "3306",
+            "user": "root",
+            "passwd": "",
+            "db": "test",
+        })
         node = MySQLNode(
-            host=os.getenv("TEST_MYSQL_HOST", "localhost"),
-            port=int(os.getenv("TEST_MYSQL_PORT", "3306")),
-            user=os.getenv("TEST_MYSQL_USER", "root"),
-            passwd=os.getenv("TEST_MYSQL_PASS", ""),
-            db=os.getenv("TEST_MYSQL_DB", "test"),
+            host=conn_params["host"],
+            port=int(conn_params["port"]),
+            user=conn_params["user"],
+            passwd=conn_params["passwd"],
+            db=conn_params["db"],
         )
         node.connect()
         yield node
@@ -414,13 +436,20 @@ class TestClickHouseNodeIntegration:
 
     @pytest.fixture
     def clickhouse_node(self):
-        """ClickHouse 测试节点"""
+        """ClickHouse 测试节点 - 优先读 conn.ini，fallback 到环境变量"""
+        conn_params = _load_conn_ini("ClickHouse", {
+            "host": "localhost",
+            "port": "8123",
+            "user": "default",
+            "passwd": "",
+            "db": "default",
+        })
         node = ClickHouseNode(
-            host=os.getenv("TEST_CH_HOST", "localhost"),
-            port=int(os.getenv("TEST_CH_PORT", "8123")),
-            user=os.getenv("TEST_CH_USER", "default"),
-            passwd=os.getenv("TEST_CH_PASS", ""),
-            database=os.getenv("TEST_CH_DB", "default"),
+            host=conn_params["host"],
+            port=int(conn_params["port"]),
+            user=conn_params["user"],
+            passwd=conn_params["passwd"],
+            database=conn_params["db"],
         )
         node.connect()
         yield node

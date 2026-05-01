@@ -1,0 +1,90 @@
+# mean_reversion_zscore.yaml
+# 均值回复Z-Score策略
+# 逻辑: Z-Score < -2 买入，Z-Score > 2 卖出
+
+version: "1.0"
+name: "mean_reversion_zscore"
+description: "均值回复Z-Score策略 - Z-Score低于-2买入，高于2卖出"
+
+data:
+  source: clickhouse
+  conn_ini: conn.ini
+  conn_section: ClickHouse
+  table: quote.cn_stock
+  columns: [ts_code, trade_date, open, high, low, close, vol]
+
+  db_date_column: trade_date
+  db_code_column: ts_code
+  date_column: date
+  code_column: code
+
+  column_mapping:
+    ts_code: code
+    trade_date: date
+    vol: volume
+
+  query_filter: "WHERE trade_date >= toDateTime('2023-07-01')"
+
+factors:
+  - name: close_ma
+    expr: "ts_mean(close, 20)"
+    description: "20日均线"
+
+  - name: close_std
+    expr: "ts_std(close, 20)"
+    description: "20日标准差"
+
+  - name: zscore
+    expr: "(close - close_ma) / (close_std + 0.001)"
+    description: "Z-Score（价格偏离度）"
+
+  - name: returns_5d
+    expr: "close / ts_lag(close, 5) - 1"
+    description: "5日收益率"
+
+  - name: volume_ratio
+    expr: "volume / ts_mean(volume, 20)"
+    description: "成交量相对均量比"
+
+operations:
+  - type: section
+    name: zscore_rank
+    category: rank
+    inputs: [zscore]
+    description: "Z-Score截面排名"
+
+  - type: section
+    name: returns_rank
+    category: rank
+    inputs: [returns_5d]
+    description: "收益率截面排名"
+
+  - type: section
+    name: volume_rank
+    category: rank
+    inputs: [volume_ratio]
+    description: "成交量截面排名"
+
+composite:
+  - name: alpha
+    formula: "-1 * zscore_rank"
+
+backtest:
+  start_date: "2023-07-01"
+  end_date: "2024-07-19"
+  initial_cash: 1000000
+  commission: 0.001
+  slippage: 0.001
+
+  signals:
+    buy_threshold: 0.6
+    sell_threshold: 0.4
+
+  positions:
+    max_positions: 10
+    rebalance_freq: "weekly"
+
+output:
+  format: parquet
+  path: "outputs/mean_reversion_result.parquet"
+  save_signals: true

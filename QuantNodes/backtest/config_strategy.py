@@ -36,21 +36,29 @@ class ConfigStrategyNode(StrategyNode):
     def _generate_signals(
         self, input_data: pd.DataFrame, **kwargs
     ) -> List[Signal]:
+        # 先过滤非零信号，避免遍历全量数据
+        mask = input_data[self._signal_col] != 0
+        active = input_data.loc[mask]
+        if active.empty:
+            return []
+
+        code_col = "Code" if "Code" in active.columns else "code"
+        price_col = "Close" if "Close" in active.columns else "close"
+        date_col = "date" if "date" in active.columns else "Date"
+
+        codes = active[code_col].astype(str).values
+        prices = active[price_col].astype(float).values
+        dates = active[date_col].astype(str).values
+        sig_vals = active[self._signal_col].values
+
         signals = []
-        for _, row in input_data.iterrows():
-            sig_val = row.get(self._signal_col, 0)
-            if sig_val == 0:
-                continue
-
-            code = str(row.get("Code", row.get("code", "")))
-            price = float(row.get("Close", row.get("close", 0)))
-            date = str(row.get("date", ""))
-
+        for i in range(len(active)):
+            sig_val = sig_vals[i]
             signals.append(Signal(
-                code=code,
+                code=codes[i],
                 signal_type="buy" if sig_val > 0 else "sell",
                 strength=abs(float(sig_val)),
-                price=price,
-                date=date,
+                price=prices[i],
+                date=dates[i],
             ))
         return signals

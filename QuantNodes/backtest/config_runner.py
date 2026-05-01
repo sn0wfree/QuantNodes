@@ -8,13 +8,15 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 import polars as pl
 
-from QuantNodes.agent.config.types import StrategyConfig
+from QuantNodes.agent.config.types import StrategyConfig, OutputConfig
 from QuantNodes.agent.config.executor import ConfigExecutor
 from QuantNodes.backtest.config_strategy import ConfigStrategyNode
 from QuantNodes.backtest.backtest_node import BacktestResult
@@ -236,10 +238,11 @@ class ConfigBacktestRunner:
 
         dates = sorted(quote_df["date"].unique())
 
-        # 构建 close 价格查找表: {date: {code: close}}
+        # 构建 close 价格查找表: {date_str: {code: close}}
         close_map: Dict[str, Dict[str, float]] = {}
         for d, grp in quote_df.groupby("date"):
-            close_map[str(d)] = dict(zip(grp["Code"], grp["Close"]))
+            d_str = str(d)[:10]  # 统一为 YYYY-MM-DD 格式
+            close_map[d_str] = dict(zip(grp["Code"], grp["Close"]))
 
         # 逐日回放交易
         positions: Dict[str, float] = {}
@@ -253,10 +256,10 @@ class ConfigBacktestRunner:
         )
 
         for d in dates:
-            d_str = str(d)
+            d_str = str(d)[:10]  # 统一为 YYYY-MM-DD 格式
 
             # 处理当日交易
-            while trade_idx < len(trades_sorted) and str(trades_sorted[trade_idx]["dt"]) == d_str:
+            while trade_idx < len(trades_sorted) and str(trades_sorted[trade_idx]["dt"])[:10] == d_str:
                 t = trades_sorted[trade_idx]
                 sign = 1.0 if t["side"] == "buy" else -1.0
                 qty = t["size"] * sign
@@ -302,3 +305,69 @@ class ConfigBacktestRunner:
         peak = equity_series.expanding().max()
         dd = (equity_series - peak) / peak
         return float(dd.min())
+
+    # ── Output 保存 ────────────────────────────────────────────────
+
+    def save_output(
+        self,
+        bt_result: BacktestResult,
+        config: StrategyConfig,
+        signals_df: Optional[pd.DataFrame] = None,
+        positions_df: Optional[pd.DataFrame] = None,
+    ) -> Dict[str, str]:
+        """根据 OutputConfig 保存回测结果到文件。
+
+        Returns:
+            保存路径字典，如 {"equity_curve": "outputs/equity.parquet", ...}
+        """
+        output_cfg = config.output
+        if output_cfg is None:
+            return {}
+
+        out_dir = Path(output_cfg.path).parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        fmt = output_cfg.format.lower()
+        saved: Dict[str, str] = {}
+
+        stem = Path(output_cfg.path).stem
+
+        if output_cfg.save_equity_curve and bt_result.equity_curve is not None and not bt_result.equity_curve.empty:
+            p = str(out_dir / f"{stem}_equity.{fmt}")
+            self._save_dataframe(bt_result.equity_curve, p, fmt)
+            saved["equity_curve"] = p
+
+        if output_cfg.save_signals and signals_df is not None and not signals_df.empty:
+            p = str(out_dir / f"{stem}_signals.{fmt}")
+            self._save_dataframe(signals_df, p, fmt)
+            saved["signals"] = p
+
+        if output_cfg.save_positions and bt_result.trades is not None and not bt_result.trades.empty:
+            p = str(out_dir / f"{stem}_trades.{fmt}")
+            self._save_dataframe(bt_result.trades, p, fmt)
+            saved["trades"] = p
+
+        if output_cfg.save_positions and positions_df is not None and not positions_df.empty:
+            p = str(out_dir / f"{stem}_positions.{fmt}")
+            self._save_dataframe(positions_df, p, fmt)
+            saved["positions"] = p
+
+        stats_path = str(out_dir / f"{stem}_statistics.json")
+        import json
+        with open(stats_path, "w", encoding="utf-8") as f:
+            json.dump(bt_result.statistics, f, indent=2, ensure_ascii=False, default=str)
+        saved["statistics"] = stats_path
+
+        return saved
+
+    @staticmethod
+    def _save_dataframe(df: pd.DataFrame, path: str, fmt: str) -> None:
+        """保存 DataFrame 到文件。"""
+        if fmt == "parquet":
+            df.to_parquet(path, index=False)
+        elif fmt == "csv":
+            df.to_csv(path, index=False)
+        elif fmt == "json":
+            df.to_json(path, orient="records", force_ascii=False, indent=2)
+        else:
+            raise ValueError(f"Unsupported output format: {fmt}")

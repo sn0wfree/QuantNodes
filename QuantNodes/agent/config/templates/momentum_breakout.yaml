@@ -1,0 +1,84 @@
+# momentum_breakout.yaml
+# 动量突破策略
+# 逻辑: N日新高买入，N日新低卖出
+
+version: "1.0"
+name: "momentum_breakout"
+description: "动量突破策略 - N日新高买入，N日新低卖出"
+
+data:
+  source: clickhouse
+  conn_ini: conn.ini
+  conn_section: ClickHouse
+  table: quote.cn_stock
+  columns: [ts_code, trade_date, open, high, low, close, vol]
+
+  db_date_column: trade_date
+  db_code_column: ts_code
+  date_column: date
+  code_column: code
+
+  column_mapping:
+    ts_code: code
+    trade_date: date
+    vol: volume
+
+  query_filter: "WHERE trade_date >= toDateTime('2023-07-01')"
+
+factors:
+  - name: high_20
+    expr: "ts_max(high, 20)"
+    description: "20日最高价"
+
+  - name: low_20
+    expr: "ts_min(low, 20)"
+    description: "20日最低价"
+
+  - name: range_20
+    expr: "high_20 - low_20 + 0.001"
+    description: "20日价格区间"
+
+  - name: close_position
+    expr: "(close - low_20) / range_20"
+    description: "价格在20日区间中的位置（0-1）"
+
+  - name: momentum_10
+    expr: "close / ts_lag(close, 10) - 1"
+    description: "10日动量"
+
+operations:
+  - type: section
+    name: position_rank
+    category: rank
+    inputs: [close_position]
+    description: "价格位置截面排名"
+
+  - type: section
+    name: momentum_rank
+    category: rank
+    inputs: [momentum_10]
+    description: "动量截面排名"
+
+composite:
+  - name: alpha
+    formula: "0.5 * position_rank + 0.5 * momentum_rank"
+
+backtest:
+  start_date: "2023-07-01"
+  end_date: "2024-07-19"
+  initial_cash: 1000000
+  commission: 0.001
+  slippage: 0.001
+
+  signals:
+    buy_threshold: 0.6
+    sell_threshold: 0.4
+
+  positions:
+    max_positions: 10
+    rebalance_freq: "weekly"
+
+output:
+  format: parquet
+  path: "outputs/momentum_breakout_result.parquet"
+  save_signals: true

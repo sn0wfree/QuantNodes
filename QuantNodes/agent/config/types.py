@@ -64,12 +64,40 @@ class ValidationConfig:
 
 @dataclass
 class DataConfig:
-    """数据源配置"""
+    """数据源配置
+
+    两层列名设计:
+    - db_*_column: 数据库原始列名，用于 SQL 查询 (ORDER BY, SELECT)
+    - *_column: 内部标准列名，用于 executor/backtest 层
+    - column_mapping: 数据库原始名 → 内部标准名 的映射关系
+    - standard_columns: 预定义的标准列名映射 (可通过 YAML 配置文件设定)
+
+    使用示例 (ClickHouse):
+        db_date_column: trade_date
+        db_code_column: ts_code
+        date_column: date
+        code_column: code
+        column_mapping: {ts_code: code, trade_date: date, vol: volume}
+    """
     source: str = "csv"
     path: str = ""
     columns: List[str] = field(default_factory=list)
     date_column: str = "date"
     code_column: str = "code"
+    db_date_column: str = ""
+    db_code_column: str = ""
+    table: str = ""
+    conn_ini: str = "conn.ini"
+    conn_section: str = "ClickHouse"
+    column_mapping: Dict[str, str] = field(default_factory=dict)
+    query_filter: str = ""
+    standard_columns: Dict[str, str] = field(default_factory=lambda: {
+        "open": "open",
+        "high": "high",
+        "low": "low",
+        "close": "close",
+        "volume": "volume",
+    })
 
 
 @dataclass

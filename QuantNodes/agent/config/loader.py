@@ -83,6 +83,20 @@ class ConfigLoader:
                 columns=d.get("columns", []),
                 date_column=d.get("date_column", "date"),
                 code_column=d.get("code_column", "code"),
+                db_date_column=d.get("db_date_column", ""),
+                db_code_column=d.get("db_code_column", ""),
+                table=d.get("table", ""),
+                conn_ini=d.get("conn_ini", "conn.ini"),
+                conn_section=d.get("conn_section", "ClickHouse"),
+                column_mapping=d.get("column_mapping", {}),
+                query_filter=d.get("query_filter", ""),
+                standard_columns=d.get("standard_columns", {
+                    "open": "open",
+                    "high": "high",
+                    "low": "low",
+                    "close": "close",
+                    "volume": "volume",
+                }),
             )
         
         # 因子定义
@@ -303,6 +317,22 @@ class ConfigLoader:
                 "date_column": config.data.date_column,
                 "code_column": config.data.code_column,
             }
+            if config.data.db_date_column:
+                data["data"]["db_date_column"] = config.data.db_date_column
+            if config.data.db_code_column:
+                data["data"]["db_code_column"] = config.data.db_code_column
+            if config.data.table:
+                data["data"]["table"] = config.data.table
+            if config.data.conn_ini != "conn.ini":
+                data["data"]["conn_ini"] = config.data.conn_ini
+            if config.data.conn_section != "ClickHouse":
+                data["data"]["conn_section"] = config.data.conn_section
+            if config.data.column_mapping:
+                data["data"]["column_mapping"] = config.data.column_mapping
+            if config.data.query_filter:
+                data["data"]["query_filter"] = config.data.query_filter
+            if config.data.standard_columns:
+                data["data"]["standard_columns"] = config.data.standard_columns
         
         data["factors"] = [
             {

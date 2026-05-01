@@ -132,7 +132,17 @@ class ConfigBacktestTool(Tool):
             runner = ConfigBacktestRunner()
             bt_result = runner.run(strategy_config, data)
 
-            # 6. 格式化返回结果
+            # 6. 保存输出文件
+            saved_files = {}
+            if strategy_config.output is not None:
+                signals_df = None
+                if bt_result.statistics.get("total_trades", 0) > 0:
+                    signals_df = bt_result.trades
+                saved_files = runner.save_output(
+                    bt_result, strategy_config, signals_df=signals_df
+                )
+
+            # 7. 格式化返回结果
             result["status"] = "success"
             result["summary"] = {
                 "total_trades": bt_result.statistics.get("total_trades", 0),
@@ -151,7 +161,7 @@ class ConfigBacktestTool(Tool):
                 "trading_days": bt_result.statistics.get("trading_days", 0),
             }
 
-            # 7. 附加配置信息
+            # 8. 附加配置信息
             result["config_info"] = {
                 "name": strategy_config.name,
                 "description": strategy_config.description,
@@ -160,6 +170,9 @@ class ConfigBacktestTool(Tool):
                 "composites": len(strategy_config.composite),
                 "has_backtest": strategy_config.backtest is not None,
             }
+
+            if saved_files:
+                result["output_files"] = saved_files
 
         except Exception as e:
             result["status"] = "error"
@@ -188,18 +201,162 @@ class ConfigBacktestTool(Tool):
         return None
 
     def _load_data(self, config, data_path: str = None):
-        """加载数据为 Polars LazyFrame"""
+        """加载数据为 Polars LazyFrame
+        
+        数据加载分发逻辑:
+        1. data_path 参数 → 直接读文件（向后兼容）
+        2. config.data.source == "csv"/"parquet" → 读文件
+        3. config.data.source == "clickhouse"/"mysql" → _load_from_db()
+        4. config.data.source == "sqlite"/"duckdb" → _load_from_db() (path-based)
+        """
         import polars as pl
 
         # 优先使用 data_path 参数
         if data_path:
             return self._read_data_file(data_path)
 
-        # 使用 config.data.path
-        if config.data and config.data.path:
-            return self._read_data_file(config.data.path)
+        if not config.data:
+            raise ValueError("No data configuration provided. Set config.data or data_path")
 
-        raise ValueError("No data path provided. Set data_path or config.data.path")
+        source = config.data.source
+
+        # 文件类数据源
+        if source in ("csv", "parquet"):
+            if config.data.path:
+                lf = self._read_data_file(config.data.path)
+                # 应用列名映射
+                if config.data.column_mapping:
+                    lf = lf.rename(config.data.column_mapping)
+                return lf
+            raise ValueError(f"source='{source}' requires config.data.path")
+
+        # 数据库类数据源
+        if source in ("clickhouse", "mysql", "sqlite", "duckdb"):
+            return self._load_from_db(config)
+
+        raise ValueError(f"Unsupported data source: {source}")
+
+    def _load_from_db(self, config):
+        """从 database_node 加载数据
+        
+        流程: 读取 conn.ini → 构建 SQL → 查询 → 列名映射 → 返回 LazyFrame
+        
+        注意: DateTime 转换使用映射后的 date_column（而非 db_date_column）。
+        """
+        import polars as pl
+        import configparser
+        from pathlib import Path
+
+        data_cfg = config.data
+        source = data_cfg.source
+
+        # 1. 构建 Node 实例
+        node = self._build_db_node(source, data_cfg)
+
+        # 2. 连接并查询
+        try:
+            node.connect()
+            sql = self._build_query(data_cfg)
+            df = node.query(sql)
+        finally:
+            node.disconnect()
+
+        # 3. 列名映射
+        if data_cfg.column_mapping:
+            df = df.rename(columns=data_cfg.column_mapping)
+
+        # 4. DateTime → Date 类型转换（使用映射后的 date_column）
+        date_col = data_cfg.date_column
+        if date_col in df.columns:
+            try:
+                import polars as pl_polars
+                pdf = pl_polars.from_pandas(df)
+                if pdf.schema.get(date_col) == pl_polars.Datetime:
+                    pdf = pdf.with_columns(pl_polars.col(date_col).cast(pl_polars.Date))
+                    df = pdf.to_pandas()
+            except Exception:
+                pass
+
+        return pl.from_pandas(df).lazy()
+
+    def _build_db_node(self, source, data_cfg):
+        """构建 database_node 实例"""
+        from pathlib import Path
+        from QuantNodes.conf_node.ini_config import IniConfigNode
+
+        if source in ("sqlite", "duckdb"):
+            return self._build_embedded_node(source, data_cfg)
+
+        # clickhouse / mysql: 从 conn.ini 读取连接参数
+        if not data_cfg.conn_ini:
+            raise ValueError(f"source='{source}' requires conn_ini")
+
+        ini_path = Path(data_cfg.conn_ini)
+        if not ini_path.exists():
+            raise FileNotFoundError(f"conn.ini not found: {ini_path}")
+
+        ini = IniConfigNode(str(ini_path), section=data_cfg.conn_section)
+        conn_params = ini.execute()
+
+        if source == "clickhouse":
+            from QuantNodes.database_node import ClickHouseNode
+            return ClickHouseNode(
+                host=conn_params.get("host", "localhost"),
+                port=int(conn_params.get("port", 8123)),
+                user=conn_params.get("user", "default"),
+                passwd=conn_params.get("passwd", ""),
+                database=conn_params.get("db", "default"),
+            )
+        elif source == "mysql":
+            from QuantNodes.database_node import MySQLNode
+            return MySQLNode(
+                host=conn_params.get("host", "localhost"),
+                port=int(conn_params.get("port", 3306)),
+                user=conn_params.get("user", "root"),
+                passwd=conn_params.get("passwd", ""),
+                db=conn_params.get("db", ""),
+            )
+
+    def _build_embedded_node(self, source, data_cfg):
+        """构建嵌入式数据库 Node (sqlite/duckdb)"""
+        path = data_cfg.path
+        if not path:
+            raise ValueError(f"source='{source}' requires config.data.path")
+
+        if source == "sqlite":
+            from QuantNodes.database_node import SQLiteNode
+            return SQLiteNode(database=path)
+        elif source == "duckdb":
+            from QuantNodes.database_node import DuckDBNode
+            return DuckDBNode(database=path)
+
+    def _build_query(self, data_cfg):
+        """从 DataConfig 构建 SQL 查询
+        
+        使用 db_*_column 作为 SQL 标识符（数据库原始列名）。
+        如果 db_*_column 为空，则 fallback 到 date_column/code_column。
+        """
+        cols = data_cfg.columns or ["*"]
+        cols_str = ", ".join(cols)
+        table = data_cfg.table
+
+        if not table:
+            raise ValueError("DataConfig.table is required for database sources")
+
+        sql = f"SELECT {cols_str} FROM {table}"
+
+        where_parts = []
+        if data_cfg.query_filter:
+            where_parts.append(data_cfg.query_filter.lstrip("WHERE "))
+
+        if where_parts:
+            sql += " WHERE " + " AND ".join(where_parts)
+
+        code_col = data_cfg.db_code_column or data_cfg.code_column
+        date_col = data_cfg.db_date_column or data_cfg.date_column
+        sql += f" ORDER BY {code_col}, {date_col}"
+
+        return sql
 
     def _read_data_file(self, path: str):
         """读取数据文件"""

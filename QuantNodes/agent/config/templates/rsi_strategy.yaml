@@ -1,0 +1,72 @@
+# rsi_strategy.yaml
+# RSI 超买超卖策略
+# 逻辑: RSI < 30 超卖买入，RSI > 70 超买卖出
+
+version: "1.0"
+name: "rsi_reversal"
+description: "RSI超买超卖策略 - RSI低于30买入，高于70卖出"
+
+data:
+  source: clickhouse
+  conn_ini: conn.ini
+  conn_section: ClickHouse
+  table: quote.cn_stock
+  columns: [ts_code, trade_date, open, high, low, close, vol]
+
+  db_date_column: trade_date
+  db_code_column: ts_code
+  date_column: date
+  code_column: code
+
+  column_mapping:
+    ts_code: code
+    trade_date: date
+    vol: volume
+
+  query_filter: "WHERE trade_date >= toDateTime('2023-07-01')"
+
+factors:
+  - name: rsi_14
+    expr: "talib_rsi(close, timeperiod=14)"
+    description: "14日RSI指标"
+
+  - name: returns
+    expr: "close / ts_lag(close, 1) - 1"
+    description: "日收益率"
+
+operations:
+  - type: section
+    name: rsi_rank
+    category: rank
+    inputs: [rsi_14]
+    description: "RSI截面排名"
+
+  - type: section
+    name: returns_rank
+    category: rank
+    inputs: [returns]
+    description: "收益率截面排名"
+
+composite:
+  - name: alpha
+    formula: "-1 * rsi_rank"
+
+backtest:
+  start_date: "2023-07-01"
+  end_date: "2024-07-19"
+  initial_cash: 1000000
+  commission: 0.001
+  slippage: 0.001
+
+  signals:
+    buy_threshold: 0.6
+    sell_threshold: 0.4
+
+  positions:
+    max_positions: 10
+    rebalance_freq: "weekly"
+
+output:
+  format: parquet
+  path: "outputs/rsi_result.parquet"
+  save_signals: true

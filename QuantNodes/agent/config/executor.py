@@ -383,19 +383,46 @@ class ConfigExecutor:
             return result
         
         bt = config.backtest
+        code_col = config.data.code_column if config.data else "code"
+        date_col = config.data.date_column if config.data else "date"
         
         try:
-            # 筛选日期
+            # 使用 result.data (已包含计算列) 进行筛选
+            working_data = result.data if result.data is not None else data
+            
+            # 筛选 Universe
+            universe_codes = self._resolve_universe(bt.universe)
+            if universe_codes is not None:
+                schema = working_data.collect_schema()
+                # 使用 code_column（内部标准名），兼容 PascalCase fallback
+                effective_code_col = code_col
+                if effective_code_col not in schema:
+                    pascal = code_col[0].upper() + code_col[1:] if code_col else ""
+                    if pascal in schema:
+                        effective_code_col = pascal
+                if effective_code_col in schema:
+                    working_data = working_data.filter(pl.col(effective_code_col).is_in(universe_codes))
+
+            # 筛选日期（兼容 String 和 Date 类型）
             if bt.start_date:
                 start_parts = list(map(int, bt.start_date.split("-")))
-                data = data.filter(
-                    pl.col("date").str.to_date() >= pl.date(start_parts[0], start_parts[1], start_parts[2])
-                )
+                start_date = pl.date(start_parts[0], start_parts[1], start_parts[2])
+                date_series = pl.col(date_col)
+                schema = working_data.collect_schema()
+                date_dtype = schema.get(date_col)
+                # 如果是 String 类型，先转换为 Date
+                if date_dtype == pl.Utf8 or date_dtype == pl.String:
+                    date_series = date_series.str.to_date()
+                working_data = working_data.filter(date_series >= start_date)
             if bt.end_date:
                 end_parts = list(map(int, bt.end_date.split("-")))
-                data = data.filter(
-                    pl.col("date").str.to_date() <= pl.date(end_parts[0], end_parts[1], end_parts[2])
-                )
+                end_date = pl.date(end_parts[0], end_parts[1], end_parts[2])
+                date_series = pl.col(date_col)
+                schema = working_data.collect_schema()
+                date_dtype = schema.get(date_col)
+                if date_dtype == pl.Utf8 or date_dtype == pl.String:
+                    date_series = date_series.str.to_date()
+                working_data = working_data.filter(date_series <= end_date)
             
             # 计算信号 (取最后一个因子作为信号)
             signal_name = None
@@ -416,14 +443,14 @@ class ConfigExecutor:
                                     bt.signals.get("short_threshold", -0.03))
                     
                     # 生成交易信号
-                    data = data.with_columns([
+                    working_data = working_data.with_columns([
                         pl.when(expr > buy_threshold).then(1)
                         .when(expr < sell_threshold).then(-1)
                         .otherwise(0).alias("signal")
                     ])
                     
                     result.backtest = {
-                        "signals": data.select("date", "code", "signal"),
+                        "signals": working_data.select(date_col, code_col, "signal"),
                         "config": {
                             "start_date": bt.start_date,
                             "end_date": bt.end_date,
@@ -434,7 +461,7 @@ class ConfigExecutor:
                         "buy_threshold": buy_threshold,
                         "sell_threshold": sell_threshold,
                     }
-                    result.data = data.select(data.collect_schema().names())
+                    result.data = working_data
         except Exception as e:
             result.warnings.append(f"回测配置解析警告: {str(e)}")
         
@@ -793,6 +820,45 @@ class ConfigExecutor:
         
         return None
 
+    def _resolve_universe(self, universe: str) -> Optional[List[str]]:
+        """解析 Universe 配置，返回股票代码列表。
+
+        支持格式:
+        - "all" / "" → None (不过滤)
+        - "A_stock" → 预留 A 股全市场（当前不过滤，返回 None）
+        - "/path/to/codes.txt" → 从文件读取，每行一个代码
+        - "000001.SZ,600000.SH" → 逗号分隔的代码列表
+
+        Returns:
+            股票代码列表，或 None 表示不过滤
+        """
+        if not universe or universe.strip().lower() in ("all", "*"):
+            return None
+
+        # 预留: A 股全市场
+        if universe.strip().lower() in ("a_stock", "a-share", "cn_stock"):
+            return None
+
+        # 文件路径
+        from pathlib import Path
+        u = universe.strip()
+        if Path(u).is_file():
+            codes = []
+            with open(u, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        codes.append(line)
+            return codes if codes else None
+
+        # 逗号分隔的代码列表
+        if "," in u:
+            codes = [c.strip() for c in u.split(",") if c.strip()]
+            return codes if codes else None
+
+        # 单个代码
+        return [u]
+
     def _apply_talib_operator(
         self,
         category: str,
@@ -822,20 +888,18 @@ class ConfigExecutor:
         """执行计算计划
         
         保留原始列 (date, code, close等) 并添加计算的因子列。
+        使用 with_columns 逐层添加，确保中间表达式可被下游引用。
         """
-        # 保留原始列
-        original_col_names = data.collect_schema().names()
-        original_cols = [pl.col(c) for c in original_col_names]
-        
-        # 添加计算的因子列
-        computed_cols = []
-        for name, expr in self._expressions.items():
-            computed_cols.append(expr.alias(name))
-        
-        if computed_cols:
-            result.data = data.select(original_cols + computed_cols)
-        else:
+        if not self._expressions:
             result.data = data
+            return
+        
+        # 用 with_columns 逐个添加计算列，解决表达式间依赖
+        computed = data
+        for name, expr in self._expressions.items():
+            computed = computed.with_columns(expr.alias(name))
+        
+        result.data = computed
     
     def get_expressions(self) -> Dict[str, pl.Expr]:
         """获取生成的表达式"""

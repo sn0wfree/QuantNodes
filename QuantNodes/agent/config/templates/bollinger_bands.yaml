@@ -1,0 +1,84 @@
+# bollinger_bands.yaml
+# 布林带突破策略
+# 逻辑: 价格跌破下轨买入，突破上轨卖出
+
+version: "1.0"
+name: "bollinger_breakout"
+description: "布林带突破策略 - 价格跌破下轨买入，突破上轨卖出"
+
+data:
+  source: clickhouse
+  conn_ini: conn.ini
+  conn_section: ClickHouse
+  table: quote.cn_stock
+  columns: [ts_code, trade_date, open, high, low, close, vol]
+
+  db_date_column: trade_date
+  db_code_column: ts_code
+  date_column: date
+  code_column: code
+
+  column_mapping:
+    ts_code: code
+    trade_date: date
+    vol: volume
+
+  query_filter: "WHERE trade_date >= toDateTime('2023-07-01')"
+
+factors:
+  - name: close_ma
+    expr: "ts_mean(close, 20)"
+    description: "20日均线（布林带中轨）"
+
+  - name: close_std
+    expr: "ts_std(close, 20)"
+    description: "20日标准差"
+
+  - name: upper_band
+    expr: "close_ma + 2 * close_std"
+    description: "布林带上轨"
+
+  - name: lower_band
+    expr: "close_ma - 2 * close_std"
+    description: "布林带下轨"
+
+  - name: band_width
+    expr: "(upper_band - lower_band) / close_ma"
+    description: "布林带宽度"
+
+operations:
+  - type: section
+    name: band_width_rank
+    category: rank
+    inputs: [band_width]
+    description: "布林带宽度截面排名"
+
+  - type: section
+    name: close_position
+    category: rank
+    inputs: [close]
+    description: "价格截面排名"
+
+composite:
+  - name: alpha
+    formula: "-1 * band_width_rank"
+
+backtest:
+  start_date: "2023-07-01"
+  end_date: "2024-07-19"
+  initial_cash: 1000000
+  commission: 0.001
+  slippage: 0.001
+
+  signals:
+    buy_threshold: 0.6
+    sell_threshold: 0.4
+
+  positions:
+    max_positions: 10
+    rebalance_freq: "weekly"
+
+output:
+  format: parquet
+  path: "outputs/bollinger_result.parquet"
+  save_signals: true

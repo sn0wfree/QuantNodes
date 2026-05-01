@@ -1,0 +1,72 @@
+# dual_ma.yaml
+# 双均线金叉死叉策略
+# 用户场景: "帮我写一个双均线策略，回测一下看看效果"
+
+version: "1.0"
+name: "dual_ma_crossover"
+description: "双均线金叉死叉策略 - 短期均线上穿长期均线买入，下穿卖出"
+
+data:
+  source: clickhouse
+  conn_ini: conn.ini
+  conn_section: ClickHouse
+  table: quote.cn_stock
+  columns: [ts_code, trade_date, open, high, low, close, vol]
+
+  db_date_column: trade_date
+  db_code_column: ts_code
+  date_column: date
+  code_column: code
+
+  column_mapping:
+    ts_code: code
+    trade_date: date
+    vol: volume
+
+  query_filter: "WHERE trade_date >= toDateTime('2023-07-01')"
+
+factors:
+  - name: short_ma
+    expr: "ts_mean(close, 5)"
+    description: "5日均线（短期）"
+
+  - name: long_ma
+    expr: "ts_mean(close, 20)"
+    description: "20日均线（长期）"
+
+  - name: ma_diff
+    expr: "short_ma - long_ma"
+    description: "均线差值"
+
+operations:
+  - type: section
+    name: ma_diff_rank
+    category: rank
+    inputs: [ma_diff]
+    description: "均线差值截面排名"
+
+composite:
+  - name: alpha
+    formula: "ma_diff_rank"
+
+backtest:
+  start_date: "2023-07-01"
+  end_date: "2024-07-19"
+  initial_cash: 1000000
+  commission: 0.001
+  slippage: 0.001
+
+  signals:
+    buy_threshold: 0.6
+    sell_threshold: 0.4
+
+  positions:
+    max_positions: 10
+    rebalance_freq: "weekly"
+
+output:
+  format: parquet
+  path: "outputs/dual_ma_result.parquet"
+  save_signals: true
+  save_positions: true
+  save_equity_curve: true
