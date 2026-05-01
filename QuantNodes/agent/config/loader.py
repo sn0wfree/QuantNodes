@@ -97,6 +97,10 @@ class ConfigLoader:
                     "close": "close",
                     "volume": "volume",
                 }),
+                cache_enabled=d.get("cache_enabled", False),
+                cache_ttl_days=d.get("cache_ttl_days", 7),
+                cache_dir=d.get("cache_dir", "~/.quantnodes/cache"),
+                cache_force_refresh=d.get("cache_force_refresh", False),
             )
         
         # 因子定义
@@ -333,6 +337,13 @@ class ConfigLoader:
                 data["data"]["query_filter"] = config.data.query_filter
             if config.data.standard_columns:
                 data["data"]["standard_columns"] = config.data.standard_columns
+            if config.data.cache_enabled:
+                data["data"]["cache_enabled"] = True
+                data["data"]["cache_ttl_days"] = config.data.cache_ttl_days
+                if config.data.cache_dir != "~/.quantnodes/cache":
+                    data["data"]["cache_dir"] = config.data.cache_dir
+                if config.data.cache_force_refresh:
+                    data["data"]["cache_force_refresh"] = True
         
         data["factors"] = [
             {

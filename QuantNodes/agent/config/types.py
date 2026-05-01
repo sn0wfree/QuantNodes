@@ -99,6 +99,12 @@ class DataConfig:
         "volume": "volume",
     })
 
+    # 缓存配置
+    cache_enabled: bool = False
+    cache_ttl_days: int = 7
+    cache_dir: str = "~/.quantnodes/cache"
+    cache_force_refresh: bool = False
+
 
 @dataclass
 class OutputConfig:

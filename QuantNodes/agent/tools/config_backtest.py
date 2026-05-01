@@ -241,11 +241,11 @@ class ConfigBacktestTool(Tool):
         
         流程: 读取 conn.ini → 构建 SQL → 查询 → 列名映射 → 返回 LazyFrame
         
+        如果 cache_enabled=True, 优先使用 MarketDataCacheNode 缓存查询结果。
+        
         注意: DateTime 转换使用映射后的 date_column（而非 db_date_column）。
         """
         import polars as pl
-        import configparser
-        from pathlib import Path
 
         data_cfg = config.data
         source = data_cfg.source
@@ -253,13 +253,11 @@ class ConfigBacktestTool(Tool):
         # 1. 构建 Node 实例
         node = self._build_db_node(source, data_cfg)
 
-        # 2. 连接并查询
-        try:
-            node.connect()
-            sql = self._build_query(data_cfg)
-            df = node.query(sql)
-        finally:
-            node.disconnect()
+        # 2. 缓存逻辑
+        if data_cfg.cache_enabled:
+            df = self._load_with_cache(data_cfg, node)
+        else:
+            df = self._load_from_db_direct(data_cfg, node)
 
         # 3. 列名映射
         if data_cfg.column_mapping:
@@ -278,6 +276,35 @@ class ConfigBacktestTool(Tool):
                 pass
 
         return pl.from_pandas(df).lazy()
+
+    def _load_with_cache(self, data_cfg, node):
+        """使用缓存加载数据"""
+        from QuantNodes.cache_node import MarketDataCacheNode
+
+        cache_node = MarketDataCacheNode(config={
+            "cache_dir": data_cfg.cache_dir,
+            "ttl_days": data_cfg.cache_ttl_days,
+            "force_refresh": data_cfg.cache_force_refresh,
+        })
+
+        return cache_node.execute({
+            "source": data_cfg.source,
+            "table": data_cfg.table,
+            "columns": data_cfg.columns,
+            "query_filter": data_cfg.query_filter,
+            "node": node,
+            "date_column": data_cfg.db_date_column or data_cfg.date_column,
+        })
+
+    def _load_from_db_direct(self, data_cfg, node):
+        """直接从数据库加载 (不使用缓存)"""
+        try:
+            node.connect()
+            sql = self._build_query(data_cfg)
+            df = node.query(sql)
+        finally:
+            node.disconnect()
+        return df
 
     def _build_db_node(self, source, data_cfg):
         """构建 database_node 实例"""
