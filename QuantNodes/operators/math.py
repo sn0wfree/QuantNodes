@@ -1,8 +1,8 @@
 # coding=utf-8
 """
-数学算子
+数学算子（代理层）
 
-基于 Polars 的基础数学运算。
+基于 factor_functions/math_ops.py 的实现，提供统一的类接口。
 
 Available Operators:
     - add: 加法
@@ -15,6 +15,8 @@ Available Operators:
     - sqrt: 平方根
     - sign: 符号
     - clip: 裁剪
+    - fill_null: 填充空值
+    - nan_to_null: NaN 转 null
 
 Usage:
     >>> math.add(pl.col("factor"), 1.0)
@@ -24,338 +26,142 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Union, Optional
+from typing import Union, Optional, List, Any
 
 import polars as pl
 from polars import Expr
 
+from QuantNodes.factor_node.factor_functions.math_ops import (
+    add as _add,
+    sub as _sub,
+    mul as _mul,
+    div as _div,
+    log as _log,
+    log1p as _log1p,
+    abs as _abs,
+    sqrt as _sqrt,
+    sign as _sign,
+    pow as _pow,
+    clip as _clip,
+    fill_null as _fill_null,
+    fill_zero as _fill_zero,
+    nan_to_null as _nan_to_null,
+    ceil as _ceil,
+    floor as _floor,
+    sin as _sin,
+    cos as _cos,
+    tan as _tan,
+    arcsin as _arcsin,
+    arccos as _arccos,
+    arctan as _arctan,
+)
+
 
 class MathOperators:
-    """数学算子"""
-    
+    """数学算子（代理层）"""
+
     @staticmethod
-    def add(
-        expr: Union[Expr, str],
-        value: Union[float, Expr]
-    ) -> Expr:
-        """
-        加法
-        
-        Args:
-            expr: 表达式或列名
-            value: 加数 (常数或表达式)
-        
-        Example:
-            >>> math.add("factor", 1.0)
-            >>> math.add("factor", pl.col("weight"))
-        """
+    def add(expr: Union[Expr, str], value: Union[float, Expr]) -> Expr:
+        if isinstance(expr, str):
+            expr = pl.col(expr)
+        return expr + value
+
+    @staticmethod
+    def sub(expr: Union[Expr, str], value: Union[float, Expr]) -> Expr:
+        if isinstance(expr, str):
+            expr = pl.col(expr)
+        return expr - value
+
+    @staticmethod
+    def mul(expr: Union[Expr, str], value: Union[float, Expr]) -> Expr:
+        if isinstance(expr, str):
+            expr = pl.col(expr)
+        return expr * value
+
+    @staticmethod
+    def div(expr: Union[Expr, str], value: Union[float, Expr]) -> Expr:
         if isinstance(expr, str):
             expr = pl.col(expr)
         if isinstance(value, (int, float)):
-            return expr + value
+            return expr / (value + 1e-10)
         else:
-            return expr + value
-    
+            return expr / (value + 1e-10)
+
     @staticmethod
-    def sub(
-        expr: Union[Expr, str],
-        value: Union[float, Expr]
-    ) -> Expr:
-        """
-        减法
-        
-        Args:
-            expr: 表达式或列名
-            value: 减数
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        if isinstance(value, (int, float)):
-            return expr - value
-        else:
-            return expr - value
-    
-    @staticmethod
-    def mul(
-        expr: Union[Expr, str],
-        value: Union[float, Expr]
-    ) -> Expr:
-        """
-        乘法
-        
-        Args:
-            expr: 表达式或列名
-            value: 乘数
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        if isinstance(value, (int, float)):
-            return expr * value
-        else:
-            return expr * value
-    
-    @staticmethod
-    def div(
-        expr: Union[Expr, str],
-        value: Union[float, Expr],
-        eps: float = 1e-8
-    ) -> Expr:
-        """
-        除法
-        
-        Args:
-            expr: 表达式或列名
-            value: 除数
-            eps: 防止除零的常数
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        if isinstance(value, (int, float)):
-            return expr / (value + eps)
-        else:
-            return expr / (value + eps)
-    
-    @staticmethod
-    def log(
-        expr: Union[Expr, str],
-        base: str = "e"
-    ) -> Expr:
-        """
-        对数
-        
-        Args:
-            expr: 表达式或列名
-            base: 底数 ("e"/"2"/"10")
-        
-        Example:
-            >>> math.log("factor")
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        
-        if base == "e":
-            return expr.log()
-        elif base == "2":
-            import math
-            return expr.log() / math.log(2)
-        elif base == "10":
-            return expr.log10()
-        return expr.log()
-    
+    def log(expr: Union[Expr, str], base: Optional[str] = None) -> Expr:
+        return _log(expr, base=base)
+
     @staticmethod
     def log1p(expr: Union[Expr, str]) -> Expr:
-        """
-        log(1 + x)
-        
-        Args:
-            expr: 表达式或列名
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.log1p()
-    
+        return _log1p(expr)
+
     @staticmethod
     def abs(expr: Union[Expr, str]) -> Expr:
-        """
-        绝对值
-        
-        Args:
-            expr: 表达式或列名
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.abs()
-    
+        return _abs(expr)
+
     @staticmethod
-    def pow(
-        expr: Union[Expr, str],
-        exponent: float
-    ) -> Expr:
-        """
-        幂运算
-        
-        Args:
-            expr: 表达式或列名
-            exponent: 指数
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.pow(exponent)
-    
-    @staticmethod
-    def sqrt(
-        expr: Union[Expr, str],
-        eps: float = 1e-8
-    ) -> Expr:
-        """
-        平方根
-        
-        Args:
-            expr: 表达式或列名
-            eps: 防止负数的常数
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return (expr + eps).sqrt()
-    
+    def sqrt(expr: Union[Expr, str]) -> Expr:
+        return _sqrt(expr)
+
     @staticmethod
     def sign(expr: Union[Expr, str]) -> Expr:
-        """
-        符号
-        
-        Args:
-            expr: 表达式或列名
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.sign()
-    
+        return _sign(expr)
+
     @staticmethod
-    def clip(
-        expr: Union[Expr, str],
-        lower: Optional[float] = None,
-        upper: Optional[float] = None
-    ) -> Expr:
-        """
-        裁剪
-        
-        Args:
-            expr: 表达式或列名
-            lower: 下界
-            upper: 上界
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.clip(lower_bound=lower, upper_bound=upper)
-    
+    def pow(expr: Union[Expr, str], exponent: float = 2.0) -> Expr:
+        return _pow(expr, exponent=exponent)
+
+    @staticmethod
+    def clip(expr: Union[Expr, str], lower: Optional[float] = None,
+             upper: Optional[float] = None) -> Expr:
+        return _clip(expr, lower=lower, upper=upper)
+
     @staticmethod
     def floor(expr: Union[Expr, str]) -> Expr:
-        """
-        下取整
-        
-        Args:
-            expr: 表达式或列名
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.floor()
-    
+        return _floor(expr)
+
     @staticmethod
     def ceil(expr: Union[Expr, str]) -> Expr:
-        """
-        上取整
-        
-        Args:
-            expr: 表达式或列名
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.ceil()
-    
+        return _ceil(expr)
+
     @staticmethod
-    def round(
-        expr: Union[Expr, str],
-        decimals: int = 2
-    ) -> Expr:
-        """
-        四舍五入
-        
-        Args:
-            expr: 表达式或列名
-            decimals: 小数位数
-        """
+    def nan_to_null(expr: Union[Expr, str]) -> Expr:
+        return _nan_to_null(expr)
+
+    @staticmethod
+    def fill_null(expr: Union[Expr, str], value: Union[float, str] = 0.0) -> Expr:
+        return _fill_null(expr, value=value)
+
+    @staticmethod
+    def fill_zero(expr: Union[Expr, str]) -> Expr:
+        return _fill_zero(expr)
+
+    @staticmethod
+    def round(expr: Union[Expr, str], decimals: int = 0) -> Expr:
         if isinstance(expr, str):
             expr = pl.col(expr)
         return expr.round(decimals)
-    
-    @staticmethod
-    def nan_to_null(expr: Union[Expr, str]) -> Expr:
-        """
-        NaN 转 null
-        
-        Args:
-            expr: 表达式或列名
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.fill_nan(None)
-    
-    @staticmethod
-    def fill_null(
-        expr: Union[Expr, str],
-        value: Union[float, str] = 0.0
-    ) -> Expr:
-        """
-        填充 null 值
-        
-        Args:
-            expr: 表达式或列名
-            value: 填充值 (float 或 "forward"/"backward")
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        
-        if isinstance(value, str):
-            if value == "forward":
-                return expr.fill_null(strategy="forward")
-            elif value == "backward":
-                return expr.fill_null(strategy="backward")
-            else:
-                return expr.fill_null(value=0.0)
-        return expr.fill_null(value=value)
-    
-    @staticmethod
-    def fill_zero(expr: Union[Expr, str]) -> Expr:
-        """
-        填充 0
-        
-        Args:
-            expr: 表达式或列名
-        """
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.fill_null(value=0.0)
-    
-    # ========== 三角函数 ==========
-    
+
     @staticmethod
     def sin(expr: Union[Expr, str]) -> Expr:
-        """正弦"""
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.sin()
-    
+        return _sin(expr)
+
     @staticmethod
     def cos(expr: Union[Expr, str]) -> Expr:
-        """余弦"""
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.cos()
-    
+        return _cos(expr)
+
     @staticmethod
     def tan(expr: Union[Expr, str]) -> Expr:
-        """正切"""
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.tan()
-    
+        return _tan(expr)
+
     @staticmethod
     def arcsin(expr: Union[Expr, str]) -> Expr:
-        """反正弦"""
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.arcsin()
-    
+        return _arcsin(expr)
+
     @staticmethod
     def arccos(expr: Union[Expr, str]) -> Expr:
-        """反余弦"""
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.arccos()
-    
+        return _arccos(expr)
+
     @staticmethod
     def arctan(expr: Union[Expr, str]) -> Expr:
-        """反正切"""
-        if isinstance(expr, str):
-            expr = pl.col(expr)
-        return expr.arctan()
+        return _arctan(expr)

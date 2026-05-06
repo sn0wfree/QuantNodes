@@ -46,4 +46,8 @@ except ImportError:
     talib_ops = None
 
 __all__ = ["ts", "sec", "math", "composite", "talib_ops",
-           "TimeSeriesOperators", "SectionOperators", "MathOperators", "CompositeOperators"]
+           "TimeSeriesOperators", "SectionOperators", "MathOperators", "CompositeOperators",
+           "list_operators", "get_operator", "register_operator"]
+
+# 导出注册表 API（从 proxy 导入）
+from .proxy import list_operators, get_operator, register_operator
