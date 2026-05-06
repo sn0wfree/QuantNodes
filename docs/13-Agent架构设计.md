@@ -1,6 +1,6 @@
 # Agent 系统架构设计
 
-> 合并自: 12-Agent业界调研与设计模式.md + 13-Agent系统架构设计.md + 14-Agent实施计划.md  
+> 合并自: 12-Agent业界调研与设计模式.md + 13-Agent系统架构设计.md + 14-Agent实施计划.md + 15-Config-Driven方案.md  
 > 架构模式: nanobot极简核心 + llmwikify知识沉淀 + QuantNodes量化引擎  
 > 通信协议: MCP (Model Context Protocol)  
 > 状态: Phase 1-2 已完成 ✅，Phase 3 部分完成（Polars/Config ✅，MCP/Wiki ⬜）
@@ -423,3 +423,91 @@ class Tool(ABC):
 | Prompt管理 | 独立markdown文件 | Python字符串模板 |
 | 代码执行 | CodeSandbox + 子进程 | Docker容器 |
 | 持久化 | 文件系统优先 | 数据库 |
+
+---
+
+## 十一、Config-Driven 配置驱动方案
+
+### 11.1 设计目标
+
+| 目标 | 说明 |
+|------|------|
+| **配置即策略** | Agent 编写 YAML 配置代替编写代码 |
+| **自动闭环** | 配置 → 代码生成 → 验证 → 回测 自动执行 |
+| **Agent 兜底** | 不可配置部分 Agent 补充自定义算子 |
+| **测试自运行** | 配置中声明测试，Agent 不需要手动运行 |
+
+### 11.2 执行流程
+
+```
+Agent 编写 strategy_config.yaml
+    ↓
+ConfigLoader 解析配置
+    ↓
+OperatorRegistry 检查覆盖度
+    ├─ 全部可配置 → FactorExecutor.run(config)
+    └─ 有无法表达 → Agent 编写自定义算子
+    ↓
+合并执行 + 返回结果
+```
+
+### 11.3 配置文件格式
+
+```yaml
+version: "1.0"
+name: "momentum_alpha_v1"
+
+data:
+  source: "clickhouse"
+  conn_ini: "conn.ini"
+  table: "quote.cn_stock"
+  date_column: "date"
+  code_column: "code"
+
+factors:
+  - name: momentum_20d
+    formula: "close / close.shift(20) - 1"
+
+operations:
+  - type: time_series
+    name: momentum_ma
+    category: ts_mean
+    inputs: [momentum_20d]
+    params: {window: 20}
+
+composite:
+  - name: alpha
+    formula: "momentum_ma"
+
+backtest:
+  start_date: "2020-01-01"
+  end_date: "2024-12-31"
+  initial_cash: 1000000
+```
+
+### 11.4 数据加载设计
+
+| 节点 | 功能 | 数据源 |
+|------|------|--------|
+| `ClickHouseNode` | 查询/插入/DDL | 远程服务器 |
+| `MySQLNode` | 查询/插入/DDL | 远程服务器 |
+| `CSVNode` | 读取/过滤 | `.csv` |
+| `ParquetNode` | 读取/过滤 | `.parquet` |
+| `DuckDBNode` | 查询/分析 | `.duckdb` |
+
+**列名映射策略**: 数据加载层统一列名，下游使用标准列名 (`date`, `code`, `open`, `high`, `low`, `close`, `volume`)
+
+### 11.5 实施状态
+
+| 组件 | 状态 | 文件 |
+|------|------|------|
+| ConfigLoader | ✅ 已完成 | `agent/config/loader.py` |
+| ConfigExecutor | ✅ 已完成 | `agent/config/executor.py` |
+| ConfigBacktestRunner | ✅ 已完成 | `backtest/config_runner.py` |
+| 6种数据源支持 | ✅ 已完成 | `database_node/` |
+| YAML策略模板 | ✅ 已完成 | `agent/config/templates/` |
+
+---
+
+**文档版本**: v2.0  
+**最后更新**: 2026-05-06
