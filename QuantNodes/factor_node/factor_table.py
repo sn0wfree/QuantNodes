@@ -27,6 +27,7 @@ import pandas as pd
 from progressbar import ProgressBar
 
 from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
+from QuantNodes.core.tools import compile_id_filter_str
 
 
 class ErgodicModeType(Enum):
@@ -445,7 +446,7 @@ class FactorTable(QuantNodesObject):
             ids = self.getID(idt=idt, args=args)
         if not id_filter_str:
             return pd.Series(True, index=ids)
-        CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, self.FactorNames)
+        CompiledIDFilterStr, IDFilterFactors = compile_id_filter_str(id_filter_str, self.FactorNames)
         if CompiledIDFilterStr is None:
             raise FactorError("过滤条件字符串有误!")
         temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
@@ -456,7 +457,7 @@ class FactorTable(QuantNodesObject):
             return self.getID(idt=idt, args=args)
         if ids is None:
             ids = self.getID(idt=idt, args=args)
-        CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, self.FactorNames)
+        CompiledIDFilterStr, IDFilterFactors = compile_id_filter_str(id_filter_str, self.FactorNames)
         if CompiledIDFilterStr is None:
             raise FactorError("过滤条件字符串有误!")
         temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
@@ -1046,7 +1047,7 @@ class CustomFT(FactorTable):
         if CompiledIDFilter is not None:
             self._IDFilterStr = id_filter_str
             return OldIDFilterStr
-        CompiledIDFilterStr, IDFilterFactors = testIDFilterStr(id_filter_str, self.FactorNames)
+        CompiledIDFilterStr, IDFilterFactors = compile_id_filter_str(id_filter_str, self.FactorNames)
         if CompiledIDFilterStr is None:
             raise FactorError("条件字符串有误!")
         self._IDFilterStr = id_filter_str

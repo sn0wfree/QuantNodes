@@ -70,7 +70,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-v --strict-markers"
+addopts = "-v --strict-markers --ignore=QuantNodes"
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",

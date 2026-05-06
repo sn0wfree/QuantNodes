@@ -25,8 +25,8 @@ from .types import (
     OutputConfig,
     CoverageReport,
 )
-from QuantNodes.factor_node.factor_functions import list_operators as _list_operators
-from QuantNodes.factor_node.factor_functions import get_operator as _get_operator
+from QuantNodes.operators.proxy import list_operators as _list_operators
+from QuantNodes.operators.proxy import get_operator as _get_operator
 
 # executor category → registry category 映射
 _CATEGORY_MAP = {
@@ -185,7 +185,7 @@ class ConfigLoader:
         if not custom_operators:
             return
         
-        from QuantNodes.factor_node.factor_functions import register_operator
+        from QuantNodes.operators.proxy import register_operator
         
         for entry in custom_operators:
             if isinstance(entry, str):
