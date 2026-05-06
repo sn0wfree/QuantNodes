@@ -54,7 +54,7 @@ from QuantNodes.core.tools import (
     start_multi_process,
     fill_na_by_lookback,
     get_shelve_file_suffix,
-    test_id_filter_str,
+    compile_id_filter_str,
 )
 from QuantNodes.core.cache_utils import (
     create_std_data,
@@ -140,7 +140,7 @@ __all__ = [
     'start_multi_process',
     'fill_na_by_lookback',
     'get_shelve_file_suffix',
-    'test_id_filter_str',
+    'compile_id_filter_str',
 
     # cache utils
     'create_std_data',

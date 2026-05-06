@@ -174,7 +174,7 @@ def get_shelve_file_suffix() -> str:
     return ".db"
 
 
-def test_id_filter_str(
+def compile_id_filter_str(
     filter_str: str,
     factor_names: List[str],
 ) -> tuple:
@@ -280,7 +280,7 @@ __all__ = [
     "start_multi_process",
     "fill_na_by_lookback",
     "get_shelve_file_suffix",
-    "test_id_filter_str",
+    "compile_id_filter_str",
     "create_temp_dir",
     "merge_data_frames",
     "chunk_iterable",
