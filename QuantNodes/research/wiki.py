@@ -4,7 +4,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from llmwikify import Wiki, create_wiki
@@ -151,6 +150,9 @@ class WikiFactorProxy:
 
     def get_factor(self, name: str) -> Optional[WikiFactor]:
         page_name = f"{self.PAGE_TYPE_FACTOR}/{name}"
+        page_file = self.wiki.wiki_dir / self.PAGE_TYPE_FACTOR / f'{name}.md'
+        if not page_file.exists():
+            return None
         try:
             page_data = self.wiki.read_page(page_name)
         except Exception:
@@ -221,6 +223,9 @@ class WikiFactorProxy:
 
     def get_logic(self, name: str) -> Optional[WikiLogic]:
         page_name = f"{self.PAGE_TYPE_LOGIC}/{name}"
+        page_file = self.wiki.wiki_dir / self.PAGE_TYPE_LOGIC / f'{name}.md'
+        if not page_file.exists():
+            return None
         try:
             page_data = self.wiki.read_page(page_name)
         except Exception:
@@ -354,11 +359,15 @@ class WikiFactorProxy:
                 continue
             if in_frontmatter:
                 if ls.startswith('source:'):
-                    try: source = FactorSource(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        source = FactorSource(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('category:'):
-                    try: category = FactorCategory(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        category = FactorCategory(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('formula:'):
                     formula = ls.split(':', 1)[1].strip().strip('"')
                 elif ls.startswith('tags:'):
@@ -366,36 +375,52 @@ class WikiFactorProxy:
                     if ts.startswith('[') and ts.endswith(']'):
                         tags = [t.strip() for t in ts[1:-1].split(',') if t.strip()]
                 elif ls.startswith('ic_mean:'):
-                    try: ic_mean = float(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        ic_mean = float(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('ic_std:'):
-                    try: ic_std = float(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        ic_std = float(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('icir:'):
-                    try: icir = float(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        icir = float(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('rank_ic_mean:'):
-                    try: rank_ic_mean = float(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        rank_ic_mean = float(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('n_dates:'):
-                    try: n_dates = int(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        n_dates = int(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('factor_return_corr:'):
-                    try: factor_return_corr = float(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        factor_return_corr = float(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('ic_t_stat:'):
-                    try: ic_t_stat = float(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        ic_t_stat = float(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('turnover:'):
-                    try: turnover = float(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        turnover = float(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('created_at:'):
                     created_at = ls.split(':', 1)[1].strip()
         y_start = content.find('```yaml')
         if y_start != -1:
-            y_end = content.find('```', y_start + 6)
+            y_end = content.find('```', y_start + 7)
             if y_end != -1:
-                yc = content[y_start + 6:y_end].strip()
+                yc = content[y_start + 7:y_end].strip()
                 if yc and yc != '# 暂无':
                     strategy_yaml = yc
         ss = content.find('## 使用记录')
@@ -463,20 +488,14 @@ class WikiFactorProxy:
                 continue
             if in_frontmatter:
                 if ls.startswith('source:'):
-                    try: source = LogicSource(ls.split(':', 1)[1].strip())
-                    except ValueError: pass
+                    try:
+                        source = LogicSource(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
                 elif ls.startswith('extracted_formula:'):
                     extracted_formula = ls.split(':', 1)[1].strip().strip('"')
                 elif ls.startswith('validation_status:'):
                     validation_status = ls.split(':', 1)[1].strip()
-                elif ls.startswith('related_strategies:'):
-                    ts = ls.split(':', 1)[1].strip()
-                    if ts.startswith('[') and ts.endswith(']'):
-                        related_strategies = [t.strip() for t in ts[1:-1].split(',') if t.strip()]
-                elif ls.startswith('related_factors:'):
-                    ts = ls.split(':', 1)[1].strip()
-                    if ts.startswith('[') and ts.endswith(']'):
-                        related_factors = [t.strip() for t in ts[1:-1].split(',') if t.strip()]
                 elif ls.startswith('created_at:'):
                     created_at = ls.split(':', 1)[1].strip()
         sections = content.split('## ')
