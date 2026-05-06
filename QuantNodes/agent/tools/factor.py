@@ -163,8 +163,8 @@ class FactorTool(Tool):
         if "date" not in df.columns:
             factor = df["factor_value"]
             fwd = df["forward_return"]
-            ic_val = factor.corr(fwd)
-            rank_ic_val = factor.rank().corr(fwd.rank())
+            ic_val = factor.to_frame().select(pl.corr(factor, fwd)).to_series()[0]
+            rank_ic_val = factor.rank().to_frame().select(pl.corr(factor.rank(), fwd.rank())).to_series()[0]
             return {
                 "ic_mean": ic_val,
                 "ic_std": 0.0,
@@ -208,7 +208,9 @@ class FactorTool(Tool):
         result = {}
 
         if "factor_value" in df.columns and "forward_return" in df.columns:
-            corr = df["factor_value"].corr(df["forward_return"])
+            factor = df["factor_value"]
+            fwd = df["forward_return"]
+            corr = factor.to_frame().select(pl.corr(factor, fwd)).to_series()[0]
             result["factor_return_corr"] = round(corr, 6) if corr is not None else None
 
         numeric_cols = [c for c in df.columns if df[c].dtype in (

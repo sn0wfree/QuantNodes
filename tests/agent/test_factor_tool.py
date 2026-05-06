@@ -171,7 +171,6 @@ result = pl.DataFrame({
 
 
 class TestFactorToolComputeIC:
-    @pytest.mark.skip(reason="Source code bug: Series.corr() doesn't exist in Polars - should use df.corr() or pl.corr()")
     def test_compute_ic_without_date(self, tool):
         df = pl.DataFrame({
             "factor_value": [0.1, 0.2, 0.3, 0.4],
@@ -193,7 +192,6 @@ class TestFactorToolComputeIC:
 
 
 class TestFactorToolComputeCorrelation:
-    @pytest.mark.skip(reason="Source code bug: Series.corr() doesn't exist in Polars")
     def test_compute_correlation_basic(self, tool):
         df = pl.DataFrame({
             "factor_value": [0.1, 0.2, 0.3, 0.4],
@@ -202,7 +200,6 @@ class TestFactorToolComputeCorrelation:
         corr_result = tool._compute_correlation(df)
         assert "factor_return_corr" in corr_result
 
-    @pytest.mark.skip(reason="Source code bug: Series.corr() doesn't exist in Polars")
     def test_compute_correlation_with_multiple_numeric_cols(self, tool):
         df = pl.DataFrame({
             "factor_value": [0.1, 0.2, 0.3, 0.4],

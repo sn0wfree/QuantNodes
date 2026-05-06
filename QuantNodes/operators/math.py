@@ -136,7 +136,8 @@ class MathOperators:
         if base == "e":
             return expr.log()
         elif base == "2":
-            return expr.log2()
+            import math
+            return expr.log() / math.log(2)
         elif base == "10":
             return expr.log10()
         return expr.log()

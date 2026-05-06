@@ -59,7 +59,6 @@ class TestMathOperatorsLog:
         result = sample_df.select(MathOperators.log("c"))
         assert result["c"].to_list()[1] == pytest.approx(0.0)
 
-    @pytest.mark.skip(reason="Polars 1.40.1 has no log2() method - source code bug: uses expr.log2() instead of expr.log(2)")
     def test_log_base2(self, sample_df):
         result = sample_df.select(MathOperators.log("c", base="2"))
         assert result["c"].to_list()[2] == pytest.approx(1.0)
