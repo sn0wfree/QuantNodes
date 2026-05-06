@@ -87,6 +87,9 @@ class WikiFactor:
     # 关联
     used_by_strategies: List[str] = field(default_factory=list)  # 使用此因子的策略
 
+    # 策略 YAML 配置（用于复现）
+    strategy_yaml: Optional[str] = None  # YAML 格式策略配置
+
     # 元数据
     wiki_page_name: Optional[str] = None  # 页面名（存储后由 wiki 返回）
     created_at: Optional[str] = None     # 创建时间
@@ -321,6 +324,12 @@ created_at: {created_at}
 ## 使用记录
 
 {used_by_strategies or "暂无"}
+
+## 策略配置 (YAML)
+
+```yaml
+{strategy_yaml or "# 暂无"}
+```
 ```
 
 ### 7.3 Logic 页面模板
