@@ -1,7 +1,7 @@
 # QuantNodes 设计文档索引
 
 > **当前架构版本**：v1.0  
-> **最新更新**：2026-04-30
+> **最新更新**：2026-05-06
 
 ---
 
@@ -13,13 +13,12 @@
 | 07 | [执行清单.md](./07-执行清单.md) | 9阶段执行追踪 + 各阶段完成情况 | ✅ 全部完成 |
 | 08 | [节点序列化方案.md](./08-节点序列化方案.md) | Serializable + 多格式支持 | ✅ 已完成 |
 | 07-逻辑 | [逻辑节点去Lambda化方案.md](./07-逻辑节点去Lambda化方案.md) | Expression DSL + 安全解析 | ✅ 已完成 |
-| 10 | [database与数据加载.md](./10-database与数据加载.md) | 6种数据库节点 + Config-Driven数据加载 | 📝 设计完成 |
 | 13 | [Agent架构设计.md](./13-Agent架构设计.md) | nanobot核心 + MCP协议 + llmwikify知识库 | Phase 1-2 ✅ |
-| 15 | [Config-Driven方案.md](./15-Config-Driven方案.md) | YAML配置驱动 + 算子注册表 + 回测实现 | 设计阶段 |
-| 17 | [factor_functions迁移与升级.md](./17-factor_functions迁移与升级.md) | Polars迁移 + v2升级 + 注册表系统 | ✅ 全部完成 |
+| 15 | [Config-Driven方案.md](./15-Config-Driven方案.md) | YAML配置驱动 + 算子注册表 + 数据加载 + 回测实现 | 设计完成 |
 | 19 | [基础设施修复与工具实现.md](./19-基础设施修复与工具实现.md) | 注册表统一 + 工具真实实现 | ✅ 已完成 |
 | 22 | [算子系统设计与规范.md](./22-算子系统设计与规范.md) | 算子扩展机制 + 构建规范 + TA-Lib集成 | ✅ 已完成 |
 | 24 | [核心功能框架设计.md](./24-核心功能框架设计.md) | 三大核心功能全景 + 实施路径 | 📝 设计完成 |
+| refactor | [refactor-plan.md](./refactor-plan.md) | factor_functions迁移 + rank_sort修复 | ✅ 已完成 |
 
 ---
 
@@ -33,14 +32,14 @@
 
 ### 功能开发
 
-- **功能1 (Config-Driven回测)**: 10 → 15 → 24
+- **功能1 (Config-Driven回测)**: 15 (含数据加载设计)
 - **功能2 (策略监控)**: 24 (功能2部分)
 - **功能3 (研报复现)**: 24 (功能3部分) + 13 (llmwikify集成)
 
 ### 架构深入
 
 - **节点体系**: 04 → 08 (序列化) → 07-逻辑 (表达式DSL)
-- **因子算子**: 17 → 22 (扩展机制 + 构建规范)
+- **因子算子**: refactor → 22 (扩展机制 + 构建规范)
 - **Agent系统**: 13 → 15 (配置驱动)
 
 ---
@@ -49,21 +48,18 @@
 
 ```
 04-架构设计.md ─────────────────────────┐
-                                         ├─► 核心架构
+                                          ├─► 核心架构
 08-节点序列化方案.md ────────────────────┤
 07-逻辑节点去Lambda化方案.md ────────────┘
 
-10-database与数据加载.md ─┐
-                          ├─► 数据层
-15-Config-Driven方案.md ──┘
-
 13-Agent架构设计.md ──────┐
-                          ├─► Agent层
+                           ├─► Agent层
 19-基础设施修复与工具实现.md┘
 
-17-factor_functions迁移与升级.md ─┐
-                                  ├─► 算子层
-22-算子系统设计与规范.md ──────────┘
+refactor-plan.md ──────────┐
+                             ├─► 算子层
+15-Config-Driven方案.md ───┘ (含数据加载)
+22-算子系统设计与规范.md ──┘
 
 24-核心功能框架设计.md ─── 产品愿景（三大功能）
 
@@ -81,12 +77,13 @@
 - 11-AI集成规划方案v3.0.md（未采用的早期方案）
 - 12-Agent业界调研与设计模式.md、14-Agent实施计划.md（已合并为13）
 - 16-Polars配置驱动迁移方案.md、21-Config-driven回测实现计划.md（已合并为15）
-- 17-Polars统一迁移方案.md、18-factor_functions_v2升级方案.md、refactor-factor_functions.md、test_factor_functions_plan.md（已合并为17）
+- 17-Polars统一迁移方案.md、18-factor_functions_v2升级方案.md、refactor-factor_functions.md、test_factor_functions_plan.md（已合并为refactor-plan.md）
 - 19-基础设施修复与工具实现规划.md、20-基础设施修复与工具实现总结.md（已合并为19）
 - 23-算子构建规范.md（已合并为22）
-- 25-Config-Driven数据加载设计.md（已合并为10）
+- 25-Config-Driven数据加载设计.md（已合并为15）
 - refactor/factor_node_optimization_plan.md（已实施完成）
+- 10-database与数据加载.md（已合并为15）
 
 ---
 
-**最后更新**：2026-04-30
+**最后更新**：2026-05-06
