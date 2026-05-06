@@ -35,7 +35,7 @@ class ExprParser:
     
     def _lazy_import(self):
         if self._get_operator is None:
-            from QuantNodes.factor_node.factor_functions import get_operator
+            from QuantNodes.operators.proxy import get_operator
             self._get_operator = get_operator
     
     def parse(self, expr_str: str) -> pl.Expr:
@@ -268,7 +268,7 @@ class ConfigExecutor:
         if not custom_operators:
             return
         
-        from QuantNodes.factor_node.factor_functions import register_operator
+        from QuantNodes.operators.proxy import register_operator
         
         for entry in custom_operators:
             # 解析配置
@@ -345,8 +345,16 @@ class ConfigExecutor:
             # 2. 执行运算
             for op in config.operations:
                 expr = self._apply_operator(op)
-                self._expressions[op.name] = expr
-                result.factors[op.name] = expr
+                
+                # 处理 List[Expr] 返回值（如 rank_sort）
+                if isinstance(expr, list):
+                    for i, e in enumerate(expr):
+                        key = f"{op.name}__{i}"  # 使用双下划线避免与用户命名冲突
+                        self._expressions[key] = e
+                    result.factors[op.name] = expr
+                else:
+                    self._expressions[op.name] = expr
+                    result.factors[op.name] = expr
             
             # 3. 计算组合因子
             for comp in config.composite:
@@ -595,9 +603,9 @@ class ConfigExecutor:
         if result is not None:
             return result
         
-        # 2. registry fallback: 从 factor_functions 查找
+        # 2. registry fallback: 从 operators.proxy 查找
         try:
-            from QuantNodes.factor_node.factor_functions import get_operator
+            from QuantNodes.operators.proxy import get_operator
             op_func = get_operator(category)
             if op_func is not None:
                 return op_func(*input_exprs, **params)
@@ -608,8 +616,8 @@ class ConfigExecutor:
         return input_exprs[0]
     
     def _get_op(self, name: str):
-        """懒加载获取 factor_functions 算子"""
-        from QuantNodes.factor_node.factor_functions import get_operator
+        """懒加载获取 operators.proxy 算子"""
+        from QuantNodes.operators.proxy import get_operator
         return get_operator(name)
 
     def _apply_ts_operator(
@@ -874,7 +882,7 @@ class ConfigExecutor:
             inputs: [close]
             params: {timeperiod: 14}
         """
-        from QuantNodes.factor_node.factor_functions import get_operator
+        from QuantNodes.operators.proxy import get_operator
         op_func = get_operator(category)
         if op_func is not None:
             return op_func(*input_exprs, **params)
@@ -897,6 +905,13 @@ class ConfigExecutor:
         # 用 with_columns 逐个添加计算列，解决表达式间依赖
         computed = data
         for name, expr in self._expressions.items():
+            # 检查是否来自 List[Expr] 的拆分结果（双下划线格式：name__0, name__1）
+            if "__" in name:
+                base_name, idx = name.rsplit("__", 1)
+                if idx.isdigit():
+                    computed = computed.with_columns(expr.alias(base_name))
+                    continue
+            
             computed = computed.with_columns(expr.alias(name))
         
         result.data = computed
