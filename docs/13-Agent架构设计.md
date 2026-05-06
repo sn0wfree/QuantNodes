@@ -326,11 +326,11 @@ QUANT_RELATION_TYPES = {
 |------|------|------|
 | MCP工具桥 | `tools/mcp.py` | ⬜ 待开始 |
 | Wiki客户端 | `wiki/client.py` | ⬜ 待开始 |
-| Polars算子库 | `operators/time_series.py` 等 | ✅ |
+| Polars算子库 | `factor_node/factor_functions/` | ✅ |
 | Config加载器 | `agent/config/loader.py` | ✅ |
 | Config执行器 | `agent/config/executor.py` | ✅ |
-| 算子注册表 | `factor_node/factor_functions.py` | ✅ |
-| TA-Lib集成 | `operators/talib.py` | ✅ |
+| 算子注册表 | `factor_node/factor_functions/__init__.py` | ✅ |
+| TA-Lib集成 | `factor_node/factor_functions/talib_ops.py` | ✅ |
 | 回测运行器 | `backtest/config_runner.py` | ✅ |
 
 ### 6.4 Phase 4: 技能系统（待开始）
@@ -346,7 +346,7 @@ QUANT_RELATION_TYPES = {
 
 ### 6.5 Phase 5: FactorNode Polars 统一迁移（✅ 已完成）
 
-详见 `17-factor_functions迁移与升级.md`
+详见 `22-算子系统设计与规范.md` 第十六节
 
 ---
 
