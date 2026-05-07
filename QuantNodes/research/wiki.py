@@ -87,6 +87,31 @@ class WikiLogic:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class WikiStrategy:
+    name: str
+    strategy_yaml: str
+    description: str = ""
+    category: str = "general"
+    tags: List[str] = field(default_factory=list)
+    backtest_result: Optional[Dict] = None
+    created_at: Optional[str] = None
+    wiki_page_name: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class WikiReproduction:
+    report_title: str
+    pdf_path: str = ""
+    verified_count: int = 0
+    failed_count: int = 0
+    report_markdown: str = ""
+    created_at: Optional[str] = None
+    wiki_page_name: Optional[str] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+
 class WikiProxyError(FactorError):
     code = "WIKI_PROXY_ERROR"
 
@@ -128,6 +153,8 @@ def init_factor_wiki(wiki_path: str) -> None:
 class WikiFactorProxy:
     PAGE_TYPE_FACTOR = "Factor"
     PAGE_TYPE_LOGIC = "Logic"
+    PAGE_TYPE_STRATEGY = "Strategy"
+    PAGE_TYPE_REPRODUCTION = "Reproduction"
 
     def __init__(self, wiki_path: str):
         self.wiki_path = wiki_path
@@ -270,6 +297,70 @@ class WikiFactorProxy:
             return self.wiki.status()
         except Exception as e:
             return {"error": str(e)}
+
+    def store_strategy(self, strategy: WikiStrategy) -> str:
+        page_name = f"{self.PAGE_TYPE_STRATEGY}/{strategy.name}"
+        content = self._render_strategy_markdown(strategy)
+        self.wiki.write_page(page_name, content)
+        strategy.wiki_page_name = page_name
+        return page_name
+
+    def get_strategy(self, name: str) -> Optional[WikiStrategy]:
+        page_name = f"{self.PAGE_TYPE_STRATEGY}/{name}"
+        page_file = self.wiki.wiki_dir / self.PAGE_TYPE_STRATEGY / f'{name}.md'
+        if not page_file.exists():
+            return None
+        try:
+            page_data = self.wiki.read_page(page_name)
+        except Exception:
+            return None
+        return self._parse_strategy_from_page(page_name, page_data)
+
+    def list_strategies(
+        self,
+        category: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        limit: int = 50,
+    ) -> List[WikiStrategy]:
+        strategies = []
+        page_type_dir = self.wiki.wiki_dir / self.PAGE_TYPE_STRATEGY
+        if not page_type_dir.exists():
+            return strategies
+        for md_file in list(page_type_dir.glob('*.md'))[:limit]:
+            page_name = f"{self.PAGE_TYPE_STRATEGY}/{md_file.stem}"
+            try:
+                page_data = self.wiki.read_page(page_name)
+                strategy = self._parse_strategy_from_page(page_name, page_data)
+                if strategy is None:
+                    continue
+                if category and strategy.category != category:
+                    continue
+                if tags and not any(t in strategy.tags for t in tags):
+                    continue
+                strategies.append(strategy)
+            except Exception:
+                continue
+        return strategies
+
+    def store_reproduction(self, reproduction: WikiReproduction) -> str:
+        safe_name = reproduction.report_title.replace('/', '_').replace(' ', '_')
+        page_name = f"{self.PAGE_TYPE_REPRODUCTION}/{safe_name}"
+        content = self._render_reproduction_markdown(reproduction)
+        self.wiki.write_page(page_name, content)
+        reproduction.wiki_page_name = page_name
+        return page_name
+
+    def get_reproduction(self, report_title: str) -> Optional[WikiReproduction]:
+        safe_name = report_title.replace('/', '_').replace(' ', '_')
+        page_name = f"{self.PAGE_TYPE_REPRODUCTION}/{safe_name}"
+        page_file = self.wiki.wiki_dir / self.PAGE_TYPE_REPRODUCTION / f'{safe_name}.md'
+        if not page_file.exists():
+            return None
+        try:
+            page_data = self.wiki.read_page(page_name)
+        except Exception:
+            return None
+        return self._parse_reproduction_from_page(page_name, page_data)
 
     def _render_factor_markdown(self, factor: WikiFactor) -> str:
         lines = ["---"]
@@ -531,3 +622,181 @@ class WikiFactorProxy:
         if page_name.startswith(prefix):
             return page_name[len(prefix):]
         return ''
+
+    def _render_strategy_markdown(self, strategy: WikiStrategy) -> str:
+        lines = ["---"]
+        lines.append(f"type: {self.PAGE_TYPE_STRATEGY}")
+        lines.append(f"name: {strategy.name}")
+        lines.append(f"category: {strategy.category}")
+        if strategy.tags:
+            lines.append("tags: [" + ", ".join(strategy.tags) + "]")
+        lines.append(f"created_at: {strategy.created_at or datetime.now().isoformat()}")
+        lines.append("---")
+        lines.append(f"## {strategy.name}")
+        lines.append("")
+        lines.append(strategy.description)
+        lines.append("")
+        lines.append("## 策略配置")
+        lines.append("```yaml")
+        lines.append(strategy.strategy_yaml)
+        lines.append("```")
+        if strategy.backtest_result:
+            lines.append("")
+            lines.append("## 回测结果")
+            lines.append("```json")
+            import json
+            lines.append(json.dumps(strategy.backtest_result, indent=2, ensure_ascii=False))
+            lines.append("```")
+        return "\n".join(lines)
+
+    def _parse_strategy_from_page(self, page_name: str, page_data: Dict) -> Optional[WikiStrategy]:
+        content = page_data.get("content", "")
+        name = self._page_name_to_name(page_name, self.PAGE_TYPE_STRATEGY)
+        if not name:
+            return None
+        category = "general"
+        tags = []
+        description = ""
+        strategy_yaml = ""
+        backtest_result = None
+        created_at = None
+        in_frontmatter = False
+        yaml_content = ""
+        in_yaml_block = False
+        json_content = ""
+        in_json_block = False
+        for line in content.split('\n'):
+            ls = line.strip()
+            if ls == '---':
+                if not in_frontmatter:
+                    in_frontmatter = True
+                    continue
+                else:
+                    in_frontmatter = False
+                    continue
+            if in_frontmatter:
+                if ls.startswith('category:'):
+                    category = ls.split(':', 1)[1].strip()
+                elif ls.startswith('tags:'):
+                    ts = ls.split(':', 1)[1].strip()
+                    if ts.startswith('[') and ts.endswith(']'):
+                        tags = [t.strip() for t in ts[1:-1].split(',') if t.strip()]
+                elif ls.startswith('created_at:'):
+                    created_at = ls.split(':', 1)[1].strip()
+            else:
+                if ls == '```yaml':
+                    in_yaml_block = True
+                    continue
+                elif ls == '```' and in_yaml_block:
+                    in_yaml_block = False
+                    strategy_yaml = yaml_content.strip()
+                    yaml_content = ""
+                    continue
+                elif ls == '```json':
+                    in_json_block = True
+                    continue
+                elif ls == '```' and in_json_block:
+                    in_json_block = False
+                    import json
+                    try:
+                        backtest_result = json.loads(json_content)
+                    except Exception:
+                        pass
+                    json_content = ""
+                    continue
+                if in_yaml_block:
+                    yaml_content += line + "\n"
+                elif in_json_block:
+                    json_content += line + "\n"
+                elif description == "" and not ls.startswith('##'):
+                    description = line
+        return WikiStrategy(
+            name=name,
+            strategy_yaml=strategy_yaml,
+            description=description.strip(),
+            category=category,
+            tags=tags,
+            backtest_result=backtest_result,
+            created_at=created_at,
+            wiki_page_name=page_name,
+        )
+
+    def _render_reproduction_markdown(self, reproduction: WikiReproduction) -> str:
+        lines = ["---"]
+        lines.append(f"type: {self.PAGE_TYPE_REPRODUCTION}")
+        lines.append(f"report_title: {reproduction.report_title}")
+        if reproduction.pdf_path:
+            lines.append(f"pdf_path: {reproduction.pdf_path}")
+        lines.append(f"verified_count: {reproduction.verified_count}")
+        lines.append(f"failed_count: {reproduction.failed_count}")
+        lines.append(f"created_at: {reproduction.created_at or datetime.now().isoformat()}")
+        lines.append("---")
+        lines.append(f"## {reproduction.report_title}")
+        lines.append("")
+        if reproduction.report_markdown:
+            lines.append("## 研报内容")
+            lines.append(reproduction.report_markdown)
+        lines.append("")
+        lines.append("## 复现结果")
+        lines.append(f"- 验证通过: {reproduction.verified_count}")
+        lines.append(f"- 验证失败: {reproduction.failed_count}")
+        return "\n".join(lines)
+
+    def _parse_reproduction_from_page(self, page_name: str, page_data: Dict) -> Optional[WikiReproduction]:
+        content = page_data.get("content", "")
+        name = self._page_name_to_name(page_name, self.PAGE_TYPE_REPRODUCTION)
+        if not name:
+            return None
+        report_title = name
+        pdf_path = ""
+        verified_count = 0
+        failed_count = 0
+        created_at = None
+        report_markdown = ""
+        in_frontmatter = False
+        in_markdown = False
+        markdown_content = ""
+        for line in content.split('\n'):
+            ls = line.strip()
+            if ls == '---':
+                if not in_frontmatter:
+                    in_frontmatter = True
+                    continue
+                else:
+                    in_frontmatter = False
+                    continue
+            if in_frontmatter:
+                if ls.startswith('report_title:'):
+                    report_title = ls.split(':', 1)[1].strip()
+                elif ls.startswith('pdf_path:'):
+                    pdf_path = ls.split(':', 1)[1].strip()
+                elif ls.startswith('verified_count:'):
+                    try:
+                        verified_count = int(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
+                elif ls.startswith('failed_count:'):
+                    try:
+                        failed_count = int(ls.split(':', 1)[1].strip())
+                    except ValueError:
+                        pass
+                elif ls.startswith('created_at:'):
+                    created_at = ls.split(':', 1)[1].strip()
+            else:
+                if ls == '## 研报内容':
+                    in_markdown = True
+                    continue
+                elif ls.startswith('## 复现结果'):
+                    in_markdown = False
+                    continue
+                if in_markdown:
+                    markdown_content += line + "\n"
+        return WikiReproduction(
+            report_title=report_title,
+            pdf_path=pdf_path,
+            verified_count=verified_count,
+            failed_count=failed_count,
+            report_markdown=markdown_content.strip(),
+            created_at=created_at,
+            wiki_page_name=page_name,
+        )

@@ -14,6 +14,7 @@ from .strategy import StrategyTool
 from .backtest import BacktestTool
 from .factor import FactorTool
 from .config_backtest import ConfigBacktestTool
+from .wiki import WikiTool
 
 __all__ = [
     "Tool",
@@ -26,4 +27,5 @@ __all__ = [
     "BacktestTool",
     "FactorTool",
     "ConfigBacktestTool",
+    "WikiTool",
 ]
