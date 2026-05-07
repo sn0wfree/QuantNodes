@@ -1,6 +1,5 @@
 # coding=utf-8
 """QuantNodes.factor_node.factor_db 单元测试"""
-import pytest
 
 from QuantNodes.factor_node.factor_db import FactorDB, WritableFactorDB
 
