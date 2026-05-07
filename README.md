@@ -12,7 +12,7 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 ### 核心特性
 
 - **统一节点架构**: 万物皆 Node，Pipeline 是唯一组合原语
-- **143+ 内置算子**: 涵盖时间序列、截面运算、多截面聚合等，装饰器注册表模式
+- **317+ 内置算子**: 涵盖时间序列、截面运算、多截面聚合等，装饰器注册表模式
 - **多数据库支持**: ClickHouse、DuckDB、MySQL、SQLite、CSV、Parquet
 - **AI 原生设计**: 内置策略生成器和 Pipeline 优化器
 - **Config-Driven 回测**: YAML 配置文件驱动回测，支持算子扩展
@@ -48,7 +48,7 @@ QuantNodes/
 │   │
 │   ├── factor_node/               # 因子引擎
 │   │   ├── factor.py              # Factor, DerivativeFactor
-│   │   ├── factor_functions.py    # 143+ 算子 + 注册表 (Polars)
+│   │   ├── factor_functions.py    # 317+ 算子 + 注册表 (Polars)
 │   │   └── factor_operation.py    # Point/Time/Section/PanelOperation
 │   │
 │   ├── database_node/             # 数据库节点
@@ -153,10 +153,37 @@ docs = generate_documentation('markdown')
 
 | 类别 | 数量 | 示例 |
 |------|------|------|
-| **Point (单点)** | 31 | `abs`, `log`, `sign`, `isnull` |
-| **Time (时间序列)** | 42 | `rolling_mean`, `rolling_std`, `ewm`, `diff` |
-| **Section (截面)** | 8 | `standardizeZScore`, `winsorize`, `fillNaNByVal` |
-| **Multi-Section (多截面)** | 12 | `aggregate`, `disaggregate`, `aggr_sum` |
+| **Point (单点)** | 46 | `abs`, `log`, `sign`, `isnull` |
+| **Time (时间序列)** | 65 | `rolling_mean`, `rolling_std`, `ewm`, `diff` |
+| **Section (截面)** | 17 | `standardizeZScore`, `winsorize`, `fillNaNByVal` |
+| **Multi-Section (多截面)** | 15 | `aggregate`, `disaggregate`, `aggr_sum` |
+| **TA-Lib** | 174 | `talib_rsi`, `talib_sma`, `talib_macd_line` |
+| **Custom (用户自定义)** | ∞ | `@CustomOperator.point()`, Builder API |
+
+## 自定义算子 API
+
+```python
+from QuantNodes.operators import CustomOperator
+
+# 装饰器风格（直接注册）
+@CustomOperator.point("my_double")
+def my_double(f, multiplier=2.0):
+    return f * multiplier
+
+# Builder 链式风格
+my_ewm_30 = (CustomOperator.time("my_ewm_30")
+    .param("span", int, 30, "窗口大小")
+    .execute(lambda s, span: s.ewm_mean(span=span))
+    .register())
+
+# 模板工厂（基于内置算子创建）
+from QuantNodes.operators import CustomOperator
+my_ewm_30 = CustomOperator.time_from("my_ewm_30", "ewm_mean", span=30)
+
+# 级联查询：自定义算子优先，内置算子 fallback
+from QuantNodes.factor_node.factor_functions import get_operator
+op = get_operator("my_double")  # 先查自定义，再查内置
+```
 
 ## 测试
 
@@ -174,14 +201,25 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 
 ## 设计文档
 
-- [架构设计文档](docs/04-架构设计文档.md)
-- [统一架构最终方案](docs/06-统一架构最终方案.md)
+- [架构设计](docs/04-架构设计.md)
 - [执行清单](docs/07-执行清单.md)
-- [移除 QuantStudio 依赖重构方案](docs/09-移除QuantStudio依赖重构方案.md)
-- [算子构建规范](docs/23-算子构建规范.md)
-- [算子扩展机制设计](docs/22-算子扩展机制设计.md)
+- [算子系统设计与规范](docs/22-算子系统设计与规范.md)
+- [核心功能框架设计](docs/24-核心功能框架设计.md)
+- [Feature 3A - WikiFactorProxy](docs/Feature3A-实施计划.md)
+- [Feature 3B - 研报复现](docs/Feature3B-实施计划.md)
+- [Feature 3C - AutoResearch 自动因子挖掘](docs/Feature3C-实施计划.md)
+- [Feature 3D - 用户友好自定义算子 API](docs/Feature3D-用户友好自定义算子API设计.md)
 
 ## 变更日志
+
+### v0.4.0 (2026-05-07)
+
+- ✅ Feature 3A - WikiFactorProxy：因子库读写接口，支持 llmwikify 解析 PDF
+- ✅ Feature 3B - 研报复现：从研报提取因子公式，验证有效性，存入 Wiki 因子库
+- ✅ Feature 3C - AutoResearch 自动因子挖掘：模板枚举 + MCTS 搜索自动生成验证因子
+- ✅ Feature 3D - 用户友好自定义算子 API：装饰器风格 + Builder 链式 + 模板工厂 + 级联查询
+- ✅ 317+ 内置算子（point: 46, time: 65, section: 17, multi_section: 15, talib: 174）
+- ✅ 2300+ 测试用例，覆盖率持续提升
 
 ### v0.3.0 (2026-04-30)
 
