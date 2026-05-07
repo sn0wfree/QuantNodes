@@ -119,15 +119,41 @@ from QuantNodes.factor_node.factor_functions.math_ops import book_to_market, ear
 # 注册表查询 API
 # ==============================================================================
 
-def list_operators(category: Optional[str] = None) -> List[str]:
-    """列出所有算子名称"""
+def list_operators(category: Optional[str] = None, include_custom: bool = True) -> List[str]:
+    """列出所有算子名称
+
+    Args:
+        category: 可选，限定分类
+        include_custom: 是否包含自定义算子（默认 True）
+    """
+    if include_custom:
+        from QuantNodes.operators.registry import _CustomOperatorRegistry
+
+        custom = _CustomOperatorRegistry.list(category)
+        builtin = list(_OPERATOR_REGISTRY.get(category, {}).keys()) if category else [
+            name for cat in _OPERATOR_REGISTRY for name in _OPERATOR_REGISTRY[cat]
+        ]
+        seen = set()
+        result = []
+        for name in custom + builtin:
+            if name not in seen:
+                seen.add(name)
+                result.append(name)
+        return result
+
     if category:
         return list(_OPERATOR_REGISTRY.get(category, {}).keys())
     return [name for cat in _OPERATOR_REGISTRY for name in _OPERATOR_REGISTRY[cat]]
 
 
 def get_operator(name: str, category: Optional[str] = None) -> Optional[Callable]:
-    """根据名称获取算子函数"""
+    """根据名称获取算子函数（级联查询：先自定义注册表，再内置注册表）"""
+    from QuantNodes.operators.registry import _CustomOperatorRegistry
+
+    func = _CustomOperatorRegistry.get(name, category)
+    if func is not None:
+        return func
+
     if category:
         op = _OPERATOR_REGISTRY.get(category, {}).get(name)
         return op["func"] if op else None
@@ -139,7 +165,13 @@ def get_operator(name: str, category: Optional[str] = None) -> Optional[Callable
 
 
 def operator_info(name: str, category: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """获取算子详细信息"""
+    """获取算子详细信息（级联查询：先自定义注册表，再内置注册表）"""
+    from QuantNodes.operators.registry import _CustomOperatorRegistry
+
+    info = _CustomOperatorRegistry.info(name)
+    if info is not None:
+        return info
+
     if category:
         op = _OPERATOR_REGISTRY.get(category, {}).get(name)
         return op if op else None

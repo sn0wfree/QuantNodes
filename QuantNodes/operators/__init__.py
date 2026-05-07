@@ -45,9 +45,13 @@ try:
 except ImportError:
     talib_ops = None
 
-__all__ = ["ts", "sec", "math", "composite", "talib_ops",
-           "TimeSeriesOperators", "SectionOperators", "MathOperators", "CompositeOperators",
-           "list_operators", "get_operator", "register_operator"]
+__all__ = [
+    "ts", "sec", "math", "composite", "talib_ops",
+    "TimeSeriesOperators", "SectionOperators", "MathOperators", "CompositeOperators",
+    "list_operators", "get_operator", "register_operator",
+    "CustomOperator", "OperatorTemplate",
+    "point", "time", "section",
+]
 
-# 导出注册表 API（从 proxy 导入）
 from .proxy import list_operators, get_operator, register_operator
+from .custom import CustomOperator, OperatorTemplate, point, time, section
