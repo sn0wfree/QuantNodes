@@ -1,7 +1,6 @@
 # coding=utf-8
 """QuantNodes.factor_node.factor_functions 单元测试"""
 
-import pytest
 import numpy as np
 import polars as pl
 from QuantNodes.factor_node.factor_functions import (
@@ -16,11 +15,8 @@ from QuantNodes.factor_node.factor_functions import (
 )
 from QuantNodes.factor_node.factor_functions._helpers import (
     _cum_single_median,
-    _cum_single_kurt,
-    _cum_single_skew,
     _cum_single_quantile,
     _cum_dual_corr,
-    _cum_dual_cov,
     _CUM_SINGLE_FUNCS,
     _CUM_DUAL_FUNCS,
 )

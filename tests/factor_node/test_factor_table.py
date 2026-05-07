@@ -224,7 +224,6 @@ class TestCustomFTFactory:
             assert cft._Factors == {}
 
     def test_rename_factor(self):
-        from QuantNodes.core.base import FactorError
         from QuantNodes.factor_node.factor_table import CustomFT
         with patch.object(CustomFT, '__init__', return_value=None):
             cft = CustomFT.__new__(CustomFT)
