@@ -7,7 +7,7 @@ Phase 4.2: Dream System
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from pathlib import Path
 import json
 

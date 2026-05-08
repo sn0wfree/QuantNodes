@@ -13,14 +13,12 @@ ConfigBacktestRunner 未覆盖方法单元测试
 
 import pytest
 import pandas as pd
-import numpy as np
 import tempfile
 import os
 import json
 
 from QuantNodes.agent.config.types import (
-    StrategyConfig, BacktestConfig, OutputConfig, DataConfig,
-    FactorConfig,
+    StrategyConfig, BacktestConfig, OutputConfig,
 )
 from QuantNodes.backtest.config_runner import ConfigBacktestRunner
 from QuantNodes.backtest.backtest_node import BacktestResult

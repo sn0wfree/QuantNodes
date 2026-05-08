@@ -1,6 +1,5 @@
 # coding=utf-8
 """IniConfigNode 单元测试"""
-import os
 import pytest
 from pathlib import Path
 from QuantNodes.core.node import NodeExecutionError

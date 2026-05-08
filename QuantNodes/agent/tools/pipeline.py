@@ -5,7 +5,7 @@ Pipeline工具
 验证 QuantNodes Pipeline 代码的正确性。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import re
 
 from QuantNodes.agent.tools.base import Tool

@@ -25,13 +25,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Union, Tuple
 
-import polars as pl
 from polars import Expr
 
-import QuantNodes.factor_node.factor_functions.talib_ops
 
 if TYPE_CHECKING:
-    from QuantNodes.factor_node.factor_functions import talib_ops as _talib_ops
+    pass
 
 
 

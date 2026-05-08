@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, List, Optional, Union, Iterator
+from typing import Any, Dict, List, Optional, Iterator
 
 import requests
 
 from QuantNodes.ai.llm.base import (
     LLMClientBase,
-    LLMError,
     RateLimitError,
     AuthenticationError,
     APIError,

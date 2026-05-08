@@ -76,6 +76,45 @@ class TestSQLiteNode:
 
         node.disconnect()
 
+    def test_数据类型_REAL(self):
+        """REAL 类型存储和读取"""
+        node = SQLiteNode(":memory:")
+        node.connect()
+
+        node.execute("CREATE TABLE test (id INT, price REAL)")
+        node.execute("INSERT INTO test VALUES (1, 123.45)")
+
+        result = node.query("SELECT * FROM test")
+        assert result.iloc[0]['price'] == 123.45
+
+        node.disconnect()
+
+    def test_数据类型_NULL值(self):
+        """NULL 值处理"""
+        node = SQLiteNode(":memory:")
+        node.connect()
+
+        node.execute("CREATE TABLE test (id INT, value TEXT)")
+        node.execute("INSERT INTO test VALUES (1, NULL)")
+
+        result = node.query("SELECT * FROM test")
+        assert result.iloc[0]['value'] is None
+
+        node.disconnect()
+
+    def test_批量插入(self):
+        """批量插入多行"""
+        node = SQLiteNode(":memory:")
+        node.connect()
+
+        node.execute("CREATE TABLE test (id INT, name TEXT)")
+        node.execute("INSERT INTO test VALUES (1, 'A'), (2, 'B'), (3, 'C')")
+
+        result = node.query("SELECT * FROM test")
+        assert len(result) == 3
+
+        node.disconnect()
+
     def test_文件模式(self, temp_sqlite_db):
         """文件模式 SQLite 操作"""
         node = SQLiteNode(str(temp_sqlite_db))
@@ -256,6 +295,34 @@ class TestDuckDBNode:
         assert node.health_check() is True
         node.disconnect()
 
+    def test_数据类型_TIMESTAMP(self):
+        """TIMESTAMP 类型处理"""
+        node = DuckDBNode(":memory:")
+        node.connect()
+
+        node.execute("CREATE TABLE test (id INTEGER, ts TIMESTAMP)")
+        node.execute("INSERT INTO test VALUES (1, '2024-01-01 10:00:00')")
+
+        result = node.query("SELECT * FROM test")
+        assert len(result) == 1
+
+        node.disconnect()
+
+    def test_multiple_queries(self):
+        """连续多次查询"""
+        node = DuckDBNode(":memory:")
+        node.connect()
+
+        node.execute("CREATE TABLE test (id INTEGER, value INTEGER)")
+        node.execute("INSERT INTO test VALUES (1, 100)")
+
+        r1 = node.query("SELECT * FROM test")
+        r2 = node.query("SELECT COUNT(*) as cnt FROM test")
+        assert len(r1) == 1
+        assert r2.iloc[0]['cnt'] == 1
+
+        node.disconnect()
+
 
 class TestMySQLNode:
     """MySQLNode 测试"""
@@ -323,6 +390,28 @@ class TestMySQLNode:
         assert node._charset == 'UTF8'
         assert node._pool_size == 10
         assert node._pool_recycle == 3600
+
+    def test_engine属性_未连接为None(self):
+        """未连接时 engine 为 None"""
+        node = MySQLNode(host="localhost")
+        assert node._engine is None
+
+    def test_engine属性_连接后不为None(self):
+        """连接后 engine 不为 None - 需要 pymysql"""
+        try:
+            import pymysql  # noqa: F401
+        except ImportError:
+            pytest.skip("pymysql not installed")
+
+        node = MySQLNode(host="localhost")
+        node.connect()
+        assert node._engine is not None
+        node.disconnect()
+        """连接后 engine 不为 None"""
+        node = MySQLNode(host="localhost")
+        node.connect()
+        assert node._engine is not None
+        node.disconnect()
 
 
 @pytest.mark.integration
@@ -428,6 +517,26 @@ class TestClickHouseNode:
         assert node._database == 'default'
         assert node._interface == 'http'
         assert node._pool_size == 10
+
+    def test_client属性_未连接为None(self):
+        """未连接时 client 和 http_client 都为 None"""
+        node = ClickHouseNode(host="localhost")
+        assert node._client is None
+        assert node._http_client is None
+
+    def test_connect_http创建http_client(self):
+        """HTTP 接口连接创建 http_client"""
+        node = ClickHouseNode(host="localhost", interface="http")
+        node.connect()
+        assert node._http_client is not None
+        assert node._client is None
+        node.disconnect()
+
+    def test_connect_native创建client(self):
+        """Native 接口连接创建 client（参数设置正确）"""
+        node = ClickHouseNode(host="localhost", interface="native", port=9000)
+        assert node._interface == "native"
+        assert node._port == 9000
 
 
 @pytest.mark.integration
@@ -595,6 +704,20 @@ class TestCSVNode:
         node.disconnect()
         assert node._data is None
 
+    def test_自定义分隔符(self, tmp_path):
+        """自定义分隔符"""
+        filepath = tmp_path / "test_data.txt"
+        filepath.write_text("id|name\n1|Alice\n2|Bob")
+        node = CSVNode(str(filepath), sep='|')
+        result = node.query()
+        assert len(result) == 2
+
+    def test_query_without_sql返回全部数据(self, temp_csv_file):
+        """query() 不带 SQL 参数返回全部数据"""
+        node = CSVNode(str(temp_csv_file))
+        result = node.query()
+        assert len(result) == 5
+
 
 class TestParquetNode:
     """ParquetNode 测试"""
@@ -729,3 +852,40 @@ class TestParquetNode:
 
         node.disconnect()
         assert node._data is None
+
+    def test_query_without_sql返回全部数据(self, temp_parquet_file):
+        """query() 不带 SQL 参数返回全部数据"""
+        node = ParquetNode(str(temp_parquet_file))
+        result = node.query()
+        assert len(result) == 5
+
+    def test_文件不存在_抛出异常(self):
+        """文件不存在时 query 抛出异常"""
+        node = ParquetNode("/nonexistent/file.parquet")
+        with pytest.raises(Exception):
+            node.connect()
+
+
+class TestCSVNodeEdgeCases:
+    """CSVNode 边界情况测试"""
+
+    def test_文件不存在_connect抛出异常(self):
+        """文件不存在时 connect 抛出异常"""
+        node = CSVNode("/nonexistent/file.csv")
+        with pytest.raises(Exception):
+            node.connect()
+
+
+class TestParquetNodeEdgeCases:
+    """ParquetNode 边界情况测试"""
+
+    def test_空Parquet文件(self, tmp_path):
+        """空 parquet 文件测试"""
+        import pandas as pd
+        empty_df = pd.DataFrame(columns=['id', 'name'])
+        filepath = tmp_path / "empty.parquet"
+        empty_df.to_parquet(str(filepath))
+
+        node = ParquetNode(str(filepath))
+        result = node.query()
+        assert len(result) == 0

@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 import polars as pl
 from polars import Expr
@@ -16,8 +16,6 @@ from QuantNodes.factor_node.factor_functions._helpers import (
     OperatorCategory,
     register_operator,
     _ensure_expr,
-    _inject,
-    _COMBO_METHODS,
     _make_nan_wrapper,
 )
 

@@ -3,7 +3,6 @@
 测试 WikiTool
 """
 
-import asyncio
 import tempfile
 import shutil
 from pathlib import Path
@@ -14,12 +13,9 @@ import pytest
 from QuantNodes.agent.tools.wiki import WikiTool
 from QuantNodes.research.wiki import (
     WikiFactor,
-    WikiLogic,
     WikiStrategy,
-    WikiReproduction,
     FactorSource,
     FactorCategory,
-    LogicSource,
 )
 
 

@@ -116,7 +116,7 @@ class MarketDataCacheNode(BaseNode[Dict[str, Any], pd.DataFrame]):
                         query_filter, date_column, last_date
                     )
                     if new_df is not None and len(new_df) > 0:
-                        total = self._store.append(table, new_df)
+                        self._store.append(table, new_df)
                         self._update_meta_after_write(
                             table, cache_key, source, query_filter,
                             columns, date_column, table_dir

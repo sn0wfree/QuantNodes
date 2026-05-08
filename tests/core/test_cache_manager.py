@@ -7,7 +7,6 @@ import os
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from QuantNodes.core.cache_manager import (
     ErgodicMode,

@@ -2,8 +2,6 @@
 """QuantNodes.core.tools 单元测试"""
 import os
 import shutil
-import time
-import multiprocessing as mp
 
 import numpy as np
 import pandas as pd

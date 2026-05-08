@@ -32,7 +32,6 @@ class DuckDBNode(BaseDBNode):
     """
 
     def __init__(self, database: str = ":memory:", read_only: bool = False):
-        import duckdb
         self._database = database
         self._read_only = read_only
         self._conn = None

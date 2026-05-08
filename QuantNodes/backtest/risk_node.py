@@ -15,7 +15,7 @@ import pandas as pd
 
 from QuantNodes.core.node import BaseNode
 from QuantNodes.backtest.strategy_node import Order, OrdersResult
-from QuantNodes.backtest.broker_node import Trade, TradeResult
+from QuantNodes.backtest.broker_node import TradeResult
 
 
 @dataclass

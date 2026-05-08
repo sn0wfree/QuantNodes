@@ -12,14 +12,12 @@ ConfigExecutor 未覆盖方法单元测试
 - _parse_value() 引号字符串
 """
 
-import pytest
 import polars as pl
 import tempfile
 import os
 
 from QuantNodes.agent.config.types import (
-    StrategyConfig, FactorConfig, OperationConfig, CompositeConfig,
-    BacktestConfig, DataConfig,
+    StrategyConfig, FactorConfig, OperationConfig, BacktestConfig, DataConfig,
 )
 from QuantNodes.agent.config.executor import ConfigExecutor
 

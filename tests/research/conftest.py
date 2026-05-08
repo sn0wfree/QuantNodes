@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """Research 子系统测试 fixtures"""
-import os
-import tempfile
 import pytest
 import polars as pl
 

@@ -6,7 +6,7 @@ TransformNode - 数据转换节点
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Union
 
 import pandas as pd
 

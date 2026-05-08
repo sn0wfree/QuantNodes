@@ -5,7 +5,7 @@
 封装 QuantNodes AI 模块的 StrategyGenerator。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 import re
 
 from QuantNodes.agent.tools.base import Tool

@@ -1,6 +1,5 @@
 # coding=utf-8
 """SQLBuilderNode 单元测试"""
-import pytest
 
 from QuantNodes.operator_node.sql_builder import SQLBuilderNode
 

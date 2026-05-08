@@ -11,7 +11,7 @@ Pandas 工具函数
 
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Union, Tuple, Any
+from typing import List, Optional, Union, Any
 
 
 def panel_to_dataframe(

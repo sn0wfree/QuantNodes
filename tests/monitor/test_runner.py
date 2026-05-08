@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
 """QuantNodes.monitor.scheduler.runner 单元测试"""
-import pytest
-from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from QuantNodes.monitor.scheduler.runner import StrategyRunner
-from QuantNodes.monitor.storage.models import StrategyRun
 
 
 class TestStrategyRunner:

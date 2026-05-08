@@ -4,10 +4,9 @@ ConfigExecutor 单元测试
 """
 
 import asyncio
-import pytest
 import polars as pl
 
-from QuantNodes.agent.config.executor import ConfigExecutor, ExprParser
+from QuantNodes.agent.config.executor import ConfigExecutor
 from QuantNodes.agent.config.types import (
     StrategyConfig,
     FactorConfig,

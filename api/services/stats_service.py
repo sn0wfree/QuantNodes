@@ -2,8 +2,6 @@
 Stats Service - Aggregate data from Wiki and other sources
 """
 
-from typing import Optional
-from pathlib import Path
 
 
 class StatsService:

@@ -1,13 +1,14 @@
 # coding=utf-8
 """
-UINode - UI 数据准备节点
+DisplayNode - 数据可视化节点模块
 
-提供 UI/Streamlit 数据准备节点的基础架构，继承自 BaseNode。
+提供通用数据可视化节点，将处理后的数据转换为前端可用的格式。
+支持表格、图表、指标、文本等可视化类型。
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -16,8 +17,8 @@ import pandas as pd
 from QuantNodes.core.node import BaseNode
 
 
-class DisplayType(str, Enum):
-    """显示类型枚举"""
+class VisualizationType(str, Enum):
+    """可视化类型枚举"""
     TABLE = "table"
     CHART = "chart"
     METRIC = "metric"
@@ -26,28 +27,23 @@ class DisplayType(str, Enum):
 
 
 @dataclass
-class UIDisplayResult:
-    """UI 显示结果容器"""
-    display_type: DisplayType = DisplayType.TABLE
+class VisualizationData:
+    """可视化数据容器"""
+    viz_type: VisualizationType = VisualizationType.TABLE
     title: str = ""
     data: Any = None
-    config: Dict[str, Any] = field(default_factory=dict)
     columns: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-class UINode(BaseNode[Any, UIDisplayResult], ABC):
+class DisplayNode(BaseNode[Any, VisualizationData], ABC):
     """
-    UI 数据准备节点基类
+    数据可视化节点基类
 
-    提供统一的 UI 数据准备接口，将处理后的数据转换为 UI 可用的格式。
+    提供统一的数据可视化接口，将处理后的数据转换为可视化格式。
 
     Subclasses must implement:
-        _prepare_display(): 准备 UI 显示数据
-
-    Examples:
-        >>> table_node = TableDisplayNode(title="回测结果")
-        >>> result = table_node.execute(df)
+        _prepare_data(): 准备可视化数据
     """
 
     _enable_validation: bool = False
@@ -55,42 +51,42 @@ class UINode(BaseNode[Any, UIDisplayResult], ABC):
 
     def __init__(self, name: str = None, config: Dict[str, Any] = None, **kwargs):
         super().__init__(name=name or self.__class__.__name__, config=config, **kwargs)
-        self._display_result: Optional[UIDisplayResult] = None
+        self._viz_data: Optional[VisualizationData] = None
 
     @abstractmethod
-    def _prepare_display(self, input_data: Any, **kwargs) -> UIDisplayResult:
+    def _prepare_data(self, input_data: Any, **kwargs) -> VisualizationData:
         """
-        准备 UI 显示数据
+        准备可视化数据
 
         Args:
             input_data: 输入数据
             **kwargs: 额外参数
 
         Returns:
-            UI 显示结果
+            可视化数据
         """
         pass
 
-    def _execute(self, input_data: Any = None, **kwargs) -> UIDisplayResult:
+    def _execute(self, input_data: Any = None, **kwargs) -> VisualizationData:
         """
-        执行 UI 数据准备
+        执行可视化数据准备
 
         Args:
             input_data: 输入数据
             **kwargs: 额外参数
 
         Returns:
-            UI 显示结果
+            可视化数据
         """
-        self._display_result = self._prepare_display(input_data, **kwargs)
-        return self._display_result
+        self._viz_data = self._prepare_data(input_data, **kwargs)
+        return self._viz_data
 
 
-class TableDisplayNode(UINode):
+class TableDisplayNode(DisplayNode):
     """
     表格显示节点
 
-    将 DataFrame 或类表格数据转换为 Streamlit 表格组件可用的格式。
+    将 DataFrame 或类表格数据转换为表格可视化格式。
     """
 
     def __init__(
@@ -98,15 +94,13 @@ class TableDisplayNode(UINode):
         name: str = None,
         config: Dict[str, Any] = None,
         title: str = "",
-        page_size: int = 50,
         **kwargs
     ):
         super().__init__(name=name or "TableDisplay", config=config, **kwargs)
         self.title = title
-        self.page_size = page_size
 
-    def _prepare_display(self, input_data: Any, **kwargs) -> UIDisplayResult:
-        """准备表格显示数据"""
+    def _prepare_data(self, input_data: Any, **kwargs) -> VisualizationData:
+        """准备表格数据"""
         if isinstance(input_data, pd.DataFrame):
             data = input_data
             columns = list(input_data.columns)
@@ -117,24 +111,23 @@ class TableDisplayNode(UINode):
             data = input_data
             columns = []
 
-        return UIDisplayResult(
-            display_type=DisplayType.TABLE,
+        return VisualizationData(
+            viz_type=VisualizationType.TABLE,
             title=self.title,
             data=data,
             columns=columns,
-            config={
-                'page_size': self.page_size,
-                'use_container_width': self.config.get('use_container_width', True),
-            }
+            metadata={}
         )
 
 
-class ChartDisplayNode(UINode):
+class ChartDisplayNode(DisplayNode):
     """
     图表显示节点
 
-    将数据转换为 Streamlit 图表组件（Line/Bar/Area/Pie）可用的格式。
+    将数据转换为图表可视化格式（Line/Bar/Area/Pie）。
     """
+
+    CHART_TYPES = ["line", "bar", "area", "pie", "scatter"]
 
     def __init__(
         self,
@@ -146,10 +139,10 @@ class ChartDisplayNode(UINode):
     ):
         super().__init__(name=name or "ChartDisplay", config=config, **kwargs)
         self.title = title
-        self.chart_type = chart_type
+        self.chart_type = chart_type if chart_type in self.CHART_TYPES else "line"
 
-    def _prepare_display(self, input_data: Any, **kwargs) -> UIDisplayResult:
-        """准备图表显示数据"""
+    def _prepare_data(self, input_data: Any, **kwargs) -> VisualizationData:
+        """准备图表数据"""
         if isinstance(input_data, pd.DataFrame):
             data = input_data
         elif isinstance(input_data, dict):
@@ -157,22 +150,19 @@ class ChartDisplayNode(UINode):
         else:
             data = input_data
 
-        return UIDisplayResult(
-            display_type=DisplayType.CHART,
+        return VisualizationData(
+            viz_type=VisualizationType.CHART,
             title=self.title,
             data=data,
-            config={
-                'chart_type': self.chart_type,
-                'use_container_width': self.config.get('use_container_width', True),
-            }
+            metadata={"chart_type": self.chart_type}
         )
 
 
-class MetricDisplayNode(UINode):
+class MetricDisplayNode(DisplayNode):
     """
     指标显示节点
 
-    将单个或多个指标值转换为 Streamlit 指标组件可用的格式。
+    将单个或多个指标值转换为指标可视化格式。
     """
 
     def __init__(
@@ -180,41 +170,36 @@ class MetricDisplayNode(UINode):
         name: str = None,
         config: Dict[str, Any] = None,
         title: str = "",
-        delta: float = None,
-        delta_color: str = "off",
         **kwargs
     ):
         super().__init__(name=name or "MetricDisplay", config=config, **kwargs)
         self.title = title
-        self.delta = delta
-        self.delta_color = delta_color
 
-    def _prepare_display(self, input_data: Any, **kwargs) -> UIDisplayResult:
-        """准备指标显示数据"""
+    def _prepare_data(self, input_data: Any, **kwargs) -> VisualizationData:
+        """准备指标数据"""
         value = input_data
+        metadata = {}
+
         if isinstance(input_data, dict):
             value = input_data.get('value', input_data)
             if 'delta' in input_data:
-                self.delta = input_data['delta']
-            if 'delta_color' in input_data:
-                self.delta_color = input_data['delta_color']
+                metadata['delta'] = input_data['delta']
+            if 'description' in input_data:
+                metadata['description'] = input_data['description']
 
-        return UIDisplayResult(
-            display_type=DisplayType.METRIC,
+        return VisualizationData(
+            viz_type=VisualizationType.METRIC,
             title=self.title,
             data=value,
-            config={
-                'delta': self.delta,
-                'delta_color': self.delta_color,
-            }
+            metadata=metadata
         )
 
 
-class TextDisplayNode(UINode):
+class TextDisplayNode(DisplayNode):
     """
     文本显示节点
 
-    将文本内容转换为 Streamlit 文本组件可用的格式。
+    将文本内容转换为文本可视化格式。
     """
 
     def __init__(
@@ -222,20 +207,16 @@ class TextDisplayNode(UINode):
         name: str = None,
         config: Dict[str, Any] = None,
         title: str = "",
-        markdown: bool = True,
         **kwargs
     ):
         super().__init__(name=name or "TextDisplay", config=config, **kwargs)
         self.title = title
-        self.markdown = markdown
 
-    def _prepare_display(self, input_data: Any, **kwargs) -> UIDisplayResult:
-        """准备文本显示数据"""
-        return UIDisplayResult(
-            display_type=DisplayType.TEXT,
+    def _prepare_data(self, input_data: Any, **kwargs) -> VisualizationData:
+        """准备文本数据"""
+        return VisualizationData(
+            viz_type=VisualizationType.TEXT,
             title=self.title,
             data=input_data,
-            config={
-                'markdown': self.markdown,
-            }
+            metadata={}
         )

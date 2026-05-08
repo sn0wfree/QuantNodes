@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import math
 from typing import List, Optional
 
 from ..storage.models import DriftAlert, PerformanceSnapshot

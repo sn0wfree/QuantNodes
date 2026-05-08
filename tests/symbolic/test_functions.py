@@ -1,13 +1,10 @@
 # coding=utf-8
 """TechnicalFunctions 单元测试"""
-import pytest
-from unittest.mock import patch
 
 from QuantNodes.symbolic.functions import TechnicalFunctions, TA_FUNCTIONS
 from QuantNodes.symbolic.expression import (
-    ColumnRef, LiteralValue, SQLBinaryOp, SQLFunction,
+    ColumnRef, SQLBinaryOp, SQLFunction,
 )
-from QuantNodes.symbolic.dialect import ClickHouseDialect
 
 
 class TestTechnicalFunctions:

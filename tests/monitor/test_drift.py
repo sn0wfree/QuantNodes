@@ -4,7 +4,7 @@
 import pytest
 from datetime import date
 
-from QuantNodes.monitor.storage.models import PerformanceSnapshot, DriftAlert
+from QuantNodes.monitor.storage.models import PerformanceSnapshot
 from QuantNodes.monitor.storage.repository import (
     DatabaseManager, PerformanceRepository, DriftAlertRepository,
 )

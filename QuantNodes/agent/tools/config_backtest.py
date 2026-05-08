@@ -5,7 +5,7 @@
 接受 YAML 配置，通过 ConfigBacktestRunner 直接执行回测。
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 import yaml
 
 from QuantNodes.agent.tools.base import Tool
@@ -126,7 +126,6 @@ class ConfigBacktestTool(Tool):
             data = self._load_data(strategy_config, data_path)
 
             # 5. 调用 ConfigBacktestRunner
-            import polars as pl
             from QuantNodes.backtest.config_runner import ConfigBacktestRunner
 
             runner = ConfigBacktestRunner()
@@ -209,7 +208,6 @@ class ConfigBacktestTool(Tool):
         3. config.data.source == "clickhouse"/"mysql" → _load_from_db()
         4. config.data.source == "sqlite"/"duckdb" → _load_from_db() (path-based)
         """
-        import polars as pl
 
         # 优先使用 data_path 参数
         if data_path:

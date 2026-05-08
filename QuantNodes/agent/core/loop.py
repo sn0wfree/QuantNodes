@@ -7,7 +7,7 @@
 
 import asyncio
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from ..bus.events import InboundMessage, OutboundMessage
 from ..bus.queue import MessageBus

@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
 """ConfigNode unit tests"""
-import os
 import pytest
-from pathlib import Path
 
 from QuantNodes.conf_node import (
-    ConfigNode,
     IniConfigNode,
     YamlConfigNode,
     EnvConfigNode,

@@ -2,16 +2,10 @@
 Agent Service - Bridge between FastAPI and QuantNodes Agent system
 """
 
-import asyncio
-import json
 import uuid
-from collections import OrderedDict
 from typing import AsyncGenerator, Optional
-from pathlib import Path
 
 from QuantNodes.agent import Agent
-from QuantNodes.agent.tools.wiki import WikiTool
-from QuantNodes.agent.core.loop import AgentLoop
 
 MAX_SESSION_MESSAGES = 100
 

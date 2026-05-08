@@ -16,8 +16,6 @@ from QuantNodes.agent.config.types import (
     StrategyConfig,
     DataConfig,
     FactorConfig,
-    OperationConfig,
-    CompositeConfig,
     BacktestConfig,
 )
 

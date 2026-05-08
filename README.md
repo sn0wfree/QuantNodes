@@ -205,6 +205,8 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - [执行清单](docs/07-执行清单.md)
 - [算子系统设计与规范](docs/22-算子系统设计与规范.md)
 - [核心功能框架设计](docs/24-核心功能框架设计.md)
+- [大型项目开发测试规范](docs/大型项目开发测试规范.md)
+- [操作手册](docs/QuantNodes-操作手册.md)
 - [Feature 3A - WikiFactorProxy](docs/Feature3A-实施计划.md)
 - [Feature 3B - 研报复现](docs/Feature3B-实施计划.md)
 - [Feature 3C - AutoResearch 自动因子挖掘](docs/Feature3C-实施计划.md)
@@ -212,14 +214,15 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 
 ## 变更日志
 
-### v0.4.0 (2026-05-07)
+### v0.4.0 (2026-05-08)
 
 - ✅ Feature 3A - WikiFactorProxy：因子库读写接口，支持 llmwikify 解析 PDF
 - ✅ Feature 3B - 研报复现：从研报提取因子公式，验证有效性，存入 Wiki 因子库
 - ✅ Feature 3C - AutoResearch 自动因子挖掘：模板枚举 + MCTS 搜索自动生成验证因子
 - ✅ Feature 3D - 用户友好自定义算子 API：装饰器风格 + Builder 链式 + 模板工厂 + 级联查询
 - ✅ 317+ 内置算子（point: 46, time: 65, section: 17, multi_section: 15, talib: 174）
-- ✅ 2300+ 测试用例，覆盖率持续提升
+- ✅ 2574+ 测试用例，覆盖率 ~80%
+- ✅ 统一前端到 Vue 3 + Ant Design Vue 4.x
 
 ### v0.3.0 (2026-04-30)
 
@@ -237,7 +240,7 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - ✅ 改进 rolling_regress 错误处理
 - ✅ 修复 rolling_change_rate 除法顺序问题
 - ✅ 添加 pandas_utils 工具模块
-- ✅ 添加 Streamlit UI 应用骨架
+- ✅ 添加 Vue 3 前端应用骨架 (后统一为 Vue)
 
 ### v0.1.0 (2026-04-27)
 
@@ -253,8 +256,10 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 ### 开源社区
 
 - [Polars](https://pola.rs/) - 高性能 DataFrame 库
-- [Streamlit](https://streamlit.io/) - 快速构建数据应用
+- [Vue 3](https://vuejs.org/) - 渐进式前端框架
+- [Ant Design Vue](https://antdv.com/) - 企业级 UI 组件库
 - [DuckDB](https://duckdb.org/) - 嵌入式分析型数据库
+- [FastAPI](https://fastapi.tiangolo.com/) - 现代 Python Web 框架
 
 ## 许可证
 

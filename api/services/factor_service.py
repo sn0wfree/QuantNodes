@@ -2,7 +2,7 @@
 Factor Service - Factor analysis operations
 """
 
-from typing import Optional, List
+from typing import Optional
 
 
 class FactorService:

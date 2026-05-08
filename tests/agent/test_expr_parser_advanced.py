@@ -13,8 +13,6 @@ ExprParser 高级测试 - 复杂逻辑、嵌套表达式、自定义算子、错
 
 import pytest
 import polars as pl
-import tempfile
-import os
 
 from QuantNodes.agent.config.executor import ConfigExecutor, ExprParser
 from QuantNodes.agent.config.types import (

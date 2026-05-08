@@ -8,7 +8,7 @@ OperatorNode 基类模块
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 
 from QuantNodes.core.node import BaseNode
 

@@ -4,13 +4,11 @@
 包含 FactorDB（只读接口）和 WritableFactorDB（可写入接口）
 v2.0: 移除 traits 依赖
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
 
 from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
-from QuantNodes.core.base import FactorError
 
 
 @dataclass

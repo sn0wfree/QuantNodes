@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
-from typing import Optional, List
+from typing import List
 from pydantic import BaseModel
 from ..schemas.backtest import BacktestRequest, BacktestResult
 from ..services.backtest_service import backtest_service

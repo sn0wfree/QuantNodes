@@ -25,13 +25,13 @@ Usage:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union, Optional
+from typing import TYPE_CHECKING, Union
 
 import polars as pl
 from polars import Expr
 
 if TYPE_CHECKING:
-    from polars import LazyFrame, DataFrame
+    pass
 
 from QuantNodes.factor_node.factor_functions.section_ops import (
     rank as _rank,

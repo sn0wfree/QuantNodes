@@ -31,8 +31,6 @@ import polars as pl
 from polars import Expr
 
 from QuantNodes.factor_node.factor_functions.composite_ops import (
-    merge as _merge,
-    aggregate as _aggregate,
     blend as _blend,
 )
 

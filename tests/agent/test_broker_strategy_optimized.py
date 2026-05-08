@@ -10,13 +10,12 @@ ExecutionBrokerNode + ConfigStrategyNode 优化后单元测试
 - ConfigStrategyNode 空信号
 """
 
-import pytest
 import pandas as pd
 import numpy as np
 
-from QuantNodes.backtest.broker_node import ExecutionBrokerNode, TradeResult
+from QuantNodes.backtest.broker_node import ExecutionBrokerNode
 from QuantNodes.backtest.config_strategy import ConfigStrategyNode
-from QuantNodes.backtest.strategy_node import Order, OrdersResult, Signal
+from QuantNodes.backtest.strategy_node import Order, OrdersResult
 
 
 class TestExecutionBrokerVectorized:

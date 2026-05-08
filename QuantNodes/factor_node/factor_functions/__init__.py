@@ -18,12 +18,7 @@ factor_functions - 因子函数实现层
 
 from __future__ import annotations
 
-import inspect
 from typing import Any, Callable, Dict, List, Optional
-
-import numpy as np
-import polars as pl
-from polars import Expr
 
 # 导入辅助函数和注册表
 from QuantNodes.factor_node.factor_functions._helpers import (
@@ -31,19 +26,6 @@ from QuantNodes.factor_node.factor_functions._helpers import (
     OperatorCategory,
     register_operator,
     _ensure_expr,
-    _inject,
-    _expanding_var_expr,
-    _apply_weights,
-    _cumulative_map_batches_single,
-    _cumulative_map_batches_dual,
-    _cum_single_quantile,
-    _cum_dual_corr,
-    _cum_dual_cov,
-    _cum_single_median,
-    _cum_single_kurt,
-    _cum_single_skew,
-    _CUM_SINGLE_FUNCS,
-    _CUM_DUAL_FUNCS,
 )
 
 # 导入子模块（触发算子注册）
@@ -224,4 +206,50 @@ __all__ = [
     "OperatorCategory",
     "_OPERATOR_REGISTRY",
     "_ensure_expr",
+    # math_ops
+    "ceil", "floor", "fix", "applymap",
+    "nanargmax", "nanargmin", "nanmedian", "nanquantile", "nancount", "nanprod",
+    "astype", "replace", "fetch",
+    "ff_abs", "ff_log", "sign", "ff_sqrt", "square", "clip",
+    "isnull", "notnull", "fill_null", "fill_zero", "nan_to_null",
+    "ff_pow",
+    "nanmax", "nanmin", "nanmean", "nansum", "nanstd", "nanvar",
+    "where", "fillna",
+    "add", "sub", "mul", "div",
+    "log1p", "if_then_else", "market_cap",
+    "weighted_sum", "combine", "book_to_market", "earnings_to_market",
+    # time_ops
+    "rolling_mean", "rolling_std", "rolling_max", "rolling_min", "rolling_sum",
+    "rolling_median", "rolling_var",
+    "rolling_prod", "rolling_skew", "rolling_kurt", "rolling_count",
+    "rolling_argmax", "rolling_argmin",
+    "rolling_corr", "rolling_cov", "rolling_quantile", "rolling_rank",
+    "ewm_var", "ewm_mean", "ewm_std", "ewm_corr", "ewm_cov",
+    "expanding_mean", "expanding_std", "expanding_sum",
+    "expanding_max", "expanding_min", "expanding_median", "expanding_count",
+    "expanding_var", "expanding_kurt", "expanding_skew", "expanding_quantile",
+    "expanding_corr", "expanding_cov",
+    "ts_mean", "ts_std", "ts_corr", "ts_cov", "ts_rank", "ts_delta", "ts_lag",
+    "ts_argmax", "ts_argmin", "ts_lead", "ts_pct_change",
+    "decay_linear", "decay_exp", "vwap", "rolling_change_rate",
+    "regress", "zscored", "ts_shift", "diff", "lag", "delay", "ref", "shift",
+    "delta", "pct_change", "correlation", "covariance", "ts_prod",
+    # section_ops
+    "rank", "zscore", "winsorize", "neutralize", "neutralize_market", "scale",
+    "ic", "rank_ic", "group_norm", "group_winsorize",
+    "standardizeZScore", "orthogonalize", "mad",
+    "fillNaNByFun", "fillNaNByRegress",
+    "cross_sectional_rank", "cross_sectional_zscore",
+    "cross_sectional_mean", "cross_sectional_std", "cross_sectional_sum",
+    "standardizeRank", "weightStandardize",
+    # composite_ops
+    "aggregate", "disaggregate",
+    "aggr_sum", "aggr_mean", "aggr_max", "aggr_min", "aggr_std", "aggr_var",
+    "aggr_median", "aggr_count", "aggr_prod", "aggr_quantile",
+    "merge", "chg_ids", "blend", "nav", "rebase",
+    # submodules for side-effect registration
+    "time_ops",
+    "section_ops",
+    "math_ops",
+    "composite_ops",
 ]

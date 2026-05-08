@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -16,7 +15,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 
-from QuantNodes.agent.config.types import StrategyConfig, OutputConfig
+from QuantNodes.agent.config.types import StrategyConfig
 from QuantNodes.agent.config.executor import ConfigExecutor
 from QuantNodes.backtest.config_strategy import ConfigStrategyNode
 from QuantNodes.backtest.backtest_node import BacktestResult

@@ -31,7 +31,6 @@ class DreamService:
         if self._dream_engine is None:
             try:
                 from QuantNodes.agent.core.dream import DreamEngine
-                from QuantNodes.agent.core.memory import DreamConfig
                 store = self._get_dream_store()
                 if store:
                     self._dream_engine = DreamEngine(dream_store=store)

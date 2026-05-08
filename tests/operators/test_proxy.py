@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """QuantNodes.operators.proxy 单元测试"""
-import pytest
 
 from QuantNodes.operators.proxy import (
     list_operators,
@@ -77,7 +76,6 @@ class TestProxyReExports:
         assert "ts_mean" in doc or len(doc) > 0
 
     def test_register_operator_creates_entry(self):
-        from QuantNodes.operators.proxy import _OPERATOR_REGISTRY
 
         initial_count = len(list_operators())
 

@@ -8,7 +8,7 @@ Phase 4.1: Skill Infrastructure
 from typing import Dict, List, Optional
 from collections import defaultdict
 
-from .base import Skill, SkillCategory, SkillMetadata, SkillResult
+from .base import Skill, SkillCategory
 
 
 class SkillRegistry:

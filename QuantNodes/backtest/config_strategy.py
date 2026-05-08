@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import List, Dict, Any
+from typing import List
 
 import pandas as pd
 

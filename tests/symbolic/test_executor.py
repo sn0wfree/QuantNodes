@@ -1,13 +1,11 @@
 # coding=utf-8
 """SQLExecutor 单元测试"""
-import pytest
-from unittest.mock import MagicMock, Mock
 import pandas as pd
 
 from QuantNodes.symbolic.executor import SQLExecutor, execute_sql
 from QuantNodes.symbolic.compiler import SQLCompiler
 from QuantNodes.symbolic.dialect import ClickHouseDialect
-from QuantNodes.symbolic.expression import ColumnRef, LiteralValue, SQLBinaryOp
+from QuantNodes.symbolic.expression import ColumnRef, LiteralValue
 
 
 class MockConnection:

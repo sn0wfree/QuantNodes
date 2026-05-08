@@ -7,7 +7,6 @@ Parquet 缓存存储引擎
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Optional
 

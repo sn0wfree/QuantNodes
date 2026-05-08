@@ -5,27 +5,18 @@ AI 模块单元测试
 测试 LLM、代码沙箱、策略生成和优化功能。
 """
 import unittest
-from unittest.mock import Mock, patch, MagicMock
-from dataclasses import dataclass
 
-import numpy as np
-import pandas as pd
 
 from QuantNodes.ai.llm.base import (
     LLMClientBase,
-    LLMError,
-    RateLimitError,
-    AuthenticationError,
-    APIError,
     Message,
     MessageRole,
     ChatCompletion,
-    ChatCompletionChunk,
 )
 from QuantNodes.ai.llm.openai import OpenAIClient
 from QuantNodes.ai.prompts import PromptLibrary, PromptTemplate, PromptBuilder
-from QuantNodes.ai.sandbox import CodeSandbox, CodeValidationResult, DangerousCodeError
-from QuantNodes.ai.strategy_gen import StrategyGenerator, GenerationResult
+from QuantNodes.ai.sandbox import CodeSandbox
+from QuantNodes.ai.strategy_gen import StrategyGenerator
 from QuantNodes.ai.optimizer import PipelineOptimizer, OptimizationResult, PipelineAnalyzer
 
 

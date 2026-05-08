@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Optional, Union
 
 import numpy as np
 import polars as pl
@@ -17,14 +17,11 @@ from QuantNodes.factor_node.factor_functions._helpers import (
     OperatorCategory,
     register_operator,
     _ensure_expr,
-    _inject,
     _expanding_var_expr,
     _apply_weights,
     _cumulative_map_batches_single,
     _cumulative_map_batches_dual,
     _cum_single_quantile,
-    _cum_dual_corr,
-    _cum_dual_cov,
     _make_rolling_ts_wrapper,
     _make_expanding_wrapper,
     _make_dual_rolling_wrapper,

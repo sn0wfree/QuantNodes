@@ -4,7 +4,7 @@ Prompt模板渲染
 """
 
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 def load_template(path: Path | str) -> str:

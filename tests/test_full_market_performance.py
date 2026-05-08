@@ -17,7 +17,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import polars as pl
 from QuantNodes.agent.tools.config_backtest import ConfigBacktestTool
-from QuantNodes.agent.config.loader import ConfigLoader
 from QuantNodes.agent.config.executor import ConfigExecutor
 from QuantNodes.backtest.config_runner import ConfigBacktestRunner
 

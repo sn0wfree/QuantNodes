@@ -3,7 +3,6 @@
 
 import json
 import pytest
-from datetime import date
 
 from QuantNodes.monitor.storage.models import PerformanceSnapshot
 from QuantNodes.monitor.storage.repository import (

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import traceback
 from datetime import datetime
@@ -126,13 +125,11 @@ class StrategyRunner:
     def _execute_backtest(self, config_path: str) -> Optional[Dict[str, Any]]:
         """执行回测"""
         from QuantNodes.agent.config.loader import ConfigLoader
-        from QuantNodes.agent.config.executor import ConfigExecutor
 
         loader = ConfigLoader()
         config = loader.load(config_path)
 
         # 使用 ConfigBacktestRunner 执行
-        from QuantNodes.backtest.config_runner import ConfigBacktestRunner
         from QuantNodes.agent.tools.config_backtest import ConfigBacktestTool
 
         tool = ConfigBacktestTool()

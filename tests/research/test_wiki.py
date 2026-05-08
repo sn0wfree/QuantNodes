@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from QuantNodes.research.wiki import (
-    WikiFactorProxy, WikiFactor, WikiLogic,
+    WikiFactorProxy, WikiFactor, WikiLogic, WikiStrategy, WikiReproduction,
     FactorSource, FactorCategory, LogicSource,
     WikiProxyError, init_factor_wiki,
 )
@@ -62,6 +62,29 @@ def sample_logic():
     )
 
 
+@pytest.fixture
+def sample_strategy():
+    return WikiStrategy(
+        name="dual_ma_cross",
+        strategy_yaml="name: dual_ma\nfactors:\n  - ma5: ts_mean(close, 5)\n  - ma20: ts_mean(close, 20)\nrules:\n  - buy: ma5 > ma20\n  - sell: ma5 < ma20",
+        description="双均线交叉策略",
+        category="momentum",
+        tags=["ma", "cross", "momentum"],
+        backtest_result={"annual_return": 0.15, "sharpe": 1.52, "max_drawdown": -0.08},
+    )
+
+
+@pytest.fixture
+def sample_reproduction():
+    return WikiReproduction(
+        report_title="基于均线系统的选股策略",
+        pdf_path="/path/to/report.pdf",
+        verified_count=3,
+        failed_count=1,
+        report_markdown="# 量化研究报告\n\n策略表现优异...",
+    )
+
+
 class TestInitFactorWiki:
 
     def test_init_creates_structure(self):
@@ -111,6 +134,20 @@ class TestWikiFactorProxyCRUD:
         assert len(factors) == 0
         factors = proxy.list_factors(source=FactorSource.RESEARCH_REPORT)
         assert len(factors) == 1
+
+    def test_list_factors_with_tags_filter(self, proxy, sample_factor):
+        proxy.store_factor(sample_factor)
+        factors = proxy.list_factors(tags=["momentum"])
+        assert len(factors) == 1
+        factors = proxy.list_factors(tags=["nonexistent_tag"])
+        assert len(factors) == 0
+
+    def test_list_factors_with_category_filter(self, proxy, sample_factor):
+        proxy.store_factor(sample_factor)
+        factors = proxy.list_factors(category=FactorCategory.MOMENTUM)
+        assert len(factors) == 1
+        factors = proxy.list_factors(category=FactorCategory.VALUE)
+        assert len(factors) == 0
 
     def test_update_factor(self, proxy, sample_factor):
         proxy.store_factor(sample_factor)
@@ -230,3 +267,83 @@ class TestStatus:
     def test_status(self, proxy):
         s = proxy.status()
         assert isinstance(s, dict)
+
+
+class TestWikiStrategyCRUD:
+
+    def test_store_strategy(self, proxy, sample_strategy):
+        page_name = proxy.store_strategy(sample_strategy)
+        assert page_name == "Strategy/dual_ma_cross"
+        assert sample_strategy.wiki_page_name == page_name
+
+    def test_get_strategy(self, proxy, sample_strategy):
+        proxy.store_strategy(sample_strategy)
+        fetched = proxy.get_strategy("dual_ma_cross")
+        assert fetched is not None
+        assert fetched.name == "dual_ma_cross"
+        assert fetched.category == "momentum"
+        assert fetched.tags == ["ma", "cross", "momentum"]
+        assert "ma5" in fetched.strategy_yaml
+        assert fetched.backtest_result is not None
+        assert fetched.backtest_result["sharpe"] == 1.52
+
+    def test_get_strategy_not_found(self, proxy):
+        assert proxy.get_strategy("nonexistent") is None
+
+    def test_list_strategies(self, proxy, sample_strategy):
+        proxy.store_strategy(sample_strategy)
+        strategies = proxy.list_strategies()
+        assert len(strategies) == 1
+
+    def test_list_strategies_with_category_filter(self, proxy, sample_strategy):
+        proxy.store_strategy(sample_strategy)
+        strategies = proxy.list_strategies(category="momentum")
+        assert len(strategies) == 1
+        strategies = proxy.list_strategies(category="mean_reversion")
+        assert len(strategies) == 0
+
+    def test_list_strategies_with_tags_filter(self, proxy, sample_strategy):
+        proxy.store_strategy(sample_strategy)
+        strategies = proxy.list_strategies(tags=["ma"])
+        assert len(strategies) == 1
+        strategies = proxy.list_strategies(tags=["unsupported_tag"])
+        assert len(strategies) == 0
+
+    def test_strategy_roundtrip_with_yaml_and_json(self, proxy, sample_strategy):
+        proxy.store_strategy(sample_strategy)
+        fetched = proxy.get_strategy("dual_ma_cross")
+        assert "ma5:" in fetched.strategy_yaml
+        assert fetched.backtest_result["annual_return"] == 0.15
+
+
+class TestWikiReproductionCRUD:
+
+    def test_store_reproduction(self, proxy, sample_reproduction):
+        page_name = proxy.store_reproduction(sample_reproduction)
+        assert page_name.startswith("Reproduction/")
+        assert sample_reproduction.wiki_page_name == page_name
+
+    def test_get_reproduction(self, proxy, sample_reproduction):
+        proxy.store_reproduction(sample_reproduction)
+        fetched = proxy.get_reproduction("基于均线系统的选股策略")
+        assert fetched is not None
+        assert fetched.report_title == "基于均线系统的选股策略"
+        assert fetched.verified_count == 3
+        assert fetched.failed_count == 1
+        assert "量化研究报告" in fetched.report_markdown
+
+    def test_get_reproduction_not_found(self, proxy):
+        assert proxy.get_reproduction("nonexistent_report") is None
+
+    def test_store_reproduction_slash_in_title(self, proxy):
+        rep = WikiReproduction(
+            report_title="策略A/策略B对比研究",
+            pdf_path="/path/to/a_b.pdf",
+            verified_count=2,
+            failed_count=0,
+        )
+        page_name = proxy.store_reproduction(rep)
+        assert "/" in page_name
+        fetched = proxy.get_reproduction("策略A/策略B对比研究")
+        assert fetched is not None
+        assert fetched.report_title == "策略A/策略B对比研究"

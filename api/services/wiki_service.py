@@ -3,7 +3,6 @@ Wiki Service - Bridge between FastAPI and WikiTool
 """
 
 from typing import Optional, List, Dict, Any
-from pathlib import Path
 
 from QuantNodes.agent.tools.wiki import WikiTool
 from QuantNodes.research.wiki import FactorSource, FactorCategory

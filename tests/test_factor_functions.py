@@ -13,7 +13,6 @@ factor_functions.py 单元测试
 """
 import pytest
 import polars as pl
-import numpy as np
 from datetime import datetime
 
 from QuantNodes.factor_node.factor_functions import (
@@ -25,7 +24,7 @@ from QuantNodes.factor_node.factor_functions import (
 
     # Point
     ceil, floor, fix, applymap,
-    nanargmax, nanargmin, nanmedian, nanquantile, nancount, nanprod,
+    nanargmax, nanargmin, nanmedian, nancount, nanprod,
     astype, replace, fetch,
     abs as ff_abs, log as ff_log, sign, sqrt as ff_sqrt, square, clip,
     isnull, notnull, fill_null, fill_zero, nan_to_null,
@@ -44,7 +43,7 @@ from QuantNodes.factor_node.factor_functions import (
     expanding_max, expanding_min, expanding_median, expanding_count,
     expanding_var, expanding_kurt, expanding_skew, expanding_quantile,
     expanding_corr, expanding_cov,
-    ts_mean, ts_std, ts_corr, ts_cov, ts_rank, ts_delta, ts_lag,
+    ts_corr, ts_cov, ts_rank, ts_delta, ts_lag,
     ts_argmax, ts_argmin, ts_lead, ts_pct_change,
     delay, ref, shift,
     diff, lag,
@@ -70,7 +69,7 @@ from QuantNodes.factor_node.factor_functions import (
     add, sub, mul, div,
     weighted_sum, combine, if_then_else,
     regress, zscored, decay_linear, decay_exp,
-    vwap, market_cap, book_to_market, earnings_to_market,
+    vwap,
 )
 
 
@@ -1709,6 +1708,10 @@ class TestIntegration:
 
 class TestRegistryComprehensive:
     """注册表综合测试"""
+
+    def setup_method(self):
+        from QuantNodes.operators.registry import _CustomOperatorRegistry
+        _CustomOperatorRegistry.unregister_all()
 
     def test_all_operators_have_doc(self):
         """所有算子都有文档字符串"""

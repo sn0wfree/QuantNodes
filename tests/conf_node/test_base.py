@@ -1,8 +1,6 @@
 # coding=utf-8
 """ConfigNode 基类测试"""
-import os
 import pytest
-from unittest.mock import patch
 
 from QuantNodes.conf_node.base import ConfigNode
 

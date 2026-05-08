@@ -97,7 +97,6 @@ def compile_expression(
         from QuantNodes.symbolic.dialect import ClickHouseDialect
         dialect = ClickHouseDialect()
     elif dialect is None and dialect_type is not None:
-        from QuantNodes.symbolic.dialect import DialectType
         dialect_map = {
             "clickhouse": "ClickHouseDialect",
             "duckdb": "DuckDBDialect",
@@ -106,7 +105,7 @@ def compile_expression(
         dialect_name = dialect_map.get(dialect_type.lower())
         if dialect_name is None:
             raise ValueError(f"Unknown dialect type: {dialect_type}")
-        from QuantNodes.symbolic.dialect import ClickHouseDialect, DuckDBDialect, MySQLDialect
+        from QuantNodes.symbolic.dialect import ClickHouseDialect
         dialect_cls = locals()[dialect_name]
         dialect = dialect_cls()
 

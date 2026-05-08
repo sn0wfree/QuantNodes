@@ -4,7 +4,7 @@
 import pytest
 import tempfile
 import os
-from datetime import date, datetime
+from datetime import date
 
 from QuantNodes.monitor.storage.models import (
     StrategyRun, PerformanceSnapshot, DriftAlert, StrategyVersion,

@@ -28,7 +28,6 @@ class DreamSkill(Skill):
     async def execute(self, context: Dict[str, Any]) -> SkillResult:
         """Execute dream insight query"""
         from ..core.memory import MemoryStore
-        from pathlib import Path
 
         workspace = context.get("workspace", ".")
         dream_store = MemoryStore(workspace).get_dream_store()

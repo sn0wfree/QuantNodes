@@ -7,11 +7,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, List, Optional, Union
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from QuantNodes.symbolic.expression import SQLExpression
-    from QuantNodes.symbolic.dialect import SQLDialect
 
 
 class TechnicalFunctions:
@@ -185,7 +184,7 @@ class TechnicalFunctions:
         Returns:
             SQLExpression
         """
-        from QuantNodes.symbolic.expression import SQLBinaryOp, SQLFunction
+        from QuantNodes.symbolic.expression import SQLFunction
         current = expr
         lagged = SQLFunction("lagInFrame", expr)
         return current - lagged
@@ -202,7 +201,7 @@ class TechnicalFunctions:
         Returns:
             SQLExpression
         """
-        from QuantNodes.symbolic.expression import SQLBinaryOp, SQLFunction
+        from QuantNodes.symbolic.expression import SQLFunction
         current = expr
         lagged = SQLFunction("lagInFrame", expr)
         return (current - lagged) / lagged

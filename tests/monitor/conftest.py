@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """Monitor 子系统测试 fixtures"""
-import os
 import pytest
-import tempfile
 
 
 @pytest.fixture

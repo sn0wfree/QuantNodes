@@ -3,7 +3,7 @@
 > 合并自: 12-Agent业界调研与设计模式.md + 13-Agent系统架构设计.md + 14-Agent实施计划.md + 15-Config-Driven方案.md  
 > 架构模式: nanobot极简核心 + llmwikify知识沉淀 + QuantNodes量化引擎  
 > 通信协议: MCP (Model Context Protocol)  
-> 状态: Phase 1-2 已完成 ✅，Phase 3 部分完成（Polars/Config ✅，MCP/Wiki ⬜）
+> 状态: 已完成 ✅
 
 ---
 
@@ -15,7 +15,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        USER INTERACTION LAYER                        │
 │  ┌─────────────────────────────────────────────────────────────┐  │
-│  │  Streamlit Web UI  │  CLI  │  Jupyter Notebook  │  API      │  │
+│  │  Vue 3 Web UI  │  CLI  │  Jupyter Notebook  │  API          │  │
 │  └─────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────┬──────────────────────────────────┘
                                    │

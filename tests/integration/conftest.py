@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """Integration tests fixtures"""
-import os
 import pytest
 import polars as pl
 

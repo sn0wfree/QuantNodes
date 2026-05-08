@@ -178,9 +178,8 @@ def deserialize_auto(data: Union[str, bytes]) -> Expression:
 
 _PROTOBUF_AVAILABLE = False
 try:
-    # 检查是否有 protobuf
-    import google.protobuf
-    _PROTOBUF_AVAILABLE = True
+    import importlib.util
+    _PROTOBUF_AVAILABLE = importlib.util.find_spec("google.protobuf") is not None
 except ImportError:
     pass
 

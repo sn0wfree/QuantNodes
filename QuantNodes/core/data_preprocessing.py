@@ -9,7 +9,7 @@
 import numpy as np
 import pandas as pd
 from scipy import stats
-from typing import Optional, Callable, Union
+from typing import Optional, Callable
 
 
 class DataPreprocessingFun:

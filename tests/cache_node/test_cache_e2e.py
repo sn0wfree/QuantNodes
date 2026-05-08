@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
-from QuantNodes.cache_node import MarketDataCacheNode, ParquetCacheStore, CacheMetadata, CacheMeta
+from QuantNodes.cache_node import MarketDataCacheNode, ParquetCacheStore, CacheMetadata
 from QuantNodes.cache_node.base import make_cache_key
 from QuantNodes.core.node import NodeExecutionError
 

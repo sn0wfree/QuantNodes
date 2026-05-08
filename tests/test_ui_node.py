@@ -1,13 +1,12 @@
 # coding=utf-8
 """
-UINode 单元测试
+DisplayNode 单元测试
 """
 import pytest
 import pandas as pd
 from QuantNodes.ui_node import (
-    UINode,
-    UIDisplayResult,
-    DisplayType,
+    VisualizationData,
+    VisualizationType,
     TableDisplayNode,
     ChartDisplayNode,
     MetricDisplayNode,
@@ -15,42 +14,41 @@ from QuantNodes.ui_node import (
 )
 
 
-class TestUIDisplayResult:
-    """UIDisplayResult 数据类测试"""
+class TestVisualizationData:
+    """VisualizationData 数据类测试"""
 
     def test_default_values(self):
-        result = UIDisplayResult()
-        assert result.display_type == DisplayType.TABLE
+        result = VisualizationData()
+        assert result.viz_type == VisualizationType.TABLE
         assert result.title == ""
         assert result.data is None
-        assert result.config == {}
         assert result.columns == []
         assert result.metadata == {}
 
     def test_custom_values(self):
-        result = UIDisplayResult(
-            display_type=DisplayType.CHART,
+        result = VisualizationData(
+            viz_type=VisualizationType.CHART,
             title="Test Chart",
             data={"x": [1, 2, 3]},
             columns=["x", "y"],
             metadata={"source": "test"}
         )
-        assert result.display_type == DisplayType.CHART
+        assert result.viz_type == VisualizationType.CHART
         assert result.title == "Test Chart"
         assert result.data == {"x": [1, 2, 3]}
         assert result.columns == ["x", "y"]
         assert result.metadata == {"source": "test"}
 
 
-class TestDisplayType:
-    """DisplayType 枚举测试"""
+class TestVisualizationType:
+    """VisualizationType 枚举测试"""
 
-    def test_display_types(self):
-        assert DisplayType.TABLE == "table"
-        assert DisplayType.CHART == "chart"
-        assert DisplayType.METRIC == "metric"
-        assert DisplayType.TEXT == "text"
-        assert DisplayType.IMAGE == "image"
+    def test_visualization_types(self):
+        assert VisualizationType.TABLE == "table"
+        assert VisualizationType.CHART == "chart"
+        assert VisualizationType.METRIC == "metric"
+        assert VisualizationType.TEXT == "text"
+        assert VisualizationType.IMAGE == "image"
 
 
 class TestTableDisplayNode:
@@ -60,25 +58,22 @@ class TestTableDisplayNode:
         node = TableDisplayNode()
         assert node.name == "TableDisplay"
         assert node.title == ""
-        assert node.page_size == 50
 
     def test_init_custom(self):
         node = TableDisplayNode(
             name="CustomTable",
             title="回测结果",
-            page_size=100
         )
         assert node.name == "CustomTable"
         assert node.title == "回测结果"
-        assert node.page_size == 100
 
     def test_execute_dataframe(self):
         node = TableDisplayNode(title="Test")
         df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
         result = node.execute(df)
 
-        assert isinstance(result, UIDisplayResult)
-        assert result.display_type == DisplayType.TABLE
+        assert isinstance(result, VisualizationData)
+        assert result.viz_type == VisualizationType.TABLE
         assert result.title == "Test"
         assert result.columns == ["a", "b"]
         assert isinstance(result.data, pd.DataFrame)
@@ -88,16 +83,9 @@ class TestTableDisplayNode:
         data = {"x": 1, "y": 2}
         result = node.execute(data)
 
-        assert result.display_type == DisplayType.TABLE
+        assert result.viz_type == VisualizationType.TABLE
         assert result.columns == ["x", "y"]
         assert isinstance(result.data, pd.DataFrame)
-
-    def test_execute_with_config(self):
-        node = TableDisplayNode(config={"use_container_width": False})
-        df = pd.DataFrame({"a": [1]})
-        result = node.execute(df)
-
-        assert result.config["use_container_width"] is False
 
 
 class TestChartDisplayNode:
@@ -124,24 +112,24 @@ class TestChartDisplayNode:
         df = pd.DataFrame({"date": ["2024-01-01", "2024-01-02"], "value": [100, 105]})
         result = node.execute(df)
 
-        assert isinstance(result, UIDisplayResult)
-        assert result.display_type == DisplayType.CHART
+        assert isinstance(result, VisualizationData)
+        assert result.viz_type == VisualizationType.CHART
         assert result.title == "Equity Curve"
-        assert result.config["chart_type"] == "line"
+        assert result.metadata["chart_type"] == "line"
 
     def test_execute_dict(self):
         node = ChartDisplayNode()
         data = {"x": [1, 2, 3], "y": [10, 20, 30]}
         result = node.execute(data)
 
-        assert result.display_type == DisplayType.CHART
+        assert result.viz_type == VisualizationType.CHART
         assert isinstance(result.data, pd.DataFrame)
 
     def test_chart_types(self):
         for chart_type in ["line", "bar", "area", "pie"]:
             node = ChartDisplayNode(chart_type=chart_type)
             result = node.execute(pd.DataFrame({"x": [1, 2]}))
-            assert result.config["chart_type"] == chart_type
+            assert result.metadata["chart_type"] == chart_type
 
 
 class TestMetricDisplayNode:
@@ -151,38 +139,32 @@ class TestMetricDisplayNode:
         node = MetricDisplayNode()
         assert node.name == "MetricDisplay"
         assert node.title == ""
-        assert node.delta is None
-        assert node.delta_color == "off"
 
     def test_init_custom(self):
         node = MetricDisplayNode(
             name="CustomMetric",
             title="总收益",
-            delta=15.5,
-            delta_color="normal"
         )
         assert node.name == "CustomMetric"
         assert node.title == "总收益"
-        assert node.delta == 15.5
-        assert node.delta_color == "normal"
 
     def test_execute_numeric(self):
         node = MetricDisplayNode(title="Win Rate")
         result = node.execute(0.75)
 
-        assert isinstance(result, UIDisplayResult)
-        assert result.display_type == DisplayType.METRIC
+        assert isinstance(result, VisualizationData)
+        assert result.viz_type == VisualizationType.METRIC
         assert result.title == "Win Rate"
         assert result.data == 0.75
 
-    def test_execute_dict_with_delta(self):
+    def test_execute_dict_with_metadata(self):
         node = MetricDisplayNode(title="Return")
-        data = {"value": 10000, "delta": 1500, "delta_color": "normal"}
+        data = {"value": 10000, "delta": 1500, "description": "总收益"}
         result = node.execute(data)
 
         assert result.data == 10000
-        assert result.config["delta"] == 1500
-        assert result.config["delta_color"] == "normal"
+        assert result.metadata["delta"] == 1500
+        assert result.metadata["description"] == "总收益"
 
 
 class TestTextDisplayNode:
@@ -192,36 +174,27 @@ class TestTextDisplayNode:
         node = TextDisplayNode()
         assert node.name == "TextDisplay"
         assert node.title == ""
-        assert node.markdown is True
 
     def test_init_custom(self):
         node = TextDisplayNode(
             name="CustomText",
             title="策略描述",
-            markdown=False
         )
         assert node.name == "CustomText"
         assert node.title == "策略描述"
-        assert node.markdown is False
 
     def test_execute_string(self):
         node = TextDisplayNode(title="Description")
         result = node.execute("这是一个测试策略")
 
-        assert isinstance(result, UIDisplayResult)
-        assert result.display_type == DisplayType.TEXT
+        assert isinstance(result, VisualizationData)
+        assert result.viz_type == VisualizationType.TEXT
         assert result.title == "Description"
         assert result.data == "这是一个测试策略"
 
-    def test_execute_markdown_config(self):
-        node = TextDisplayNode(markdown=True)
-        result = node.execute("# Hello")
 
-        assert result.config["markdown"] is True
-
-
-class TestUINodeStats:
-    """UINode 统计功能测试"""
+class TestDisplayNodeStats:
+    """DisplayNode 统计功能测试"""
 
     def test_stats_enabled(self):
         node = TableDisplayNode()
@@ -237,8 +210,8 @@ class TestUINodeStats:
         assert node.stats.success_count == 1
 
 
-class TestUINodeExecution:
-    """UINode 执行流程测试"""
+class TestDisplayNodeExecution:
+    """DisplayNode 执行流程测试"""
 
     def test_execute_updates_state(self):
         node = MetricDisplayNode()
@@ -251,13 +224,99 @@ class TestUINodeExecution:
         node = TableDisplayNode()
         result = node.execute(None)
 
-        assert result.display_type == DisplayType.TABLE
+        assert result.viz_type == VisualizationType.TABLE
         assert result.data is None
 
     def test_node_id_generated(self):
         node1 = TableDisplayNode()
         node2 = TableDisplayNode()
         assert node1.node_id != node2.node_id
+
+
+class TestDisplayNodeEdgeCases:
+    """DisplayNode 边界情况测试"""
+
+    def test_table_empty_dataframe(self):
+        node = TableDisplayNode(title="Empty")
+        df = pd.DataFrame()
+        result = node.execute(df)
+
+        assert result.viz_type == VisualizationType.TABLE
+        assert len(result.columns) == 0
+
+    def test_table_list_input(self):
+        node = TableDisplayNode(title="List")
+        result = node.execute([1, 2, 3])
+
+        assert result.viz_type == VisualizationType.TABLE
+        assert result.data is not None
+
+    def test_chart_empty_dataframe(self):
+        node = ChartDisplayNode(title="Empty Chart")
+        df = pd.DataFrame()
+        result = node.execute(df)
+
+        assert result.viz_type == VisualizationType.CHART
+
+    def test_chart_list_input(self):
+        node = ChartDisplayNode(title="List")
+        result = node.execute([1, 2, 3])
+
+        assert result.viz_type == VisualizationType.CHART
+        assert result.data == [1, 2, 3]
+
+    def test_metric_none_value(self):
+        node = MetricDisplayNode(title="None")
+        result = node.execute(None)
+
+        assert result.data is None
+
+    def test_text_none_input(self):
+        node = TextDisplayNode(title="None")
+        result = node.execute(None)
+
+        assert result.data is None
+
+    def test_text_with_special_characters(self):
+        node = TextDisplayNode(title="Special")
+        result = node.execute("测试\n换行\t制表")
+
+        assert result.data == "测试\n换行\t制表"
+
+
+class TestDisplayNodeName:
+    """DisplayNode 名称测试"""
+
+    def test_default_names(self):
+        assert TableDisplayNode().name == "TableDisplay"
+        assert ChartDisplayNode().name == "ChartDisplay"
+        assert MetricDisplayNode().name == "MetricDisplay"
+        assert TextDisplayNode().name == "TextDisplay"
+
+    def test_custom_name_preserved(self):
+        node = TableDisplayNode(name="MyTable")
+        assert node.name == "MyTable"
+
+
+class TestVisualizationDataMetadata:
+    """VisualizationData 元数据测试"""
+
+    def test_metadata_default_empty(self):
+        result = VisualizationData()
+        assert result.metadata == {}
+
+    def test_metadata_custom(self):
+        result = VisualizationData(
+            metadata={"source": "backtest", "timestamp": "2024-01-01"}
+        )
+        assert result.metadata["source"] == "backtest"
+
+    def test_result_carries_metadata_through_execute(self):
+        node = TableDisplayNode()
+        df = pd.DataFrame({"a": [1]})
+        result = node.execute(df)
+
+        assert result.metadata == {}
 
 
 if __name__ == "__main__":

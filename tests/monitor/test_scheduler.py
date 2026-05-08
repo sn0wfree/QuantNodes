@@ -1,7 +1,6 @@
 # coding=utf-8
 """调度器测试"""
 
-import pytest
 import tempfile
 import os
 

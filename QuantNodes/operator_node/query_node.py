@@ -6,7 +6,7 @@ TableQueryNode - 表查询执行节点
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from QuantNodes.core.node import BaseNode
 from QuantNodes.operator_node.base import OperatorNode

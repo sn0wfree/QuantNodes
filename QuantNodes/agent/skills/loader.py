@@ -7,7 +7,7 @@ Phase 4.1: Skill Infrastructure
 
 import importlib.util
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 from .base import Skill, SkillCategory
 from .registry import SkillRegistry

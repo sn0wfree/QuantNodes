@@ -26,16 +26,12 @@ Usage:
 
 from __future__ import annotations
 
-from typing import Union, Optional, List, Any
+from typing import Union, Optional
 
 import polars as pl
 from polars import Expr
 
 from QuantNodes.factor_node.factor_functions.math_ops import (
-    add as _add,
-    sub as _sub,
-    mul as _mul,
-    div as _div,
     log as _log,
     log1p as _log1p,
     abs as _abs,

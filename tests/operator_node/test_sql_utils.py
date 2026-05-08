@@ -1,6 +1,5 @@
 # coding=utf-8
 """QuantNodes.operator_node.sql_utils 单元测试"""
-import pytest
 
 from QuantNodes.operator_node.sql_utils import SQLBuilder, TableEngineCreator
 

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any
 
 from ..storage.repository import (
     StrategyRunRepository,

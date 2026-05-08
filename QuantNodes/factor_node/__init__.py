@@ -3,9 +3,6 @@
 
 提供因子数据库、因子表、因子类和因子运算功能。
 """
-import numpy as np
-import pandas as pd
-
 from QuantNodes.factor_node.factor_db import FactorDB, WritableFactorDB
 from QuantNodes.factor_node.factor_table import FactorTable, CustomFT
 from QuantNodes.factor_node.factor import Factor, DataFactor, Factorize

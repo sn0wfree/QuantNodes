@@ -1,7 +1,6 @@
 # coding=utf-8
 """QuantNodes.core._lookback_helpers 单元测试"""
 import numpy as np
-import pytest
 
 from QuantNodes.core._lookback_helpers import compute_lookback_params, extend_dt_ruler
 

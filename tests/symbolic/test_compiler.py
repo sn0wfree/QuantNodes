@@ -4,10 +4,9 @@ import pytest
 
 from QuantNodes.symbolic.compiler import SQLCompiler, compile_expression
 from QuantNodes.symbolic.expression import (
-    ColumnRef, LiteralValue, SQLBinaryOp, SQLComparison,
-    SQLLogicalOp, SQLFunction, SQLCase,
+    ColumnRef, LiteralValue,
 )
-from QuantNodes.symbolic.dialect import ClickHouseDialect, DuckDBDialect, MySQLDialect
+from QuantNodes.symbolic.dialect import ClickHouseDialect, DuckDBDialect
 
 
 class TestSQLCompiler:

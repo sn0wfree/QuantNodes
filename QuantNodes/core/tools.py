@@ -6,12 +6,10 @@
 """
 
 import multiprocessing as mp
-import os
 import tempfile
 import uuid
 from typing import Any, Callable, Iterator, List, Optional, TypeVar, Union
 
-import numpy as np
 import pandas as pd
 
 T = TypeVar("T")
@@ -316,7 +314,7 @@ def retry(max_attempts: int = 3, delay: float = 1.0):
             for attempt in range(max_attempts):
                 try:
                     return func(*args, **kwargs)
-                except Exception as e:
+                except Exception:
                     if attempt == max_attempts - 1:
                         raise
                     time.sleep(delay)

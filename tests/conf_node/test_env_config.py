@@ -1,7 +1,6 @@
 # coding=utf-8
 """EnvConfigNode 单元测试"""
 import os
-import pytest
 from unittest.mock import patch
 
 from QuantNodes.conf_node.env_config import EnvConfigNode

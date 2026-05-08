@@ -44,7 +44,7 @@ class CSVNode(BaseDBNode):
         )
         return self._data
 
-    def query(self, sql: str = None, params: Optional[tuple] = None) -> pd.DataFrame:
+    def query(self, sql: Optional[str] = None, params: Optional[tuple] = None) -> pd.DataFrame:
         """执行查询
 
         Args:

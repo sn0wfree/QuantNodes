@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
 from ..storage.models import DriftAlert
 from ..storage.repository import DriftAlertRepository

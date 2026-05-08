@@ -5,7 +5,6 @@ import pandas as pd
 import polars as pl
 
 from QuantNodes.operator_node.transform import TransformNode
-from QuantNodes.operators.math import MathOperators
 from QuantNodes.operators.section import SectionOperators
 from QuantNodes.operators.time_series import TimeSeriesOperators
 from QuantNodes.operators.composite import CompositeOperators

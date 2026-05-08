@@ -30,7 +30,7 @@ from QuantNodes.core.cache_utils import (
     write_cache_files_for_all_pids,
 )
 from QuantNodes.core.tools import partition_list, partition_list_moving_sampling
-from QuantNodes.factor_node.factor import Factor, DataType as _FactorDataType
+from QuantNodes.factor_node.factor import Factor
 
 
 def _DefaultOperator(f: Factor, idt: Any, iid: Any, x: List[np.ndarray], args: Dict[str, Any]) -> np.ndarray:

@@ -5,7 +5,7 @@
 封装 QuantNodes 回测引擎，执行真实回测。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 import re
 
 from QuantNodes.agent.tools.base import Tool

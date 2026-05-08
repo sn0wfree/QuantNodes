@@ -5,7 +5,7 @@
 封装 QuantNodes AI 模块的 CodeSandbox，用于代码安全验证。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from QuantNodes.ai.sandbox import CodeSandbox as QNCodeSandbox
 from QuantNodes.agent.tools.base import Tool

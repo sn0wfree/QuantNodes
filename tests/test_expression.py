@@ -3,7 +3,6 @@
 表达式系统单元测试
 """
 
-import pytest
 from QuantNodes.core import (
     Cond,
     Expression,

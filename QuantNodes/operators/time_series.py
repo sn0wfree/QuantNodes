@@ -34,11 +34,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Union, Optional
 
-import polars as pl
 from polars import Expr
 
 if TYPE_CHECKING:
-    from polars import LazyFrame
+    pass
 
 from QuantNodes.factor_node.factor_functions.time_ops import (
     ts_mean as _ts_mean,

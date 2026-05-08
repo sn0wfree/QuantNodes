@@ -318,3 +318,70 @@ class TestProcessE2E:
 
         assert isinstance(result, ReproductionReport)
         assert result.total_logics >= 0
+
+
+class TestExtractLogicFromText:
+
+    def test_extract_logic_from_text_public(self, tmp_wiki, sample_pdf_text):
+        reproducer = ResearchReportReproducer(wiki_path=tmp_wiki)
+        logics = reproducer.extract_logic_from_text(sample_pdf_text, "测试研报")
+        assert isinstance(logics, list)
+
+    def test_extract_logic_from_text_empty(self, tmp_wiki):
+        reproducer = ResearchReportReproducer(wiki_path=tmp_wiki)
+        logics = reproducer.extract_logic_from_text("", "空文本")
+        assert isinstance(logics, list)
+
+    def test_extract_logic_from_text_with_llm(self, tmp_wiki, sample_pdf_text, mock_llm_client):
+        reproducer = ResearchReportReproducer(
+            wiki_path=tmp_wiki, llm_client=mock_llm_client
+        )
+        logics = reproducer.extract_logic_from_text(sample_pdf_text, "测试标题")
+        assert len(logics) == 2
+
+
+class TestReproductionReportDataclass:
+
+    def test_reproduction_report_fields(self, tmp_wiki):
+        report = ReproductionReport(
+            pdf_path="/path/to.pdf",
+            title="测试研报",
+            total_logics=5,
+            verified=3,
+            failed=1,
+            pending=1,
+            unverifiable=0,
+            results=[],
+            report_markdown="# Test",
+            elapsed_seconds=1.5,
+        )
+        assert report.total_logics == 5
+        assert report.verified == 3
+        assert report.failed == 1
+        assert report.elapsed_seconds == 1.5
+
+
+class TestProcessWithInvalidPdf:
+
+    def test_process_invalid_pdf_path(self, tmp_wiki, sample_data):
+        reproducer = ResearchReportReproducer(wiki_path=tmp_wiki)
+        result = reproducer.process(
+            pdf_path="/nonexistent/invalid.pdf",
+            data=sample_data,
+            store_to_wiki=False,
+        )
+        assert isinstance(result, ReproductionReport)
+
+
+class TestProcessWithDataNoFormulas:
+
+    def test_process_with_data_no_formulas(self, tmp_wiki, sample_data):
+        reproducer = ResearchReportReproducer(wiki_path=tmp_wiki)
+        with patch.object(reproducer, 'parse_pdf', return_value=("test", "普通文本没有公式")):
+            result = reproducer.process(
+                pdf_path="/fake/report.pdf",
+                data=sample_data,
+                store_to_wiki=True,
+            )
+        assert isinstance(result, ReproductionReport)
+        assert result.failed == 0

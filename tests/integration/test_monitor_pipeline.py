@@ -1,9 +1,7 @@
 # coding=utf-8
 """QuantNodes.integration.test_monitor_pipeline 集成测试"""
-import pytest
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
 from QuantNodes.operator_node.transform import TransformNode
 
 

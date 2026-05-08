@@ -5,7 +5,7 @@
 提供 IC 分析、相关性分析等功能。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from QuantNodes.agent.tools.base import Tool
 

@@ -5,9 +5,8 @@
 
 import asyncio
 from typing import List, Dict, Any
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
-import pytest
 
 from QuantNodes.agent.providers.quantnodes import QuantNodesLLMProvider
 from QuantNodes.agent.providers.base import LLMResponse, ToolCallRequest

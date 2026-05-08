@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 import importlib.util
 import warnings
-from typing import Dict, Any, Optional
+from typing import Optional
 import yaml
 from pathlib import Path
 
@@ -26,7 +26,6 @@ from .types import (
     CoverageReport,
 )
 from QuantNodes.operators.proxy import list_operators as _list_operators
-from QuantNodes.operators.proxy import get_operator as _get_operator
 
 # executor category → registry category 映射
 _CATEGORY_MAP = {

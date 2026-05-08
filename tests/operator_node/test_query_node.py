@@ -1,7 +1,6 @@
 # coding=utf-8
 """TableQueryNode 单元测试"""
 import pytest
-from unittest.mock import MagicMock, Mock
 
 from QuantNodes.operator_node.query_node import TableQueryNode
 from QuantNodes.operator_node.sql_builder import SQLBuilderNode

@@ -8,7 +8,6 @@ DataConfig 扩展字段 + 两层列名映射 单元测试
 - ConfigLoader._parse() 和 to_yaml() 对新字段的支持
 """
 
-import pytest
 import yaml
 import tempfile
 import os

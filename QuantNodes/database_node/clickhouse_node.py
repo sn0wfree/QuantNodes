@@ -10,13 +10,12 @@ import urllib.parse
 from collections import namedtuple
 from typing import Optional, List
 
-import numpy as np
 import pandas as pd
 
 from QuantNodes.database_node.base import BaseDBNode
 
 
-ch_conn_tuple = namedtuple('clickhouse_params', ['host', 'port', 'user', 'passwd', 'db'])
+ch_conn_tuple = namedtuple('ch_conn_tuple', ['host', 'port', 'user', 'passwd', 'db'])
 
 
 class CHBase:
@@ -253,7 +252,6 @@ class ClickHouseNode(BaseDBNode):
                   if_exists: str = 'append') -> int:
         """插入 DataFrame"""
         client = self._client or self._http_client or self.connect()
-        full_table = f"{self._database}.{table}"
         if self._interface == 'native':
             client.insert_df(table, df)
         else:

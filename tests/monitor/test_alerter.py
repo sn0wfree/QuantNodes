@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 """QuantNodes.monitor.monitor.alerter 单元测试"""
-import pytest
-from datetime import datetime
 
 from QuantNodes.monitor.monitor.alerter import Alerter
-from QuantNodes.monitor.storage.models import DriftAlert
 
 
 class TestAlerter:

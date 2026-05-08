@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """QuantNodes 全局测试 fixtures"""
-import os
-import tempfile
 import pytest
 import pandas as pd
 import polars as pl
@@ -112,7 +110,7 @@ def mock_llm_client():
     返回预设的响应内容，不发起真实 HTTP 请求。
     """
     from unittest.mock import MagicMock
-    from QuantNodes.ai.llm.base import Message, ChatCompletion, MessageRole
+    from QuantNodes.ai.llm.base import ChatCompletion, MessageRole
 
     client = MagicMock()
     client.model = "gpt-4-mock"

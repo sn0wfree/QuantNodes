@@ -6,7 +6,7 @@
 """
 
 import asyncio
-from typing import Any, Callable, Coroutine
+from typing import Any, Callable
 
 
 def truncate_text(text: str, max_chars: int, suffix: str = "...") -> str:

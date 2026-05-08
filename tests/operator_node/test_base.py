@@ -1,11 +1,8 @@
 # coding=utf-8
 """QuantNodes.operator_node.base 单元测试"""
-from typing import Any, Dict
+from typing import Any
 
-import pandas as pd
-import pytest
 
-from QuantNodes.core.node import BaseNode
 from QuantNodes.operator_node.base import ChainOperator, OperatorNode
 
 

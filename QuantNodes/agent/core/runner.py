@@ -6,7 +6,7 @@
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Callable, Awaitable, Optional
+from typing import Any, Dict, List, Callable, Awaitable
 import asyncio
 
 from ..providers.base import LLMProvider, LLMResponse

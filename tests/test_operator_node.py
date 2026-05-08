@@ -7,7 +7,6 @@ from QuantNodes.operator_node import (
     OperatorNode,
     ChainOperator,
     SQLBuilderNode,
-    TableQueryNode,
     TransformNode,
     SQLBuilder,
 )

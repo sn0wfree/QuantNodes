@@ -1,0 +1,1850 @@
+{
+  "/home/ll/Public/QuantNodes/setup.py": {
+    "mtime": 1778202984.4450502,
+    "hash": "d2792aca032c57e5839db986e7580d57"
+  },
+  "/home/ll/Public/QuantNodes/_fix_v2.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "37b01f6bfec333b89f61c59308cafc29"
+  },
+  "/home/ll/Public/QuantNodes/frontend/vite.config.ts": {
+    "mtime": 1778202984.395049,
+    "hash": "d2666d89435661fc693961460a9922c8"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/App.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "3e2b86049e59f9f096243849a167217d"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/main.ts": {
+    "mtime": 1778202984.3810487,
+    "hash": "8185ba1ce4796d5c7847b585489f5afd"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/env.d.ts": {
+    "mtime": 1778202984.3810487,
+    "hash": "8cbfd5476645cbcda423992b553a2b0c"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/composables/useWebSocket.ts": {
+    "mtime": 1778202984.3810487,
+    "hash": "e688424ffa42e5ec921b9bca7deeee80"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/composables/useTheme.ts": {
+    "mtime": 1778202984.3810487,
+    "hash": "6ad9dba37c7583a8526b5120d7e3a5cb"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/composables/useAgent.ts": {
+    "mtime": 1778202984.3810487,
+    "hash": "29ddc36939aa5cfd6b2d21a650ec723b"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Layout/AppHeader.vue": {
+    "mtime": 1778202984.3810487,
+    "hash": "fcabbe0645f81d37d297548f5447ec95"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Layout/AppLayout.vue": {
+    "mtime": 1778202984.3810487,
+    "hash": "b06dcc69893a6622139fd27a60a7da7d"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Layout/AppSidebar.vue": {
+    "mtime": 1778202984.3810487,
+    "hash": "98f9882241ff15b44f8f5f76f236e177"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Charts/MetricCard.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "093ba0cd151c7e67b828d83a1eac8527"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Charts/TrendChart.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "3c845844144cb724083f6c85ee337424"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Charts/DrawdownChart.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "c9953de3062a1af1ae22432b0a0d3565"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Charts/EquityCurve.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "fb6801240d14cd3936c03b08d5ca1841"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Charts/ReturnsChart.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "2fadbc3e5b3226a7339fba86abd184fa"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Charts/IcDistribution.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "fae48e253db30f0bdabb114598452aad"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Charts/IcChart.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "da7d5129af76f13cf154e69f8a96c0c6"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Charts/DreamPieChart.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "f75590c3fe4c20faa24b04341cbcdb29"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Editor/MonacoEditor.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "40fa092f2fd72a555f42f616577be68e"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Chat/ChatInput.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "3dd399aebffa7a4c9efbced63b8fc9ca"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Chat/ChatMessage.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "a1f87dd0be864744e1b25a692b3e711a"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/components/Chat/ToolCallCard.vue": {
+    "mtime": 1778202984.3700483,
+    "hash": "d498fce8c6f76f72319716accca3a6db"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/NotFound.vue": {
+    "mtime": 1778202984.394049,
+    "hash": "c47ae9fddb828c8232dae90d102bf087"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/FactorAnalysis/index.vue": {
+    "mtime": 1778202984.394049,
+    "hash": "af6577cebaada19f372d5a7138852cc0"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Dream/index.vue": {
+    "mtime": 1778202984.3810487,
+    "hash": "84e4263f28f7aec5062f91e773e8123e"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Backtest/ResultView.vue": {
+    "mtime": 1778202984.3810487,
+    "hash": "1822d61639caec5075ebea78e1c209d7"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Backtest/ConfigEditor.vue": {
+    "mtime": 1778202984.3810487,
+    "hash": "b8e42aae71761ac76a542befa536590f"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Settings/index.vue": {
+    "mtime": 1778202984.394049,
+    "hash": "3012aeefba0f495c38627d536e241013"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Wiki/StrategyList.vue": {
+    "mtime": 1778202984.395049,
+    "hash": "4abde590fd2d910efaf1c9baf2ac35a0"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Wiki/StrategyDetail.vue": {
+    "mtime": 1778202984.395049,
+    "hash": "ef4f632bdf682d7a6d433898cdc8648b"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Wiki/FactorDetail.vue": {
+    "mtime": 1778202984.395049,
+    "hash": "86fea5c77e80efc50eb556519761f74b"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Wiki/FactorList.vue": {
+    "mtime": 1778202984.395049,
+    "hash": "7cc6f78e470d1be0c4ba0c56d289406f"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Dashboard/index.vue": {
+    "mtime": 1778202984.3810487,
+    "hash": "43733aa4824b2e5f3f5d461df66dd261"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/Strategy/Editor.vue": {
+    "mtime": 1778202984.394049,
+    "hash": "53a9b8de01bb82ddecf01fe6ed13d50d"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/views/AgentChat/index.vue": {
+    "mtime": 1778202984.3810487,
+    "hash": "6362cb0d7b9b4272721530f6a74331f4"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/api/dream.ts": {
+    "mtime": 1778202984.3700483,
+    "hash": "856810cb56e1ea0f7a0bf4a421412da8"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/api/agent.ts": {
+    "mtime": 1778202984.3700483,
+    "hash": "448ee7b1e6b01856bbe03f980c99895c"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/api/wiki.ts": {
+    "mtime": 1778202984.3700483,
+    "hash": "3c7e774b5ae772bd8fb7d1630091e766"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/api/index.ts": {
+    "mtime": 1778202984.3700483,
+    "hash": "1b60b5e70a4b5ff9bfe5f814c0b48e40"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/api/factor.ts": {
+    "mtime": 1778202984.3700483,
+    "hash": "c9aad215123ca56c9d013b15b77a6316"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/api/backtest.ts": {
+    "mtime": 1778202984.3700483,
+    "hash": "ffa16d77d7cda517a8bfd7e83111ea60"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/api/skill.ts": {
+    "mtime": 1778202984.3700483,
+    "hash": "e6266d35164b6d9701c2d9329b70a5c5"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/router/index.ts": {
+    "mtime": 1778202984.3810487,
+    "hash": "85108fd5eb79f42605ff9c84c2cf8521"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/stores/agent.ts": {
+    "mtime": 1778202984.3810487,
+    "hash": "26c8d976678002964285bc10603948cd"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/stores/wiki.ts": {
+    "mtime": 1778202984.3810487,
+    "hash": "53e04f8a417c0a7e2b351d74958a0d9f"
+  },
+  "/home/ll/Public/QuantNodes/frontend/src/stores/app.ts": {
+    "mtime": 1778202984.3810487,
+    "hash": "9eabf41cea6fdc561b3be4e05ccc6dbe"
+  },
+  "/home/ll/Public/QuantNodes/test/test.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "faf33a7340bacb6b49b4716be2e5ae95"
+  },
+  "/home/ll/Public/QuantNodes/test/test_parse_rfc_1738_args.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "67eac80b9112f170420ceaf316504e3e"
+  },
+  "/home/ll/Public/QuantNodes/test/conn.py": {
+    "mtime": 1778202984.4450502,
+    "hash": "2171ea62c09c8f0f7dd3938f29a9c47f"
+  },
+  "/home/ll/Public/QuantNodes/test/__init__.py": {
+    "mtime": 1778202984.4450502,
+    "hash": "8f686a83f6c90afe20acec517a18babb"
+  },
+  "/home/ll/Public/QuantNodes/test/test_add_factors.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "8f9562e5b707d1ff82b06c235801ae81"
+  },
+  "/home/ll/Public/QuantNodes/test/test_SQLBuilder.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "7b2f6d0fbd7b719be6dd8ceeae341654"
+  },
+  "/home/ll/Public/QuantNodes/test/load.py": {
+    "mtime": 1778202984.4450502,
+    "hash": "8597599c4d7f28a4a30a9c0dc8596f9a"
+  },
+  "/home/ll/Public/QuantNodes/api/config.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "3e7418c9663347526bff15e29bfcad89"
+  },
+  "/home/ll/Public/QuantNodes/api/__init__.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/api/main.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "f14ba80e18cd0fbb14d854989d7ea635"
+  },
+  "/home/ll/Public/QuantNodes/api/deps.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "73cf6f29d8ce71d36caf4e69ee07a726"
+  },
+  "/home/ll/Public/QuantNodes/api/schemas/agent.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "7353ee117cea3696f16aecb7abd276e0"
+  },
+  "/home/ll/Public/QuantNodes/api/schemas/backtest.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "8517b5d7dac6b2a6a94d65a0603b9c91"
+  },
+  "/home/ll/Public/QuantNodes/api/schemas/wiki.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "6fa77170f49072bfcb8b60e056f59756"
+  },
+  "/home/ll/Public/QuantNodes/api/schemas/__init__.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "9dd8a458aeb5c3b6384887d9fc5216f3"
+  },
+  "/home/ll/Public/QuantNodes/api/schemas/factor.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "94ac40a6e00cb659f96cf3af016ae729"
+  },
+  "/home/ll/Public/QuantNodes/api/schemas/common.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "1ae7eaa35d83e90b02fee5c6b3c2bbc5"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/stats.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "4071e9863ed603e00527c3aef8580d5b"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/agent.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "fec01c5923594817ec9d9c9eccc6c4a0"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/skill.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "8cdc589116dfb4cc9000adda1ae8fd24"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/backtest.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "1047a6da351bffe47fde2b1f7fa0f35d"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/wiki.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "e6b4717920b6a338492120d6bc027623"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/dream.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "044bf3a07c222972ecbd333097fe904a"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/settings.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "822868990deae258543129d512c0e30e"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/strategy.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "7f091fff9d44471c8d71354be7b3b467"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/__init__.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "123653307447df56c582abfde99e2bb0"
+  },
+  "/home/ll/Public/QuantNodes/api/routers/factor.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "25500fccaa7f678f45983495ed54c5a8"
+  },
+  "/home/ll/Public/QuantNodes/api/services/strategy_service.py": {
+    "mtime": 1778202983.7140315,
+    "hash": "f83bc380e6497626f67df9754fdd50d2"
+  },
+  "/home/ll/Public/QuantNodes/api/services/settings_service.py": {
+    "mtime": 1778202983.7140315,
+    "hash": "d48ca5688d0884c10d0a083febc39ea9"
+  },
+  "/home/ll/Public/QuantNodes/api/services/stats_service.py": {
+    "mtime": 1778202983.7140315,
+    "hash": "efb6c6b18b8e6aab95504dd564bb646a"
+  },
+  "/home/ll/Public/QuantNodes/api/services/factor_service.py": {
+    "mtime": 1778202983.7140315,
+    "hash": "49d4a417a77f502176aab3992c7c70f4"
+  },
+  "/home/ll/Public/QuantNodes/api/services/dream_service.py": {
+    "mtime": 1778202983.7140315,
+    "hash": "33c684c1eff8a46016f55162fcdd8331"
+  },
+  "/home/ll/Public/QuantNodes/api/services/agent_service.py": {
+    "mtime": 1778202983.7130315,
+    "hash": "c494a305a51e15b8b3d61af894944aff"
+  },
+  "/home/ll/Public/QuantNodes/api/services/wiki_service.py": {
+    "mtime": 1778202983.7140315,
+    "hash": "00ed2dc3f9f477c22db6b3ae2283f247"
+  },
+  "/home/ll/Public/QuantNodes/api/services/__init__.py": {
+    "mtime": 1778202983.7090313,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/api/services/backtest_service.py": {
+    "mtime": 1778202983.7130315,
+    "hash": "ee2aa46488b077442ad0b1fd0e5349b3"
+  },
+  "/home/ll/Public/QuantNodes/api/websocket/__init__.py": {
+    "mtime": 1778202983.7140315,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/examples/01_quick_start.py": {
+    "mtime": 1778202983.7160316,
+    "hash": "7ece3441b8bb4de31e028c4b192ef228"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/__init__.py": {
+    "mtime": 1778202983.6650302,
+    "hash": "665533b39330372c3048c3d9608b2819"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/serialization.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "d3fc81e4d6f71ff9355b49d901e73be1"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/serializable.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "457d7514b2be632e6f5a5df252693ae3"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/cond_builder.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "0748d33476154a11f47c4d8c643b511e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/node.py": {
+    "mtime": 1778205472.767588,
+    "hash": "2be00e85dd0e69a182ca695f2d8b8f51"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/ast_parser.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "fe9b733ff5865c436bc6e3692ecd78b2"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/config.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "6796ca9305d5411414b18b20a33e8005"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/cache_utils.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "b260bdc48752083e5d49c75804122813"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/tools.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "aebe1a7454872f96bbfb728050d7fb02"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/pipeline.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "f4d656bf3ec007e741a2d0e96bc20808"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/data_preprocessing.py": {
+    "mtime": 1778205618.5867743,
+    "hash": "912426f163c5560f226f4262787bff92"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/__init__.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "2a2d9b2013c2e7386dcfac745264dc13"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/_lookback_helpers.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "4ea7c5cd33d711d1c17bff059ce5851a"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/pandas_utils.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "836fd46a3a76f5d1738b185448f918c3"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/expression.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "46d2c9b4ff1855bb96340cabaf795f4b"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/base.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "40d333370c5a6a81a50f3082f8e77f7a"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/cache_manager.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "de5f63e9289724234eaaef243b805c97"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/lambda_node.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "f02ca0c4a314c757fb7f72cefdd863c7"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/core/control.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "548d1f7da14fa46065d1d7a2d46031c0"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/cache_node/metadata.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "bdd7c85ffb26d0d46c196f18b48b773f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/cache_node/cache_store.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "f632c5ed5c8ee1e08141fccf9211fb99"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/cache_node/__init__.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "080732f23341d7504e0d3250c7796979"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/cache_node/base.py": {
+    "mtime": 1778205140.0598829,
+    "hash": "3158564bfe2d82bdfe06460bc760731f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ai/sandbox.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "a64f8095f59c42f21eafe5861aa5d09f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ai/optimizer.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "d52951bb96ab48c1ed18353938a6a37f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ai/__init__.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "f4414eb492eac6b8ffe91518ffe95a44"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ai/strategy_gen.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "1ffaa6e66698e37638843e1b93a02da0"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ai/prompts/__init__.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "515d7245c08ac282caa5cc8027fc29d0"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ai/llm/openai.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "24e7460aec3d284c5a9d6ccbd804313e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ai/llm/__init__.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "e352ee8af497bbd9fa558353f494f1b8"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ai/llm/base.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "037c8deba376140d09bffd89a2d5bee4"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ui_node/__init__.py": {
+    "mtime": 1778211160.7999043,
+    "hash": "95811de5459b492cbbb8a0226b98a071"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/ui_node/base.py": {
+    "mtime": 1778211156.8270192,
+    "hash": "4f18cca693b5dff7ded39bec0380a48f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/conf_node/yaml_config.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "afe0a66ed60b572992d80cf95f5afcd4"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/conf_node/json_config.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "7bd49e277b3f244592169bf069e2594f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/conf_node/env_config.py": {
+    "mtime": 1778205148.720722,
+    "hash": "5d68c52bdf124e2e1fb46d62657a5557"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/conf_node/__init__.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "d4c42e3ca6efbb7dc09422ba11d685c0"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/conf_node/base.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "94eb109c97c67dc0d801626d352d21e2"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/conf_node/ini_config.py": {
+    "mtime": 1778202983.6810308,
+    "hash": "c8fe38df1306795971a53de0594b76ad"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/test/__init__.py": {
+    "mtime": 1778202983.7010312,
+    "hash": "47311680d467c8f1cd5ea2d836fbd75d"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/backtest/risk_node.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "6fede0b7fb2a158d2fb85462bb414149"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/backtest/config_strategy.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "e8212ae4a35ccee4561c5a7875110a04"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/backtest/strategy_node.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "f6de541d9f6b6c551f2e8adae84b7089"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/backtest/backtest_node.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "f261e30750563200420475157ad2b572"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/backtest/broker_node.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "f27838b38db26362c09ada1b1a66a1f8"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/backtest/__init__.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "5077e22574b1da3bff5fc98a5ff67c32"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/backtest/config_runner.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "7cdf3ee2d2913dbbd21320c4c8f7d113"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/database_node/mysql_node.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "2ca2a5f3ce31c985ba20a7f3e459912f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/database_node/parquet_node.py": {
+    "mtime": 1778216126.3914583,
+    "hash": "0131e835240754d01c4a97839727d295"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/database_node/csv_node.py": {
+    "mtime": 1778216126.1514657,
+    "hash": "4d10b173104deeae8649b76f98e80139"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/database_node/clickhouse_node.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "28c277dad7c24799a8b21c765bad84b4"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/database_node/__init__.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "e567f06bc85cf06e0818c965f3eb5ebe"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/database_node/duckdb_node.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "aeb6a921537bd27456717cb955e3e3cc"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/database_node/sqlite_node.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "1f73b8efc7a304698aab66414ea5e93e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/database_node/base.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "c50154a4a986bd04f86ec2fe2536c8a7"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/symbolic/optimizer.py": {
+    "mtime": 1778205528.3865178,
+    "hash": "f341408e9382aa1d4ae1bb61c31dad3f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/symbolic/functions.py": {
+    "mtime": 1778202983.690031,
+    "hash": "472fe590322697d59b6176d410bbc374"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/symbolic/executor.py": {
+    "mtime": 1778205505.3339617,
+    "hash": "2457b784f5756da3176583e48f48207e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/symbolic/__init__.py": {
+    "mtime": 1778202983.690031,
+    "hash": "ed4266c6ce18d4ca5abb4b310a003811"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/symbolic/dialect.py": {
+    "mtime": 1778202983.690031,
+    "hash": "60bec0a5ba035096202af1bbf6c8eaec"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/symbolic/compiler.py": {
+    "mtime": 1778202983.690031,
+    "hash": "9434e9346be07c11e6e03867ac2a006d"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/symbolic/expression.py": {
+    "mtime": 1778205495.5871494,
+    "hash": "99c060a0d8fd32fb28eb60b03fbd2659"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/__init__.py": {
+    "mtime": 1778202983.689031,
+    "hash": "5a0f0c56d520bb6a8335aee4d2e5df9e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/version/version_manager.py": {
+    "mtime": 1778202983.689031,
+    "hash": "e18daac95cf2cb2522591c75d11cdc3c"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/version/diff.py": {
+    "mtime": 1778202983.689031,
+    "hash": "d76552b578bad47be9fb1f0c722c2103"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/version/__init__.py": {
+    "mtime": 1778202983.689031,
+    "hash": "93f479fae19b8e6d1fc1473d08101d64"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/agent_tools/monitor_tool.py": {
+    "mtime": 1778202983.689031,
+    "hash": "16c857d0f1e6c3f24d3c06ede3ea6c08"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/agent_tools/__init__.py": {
+    "mtime": 1778202983.689031,
+    "hash": "243374d6df8f7a17a3f5f87574eb0e66"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/agent_tools/version_tool.py": {
+    "mtime": 1778202983.689031,
+    "hash": "277666b782fdc9e3e2e9f98f83832c4d"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/agent_tools/schedule_tool.py": {
+    "mtime": 1778202983.689031,
+    "hash": "179f3165e14a1177515a93b33375348d"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/storage/models.py": {
+    "mtime": 1778202983.689031,
+    "hash": "3ed4a0534881863e4571c2c2f6835c33"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/storage/__init__.py": {
+    "mtime": 1778202983.689031,
+    "hash": "f37d6022402085d84d83924e18ce1f72"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/storage/repository.py": {
+    "mtime": 1778202983.689031,
+    "hash": "907a5b7faabf8cade38db79fe19a9592"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/monitor/drift.py": {
+    "mtime": 1778202983.689031,
+    "hash": "a8fbb34542f10be7b55bb7d837532718"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/monitor/dashboard.py": {
+    "mtime": 1778202983.689031,
+    "hash": "b4fd3da35de63a47309e6f9532d6c9b7"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/monitor/__init__.py": {
+    "mtime": 1778202983.689031,
+    "hash": "894f85b9725ad0cb44d3ff329244b75c"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/monitor/collector.py": {
+    "mtime": 1778202983.689031,
+    "hash": "5bc7cfcfc6738ddd1cdeb71e3208c629"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/monitor/alerter.py": {
+    "mtime": 1778202983.689031,
+    "hash": "b0bcb23152a650978f027a04e9318348"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/scheduler/runner.py": {
+    "mtime": 1778202983.689031,
+    "hash": "b6965ba3df88a8a9f65015abdecff7d0"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/scheduler/__init__.py": {
+    "mtime": 1778202983.689031,
+    "hash": "b2aa2fc52aff50ac8d393be01c4aac92"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/monitor/scheduler/scheduler.py": {
+    "mtime": 1778202983.689031,
+    "hash": "206afbe1fa76a4b17085d0e5ab34719b"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/research/factor_miner.py": {
+    "mtime": 1778202983.690031,
+    "hash": "85210bff13b956dd509cb29d46cec8e6"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/research/auto_researcher.py": {
+    "mtime": 1778202983.690031,
+    "hash": "81e7d8c3de1ce9b52fe89ab9f3ccba38"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/research/mcts_search.py": {
+    "mtime": 1778202983.690031,
+    "hash": "b35a056c646627a71e0efd54faab277e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/research/wiki.py": {
+    "mtime": 1778202983.690031,
+    "hash": "e541f1f2f3c197a2abe73f62d60ac4cb"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/research/factor_evaluator.py": {
+    "mtime": 1778202983.690031,
+    "hash": "c856dac9abec835909f35c1dbb2b1a2f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/research/__init__.py": {
+    "mtime": 1778202983.689031,
+    "hash": "1165b9c39475f3e04d4ba54a0f62114c"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/research/report_reproducer.py": {
+    "mtime": 1778202983.690031,
+    "hash": "d81f9b19bc85fcd10c6a5029d7874d7a"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/__init__.py": {
+    "mtime": 1778202983.6650302,
+    "hash": "51c0de6e2d286aad34ec223235f5d85a"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/core/runner.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "03c03ef4d473bd0458a423245877447e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/core/autocompact.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "c3d7e9114fd940ef92b0c01bc9b43e09"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/core/dream.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "4a49a3ce46572cb3396e2036f86141dc"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/core/loop.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "eaad845d1d1eb066b455166944520ae4"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/core/hook.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "5cf951239a4c244ee079bb656e09deae"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/core/__init__.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "a665809b51ec98349b5d2d4c1454e48a"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/core/memory.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "0972cdcddfb236651699b08e039c9db6"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/core/context.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "42a96cc799a46078cb6047d77ca4970b"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/cli/__init__.py": {
+    "mtime": 1778202983.6650302,
+    "hash": "e7999e305a6e7ee059d8dfdac01e7eb5"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/cli/main.py": {
+    "mtime": 1778202983.6650302,
+    "hash": "ae3b292da68f2a77541305fab690e6c3"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/__init__.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "10652a1d4e2a49dde378a8020daac69f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/registry.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "9aca9363841e072a7d93f267dda6b2cf"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/loader.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "97f1b2408c6dbfc749d93b4fd58f8a8b"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/base.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "40223d9c0dd3914dbf5b05f5178e886f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/strategy/momentum.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "ef79879564724ae885e05c2266c36509"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/strategy/rsi_reversal.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "e07fca22dc81f94d215a528f1cda5442"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/strategy/dual_ma.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "3cd46540ad86a4d4ae18ac9bfa0a0bcc"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/strategy/bollinger.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "9d169032b2df979f74d80c12c5c9e5bf"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/strategy/__init__.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "eb3f4596134dbd3680cf1ecd195edb5f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/factor/correlation.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "f7470452e7da7cbca121d91b471bee66"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/factor/group_backtest.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "b2a77139f6fd41c17ce2081afce6c7e9"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/factor/__init__.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "9fa34b34d13001e14f817e3c86cc5822"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/skills/factor/ic_analysis.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "61903dd792b87847169b4676e39724b2"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/session/__init__.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "a2f3214d7cc668e7fae863c1be6b11d3"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/session/manager.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "759ff956679d097a21d171ab2dd9b283"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/web/app.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "f439c5d25ffea0ccab21c3971b07b5dd"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/web/__init__.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "47dfb5152196c5a8fdbf343fedebc6ad"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/providers/quantnodes.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "ce6e2585a3acb3cca62de0c6eb764ab5"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/providers/__init__.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "3d1f34765da7f40775f172ce4c107208"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/providers/base.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "bec80cf1c01f74d49c83e304a11bc290"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/types.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "77e7cae4c1bd904a9bf2ef3230ab3ccb"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/executor.py": {
+    "mtime": 1778202983.6780307,
+    "hash": "4e0db90ec6c31d125839829921444805"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/__init__.py": {
+    "mtime": 1778202983.6780307,
+    "hash": "5170917e91acae57de8d152e9571702e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/loader.py": {
+    "mtime": 1778202983.6780307,
+    "hash": "17bed300d52b4fee476326557244e095"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/bus/queue.py": {
+    "mtime": 1778202983.6650302,
+    "hash": "9ffbfb3282300e026678a3c39fce0f41"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/bus/events.py": {
+    "mtime": 1778202983.6650302,
+    "hash": "6eacacf1d28485157031dc694eb1ef05"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/bus/__init__.py": {
+    "mtime": 1778202983.6650302,
+    "hash": "48907fa581055fc3e4a3874be3f022d4"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/sandbox.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "f46f8d3619118a49a4a29032805712d0"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/dream_skill.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "185271ec668e4a06ee9f65334f0e231c"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/config_backtest.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "52bc855eace8d5df97ec361bb85e6b43"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/backtest.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "f5c368cece596afd6d314cc489173b43"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/wiki.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "388ccd1756dd4ad31fb7780dbf40e644"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/strategy.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "49b9fc8ff5543dc764289058182c3b54"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/pipeline.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "67c6af1dd004dcfa32458e1378cf2e56"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/__init__.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "9f133a8974f9269394f98f66efa7b32a"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/registry.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "c93a2fcc2861d31c44bcf3be6437d3ae"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/echo.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "d90ddb0b6049d8220beca5b4034c3939"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/base.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "1766fa9ed2ed7bad0ed24e10e6d2ca42"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/tools/factor.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "ccfb1bf9441c0e89c9f75aae2fe2cc3f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/templates/__init__.py": {
+    "mtime": 1778202983.6790307,
+    "hash": "88d96c6fac74e522af0cfa7d6ef1db13"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/utils/prompt_templates.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "8525b57206ea0d1126c60e8b55fac265"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/utils/helpers.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "ee42579300839950c96ab6c41385b719"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/utils/__init__.py": {
+    "mtime": 1778202983.6800306,
+    "hash": "0230ef08b44fd559726700c9a092b1c8"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/deprecated/basic_init.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "21f7b107acd857427e2b1b942208ca4e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/deprecated/TableOperator.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "ec1e15c5e44fd6c1d967855de899d6a5"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/deprecated/factor_tools.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "68b59ccf94853f75f30c89f4ac668dea"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/deprecated/TableNode.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "715d71551f286d6b403dee973880d708"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/deprecated/brinson.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "1609110524a3e1e49817d03de91d1dd8"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operator_node/sql_utils.py": {
+    "mtime": 1778202983.689031,
+    "hash": "52ee9250063d984e83147e85a93e2c29"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operator_node/transform.py": {
+    "mtime": 1778202983.689031,
+    "hash": "469a1a4c1c3820276c9ba9ddf8cfdb1c"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operator_node/sql_builder.py": {
+    "mtime": 1778202983.689031,
+    "hash": "49200ce24601606df87ccf7a79a441bb"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operator_node/query_node.py": {
+    "mtime": 1778202983.689031,
+    "hash": "06886851f2448b56f9fd141e8c352daa"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operator_node/__init__.py": {
+    "mtime": 1778202983.689031,
+    "hash": "8feba9937abe06e6436aa22321655150"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operator_node/base.py": {
+    "mtime": 1778202983.689031,
+    "hash": "26bf44eb7df5faef750bf4e861995ef2"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/_deprecated.py": {
+    "mtime": 1778202983.6870308,
+    "hash": "0cfdf255bed82119492eb7f4beeb3e7a"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_operation.py": {
+    "mtime": 1778205237.0280707,
+    "hash": "2807dca452111d9776ef5260c841a53b"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_db.py": {
+    "mtime": 1778205467.649686,
+    "hash": "188b74bd534223646b68f75c69128999"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/quant_nodes_object.py": {
+    "mtime": 1778202983.688031,
+    "hash": "a00fe487b9e318a4ba9cd4fafeb3646c"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/__init__.py": {
+    "mtime": 1778202983.6820307,
+    "hash": "dcb88499117316a12d06eefdb192f1e5"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_table.py": {
+    "mtime": 1778205261.4326115,
+    "hash": "92e1e61157c692cc3c7efdc129aea179"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor.py": {
+    "mtime": 1778202983.688031,
+    "hash": "c1dc7f0dfaaa5bbc69a9cea7307f91fc"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_functions/_helpers.py": {
+    "mtime": 1778202983.688031,
+    "hash": "cd9b89b1d20dfd4f0c19243da1098884"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_functions/section_ops.py": {
+    "mtime": 1778202983.688031,
+    "hash": "8969dd829170604a584ffdb42a0ae787"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_functions/math_ops.py": {
+    "mtime": 1778202983.688031,
+    "hash": "0f348c0a44014be80695c7ec82c92b89"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_functions/_helpers_debug.py": {
+    "mtime": 1778202983.688031,
+    "hash": "993b3b550d078165b9c011aac7095d85"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_functions/time_ops.py": {
+    "mtime": 1778205485.2493482,
+    "hash": "7873a7c037389f2e0f995768bb608c51"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_functions/composite_ops.py": {
+    "mtime": 1778202983.688031,
+    "hash": "dc841c379bcec7c4363031c1cd342ef5"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_functions/__init__.py": {
+    "mtime": 1778202983.688031,
+    "hash": "e9b88fc1b817779c1afa501bd7aff0df"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/factor_functions/talib_ops.py": {
+    "mtime": 1778202983.688031,
+    "hash": "b55d3850baca2ad35eb097c773632625"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/factor_node/archive/factor_functions_v1.py": {
+    "mtime": 1778202983.688031,
+    "hash": "372f3b5304e9e2c91fa6ea3203b1a8e4"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/math.py": {
+    "mtime": 1778202983.689031,
+    "hash": "78d8eafefdf32fbd29f9081335b978c9"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/section.py": {
+    "mtime": 1778202983.689031,
+    "hash": "915ef65eb3c92737a7635f8ea21228d4"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/proxy.py": {
+    "mtime": 1778202983.689031,
+    "hash": "829eb65f934418b423b598298f3c5412"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/time_series.py": {
+    "mtime": 1778202983.689031,
+    "hash": "619cb1c2da16e1225b5597a9fd85bb68"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/custom.py": {
+    "mtime": 1778202983.689031,
+    "hash": "269f3753f2ea16d8949b7d806009e56c"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/templates.py": {
+    "mtime": 1778202983.689031,
+    "hash": "8bf67135ab05e465e4b28f47c9fee273"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/talib.py": {
+    "mtime": 1778202983.689031,
+    "hash": "b03da513a2a93b1a07af6341e6130333"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/__init__.py": {
+    "mtime": 1778202983.689031,
+    "hash": "5521be10e41ae04af2b4af0dfe588c35"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/registry.py": {
+    "mtime": 1778202983.689031,
+    "hash": "0b2575b12289096972f9f0752d680496"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/operators/composite.py": {
+    "mtime": 1778205072.0151398,
+    "hash": "11b5d98b7bc366fb69d6bd3574207746"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_serialization.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "4b0eaf39f86efa4c8c723c0dad71505c"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_example_strategies.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "baf26109fa7ae09cb14ee5c634fef578"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_ui_node.py": {
+    "mtime": 1778211175.8414721,
+    "hash": "50898134db61424eb43ec5db65fdc211"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_symbolic.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "40e464b2835509043fcab08ae9c2cd45"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_control.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "cb879c2d0367ecf48466d8cf9dc4fbaa"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_talib.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "4e31302502e3c456c57dd6020edef574"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_expression.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "9931a706a95301773674406137638790"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_factor_functions.py": {
+    "mtime": 1778213802.019242,
+    "hash": "cab4139837f4facc95d4fe32f1585f49"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_pipeline.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "ba8e558af27c4bc89671dbce7f0a5310"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_base_node.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "a3f027761736722fd39a1613d2821521"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_operator_node.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "e88ce40c7757f2209f1ad437a5e21bb8"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_profile_single.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "f395166c7b0ed553516cc1d8ec2bc7ea"
+  },
+  "/home/ll/Public/QuantNodes/tests/__init__.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "3c6a0f8886ed78029157916893bb8097"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_full_market_performance.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "9ce211a017a624c5d6a22e0e25c750f8"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_database_node.py": {
+    "mtime": 1778214556.0350575,
+    "hash": "2da1f14540e49b3f67626879c041f40a"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_ai.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "45b932663cf73e18923aff016595e14f"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_backtest_node.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "7b58a76f6e2a7715eda4f987333c78e3"
+  },
+  "/home/ll/Public/QuantNodes/tests/test_config_node.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "3a9ee4c46f91926c6167e70370a4d40a"
+  },
+  "/home/ll/Public/QuantNodes/tests/conftest.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "711692f95f2c6d5d973646cea7631515"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_data_preprocessing.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "a9e0e0bb5067d6074d8b736cd90a1ad6"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_lookback_helpers.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "210c14aae7d975d3d8a31e1a585e2758"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_pandas_utils.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "9eb75eaed5bb354d7689a9faeb295673"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_serializable.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "260882505a92c36cdd824f2633146127"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_tools.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "e2d4e7d7f1f87f3986068d36b21e01d8"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_ast_parser.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "2eb28ec8971c46429d3bcd095c5d6302"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_cond_builder.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "198c795b9db480d0d9fdc2560bdb478d"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_lambda_node.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "fce1c546f4d68ab8b660b53362f28511"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/__init__.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_cache_utils.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "3045b1779b4de900ac15dbc25e663ee4"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_config.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "4d814c4ca5b4804559fb4d2cccd08ac1"
+  },
+  "/home/ll/Public/QuantNodes/tests/core/test_cache_manager.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "d7fa8ec93a899b9e750e3b3bda1464b5"
+  },
+  "/home/ll/Public/QuantNodes/tests/cache_node/test_metadata.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "452d9bc595f7fabc670341709fb75cec"
+  },
+  "/home/ll/Public/QuantNodes/tests/cache_node/test_cache_store.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "c84a77a4295fe3c7560e25eb7fc1ed87"
+  },
+  "/home/ll/Public/QuantNodes/tests/cache_node/__init__.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "33fddcbbfeb0220d957d919f54b0ee5c"
+  },
+  "/home/ll/Public/QuantNodes/tests/cache_node/test_cache_e2e.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "9c91067d290fb7d29c4d3bd35c4cc9fd"
+  },
+  "/home/ll/Public/QuantNodes/tests/ai/test_strategy_gen.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "1f231187f58f931f7a7d26cc9cc81788"
+  },
+  "/home/ll/Public/QuantNodes/tests/ai/test_sandbox.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "17e295457a4bafd1687ab84c55346b7a"
+  },
+  "/home/ll/Public/QuantNodes/tests/conf_node/test_json_config.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "b63c5767742a8707b2ea860a7a0f588d"
+  },
+  "/home/ll/Public/QuantNodes/tests/conf_node/test_ini_config.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "ab075cddd84292d6da264324f1e2ae93"
+  },
+  "/home/ll/Public/QuantNodes/tests/conf_node/test_yaml_config.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "e394dbd3fffd38cebf3bc67b8b9d00a2"
+  },
+  "/home/ll/Public/QuantNodes/tests/conf_node/__init__.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "3712041b3e718cdfef1a9545b34a56db"
+  },
+  "/home/ll/Public/QuantNodes/tests/conf_node/test_base.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "92d477cf76cbee344551560b2be6cc36"
+  },
+  "/home/ll/Public/QuantNodes/tests/conf_node/test_env_config.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "b07bd297c1d135c5e24a3e0389a68456"
+  },
+  "/home/ll/Public/QuantNodes/tests/conf_node/conftest.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "9abf3046ab360b3dd61efadcdfd041cb"
+  },
+  "/home/ll/Public/QuantNodes/tests/backtest/test_config_runner.py": {
+    "mtime": 1778207994.2162294,
+    "hash": "435838dd907f02eb6195f718586ace51"
+  },
+  "/home/ll/Public/QuantNodes/tests/backtest/test_strategy_node.py": {
+    "mtime": 1778207970.0727613,
+    "hash": "2456233d4e483bdd2554c2df4154e9f1"
+  },
+  "/home/ll/Public/QuantNodes/tests/backtest/test_risk_node.py": {
+    "mtime": 1778208034.6153421,
+    "hash": "c1f9f31edd48d240c352fdb1f3f18b50"
+  },
+  "/home/ll/Public/QuantNodes/tests/backtest/__init__.py": {
+    "mtime": 1778207649.2739823,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/backtest/test_config_strategy.py": {
+    "mtime": 1778207585.2104692,
+    "hash": "609189aab3b0ee7fecbef872117ed943"
+  },
+  "/home/ll/Public/QuantNodes/tests/backtest/test_backtest_node.py": {
+    "mtime": 1778207767.8172753,
+    "hash": "cca2cf5f4d24b6e0e5693a8b9b2edefd"
+  },
+  "/home/ll/Public/QuantNodes/tests/backtest/conftest.py": {
+    "mtime": 1778207247.7406979,
+    "hash": "86034c4972f2ee5ca4c0948d1ba40190"
+  },
+  "/home/ll/Public/QuantNodes/tests/backtest/test_broker_node.py": {
+    "mtime": 1778207970.0727613,
+    "hash": "7e182c3a17596ccf94e27acb9f029e46"
+  },
+  "/home/ll/Public/QuantNodes/tests/integration/test_monitor_pipeline.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "4fedb3a434ca3f1ef224c3b7267fa3f5"
+  },
+  "/home/ll/Public/QuantNodes/tests/integration/__init__.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/integration/test_factor_workflow.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "0b306a8781621930a0a4ef723206ad1c"
+  },
+  "/home/ll/Public/QuantNodes/tests/integration/test_agent_tools_pipeline.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "f5ed8584afd376e25eed3bfc964a4e75"
+  },
+  "/home/ll/Public/QuantNodes/tests/integration/conftest.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "ecbc002f92be1c16fcd290375398c88c"
+  },
+  "/home/ll/Public/QuantNodes/tests/symbolic/test_functions.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "5206e9818b15919e820bcac8a49d5ed2"
+  },
+  "/home/ll/Public/QuantNodes/tests/symbolic/test_optimizer.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "1746a13a895c916d1515e6894d71b609"
+  },
+  "/home/ll/Public/QuantNodes/tests/symbolic/test_compiler.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "ad22ce324194dc9d92491faa21dc70c1"
+  },
+  "/home/ll/Public/QuantNodes/tests/symbolic/test_executor.py": {
+    "mtime": 1778202984.4590507,
+    "hash": "6ec2fc72f5be4c3826a91b42fd4a2c13"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/test_scheduler.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "7905f3bc04afb4df175fe5fcb3eb073c"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/test_version.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "0f75658f238e8079fcd9281388c26315"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/test_collector.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "fc0d1fde64ad014331ad5ab6de7ede23"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/test_storage.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "b55685a2e439f055cbda7801e86e7e8c"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/test_dashboard.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "99e09f59def0e6bdeb09f1380e102a46"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/test_drift.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "b2af96ec8bb42b5c01feec226fc8ef36"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/__init__.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/test_runner.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "d2323aedfd665c7461fcffa41e68da9f"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/test_alerter.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "457dab72b8bfbebef7bdf489a95b7e0e"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/conftest.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "09b51f398481f6f156d04f62e86d1f19"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/agent_tools/test_monitor_tool.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "401c4ea66f9ac2d0225cb074b8d8c4d7"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/agent_tools/test_schedule_tool.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "3f10df537f60390dd25b00e9e32ea81e"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/agent_tools/test_version_tool.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "29c19b58573a084232fa32d812f27703"
+  },
+  "/home/ll/Public/QuantNodes/tests/monitor/agent_tools/__init__.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/research/test_report_reproducer.py": {
+    "mtime": 1778210000.1391823,
+    "hash": "afb043fce36b4480cf7ddb0e61804124"
+  },
+  "/home/ll/Public/QuantNodes/tests/research/test_auto_research.py": {
+    "mtime": 1778210206.7317393,
+    "hash": "5f2b57b74456e36f498f968ecf78f4dc"
+  },
+  "/home/ll/Public/QuantNodes/tests/research/test_wiki.py": {
+    "mtime": 1778209787.0725508,
+    "hash": "6e20d71a13869a0aa4e24b00597646a3"
+  },
+  "/home/ll/Public/QuantNodes/tests/research/conftest.py": {
+    "mtime": 1778210189.1410377,
+    "hash": "deb14caac288e06231e8536f6bd14dad"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_bus.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "629b2538673a71f602d619959c2d726e"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_providers_base.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "0fdab385233a353e7ff4aab32602af27"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_config_executor.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "3db3917c0e3402b3ff4d672e2e089206"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_hook.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "e49449f09662802c84b0cd3d425055c0"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_expr_parser_advanced.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "2039baad3b1ad5723da93f6c763a2f86"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_factor_tool.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "80e038256f1f936ca3b51f8d5fddac23"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_utils.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "7584dc3da3f625c114ea3ddd790ed932"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_session.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "7fb07aec807c2fa40c57d97a5c93303f"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_pipeline_tool.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "8e0829c98f85b382df2ee61a751bdfab"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_data_config_extended.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "35ef695426ae595ca62611d7e80aa6ca"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_broker_strategy_optimized.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "0c432fd88170413fd64951edd995f2c1"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_executor_uncovered.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "bc26c81736a2491ed9926cd6a46b557a"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_providers_quantnodes.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "b973352f113a83c83af065049fd10552"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_backtest_tool.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "f773a548eeba1c1c4e60ed8f65fe5bfc"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_tools.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "7279ba88f2501a7e47840a0a8850e97f"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_e2e.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "de981a6ed84325d2dc1e0c655741b9b9"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_cli.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "3f428615bb560cfa58326e13408ebc45"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_loader_uncovered.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "0ce4a5c356022e99bf2f70232cc261d6"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_runner_uncovered.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "4a0579752b9410279619f401b2964461"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_memory.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "df1226bac947359f9291e630cdc246c9"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_strategy_tool.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "5f9a78cc986bff86ecaf43cd3101f191"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/__init__.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "e6a935d5802cf7ad18bb07c59a118707"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_runner.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "9f7e1b8c0e7b448a83a384efc8e1f8a5"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_loop.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "40b3f59b409ec2e7ee364e01740dce8a"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_tools_parallel.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "7208499262b18b5d5cd402defbb6bd71"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_config_backtest_e2e.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "01e265eaf09c384ffb5f6f1731823213"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_autocompact.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "0411b1d1185333213c02a816dbb5e127"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_wiki_tool.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "db2d052a6eec545f2b3c81904e31b8cf"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_context.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "26666650242c4518efac6f66622f4b15"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/test_base.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "2bc6d61082ca4ea6a7356008cbd83686"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/conftest.py": {
+    "mtime": 1778202984.4550505,
+    "hash": "1e170b222675e9d44aa2e8abb471d3d7"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/tools/test_sandbox.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "1cc7d29512a5b4479fec418b4c8fc1c8"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/tools/test_echo.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "b06ae0fb779d3a676677e8d2b93d6e81"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/tools/__init__.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/utils/test_prompt_templates.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "e801cd06fa9a62ddd86d6736202094b5"
+  },
+  "/home/ll/Public/QuantNodes/tests/agent/utils/__init__.py": {
+    "mtime": 1778202984.4560506,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/operator_node/test_query_node.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "d8111ecf1593e94e11039b6cb7b09d88"
+  },
+  "/home/ll/Public/QuantNodes/tests/operator_node/test_transform.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "d26185cbf0b1aa11a5af8a2b0e9ab4cd"
+  },
+  "/home/ll/Public/QuantNodes/tests/operator_node/__init__.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/operator_node/test_sql_utils.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "bc3743b3086fc935cac3e0996cdcdec0"
+  },
+  "/home/ll/Public/QuantNodes/tests/operator_node/test_sql_builder.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "62db2b88c7c01d92277087c4631b28a7"
+  },
+  "/home/ll/Public/QuantNodes/tests/operator_node/test_base.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "bd963d38f5039f1a9600d5b4ea204da6"
+  },
+  "/home/ll/Public/QuantNodes/tests/factor_node/test_factor_operation.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "78ca94109824bce72787d4282b2f7250"
+  },
+  "/home/ll/Public/QuantNodes/tests/factor_node/test_factor_functions.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "f1fe51e9be1951ce708aeb1fb55b6335"
+  },
+  "/home/ll/Public/QuantNodes/tests/factor_node/test_quant_nodes_object.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "c57e46c16e7009d2f31ffd27d9cf4e4c"
+  },
+  "/home/ll/Public/QuantNodes/tests/factor_node/test_factor_table.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "da4b1e7f380f8341ee777538481aed53"
+  },
+  "/home/ll/Public/QuantNodes/tests/factor_node/test_factor.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "8861f08588df5395d17cdbf1d8a2cf10"
+  },
+  "/home/ll/Public/QuantNodes/tests/factor_node/test_factor_db.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "874d7dcd9141ac745fb7b1350fef452a"
+  },
+  "/home/ll/Public/QuantNodes/tests/factor_node/__init__.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/factor_node/test_cache_utils.py": {
+    "mtime": 1778202984.4570506,
+    "hash": "c11a1538a755cc2a7057a7202449d8e2"
+  },
+  "/home/ll/Public/QuantNodes/tests/operators/test_composite.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "693a43c3e2940ae7106d7c970daaa33e"
+  },
+  "/home/ll/Public/QuantNodes/tests/operators/test_proxy.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "cdd30c0ba206ef0ffeb0fca38443dee6"
+  },
+  "/home/ll/Public/QuantNodes/tests/operators/test_talib.py": {
+    "mtime": 1778213731.8298178,
+    "hash": "fdd784251e182042e3d9dd644afb1bf7"
+  },
+  "/home/ll/Public/QuantNodes/tests/operators/test_time_series.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "b8d52ef24739d56c6e8e4c936d8c03d5"
+  },
+  "/home/ll/Public/QuantNodes/tests/operators/test_templates.py": {
+    "mtime": 1778213709.3623261,
+    "hash": "dee695d05a3a3af5c2589ef5faa4b390"
+  },
+  "/home/ll/Public/QuantNodes/tests/operators/test_custom.py": {
+    "mtime": 1778213680.8649743,
+    "hash": "44668c501f0bd7f2e025ac8c0668afd3"
+  },
+  "/home/ll/Public/QuantNodes/tests/operators/test_section.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "3e9d5e555b2a4f83a50b0e28d9b7c5c2"
+  },
+  "/home/ll/Public/QuantNodes/tests/operators/__init__.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/ll/Public/QuantNodes/tests/operators/test_math.py": {
+    "mtime": 1778202984.4580507,
+    "hash": "6b5592e305cf0f8c14cd37b39dcae652"
+  },
+  "/home/ll/Public/QuantNodes/AGENTS.md": {
+    "mtime": 1778206015.0730288,
+    "hash": "da79aa9343cd2b362206f03762160abc"
+  },
+  "/home/ll/Public/QuantNodes/requirements.txt": {
+    "mtime": 1778202984.4450502,
+    "hash": "35fa3437b8eb9aecd2db8b7e5228060c"
+  },
+  "/home/ll/Public/QuantNodes/docker-compose.yml": {
+    "mtime": 1778202983.7140315,
+    "hash": "bab95b4d66a24abe311da4c88a460c98"
+  },
+  "/home/ll/Public/QuantNodes/README.md": {
+    "mtime": 1778202983.7010312,
+    "hash": "61bd2b0cbd9c28702125f8865eceb148"
+  },
+  "/home/ll/Public/QuantNodes/frontend/index.html": {
+    "mtime": 1778202983.7160316,
+    "hash": "1c561127212b647f31a8ddc01a6cd4d1"
+  },
+  "/home/ll/Public/QuantNodes/docs/QuantNodes-Frontend-Implementation-Plan.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "e849fb1606aec77a408e20d6c81ed677"
+  },
+  "/home/ll/Public/QuantNodes/docs/22-\u7b97\u5b50\u7cfb\u7edf\u8bbe\u8ba1\u4e0e\u89c4\u8303.md": {
+    "mtime": 1778202983.7140315,
+    "hash": "87d1edb2a1f45b59f1aab3983b4f9126"
+  },
+  "/home/ll/Public/QuantNodes/docs/Feature3C-\u5b9e\u65bd\u8ba1\u5212.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "4d4c3368662cc04034dd238946cefd2e"
+  },
+  "/home/ll/Public/QuantNodes/docs/07-\u6267\u884c\u6e05\u5355.md": {
+    "mtime": 1778202983.7140315,
+    "hash": "2821bb4aadd63b4f6816eeff371a9db9"
+  },
+  "/home/ll/Public/QuantNodes/docs/AgentPhase3-\u5b9e\u65bd\u8ba1\u5212.md": {
+    "mtime": 1778202983.7140315,
+    "hash": "a6c91d325719bd67622a57e2549ef8d8"
+  },
+  "/home/ll/Public/QuantNodes/docs/\u4ee3\u7801\u8d28\u91cf\u4fee\u590d\u8ba1\u5212.md": {
+    "mtime": 1778203766.4966156,
+    "hash": "8eb97d68cd96661fb32d888a70599be5"
+  },
+  "/home/ll/Public/QuantNodes/docs/24-\u6838\u5fc3\u529f\u80fd\u6846\u67b6\u8bbe\u8ba1.md": {
+    "mtime": 1778202983.7140315,
+    "hash": "7f8369def46c56dee9734d9f72145902"
+  },
+  "/home/ll/Public/QuantNodes/docs/Feature3D-\u7528\u6237\u53cb\u597d\u81ea\u5b9a\u4e49\u7b97\u5b50API\u8bbe\u8ba1.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "e46b026f5f291f46523512def6a87673"
+  },
+  "/home/ll/Public/QuantNodes/docs/\u5927\u578b\u9879\u76ee\u5f00\u53d1\u6d4b\u8bd5\u89c4\u8303.md": {
+    "mtime": 1778204297.8691866,
+    "hash": "74bc55abfe5445b3a145de045722dd9f"
+  },
+  "/home/ll/Public/QuantNodes/docs/AgentPhase4-\u5b9e\u65bd\u8ba1\u5212.md": {
+    "mtime": 1778202983.7140315,
+    "hash": "72aef910d1d7ccd84bb5fa41071c78c8"
+  },
+  "/home/ll/Public/QuantNodes/docs/04-\u67b6\u6784\u8bbe\u8ba1.md": {
+    "mtime": 1778202983.7140315,
+    "hash": "680ce76617d64251fc747a8cf88ade48"
+  },
+  "/home/ll/Public/QuantNodes/docs/Feature3A-\u5b9e\u65bd\u8ba1\u5212.md": {
+    "mtime": 1778202983.7140315,
+    "hash": "d7ba0b66692103b2866e7d68acab24f4"
+  },
+  "/home/ll/Public/QuantNodes/docs/13-Agent\u67b6\u6784\u8bbe\u8ba1.md": {
+    "mtime": 1778202983.7140315,
+    "hash": "32f36aa2e69d7b312e501be5769f7f44"
+  },
+  "/home/ll/Public/QuantNodes/docs/README.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "e9a4d70204505465d7ff5723575af789"
+  },
+  "/home/ll/Public/QuantNodes/docs/Feature3B-\u5b9e\u65bd\u8ba1\u5212.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "7a609ccfd2f624671c926704cd88bfba"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/18-QuantNodes-factor_functions_v2\u5347\u7ea7\u65b9\u6848.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "53aecd94700305c41b075addd7098bdc"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/11-AI\u96c6\u6210\u89c4\u5212\u65b9\u6848v3.0.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "b9cab1a1b9ebb52a6d570a63e236c509"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/22-\u7b97\u5b50\u6269\u5c55\u673a\u5236\u8bbe\u8ba1.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "704098a0f34e65ec4b366b42fd90549b"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/15-Agent\u914d\u7f6e\u6587\u4ef6\u9a71\u52a8\u65b9\u6848.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "f518b00a20f22167b4f3ac870cf3f385"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/04-\u67b6\u6784\u8bbe\u8ba1\u6587\u6863.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "f4a42ddbe885595797c6c6501c60215b"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/25-Config-Driven\u6570\u636e\u52a0\u8f7d\u8bbe\u8ba1.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "12fee286bdcc45ab036572417d43cacf"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/05-\u7edf\u4e00\u8282\u70b9\u67b6\u6784\u8bbe\u8ba1.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "2878ea5b135d61074576de8e2e2e4359"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/16-QuantNodes\u67b6\u6784\u8fc1\u79fb\u65b9\u6848-Polars\u914d\u7f6e\u9a71\u52a8.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "d7db19263ee6ea4725bf43766cc17646"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/13-Agent\u7cfb\u7edf\u67b6\u6784\u8bbe\u8ba1.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "d4035a64b151e97d072961a6d2da7f4c"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/refactor-factor_functions.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "060b7ffc5153ba63fb198c35462777bb"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/09-\u79fb\u9664QuantStudio\u4f9d\u8d56\u91cd\u6784\u65b9\u6848.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "9b6509b0e8c3f2c76e38be587762172c"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/23-\u7b97\u5b50\u6784\u5efa\u89c4\u8303.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "f205cf657ebdff123dbd188f6d4fa9d0"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/19-\u57fa\u7840\u8bbe\u65bd\u4fee\u590d\u4e0e\u5de5\u5177\u5b9e\u73b0\u89c4\u5212.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "082969f810d990972acfe469f864c2e7"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/21-Config-driven\u56de\u6d4b\u5b9e\u73b0\u8ba1\u5212.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "a9e4aa49a762f397fc67d7748b95b7c3"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/12-Agent\u4e1a\u754c\u8c03\u7814\u4e0e\u8bbe\u8ba1\u6a21\u5f0f.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "5fcd77cfbd4d3f727a1b36834cadee72"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/06-\u7edf\u4e00\u67b6\u6784\u6700\u7ec8\u65b9\u6848.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "755cf285689a417b4ffe985d4dd0c5c2"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/02-\u6280\u672f\u53ef\u884c\u6027\u8bc4\u4f30.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "bec52701ab8f0be8b7ce4715a9a68d85"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/10-database_node_reimplementation.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "0b6c14fddf6946c618644249fc1a8825"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/20-\u57fa\u7840\u8bbe\u65bd\u4fee\u590d\u4e0e\u5de5\u5177\u5b9e\u73b0\u603b\u7ed3.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "023c27aa398bdccd1703e755f4811dd2"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/03-\u9879\u76ee\u8fdb\u5ea6\u8ffd\u8e2a.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "61013f0d2b812442fb3f6a84fd58ab7e"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/test_factor_functions_plan.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "0d3bb8c6b68c6435404cf12033cf57d5"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/01-\u5b9e\u65bd\u89c4\u5212.md": {
+    "mtime": 1778202983.7150316,
+    "hash": "c40a61dc3ca3680862ed0208caf6c511"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/17-QuantNodes-Polars\u7edf\u4e00\u8fc1\u79fb\u65b9\u6848.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "29dd98f309d09155e3d2f166e528fd8f"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/factor_node_optimization_plan.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "f7aefd44cf291f786ea99bcd5f25b9d1"
+  },
+  "/home/ll/Public/QuantNodes/docs/archived/14-Agent\u5b9e\u65bd\u8ba1\u5212.md": {
+    "mtime": 1778202983.7160316,
+    "hash": "90b7e103ec11f4d697882f9a5b35b421"
+  },
+  "/home/ll/Public/QuantNodes/api/requirements.txt": {
+    "mtime": 1778202983.7010312,
+    "hash": "adcacce4a73921cdefd857c451bb44f6"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/research/README.md": {
+    "mtime": 1778202983.689031,
+    "hash": "a037aa5859bdeb4a6f88405aced51415"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/templates/momentum_breakout.yaml": {
+    "mtime": 1778202983.6780307,
+    "hash": "23fb526424ed1848f7d2ab1790727085"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/templates/empty.yaml": {
+    "mtime": 1778202983.6780307,
+    "hash": "fe5a3766722b8b3da3027b7abf6d815c"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/templates/mean_reversion.yaml": {
+    "mtime": 1778202983.6780307,
+    "hash": "626a437a3ec2adef52cac42f68fc02f9"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/templates/volume_price.yaml": {
+    "mtime": 1778202983.6790307,
+    "hash": "f4141e55d83c39af18fe429878a31bd4"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/templates/dual_ma.yaml": {
+    "mtime": 1778202983.6780307,
+    "hash": "74a0b776a093eb25b3dd5f1d2b1f98ad"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/templates/rsi_strategy.yaml": {
+    "mtime": 1778202983.6780307,
+    "hash": "b03be2935cebe664c9d3745162979f0e"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/templates/mean_reversion_zscore.yaml": {
+    "mtime": 1778202983.6780307,
+    "hash": "2d98524738e6e09ee4a85ab86290d699"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/templates/bollinger_bands.yaml": {
+    "mtime": 1778202983.6780307,
+    "hash": "7232b53fa7f2de2eeba85c1b66dcaf2f"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/config/templates/momentum.yaml": {
+    "mtime": 1778202983.6780307,
+    "hash": "afd4f4611c95215c93f409842446f56b"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/templates/agent/identity.md": {
+    "mtime": 1778202983.6790307,
+    "hash": "98e12b98397fda59c3a3270f05cf1adc"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/templates/agent/tools_description.md": {
+    "mtime": 1778202983.6790307,
+    "hash": "65aea909d4dad1b926c496d5b837c8fc"
+  },
+  "/home/ll/Public/QuantNodes/QuantNodes/agent/templates/agent/system_prompt.md": {
+    "mtime": 1778202983.6790307,
+    "hash": "a7af0b0fb2816c489f42a607efbe595a"
+  }
+}

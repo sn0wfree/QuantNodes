@@ -11,18 +11,14 @@ from symbolic import (
     ColumnRef,
     LiteralValue,
     SQLBinaryOp,
-    SQLUnaryOp,
-    SQLComparison,
-    SQLLogicalOp,
     SQLFunction,
-    SQLCase,
     ClickHouseDialect,
     DuckDBDialect,
     MySQLDialect,
     TechnicalFunctions,
     TA_FUNCTIONS,
 )
-from symbolic.optimizer import SQLOptimizer, optimize_expression
+from symbolic.optimizer import SQLOptimizer
 
 
 class TestColumnRef:

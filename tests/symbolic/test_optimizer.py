@@ -1,13 +1,10 @@
 # coding=utf-8
 """SQLOptimizer 单元测试"""
-import pytest
 
 from QuantNodes.symbolic.optimizer import SQLOptimizer, optimize_expression
 from QuantNodes.symbolic.expression import (
-    ColumnRef, LiteralValue, SQLBinaryOp, SQLUnaryOp,
-    SQLComparison, SQLLogicalOp, SQLFunction, SQLCase,
+    ColumnRef, LiteralValue, SQLLogicalOp, SQLFunction, SQLCase,
 )
-from QuantNodes.symbolic.dialect import ClickHouseDialect
 
 
 class TestSQLOptimizer:

@@ -15,12 +15,11 @@ import tempfile
 import time
 import uuid
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
-from multiprocessing import Queue, Event, Process, Lock
+from multiprocessing import Queue, Process, Lock
 from os import cpu_count
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -455,8 +454,9 @@ class FactorTable(QuantNodesObject):
         CompiledIDFilterStr, IDFilterFactors = compile_id_filter_str(id_filter_str, self.FactorNames)
         if CompiledIDFilterStr is None:
             raise FactorError("过滤条件字符串有误!")
-        temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
-        return eval(CompiledIDFilterStr)
+        return eval(CompiledIDFilterStr, {}, {
+            "temp": self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
+        })
 
     def getFilteredID(self, idt, ids=None, id_filter_str=None, args={}):
         if not id_filter_str:

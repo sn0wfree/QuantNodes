@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 """QuantNodes.monitor.monitor.dashboard 单元测试"""
-import pytest
 from datetime import datetime, date
 from unittest.mock import MagicMock
 
@@ -31,7 +30,6 @@ class TestMonitorDashboard:
         assert result["pending_alerts"] == 0
 
     def test_get_strategy_summary_with_data(self, mock_repository, sample_strategy_runs, sample_performance_snapshots):
-        from QuantNodes.monitor.storage.models import StrategyRun, PerformanceSnapshot
 
         mock_repository.get_by_strategy.return_value = sample_strategy_runs[:1]
         perf_mock = MagicMock()
@@ -57,7 +55,6 @@ class TestMonitorDashboard:
         assert result["pending_alerts"] == 0
 
     def test_get_performance_history(self, mock_repository):
-        from QuantNodes.monitor.storage.models import PerformanceSnapshot
 
         perf_mock1 = MagicMock()
         perf_mock1.snapshot_date = date(2024, 1, 1)
@@ -87,7 +84,6 @@ class TestMonitorDashboard:
         assert result[1]["sharpe_ratio"] == 1.6
 
     def test_get_alert_history(self, mock_repository):
-        from QuantNodes.monitor.storage.models import DriftAlert
 
         alert_mock = MagicMock()
         alert_mock.id = 1
