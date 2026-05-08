@@ -16,6 +16,8 @@
 | 24 | [核心功能框架设计.md](./24-核心功能框架设计.md) | 三大核心功能详细设计 | ✅ 已完成 |
 | 规范 | [大型项目开发测试规范.md](./大型项目开发测试规范.md) | 开发测试流程规范 | ✅ 已完成 |
 | 操作 | [QuantNodes-操作手册.md](./QuantNodes-操作手册.md) | 完整操作指南 | ✅ 新增 |
+| Agent | [Agent-策略构建操作手册.md](./Agent-策略构建操作手册.md) | 小白 Agent 使用指南 | ✅ 新增 |
+| QuickStart | [QuickStart.md](./QuickStart.md) | 5 分钟快速入门 | ✅ 新增 |
 
 ---
 
@@ -23,9 +25,9 @@
 
 ### 新人快速上手
 
-1. **[04-架构设计.md](./04-架构设计.md)** — 总览三层架构、BaseNode、Pipeline、Expression DSL
-2. **[13-Agent架构设计.md](./13-Agent架构设计.md)** — Agent系统 + Config-Driven配置驱动
-3. **[24-核心功能框架设计.md](./24-核心功能框架设计.md)** — 三大核心功能详细设计
+1. ⭐ **[QuickStart.md](./QuickStart.md)** — 5 分钟快速入门
+2. **[Agent-策略构建操作手册.md](./Agent-策略构建操作手册.md)** — 通过自然语言让 Agent 帮你构建策略
+3. **[04-架构设计.md](./04-架构设计.md)** — 总览三层架构、BaseNode、Pipeline、Expression DSL
 
 ### 功能开发
 
