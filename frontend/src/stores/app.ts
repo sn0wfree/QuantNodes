@@ -1,0 +1,36 @@
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+
+export const useAppStore = defineStore('app', () => {
+  const sidebarCollapsed = ref(false)
+  const theme = ref<'light' | 'dark'>(
+    (localStorage.getItem('quantnodes-theme') as 'light' | 'dark') || 'light'
+  )
+  const locale = ref(localStorage.getItem('quantnodes-locale') || 'en')
+
+  const isDarkMode = computed(() => theme.value === 'dark')
+
+  const toggleSidebar = () => {
+    sidebarCollapsed.value = !sidebarCollapsed.value
+  }
+
+  const setTheme = (newTheme: 'light' | 'dark') => {
+    theme.value = newTheme
+    localStorage.setItem('quantnodes-theme', newTheme)
+  }
+
+  const setLocale = (newLocale: string) => {
+    locale.value = newLocale
+    localStorage.setItem('quantnodes-locale', newLocale)
+  }
+
+  return {
+    sidebarCollapsed,
+    theme,
+    locale,
+    isDarkMode,
+    toggleSidebar,
+    setTheme,
+    setLocale,
+  }
+})
