@@ -27,7 +27,13 @@ import pandas as pd
 from progressbar import ProgressBar
 
 from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
-from QuantNodes.core.tools import compile_id_filter_str
+from QuantNodes.core.base import FactorError
+from QuantNodes.core.tools import (
+    compile_id_filter_str,
+    gen_available_name,
+    partition_list_moving_sampling,
+    start_multi_process,
+)
 
 
 class ErgodicModeType(Enum):
@@ -699,7 +705,7 @@ class FactorTable(QuantNodesObject):
             iFactor._OperationMode = self.OperationMode
             if (not isinstance(iFactor.Name, str)) or (iFactor.Name == "") or (
                     iFactor is not factor_dict.get(iFactor.Name, iFactor)):
-                iFactor.Name = genAvailableName("TempFactor", factor_dict)
+                iFactor.Name = gen_available_name("TempFactor", factor_dict)
             factor_dict[iFactor.Name] = iFactor
             self.OperationMode._FactorID[iFactor.Name] = len(factor_dict)
             factor_dict.update(self._genFactorDict(iFactor.Descriptors, factor_dict))
@@ -812,7 +818,7 @@ class FactorTable(QuantNodesObject):
             Error = _prepareRawData(args)
         else:
             nPrcs = min((self.OperationMode.SubProcessNum, len(args["GroupInfo"])))
-            Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_prepareRawData,
+            Procs, Main2SubQueue, Sub2MainQueue = start_multi_process(pid="0", n_prc=nPrcs, target_fun=_prepareRawData,
                                                                     arg=args,
                                                                     partition_arg=["GroupInfo", "RawDataFileNames",
                                                                                    "PrepareIDs", "PID_PrepareIDs"],
@@ -861,7 +867,7 @@ class FactorTable(QuantNodesObject):
             nPrcs = len(self.OperationMode._PIDs)
             nTask = len(self.OperationMode._Factors) * nPrcs
             EventState = {iFactorName: 0 for iFactorName in self.OperationMode._Event}
-            Procs, Main2SubQueue, Sub2MainQueue = startMultiProcess(pid="0", n_prc=nPrcs, target_fun=_calculate,
+            Procs, Main2SubQueue, Sub2MainQueue = start_multi_process(pid="0", n_prc=nPrcs, target_fun=_calculate,
                                                                     arg=Args,
                                                                     main2sub_queue="None", sub2main_queue="Single")
             iProg = 0

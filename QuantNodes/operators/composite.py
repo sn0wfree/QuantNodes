@@ -52,7 +52,7 @@ class CompositeOperators:
         elif hasattr(first_factor, 'meta') and hasattr(first_factor.meta, 'output_name'):
             try:
                 col_name = first_factor.meta.output_name()
-            except:
+            except Exception:
                 col_name = "result"
         else:
             col_name = "result"

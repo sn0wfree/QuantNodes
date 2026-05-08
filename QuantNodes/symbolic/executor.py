@@ -32,7 +32,7 @@ class SQLExecutor:
         self,
         connection: Any,
         compiler: Optional["SQLCompiler"] = None,
-        dialect: Optional["SQLDialect"] = None,
+        dialect: Optional["SQLDialect"] = None,  # noqa: F821
     ):
         """
         Args:

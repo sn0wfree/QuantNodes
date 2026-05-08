@@ -49,7 +49,7 @@ class DataPreprocessingFun:
                         try:
                             beta = np.linalg.lstsq(X, y, rcond=None)[0]
                             result[i, j] = beta[1] if len(beta) > 1 else beta[0]
-                        except:
+                        except Exception:
                             result[i, j] = np.nan
                     else:
                         result[i, j] = y[-1] - y[0] if len(y) > 1 else y[0]
@@ -60,7 +60,7 @@ class DataPreprocessingFun:
                 try:
                     beta = np.polyfit(t, y, 1)[0]
                     result[i] = beta
-                except:
+                except Exception:
                     result[i] = np.nan
         
         return result
@@ -359,7 +359,7 @@ class DataPreprocessingFun:
             
             y_pred = X_nan @ beta
             result[nan_rows] = y_pred
-        except:
+        except Exception:
             pass
         
         return result
@@ -374,6 +374,7 @@ class DataPreprocessingFun:
         weight_data: Optional[np.ndarray] = None,
         dummy_data: Optional[np.ndarray] = None,
         other_handle: str = "填充None",
+        intercept: bool = True,
         **kwargs
     ) -> np.ndarray:
         """正交化处理"""
@@ -408,7 +409,7 @@ class DataPreprocessingFun:
                     beta = np.linalg.lstsq(x_orthogonal, y_valid, rcond=None)[0]
                     y_pred = x_orthogonal @ beta
                     result[i, row_mask] = y_valid - y_pred + np.nanmean(y_valid)
-                except:
+                except Exception:
                     continue
         else:
             for i in range(result.shape[0]):
@@ -431,7 +432,7 @@ class DataPreprocessingFun:
                     beta = np.linalg.lstsq(X_design, y_valid, rcond=None)[0]
                     y_pred = X_design @ beta
                     result[i, row_mask] = y_valid - y_pred + np.nanmean(y_valid)
-                except:
+                except Exception:
                     continue
         
         return result

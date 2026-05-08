@@ -233,27 +233,27 @@ _make_dual_rolling_wrapper(
 # 别名
 # ==============================================================================
 
-_make_alias("ts_corr", rolling_corr,
+_make_alias("ts_corr", rolling_corr,  # noqa: F821
             "滚动相关系数 (rolling_corr 别名)")
-_make_alias("ts_cov", rolling_cov,
+_make_alias("ts_cov", rolling_cov,  # noqa: F821
             "滚动协方差 (rolling_cov 别名)")
 
-_make_alias("correlation", rolling_corr,
+_make_alias("correlation", rolling_corr,  # noqa: F821
             "相关系数 (rolling_corr 别名)")
-_make_alias("covariance", rolling_cov,
-            "协方差 (rolling_cov 别名)")
+_make_alias("covariance", rolling_cov,  # noqa: F821
+            "滚动协方差 (rolling_cov 别名)")
 
-_make_alias("ts_mean", rolling_mean,
+_make_alias("ts_mean", rolling_mean,  # noqa: F821
             "时间序列均值 (滚动均值别名)")
 _make_alias("ts_std", rolling_std,
             "时间序列标准差")
-_make_alias("ts_max", rolling_max,
+_make_alias("ts_max", rolling_max,  # noqa: F821
             "时间序列最大值")
-_make_alias("ts_min", rolling_min,
+_make_alias("ts_min", rolling_min,  # noqa: F821
             "时间序列最小值")
-_make_alias("ts_sum", rolling_sum,
+_make_alias("ts_sum", rolling_sum,  # noqa: F821
             "时间序列求和")
-_make_alias("ts_median", rolling_median,
+_make_alias("ts_median", rolling_median,  # noqa: F821
             "时间序列中位数")
 
 
@@ -280,8 +280,8 @@ _make_diff_wrapper("ts_pct_change", "pct_change", "百分比变化")
 _make_diff_wrapper("diff", "diff", "差分")
 _make_diff_wrapper("lag", "shift", "滞后算子")
 
-_make_alias("delta", ts_delta, "差分 (ts_delta 别名)")
-_make_alias("pct_change", ts_pct_change, "百分比变化 (ts_pct_change 别名)")
+_make_alias("delta", ts_delta, "差分 (ts_delta 别名)")  # noqa: F821
+_make_alias("pct_change", ts_pct_change, "百分比变化 (ts_pct_change 别名)")  # noqa: F821
 
 
 @register_operator(OperatorCategory.TIME)
@@ -299,7 +299,7 @@ def ts_lead(f: Union[Expr, str], periods: int = 1, **kwargs) -> Expr:
 
 
 _make_alias("delay", ts_lag, "滞后 (ts_lag 别名)")
-_make_alias("ref", delay, "引用历史值 (delay 别名)")
+_make_alias("ref", delay, "引用历史值 (delay 别名)")  # noqa: F821
 _make_alias("shift", ts_lag, "移动 (shift 别名)")
 _make_alias("ts_shift", ts_lag, "移动 (ts_lag 别名)")
 _make_alias("ts_prod", rolling_prod, "滚动求积 (rolling_prod 别名)")

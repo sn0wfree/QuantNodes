@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Set
+from typing import TYPE_CHECKING, Any, List, Set
 
 if TYPE_CHECKING:
     from QuantNodes.symbolic.expression import SQLExpression
@@ -65,7 +65,7 @@ class SQLOptimizer:
 
         return expr
 
-    def _optimize_binary_op(self, expr: "SQLBinaryOp") -> "SQLExpression":
+    def _optimize_binary_op(self, expr: "SQLBinaryOp") -> "SQLExpression":  # noqa: F821
         """优化二元运算"""
         left = self.optimize(expr.left)
         right = self.optimize(expr.right)
@@ -88,7 +88,7 @@ class SQLOptimizer:
 
         return SQLBinaryOp(left, expr.op, right)
 
-    def _optimize_unary_op(self, expr: "SQLUnaryOp") -> "SQLExpression":
+    def _optimize_unary_op(self, expr: "SQLUnaryOp") -> "SQLExpression":  # noqa: F821
         """优化一元运算"""
         from QuantNodes.symbolic.expression import LiteralValue, SQLUnaryOp
         operand = self.optimize(expr.operand)
@@ -98,13 +98,13 @@ class SQLOptimizer:
 
         return SQLUnaryOp(expr.op, operand)
 
-    def _optimize_comparison(self, expr: "SQLComparison") -> "SQLExpression":
+    def _optimize_comparison(self, expr: "SQLComparison") -> "SQLExpression":  # noqa: F821
         """优化比较运算"""
         left = self.optimize(expr.left)
         right = self.optimize(expr.right)
         return expr
 
-    def _optimize_logical_op(self, expr: "SQLLogicalOp") -> "SQLExpression":
+    def _optimize_logical_op(self, expr: "SQLLogicalOp") -> "SQLExpression":  # noqa: F821
         """优化逻辑运算"""
         from QuantNodes.symbolic.expression import LiteralValue, SQLLogicalOp
         operands = [self.optimize(op) for op in expr.operands]
@@ -120,13 +120,13 @@ class SQLOptimizer:
 
         return SQLLogicalOp(expr.op, *operands)
 
-    def _optimize_function(self, expr: "SQLFunction") -> "SQLExpression":
+    def _optimize_function(self, expr: "SQLFunction") -> "SQLExpression":  # noqa: F821
         """优化函数调用"""
         args = [self.optimize(arg) for arg in expr.args]
         kwargs = {k: self.optimize(v) for k, v in expr.kwargs.items()}
         return expr
 
-    def _optimize_case(self, expr: "SQLCase") -> "SQLExpression":
+    def _optimize_case(self, expr: "SQLCase") -> "SQLExpression":  # noqa: F821
         """优化 CASE 表达式"""
         when_clauses = [(self.optimize(cond), self.optimize(val)) for cond, val in expr.when_clauses]
         else_ = self.optimize(expr.else_) if expr.else_ else None
@@ -144,7 +144,7 @@ class SQLOptimizer:
                 return LiteralValue(a * b)
             if op == "/":
                 return LiteralValue(a / b)
-        except:
+        except Exception:
             pass
         return None
 
@@ -156,7 +156,7 @@ class SQLOptimizer:
                 return LiteralValue(-a)
             if op == "+":
                 return LiteralValue(+a)
-        except:
+        except Exception:
             pass
         return None
 

@@ -15,7 +15,7 @@ class SQLExpression(ABC):
     """SQL 表达式基类"""
 
     @abstractmethod
-    def to_sql(self, dialect: "SQLDialect") -> str:
+    def to_sql(self, dialect: "SQLDialect") -> str:  # noqa: F821
         """编译为 SQL 字符串"""
         pass
 

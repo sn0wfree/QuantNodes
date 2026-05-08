@@ -15,6 +15,7 @@ MarketDataCacheNode - 行情数据缓存节点
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import pandas as pd

@@ -56,7 +56,7 @@ class FactorDB(QuantNodesObject):
         """
         return []
 
-    def getTable(self, table_name: str, args: Optional[Dict[str, Any]] = None) -> Optional["FactorTable"]:
+    def getTable(self, table_name: str, args: Optional[Dict[str, Any]] = None) -> Optional["FactorTable"]:  # noqa: F821
         """获取因子表对象
 
         Args:

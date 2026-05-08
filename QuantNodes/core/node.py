@@ -297,7 +297,7 @@ class BaseNode(QuantNodesBase, Serializable, ABC, Generic[T, R]):
         """使得节点可以像函数一样调用"""
         return self.execute(input_data, **kwargs)
 
-    def __rshift__(self, other: 'BaseNode') -> 'Pipeline':
+    def __rshift__(self, other: 'BaseNode') -> 'Pipeline':  # noqa: F821
         """管道运算符：A >> B 等价于 Pipeline([A, B])"""
         from QuantNodes.core.pipeline import Pipeline
         if isinstance(self, Pipeline):
