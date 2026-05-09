@@ -442,21 +442,37 @@ cp conn.ini.template conn.ini
 ### 5.2 启动服务
 
 ```bash
-# 方式1: 使用 Makefile（推荐）
+# 方式1: 使用 CLI（推荐，首次需先运行 init）
+quantnodes run                    # 启动全部服务
+quantnodes run --api-only         # 仅启动 API
+quantnodes run --frontend-only    # 仅启动前端
+quantnodes run --daemon           # 后台运行
+quantnodes run --port 8080        # 指定前端端口
+
+# 方式2: 使用 Makefile
 make dev                    # 同时启动前端和 API
 make dev-api                # 启动 API 服务
 make dev-frontend           # 启动前端服务
 
-# 方式2: 手动启动
+# 方式3: 手动启动
 # 终端1: 启动后端
 python -m uvicorn api.main:app --reload --port 8000
 
 # 终端2: 启动前端
 cd frontend && npm run dev
+```
 
-# 方式3: Docker 部署
-make docker-up              # 启动所有服务
-make docker-down           # 停止服务
+### 5.2.1 初始化项目（首次使用）
+
+```bash
+# 初始化配置文件（.env 和 conn.ini）
+quantnodes init
+
+# 查看帮助
+quantnodes help
+
+# 查看版本
+quantnodes version
 ```
 
 ### 5.3 访问服务

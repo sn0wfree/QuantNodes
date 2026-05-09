@@ -25,11 +25,25 @@ pip install -e .
 cd frontend && npm install && cd ..
 ```
 
+### 1.3 初始化项目（首次使用）
+
+```bash
+# 初始化配置文件
+quantnodes init
+
+# 或使用 Python 模块方式
+python -m QuantNodes init
+```
+
 ---
 
 ## 二、启动服务 (1 分钟)
 
 ```bash
+# 方式一：使用 CLI（推荐）
+quantnodes run
+
+# 方式二：手动启动
 # 终端 1: 启动后端
 python -m uvicorn api.main:app --reload --port 8000
 
@@ -38,6 +52,26 @@ cd frontend && npm run dev
 ```
 
 访问 **http://localhost:5173**
+
+### CLI 命令参考
+
+```bash
+# 查看帮助
+quantnodes help
+
+# 查看版本
+quantnodes version
+
+# 初始化（首次使用）
+quantnodes init
+
+# 启动服务
+quantnodes run                    # 启动全部服务
+quantnodes run --api-only         # 仅 API
+quantnodes run --frontend-only    # 仅前端
+quantnodes run --daemon           # 后台运行
+quantnodes run --port 8080        # 指定端口
+```
 
 ---
 

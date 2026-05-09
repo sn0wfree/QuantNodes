@@ -86,6 +86,31 @@ QuantNodes/
 pip install -e .
 ```
 
+### 初始化项目
+
+```bash
+# 初始化配置文件（创建 .env 和 conn.ini）
+quantnodes init
+# 或使用 Python 模块方式
+python -m QuantNodes init
+```
+
+### 启动服务
+
+```bash
+# 启动全部服务（前端 + API）
+quantnodes run
+
+# 启动参数
+quantnodes run --host 0.0.0.0 --port 8080 --api-port 8000 --daemon
+
+# 仅启动 API
+quantnodes run --api-only
+
+# 仅启动前端
+quantnodes run --frontend-only
+```
+
 ### 基本使用
 
 ```python

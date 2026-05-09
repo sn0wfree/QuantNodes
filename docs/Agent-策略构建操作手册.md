@@ -28,6 +28,11 @@
 本项目分为前端（Vue 3）和后端（FastAPI）两部分，需要分别启动：
 
 ```bash
+# 方式1: 使用 CLI（推荐，首次需先运行 init）
+quantnodes init              # 首次初始化
+quantnodes run               # 启动全部服务
+
+# 方式2: 手动启动
 # 终端 1: 启动后端服务
 cd /path/to/QuantNodes
 python -m uvicorn api.main:app --reload --port 8000
