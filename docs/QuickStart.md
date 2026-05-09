@@ -1,8 +1,8 @@
 # QuantNodes Quick Start
 
 > 5 分钟快速入门指南  
-> 版本：v1.0  
-> 更新：2026-05-08
+> 版本：v1.1  
+> 更新：2026-05-09
 
 ---
 
@@ -18,22 +18,22 @@ cd QuantNodes
 ### 1.2 安装依赖
 
 ```bash
-# Python 依赖
+# 安装 quantnodes 包（Python 依赖会自动安装）
+# 首次 import 时前端依赖会自动安装
 pip install -e .
-
-# 前端依赖
-cd frontend && npm install && cd ..
 ```
 
 ### 1.3 初始化项目（首次使用）
 
 ```bash
-# 初始化配置文件
+# 初始化配置文件和 Wiki
 quantnodes init
-
-# 或使用 Python 模块方式
-python -m QuantNodes init
 ```
+
+**init 初始化内容：**
+- 初始化 llmwikify Wiki（raw/, wiki/, wiki.md, index.md, log.md）
+- 创建目录结构（data/, .quant_agent/, outputs/, logs/）
+- 创建配置文件（.env, conn.ini）
 
 ---
 
@@ -63,14 +63,16 @@ quantnodes help
 quantnodes version
 
 # 初始化（首次使用）
-quantnodes init
+quantnodes init                  # 初始化当前目录
+quantnodes init --force          # 强制重新初始化
 
 # 启动服务
 quantnodes run                    # 启动全部服务
 quantnodes run --api-only         # 仅 API
 quantnodes run --frontend-only    # 仅前端
 quantnodes run --daemon           # 后台运行
-quantnodes run --port 8080        # 指定端口
+quantnodes run --port 8080        # 指定前端端口
+quantnodes run --api-port 9000    # 指定后端端口
 ```
 
 ---

@@ -111,7 +111,7 @@
         <a-card title="System Status" style="margin-top: 16px">
           <a-descriptions :column="1" size="small">
             <a-descriptions-item label="API Status">
-              <a-badge status="success" text="Connected" />
+              <a-badge :status="apiStatus" :text="apiStatusText" />
             </a-descriptions-item>
             <a-descriptions-item label="Agent Status">
               <a-badge :status="agentStatus" :text="agentStatusText" />
@@ -144,8 +144,11 @@ const stats = ref({
 
 const recentActivity = ref<any[]>([])
 const loading = ref(true)
+const apiConnected = ref(false)
 const agentConnected = ref(false)
 
+const apiStatus = computed(() => apiConnected.value ? 'success' : 'error')
+const apiStatusText = computed(() => apiConnected.value ? 'Connected' : 'Disconnected')
 const agentStatus = computed(() => agentConnected.value ? 'success' : 'default')
 const agentStatusText = computed(() => agentConnected.value ? 'Ready' : 'Initializing')
 
@@ -171,16 +174,26 @@ const fetchActivity = async () => {
 
 const checkAgentStatus = async () => {
   try {
-    await get('/health')
-    agentConnected.value = true
+    const data = await get<{ status: string; initialized: boolean }>('/agent/status')
+    agentConnected.value = data.initialized
   } catch {
     agentConnected.value = false
+  }
+}
+
+const checkApiStatus = async () => {
+  try {
+    await get('/health')
+    apiConnected.value = true
+  } catch {
+    apiConnected.value = false
   }
 }
 
 onMounted(() => {
   fetchStats()
   fetchActivity()
+  checkApiStatus()
   checkAgentStatus()
 })
 </script>

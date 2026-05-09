@@ -72,6 +72,7 @@ class Settings(BaseSettings):
         "env_prefix": "QUANTNODES_",
         "env_file": ".env",
         "env_nested_delimiter": "__",
+        "extra": "ignore",
     }
 
     def to_dict(self) -> Dict[str, Any]:

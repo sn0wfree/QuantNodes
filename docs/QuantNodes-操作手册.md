@@ -430,11 +430,10 @@ source venv/bin/activate  # Linux/Mac
 
 # 3. 安装项目依赖
 pip install -e .
+# Python 依赖会自动安装
+# 首次 import 时前端依赖会自动安装
 
-# 4. 安装前端依赖
-cd frontend && npm install && cd ..
-
-# 5. 复制数据库连接配置
+# 4. 复制数据库连接配置（可选，已有模板）
 cp conn.ini.template conn.ini
 # 编辑 conn.ini 填入实际数据库连接信息
 ```
@@ -1149,7 +1148,10 @@ pytest tests/test_factor_functions.py::test_rolling_mean -v
 
 ### Q4: 前端启动失败？
 
-确保已运行 `cd frontend && npm install`
+前端依赖在首次 import QuantNodes 时自动安装。如需手动安装，请运行：
+```bash
+cd frontend && npm install
+```
 
 ### Q5: API 返回 404？
 

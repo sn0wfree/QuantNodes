@@ -5,6 +5,15 @@ from ..services.agent_service import agent_service
 router = APIRouter()
 
 
+@router.get("/status")
+async def get_status():
+    """Get Agent status"""
+    return {
+        "status": "ready" if agent_service._agent is not None else "initializing",
+        "initialized": agent_service._agent is not None,
+    }
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def send_message(message: ChatMessage):
     result = await agent_service.send_message(

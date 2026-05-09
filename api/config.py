@@ -1,13 +1,21 @@
 from pydantic_settings import BaseSettings
 from typing import List
+import os
 
 
 class Settings(BaseSettings):
     VERSION: str = "0.1.0"
     DEBUG: bool = False
     
-    # CORS
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # CORS - 支持环境变量配置，默认为允许所有
+    CORS_ORIGINS: List[str] = ["*"]
+    
+    # 从环境变量读取，覆盖默认值
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        cors_env = os.environ.get("CORS_ORIGINS", "")
+        if cors_env:
+            self.CORS_ORIGINS = [origin.strip() for origin in cors_env.split(",")]
     
     # Agent
     AGENT_PROVIDER: str = "openai"

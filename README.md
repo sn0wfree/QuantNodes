@@ -239,6 +239,13 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 
 ## 变更日志
 
+### v0.4.1 (2026-05-09)
+
+- ✅ CLI 优化：依赖安装自动化（Python 依赖通过 pyproject.toml，前端依赖首次 import 时自动安装）
+- ✅ CLI 优化：init 流程简化（只初始化 Wiki 和创建配置文件）
+- ✅ llmwikify Wiki 集成：初始化时自动创建 raw/, wiki/, wiki.md, index.md, log.md
+- ✅ 目录结构优化：Wiki 放在项目根目录，与 data/ 平级
+
 ### v0.4.0 (2026-05-08)
 
 - ✅ Feature 3A - WikiFactorProxy：因子库读写接口，支持 llmwikify 解析 PDF

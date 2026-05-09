@@ -1,10 +1,11 @@
 # coding=utf-8
 from setuptools import setup, find_packages
 
-from QuantNodes import __version__, __author__
+__version__ = '0.4.1'
+__author__ = 'sn0wfree'
 
 setup(
-    name="nodes",
+    name="quantnodes",
     version=__version__,
     keywords=("Node", "Databases", "Quantitative"),
     description="AI-native quantitative research framework with symbolic computation and SQL pushdown",

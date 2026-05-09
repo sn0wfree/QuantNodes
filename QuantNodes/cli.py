@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import Optional, Tuple, List, Any
 
 from QuantNodes import __version__
+from QuantNodes.research.wiki import init_factor_wiki
 
 PROG_NAME = "quantnodes"
 DEFAULT_API_PORT = 8000
@@ -27,7 +28,7 @@ DEFAULT_HOST = "localhost"
 
 def is_initialized() -> bool:
     """Check if current directory is already initialized."""
-    return Path(".env").exists() or Path("conn.ini").exists()
+    return Path(".env").exists() or Path("conn.ini").exists() or Path("wiki/index.md").exists()
 
 
 def get_project_root() -> Path:
@@ -39,8 +40,6 @@ def create_directory_structure():
     """Create necessary directories."""
     dirs = [
         "data",
-        ".quant_agent",
-        ".quant_agent/wiki",
         ".quant_agent/memory",
         ".quant_agent/dream",
         "outputs",
@@ -50,6 +49,33 @@ def create_directory_structure():
     for d in dirs:
         Path(d).mkdir(parents=True, exist_ok=True)
         print(f"  ✓ 创建目录: {d}/")
+
+
+def init_llmwikify_wiki() -> bool:
+    """Initialize QuantNodes wiki structure."""
+    print("\n  初始化 QuantNodes Wiki...")
+    
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "llmwikify", "init"],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            print(f"  ⚠ llmwikify 初始化失败: {result.stderr}")
+            return False
+        print("  ✓ llmwikify 基础结构创建完成")
+    except Exception as e:
+        print(f"  ⚠ llmwikify 初始化失败: {e}")
+        return False
+    
+    try:
+        init_factor_wiki("wiki")
+        print("  ✓ QuantNodes 专用配置写入完成")
+        return True
+    except Exception as e:
+        print(f"  ⚠ 配置写入失败: {e}")
+        return False
 
 
 def get_input_with_default(prompt: str, default: str, required: bool = False) -> str:
@@ -114,8 +140,8 @@ def write_env_file(api_key: str, base_url: str, model: str, duckdb_path: str,
                    clickhouse_config: dict, mysql_config: dict) -> None:
     """Write .env configuration file."""
     env_content = f"""# LLM 配置
-OPENAI_API_KEY={api_key}
-OPENAI_API_BASE_URL={base_url}
+QUANTNODES__LLM__API_KEY={api_key}
+QUANTNODES__LLM__BASE_URL={base_url}
 
 # 模型配置
 QUANTNODES__LLM__MODEL={model}
@@ -184,37 +210,6 @@ db = {mysql_config['db']}
     with open("conn.ini", "w", encoding="utf-8") as f:
         f.write(conn_content)
     print("  ✓ 创建文件: conn.ini")
-
-
-def install_python_deps() -> bool:
-    """Install Python dependencies."""
-    print("\n  安装 Python 依赖...")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
-        capture_output=False
-    )
-    if result.returncode == 0:
-        print("  ✓ Python 依赖安装完成")
-        return True
-    else:
-        print("  ✗ Python 依赖安装失败，请手动运行: pip install -r requirements.txt")
-        return False
-
-
-def install_frontend_deps() -> bool:
-    """Install frontend dependencies."""
-    print("\n  安装前端依赖...")
-    result = subprocess.run(
-        ["npm", "install"],
-        cwd="frontend",
-        capture_output=False
-    )
-    if result.returncode == 0:
-        print("  ✓ 前端依赖安装完成")
-        return True
-    else:
-        print("  ✗ 前端依赖安装失败，请手动运行: cd frontend && npm install")
-        return False
 
 
 def install_talib() -> bool:
@@ -328,6 +323,12 @@ def cmd_init(args) -> int:
     print()
     
     print("-" * 50)
+    print("初始化 llmwikify Wiki")
+    print("-" * 50)
+    init_llmwikify_wiki()
+    print()
+    
+    print("-" * 50)
     print("创建目录结构")
     print("-" * 50)
     create_directory_structure()
@@ -341,18 +342,6 @@ def cmd_init(args) -> int:
     write_conn_ini(duckdb_path, clickhouse_config, mysql_config)
     
     print()
-    
-    print("-" * 50)
-    print("安装依赖")
-    print("-" * 50)
-    
-    install_python = get_yes_no("是否安装 Python 依赖 (pip install -r requirements.txt)", default=True)
-    if install_python:
-        install_python_deps()
-    
-    install_frontend = get_yes_no("是否安装前端依赖 (npm install)", default=True)
-    if install_frontend:
-        install_frontend_deps()
     
     install_talib_option = get_yes_no("是否安装 TA-Lib 技术分析库 (可选)", default=True)
     if install_talib_option:
@@ -406,13 +395,14 @@ def start_api_server(host: str, port: int, log_file: Optional[Path] = None) -> T
         return proc, None
 
 
-def start_frontend_server(host: str, port: int, log_file: Optional[Path] = None) -> Tuple[subprocess.Popen, Optional[Any]]:
+def start_frontend_server(host: str, port: int, api_port: int = 8000, log_file: Optional[Path] = None) -> Tuple[subprocess.Popen, Optional[Any]]:
     """Start the frontend server. Returns (process, log_file_handle)."""
     cmd = ["npm", "run", "dev"]
     
     env = os.environ.copy()
     env["HOST"] = host
     env["PORT"] = str(port)
+    env["API_PORT"] = str(api_port)
     
     if log_file:
         log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -443,7 +433,11 @@ def cmd_run(args) -> int:
     
     host = args.host or DEFAULT_HOST
     frontend_port = args.port or DEFAULT_FRONTEND_PORT
-    api_port = args.api_port or DEFAULT_API_PORT
+    # 联动：如果只设置 --port，则 api_port = port + 1000
+    if args.port and not args.api_port:
+        api_port = args.port + 1000
+    else:
+        api_port = args.api_port or DEFAULT_API_PORT
     
     if args.daemon:
         if sys.platform != "linux":
@@ -467,7 +461,7 @@ def cmd_run(args) -> int:
         print()
         
         api_proc, api_fd = start_api_server(host, api_port, api_log)
-        frontend_proc, frontend_fd = start_frontend_server(host, frontend_port, frontend_log)
+        frontend_proc, frontend_fd = start_frontend_server(host, frontend_port, api_port, frontend_log)
         
         print(f"✓ 服务已后台启动")
         print(f"  API 进程: {api_proc.pid}")
@@ -499,7 +493,7 @@ def cmd_run(args) -> int:
         
         if not args.api_only:
             print(f"\n启动前端: http://{host}:{frontend_port}")
-            frontend_proc, frontend_fd = start_frontend_server(host, frontend_port)
+            frontend_proc, frontend_fd = start_frontend_server(host, frontend_port, api_port)
             processes.append(("Frontend", frontend_proc))
             log_fds.append(frontend_fd)
             print(f"  进程 PID: {frontend_proc.pid}")
@@ -523,7 +517,7 @@ def cmd_run(args) -> int:
                 proc.wait()
         except KeyboardInterrupt:
             print("\n\n正在停止服务...")
-            for proc in processes:
+            for name, proc in processes:
                 proc.terminate()
                 proc.wait()
             for fd in log_fds:
@@ -533,7 +527,7 @@ def cmd_run(args) -> int:
         
     except Exception as e:
         print(f"错误: {e}")
-        for proc in processes:
+        for name, proc in processes:
             proc.terminate()
         for fd in log_fds:
             if fd:
@@ -564,19 +558,21 @@ QuantNodes CLI - 量化研究节点架构命令行工具
     help        显示帮助
 
 init 选项:
-    --force     强制重新初始化 (覆盖现有配置)
+    --force           强制重新初始化 (覆盖现有配置)
 
 run 选项:
     --host HOST         绑定主机 (默认: localhost)
-    --port PORT         前端端口 (默认: 5173)
-    --api-port PORT     后端端口 (默认: 8000)
+    --port PORT         前端端口 (默认: 5173)，设置后后端端口自动设为 PORT+1000
+    --api-port PORT     后端端口 (默认: 8000)，优先级高于 --port 联动
     --daemon           后台运行 (仅 Linux)
     --api-only         仅启动后端
     --frontend-only    仅启动前端
 
 示例:
     quantnodes init
-    quantnodes run --port 8080 --api-port 9000
+    quantnodes run                          # 前端:5173, 后端:8000
+    quantnodes run --port 18380             # 前端:18380, 后端:19380 (联动)
+    quantnodes run --port 18380 --api-port 9000  # 前端:18380, 后端:9000 (指定后端)
     quantnodes run --daemon
     quantnodes run --api-only
     quantnodes version
