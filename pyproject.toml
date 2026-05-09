@@ -33,12 +33,17 @@ statsmodels = "^0.14.0"
 streamlit = "^1.28.0"
 plotly = "^5.17.0"
 
-# AI/LLM
-openai = "^1.3.0"
+# API 服务
+fastapi = ">=0.110.0"
+uvicorn = { extras = ["standard"], version = ">=0.29.0" }
+websockets = ">=12.0"
+python-dotenv = ">=1.0.0"
 
 # 工具库
 requests = "^2.31.0"
 tqdm = "^4.66.0"
+setuptools = ">=40.8.0"
+requests_html = ">=0.10.0"
 
 # Polars
 polars = ">=1.0.0"

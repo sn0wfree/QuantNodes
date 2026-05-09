@@ -1,15 +1,17 @@
-[ClickHouse]
+[DuckDB]
+path = data/quantnodes.db
+read_only = False
 
-host = your-clickhouse-host
+[ClickHouse]
+host = localhost
 port = 8123
 user = default
 passwd = your-password
 db = default
 
 [MySQL]
-
-host = your-mysql-host
+host = localhost
 port = 3306
-user = username
+user = root
 passwd = your-password
-db = mysql
+db = quant
