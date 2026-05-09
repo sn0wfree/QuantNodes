@@ -107,11 +107,43 @@ export const useWikiStore = defineStore('wiki', () => {
     }
   }
 
+  const updateStrategy = async (name: string, strategy: Partial<StrategyInfo>) => {
+    try {
+      const data = await wikiApi.updateStrategy(name, strategy)
+      await fetchStrategies()
+      return data
+    } catch (error) {
+      console.error('Failed to update strategy:', error)
+      throw error
+    }
+  }
+
+  const deleteStrategy = async (name: string) => {
+    try {
+      await wikiApi.deleteStrategy(name)
+      await fetchStrategies()
+    } catch (error) {
+      console.error('Failed to delete strategy:', error)
+      throw error
+    }
+  }
+
   const searchFactors = async (query: string) => {
     isLoading.value = true
     try {
       const data = await wikiApi.search({ q: query, type: 'factor' })
-      factors.value = data.map((r: any) => r.data || r)
+      factors.value = data.map((r: any) => ({
+        name: r.page_name?.split('/').pop() || r.name || '',
+        formula: r.formula || '',
+        source: r.source || r.page_type || '',
+        category: r.category || 'other',
+        tags: r.tags || [],
+        description: r.description || r.content || '',
+        ic_mean: r.ic_mean,
+        ic_std: r.ic_std,
+        icir: r.icir,
+        rank_ic_mean: r.rank_ic_mean,
+      }))
     } catch (error) {
       console.error('Failed to search factors:', error)
     } finally {
@@ -123,7 +155,13 @@ export const useWikiStore = defineStore('wiki', () => {
     isLoading.value = true
     try {
       const data = await wikiApi.search({ q: query, type: 'strategy' })
-      strategies.value = data.map((r: any) => r.data || r)
+      strategies.value = data.map((r: any) => ({
+        name: r.page_name?.split('/').pop() || r.name || '',
+        description: r.description || r.content || '',
+        category: r.category || 'general',
+        tags: r.tags || [],
+        strategy_yaml: r.strategy_yaml || '',
+      }))
     } catch (error) {
       console.error('Failed to search strategies:', error)
     } finally {
@@ -147,6 +185,8 @@ export const useWikiStore = defineStore('wiki', () => {
     fetchStrategies,
     fetchStrategy,
     createStrategy,
+    updateStrategy,
+    deleteStrategy,
     searchFactors,
     searchStrategies,
   }

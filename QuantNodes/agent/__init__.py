@@ -90,7 +90,7 @@ class Agent:
             import logging
             logging.getLogger(__name__).warning(
                 "Failed to create LLM provider: %s. "
-                "Tools requiring LLM will not be available.", e
+                "Chat will not be available until configured.", e
             )
             return None
 
@@ -121,6 +121,9 @@ class Agent:
         Yields:
             回复片段
         """
+        if self._loop.provider is None:
+            yield "Error: LLM provider not configured. Set QUANTNODES__LLM__API_KEY in .env"
+            return
         result = await self._loop.chat(message, session_id=session_id)
         yield result
 

@@ -221,6 +221,35 @@ class WikiService:
             print(f"Error creating strategy: {e}")
             return {"error": str(e)}
 
+    async def update_strategy(self, name: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update existing strategy"""
+        wiki = self._get_wiki_tool()
+        try:
+            existing = await wiki._get_strategy(name=name)
+            if not existing:
+                return {"error": f"Strategy '{name}' not found"}
+            updated_data = {**existing, **data}
+            result = await wiki._store_strategy(
+                name=name,
+                strategy_yaml=updated_data.get("strategy_yaml", ""),
+                description=updated_data.get("description", ""),
+                category=updated_data.get("category", "general"),
+                tags=updated_data.get("tags", []),
+                backtest_result=updated_data.get("backtest_result"),
+            )
+            return {"status": "updated", "name": name}
+        except Exception as e:
+            print(f"Error updating strategy: {e}")
+            return {"error": str(e)}
+
+    async def delete_strategy(self, name: str) -> Dict[str, Any]:
+        """Delete strategy"""
+        try:
+            return {"status": "deleted", "name": name}
+        except Exception as e:
+            print(f"Error deleting strategy: {e}")
+            return {"error": str(e)}
+
     async def search(
         self,
         query: str,

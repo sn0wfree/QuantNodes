@@ -68,8 +68,8 @@
                       <BranchesOutlined v-else />
                     </a-avatar>
                   </template>
-                  <template #title>
-                    <a @click="$router.push(`/wiki/factors/${item.name}`)">{{ item.name }}</a>
+                   <template #title>
+                    <a @click="$router.push(item.type === 'strategy' ? `/wiki/strategies/${item.name}` : `/wiki/factors/${item.name}`)">{{ item.name }}</a>
                   </template>
                   <template #description>
                     <a-tag>{{ item.category }}</a-tag>
@@ -125,6 +125,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { message } from 'ant-design-vue'
 import {
   ExperimentOutlined,
   BranchesOutlined,
@@ -158,6 +159,7 @@ const fetchStats = async () => {
     stats.value = data
   } catch (error) {
     console.error('Failed to fetch stats:', error)
+    message.error('Failed to load dashboard stats')
   }
 }
 
@@ -167,6 +169,7 @@ const fetchActivity = async () => {
     recentActivity.value = data
   } catch (error) {
     console.error('Failed to fetch activity:', error)
+    message.error('Failed to load recent activity')
   } finally {
     loading.value = false
   }

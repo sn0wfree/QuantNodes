@@ -204,7 +204,7 @@ const handleBacktest = (record: any) => {
 }
 
 const handleEdit = (record: any) => {
-  router.push(`/wiki/strategies/${record.name}`)
+  router.push({ path: '/strategy/editor', query: { strategy: record.name } })
 }
 
 onMounted(() => {

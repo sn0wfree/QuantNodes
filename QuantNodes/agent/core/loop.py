@@ -139,6 +139,9 @@ class AgentLoop:
 
     async def chat(self, message: str, session_id: str = "default") -> str:
         """简单的单轮对话API（不经过消息总线）"""
+        if self.provider is None:
+            return "Error: LLM provider not configured."
+
         session = self.session_manager.get_session(session_id)
 
         history = [

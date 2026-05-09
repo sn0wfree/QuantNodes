@@ -35,7 +35,7 @@
           </template>
           <MonacoEditor
             ref="editorRef"
-            v-model:value="yamlContent"
+            v-model="yamlContent"
             language="yaml"
             :height="editorHeight"
             :minimap="true"

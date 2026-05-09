@@ -1,7 +1,7 @@
 <template>
   <a-layout-sider class="sidebar" :collapsed="collapsed" collapsible @collapse="onCollapse">
     <a-menu
-      v-model:selectedKeys="selectedKeys"
+      :selectedKeys="selectedKeys"
       v-model:openKeys="openKeys"
       theme="dark"
       mode="inline"

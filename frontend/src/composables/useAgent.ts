@@ -7,7 +7,7 @@ export function useAgent() {
   const isStreaming = ref(false)
   const streamContent = ref('')
 
-  const wsUrl = `${import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000'}/ws/chat`
+  const wsUrl = '/api/ws/chat'
 
   const { isConnected, connect, send, disconnect } = useWebSocket({
     url: wsUrl,

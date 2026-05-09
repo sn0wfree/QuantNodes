@@ -112,6 +112,24 @@ async def create_strategy(strategy: StrategyInfo):
     return result
 
 
+@router.put("/strategies/{name}")
+async def update_strategy(name: str, strategy: StrategyInfo):
+    """Update an existing strategy"""
+    result = await wiki_service.update_strategy(name, strategy.model_dump(exclude_unset=True))
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.delete("/strategies/{name}")
+async def delete_strategy(name: str):
+    """Delete a strategy"""
+    result = await wiki_service.delete_strategy(name)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
 @router.get("/search")
 async def search_wiki(
     q: str = Query(..., description="Search query"),

@@ -7,6 +7,7 @@ export interface WebSocketOptions {
   onDisconnect?: () => void
   reconnectInterval?: number
   maxReconnectAttempts?: number
+  maxQueueSize?: number
 }
 
 export function useWebSocket(options: WebSocketOptions) {
@@ -17,6 +18,7 @@ export function useWebSocket(options: WebSocketOptions) {
     onDisconnect,
     reconnectInterval = 3000,
     maxReconnectAttempts = 5,
+    maxQueueSize = 50,
   } = options
 
   let ws: WebSocket | null = null
@@ -24,6 +26,7 @@ export function useWebSocket(options: WebSocketOptions) {
   const reconnectAttempts = ref(0)
   let intentionalClose = false
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  const pendingMessages: any[] = []
 
   const connect = () => {
     try {
@@ -34,6 +37,7 @@ export function useWebSocket(options: WebSocketOptions) {
         isConnected.value = true
         reconnectAttempts.value = 0
         console.log('WebSocket connected')
+        flushQueue()
       }
 
       ws.onmessage = (event) => {
@@ -67,14 +71,26 @@ export function useWebSocket(options: WebSocketOptions) {
     }
   }
 
+  const flushQueue = () => {
+    while (pendingMessages.length > 0 && ws && ws.readyState === WebSocket.OPEN) {
+      const msg = pendingMessages.shift()
+      ws.send(JSON.stringify(msg))
+    }
+  }
+
   const send = (data: any) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(data))
+    } else if (pendingMessages.length < maxQueueSize) {
+      pendingMessages.push(data)
+    } else {
+      console.warn('WebSocket queue full, dropping message')
     }
   }
 
   const disconnect = () => {
     intentionalClose = true
+    pendingMessages.length = 0
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null

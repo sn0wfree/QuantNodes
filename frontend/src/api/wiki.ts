@@ -72,6 +72,12 @@ export const wikiApi = {
   createStrategy: (data: Partial<StrategyInfo>) =>
     post('/wiki/strategies', data),
 
+  updateStrategy: (name: string, data: Partial<StrategyInfo>) =>
+    put(`/wiki/strategies/${name}`, data),
+
+  deleteStrategy: (name: string) =>
+    del(`/wiki/strategies/${name}`),
+
   searchStrategies: (q: string, limit?: number) =>
     get<any[]>('/wiki/strategies/search', { params: { q, limit } }),
 

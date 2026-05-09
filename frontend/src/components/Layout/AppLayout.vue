@@ -28,7 +28,7 @@ import AppSidebar from './AppSidebar.vue'
   overflow-y: auto;
 }
 
-:global(body.dark) .content {
+:global(html[data-theme="dark"]) .content {
   background: #1f1f1f;
 }
 </style>

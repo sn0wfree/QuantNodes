@@ -20,7 +20,7 @@
         <a-card title="Strategy Configuration">
           <MonacoEditor
             ref="editorRef"
-            v-model:value="configYaml"
+            v-model="configYaml"
             language="yaml"
             :height="editorHeight"
             :minimap="true"
