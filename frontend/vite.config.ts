@@ -13,15 +13,12 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: env.PORT ? parseInt(env.PORT) : 3000,
+      port: env.PORT ? parseInt(env.PORT) : 5173,
       host: env.HOST || '0.0.0.0',
       proxy: {
         '/api': {
           target: `http://localhost:${env.API_PORT || 8000}`,
           changeOrigin: true,
-        },
-        '/ws': {
-          target: `ws://localhost:${env.API_PORT || 8000}`,
           ws: true,
         },
       },

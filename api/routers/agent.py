@@ -5,7 +5,7 @@ from ..services.agent_service import agent_service
 router = APIRouter()
 
 
-@router.get("/status")
+@router.get("/agent/status")
 async def get_status():
     """Get Agent status"""
     return {

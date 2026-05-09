@@ -10,6 +10,9 @@ from .routers import agent, wiki, backtest, factor, skill, dream, stats, strateg
 async def lifespan(app: FastAPI):
     # Startup
     print(f"Starting QuantNodes API v{app_settings.VERSION}")
+    from .services.agent_service import agent_service
+    agent_service._get_agent()
+    print("Agent initialized")
     yield
     # Shutdown
     print("Shutting down QuantNodes API")
@@ -30,7 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(stats.router, prefix="/api", tags=["stats"])
+app.include_router(stats.router, prefix="/api/stats", tags=["stats"])
 app.include_router(agent.router, prefix="/api", tags=["agent"])
 app.include_router(wiki.router, prefix="/api/wiki", tags=["wiki"])
 app.include_router(backtest.router, prefix="/api/backtest", tags=["backtest"])
@@ -48,4 +51,9 @@ async def root():
 
 @app.get("/health")
 async def health():
+    return {"status": "healthy"}
+
+
+@app.get("/api/health")
+async def api_health():
     return {"status": "healthy"}

@@ -340,7 +340,7 @@ def cmd_init(args) -> int:
     print("-" * 50)
     print("初始化 llmwikify Wiki")
     print("-" * 50)
-    init_llmwikify_wiki()
+    init_llmwikify_wiki(force=args.force)
     print()
     
     print("-" * 50)
