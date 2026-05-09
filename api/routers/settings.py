@@ -19,13 +19,13 @@ class ImportRequest(BaseModel):
     json_data: str
 
 
-@router.get("/")
+@router.get("")
 async def get_settings():
     """Get all settings"""
     return await settings_service.get_settings()
 
 
-@router.put("/")
+@router.put("")
 async def update_settings(request: SettingsUpdateRequest):
     """Update settings"""
     return await settings_service.update_settings(request.settings)
