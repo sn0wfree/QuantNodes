@@ -51,9 +51,24 @@ def create_directory_structure():
         print(f"  ✓ 创建目录: {d}/")
 
 
-def init_llmwikify_wiki() -> bool:
+def init_llmwikify_wiki(force: bool = False) -> bool:
     """Initialize QuantNodes wiki structure."""
     print("\n  初始化 QuantNodes Wiki...")
+    
+    wiki_exists = Path("wiki/index.md").exists()
+    
+    if wiki_exists and not force:
+        print("  ⏭️  Wiki 已存在，跳过初始化")
+        try:
+            init_factor_wiki("wiki", force=False)
+            print("  ✓ Wiki 配置已更新")
+            return True
+        except Exception as e:
+            print(f"  ⚠ 配置更新失败: {e}")
+            return False
+    
+    if wiki_exists and force:
+        print("  🔄 强制重新初始化 Wiki")
     
     try:
         result = subprocess.run(
@@ -70,7 +85,7 @@ def init_llmwikify_wiki() -> bool:
         return False
     
     try:
-        init_factor_wiki("wiki")
+        init_factor_wiki("wiki", force=True)
         print("  ✓ QuantNodes 专用配置写入完成")
         return True
     except Exception as e:

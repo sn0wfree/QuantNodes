@@ -120,9 +120,12 @@ class WikiProxyError(FactorError):
         self.details = details or {}
 
 
-def init_factor_wiki(wiki_path: str) -> None:
+def init_factor_wiki(wiki_path: str, force: bool = False) -> None:
     wiki = create_wiki(wiki_path)
-    wiki.init()
+    if not force and wiki.root.exists():
+        pass
+    else:
+        wiki.init()
     wiki_md = """# QuantNodes Strategy Wiki 配置
 
 > 本 Wiki 专为量化策略研究设计，用于存储因子、策略、研报逻辑等知识。
