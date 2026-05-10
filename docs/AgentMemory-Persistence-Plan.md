@@ -3,6 +3,7 @@
 > **版本**: v2.5.0
 > **状态**: 待实施
 > **创建日期**: 2026-05-10
+> **最后更新**: 2026-05-10（合并所有确认决策）
 
 ---
 
@@ -27,6 +28,7 @@ AgentLoop / AgentService
 | 3 | **memory.md 无自动丰富** — 仅通过 `dream_store.inject_to_memory()` 更新，Agent 无法从对话中自动学习 | MODERATE | `QuantNodes/agent/core/memory.py:117-122` |
 | 4 | **memory.md 无结构化索引** — 单个大文件，无分类，无加载控制 | LOW | `QuantNodes/agent/templates/agent/system_prompt.md` |
 | 5 | **Dream 与 Agent 对话脱节** — `analyze_factor/analyze_strategy` 需要外部调用，Agent 自身对话中的洞察不被捕获 | MODERATE | `QuantNodes/agent/core/dream.py` |
+| 6 | **上下文截断丢失信息** — `truncate_history` 丢弃旧消息、`microcompact` 截断工具输出，有价值洞察随截断永久丢失 | MODERATE | `autocompact.py`, `runner.py:68-69,178-179,318` |
 
 ---
 
@@ -37,6 +39,7 @@ AgentLoop / AgentService
 3. **Agent 自主记忆** — 借鉴 Claude Code `MEMORY.md` 模式，Agent 在对话中决定记什么
 4. **Dream 与对话闭环** — Agent 对话中的洞察自动进入 Dream 系统
 5. **渐进式加载** — System prompt 按需注入相关记忆，而非全量注入
+6. **截断前保留洞察** — 上下文压缩时提取有价值信息，防止随截断永久丢失
 
 ---
 
@@ -75,7 +78,6 @@ def _get_agent(self, config: dict = None) -> Agent:
         if config is None:
             config = self._load_settings_config()
         self._agent = Agent(workspace=self.workspace, config=config)
-        # 确保 agent 的 session_manager 可被 API 层访问
     return self._agent
 ```
 
@@ -272,7 +274,6 @@ def search_history(
                 continue
             try:
                 data = json.loads(line)
-                # 在 user 和 assistant 内容中搜索
                 user_text = data.get("user", "")
                 assistant_text = data.get("assistant", "")
                 if query in user_text or query in assistant_text:
@@ -328,11 +329,23 @@ Claude Code 的记忆系统核心思想：
 - **Agent 自主写入** — 在对话中直接通过 `file_ops` 工具更新记忆文件
 - **System prompt 注入索引** — 每次对话开始时注入 MEMORY.md 索引，Agent 按需读取详细文件
 
-### 5.3 目录结构
+### 5.3 业界调研摘要
+
+| 框架 | 写入触发 | 存储格式 | 加载策略 | 记忆验证 |
+|------|---------|---------|---------|---------|
+| **Claude Code** | 自动(模型判断) + 用户手动 | Markdown 索引 + topic 文件 | 索引每次加载(200行上限) + topic 按需读取 | 无(模型自主判断) |
+| **Cursor** | 纯用户手动 | Markdown rules 文件 | 按配置模式注入 | 无 |
+| **ChatGPT** | 自动 + 用户明确 | 服务端存储 | 系统自动注入 | 隐私偏向(避免敏感信息) |
+| **LangChain** | 自动checkpoint + 开发者编码 | JSON in DB | checkpoint全量 + store按需搜索 | `@after_model` 中间件 |
+| **AutoGPT** | 自动(Memory Creator Agent) | SQLite/JSON | 每轮注入 | LLM-based 过滤器 |
+
+**结论**: 没有系统有真正的「验证」机制。Claude Code 模式（Agent 自主判断 + 索引上限控制 + 用户可通过 file_ops 审查/删除）已足够。**暂不实现 memory_guard**，如未来 Agent 写入垃圾记忆再加过滤。
+
+### 5.4 目录结构
 
 ```
 .quant_agent/memory/
-├── memory.md              ← 废弃（渐进迁移后删除）
+├── memory.md              ← 废弃（直接删除内容，迁移到 topic 文件）
 ├── MEMORY.md              ← 新增：记忆索引（Agent 维护）
 ├── topic-factor.md        ← 因子相关记忆
 ├── topic-strategy.md      ← 策略相关记忆
@@ -344,7 +357,7 @@ Claude Code 的记忆系统核心思想：
 └── dream-insights.md      ← Dream 洞察主题文件（Phase D）
 ```
 
-### 5.4 MEMORY.md 格式
+### 5.5 MEMORY.md 格式
 
 ```markdown
 # Memory Index
@@ -365,7 +378,7 @@ Claude Code 的记忆系统核心思想：
 - 项目结构：QuantNodes v2.5.0，Agent系统15个工具 (topic-project.md:architecture)
 ```
 
-### 5.5 具体改动
+### 5.6 具体改动
 
 #### `QuantNodes/agent/templates/agent/system_prompt.md`
 
@@ -458,7 +471,7 @@ class MemoryManager:
 
 #### `QuantNodes/agent/core/loop.py`
 
-**修改 `_process_message()` 和 `chat()` 中的记忆注入逻辑**:
+**修改记忆注入逻辑**:
 
 ```python
 # 之前
@@ -478,14 +491,12 @@ self.memory = MemoryStore(self.workspace)
 self.memory_manager = MemoryManager(self.workspace)
 ```
 
-### 5.6 迁移策略
+### 5.7 迁移策略
 
-1. Phase C 实施时，检测是否存在 `memory.md`
-2. 如果存在，将内容迁移到对应的 topic 文件
-3. 生成 `MEMORY.md` 索引
-4. 保留 `memory.md` 作为备份，标记为废弃
+1. Phase C 实施时，直接删除 `memory.md` 内容，迁移到对应的 topic 文件
+2. 生成 `MEMORY.md` 索引
 
-### 5.7 文件变更清单
+### 5.8 文件变更清单
 
 | 文件 | 操作 |
 |------|------|
@@ -501,16 +512,28 @@ self.memory_manager = MemoryManager(self.workspace)
 
 Agent 对话中的洞察自动进入 Dream 系统，形成「对话 → 洞察 → 记忆」闭环。
 
-### 6.2 架构
+### 6.2 设计决策（已确认）
+
+| 决策点 | 选择 | 理由 |
+|--------|------|------|
+| DreamHook 触发位置 | **AgentLoop runner 完成后**（非 `after_iteration`） | `after_iteration` 仅在工具执行后触发，无法捕获最终文本响应；AgentLoop 层可直接访问 `session.messages` 计算轮数 |
+| 激活门槛 | **可配置 `min_rounds_before_activate`**（默认 5） | Agent 需要足够对话历史才能做出有价值的洞察判断 |
+| 分析粒度 | **整体分析**（一轮对话一个 Dream 摘要） | 逐轮分析产生过多低质量 Dream |
+| 新洞察检查 | **分析前先检查是否包含新洞察**（`should_analyze_conversation()`） | 避免对无信息量的对话生成 Dream |
+| 记忆验证 | **暂不实现 memory_guard** | Claude Code 模式（Agent 自主判断 + 索引上限控制）已足够 |
+
+### 6.3 架构
 
 ```
 Agent 对话
     │
     ▼
-DreamHook (after_iteration)
-    │ 分析对话内容
+AgentLoop._process_message() / chat() / chat_stream()
+    │ runner 完成后
+    ├── 检查 round_count >= min_rounds_before_activate
+    ├── should_analyze_conversation() 关键词检查
     ▼
-DreamEngine.generate_dream()
+DreamEngine.analyze_conversation()
     │
     ▼
 DreamStore.save_dream() → dreams.jsonl
@@ -522,7 +545,20 @@ dream_insights.md (主题文件，通过 MemoryManager 写入)
 MEMORY.md 索引更新
 ```
 
-### 6.3 具体改动
+### 6.4 DreamConfig 新增字段
+
+```python
+@dataclass
+class DreamConfig:
+    # ... 现有字段 ...
+    min_rounds_before_activate: int = 5   # 新增：激活前最少对话轮数
+    analysis_keywords: List[str] = field(default_factory=lambda: [
+        "IC", "ICIR", "因子", "factor", "回测", "策略", "收益", "夏普",
+        "回撤", "胜率", "年化", "记住", "以后", "每次", "偏好",
+    ])  # 新增：对话洞察检测关键词
+```
+
+### 6.5 具体改动
 
 #### `QuantNodes/agent/core/dream.py`
 
@@ -535,7 +571,7 @@ async def analyze_conversation(
     assistant_response: str,
     tools_used: List[str] = None,
 ) -> Optional[Dream]:
-    """分析对话并生成洞察 Dream"""
+    """分析对话并生成洞察 Dream（仅在包含新洞察时生成）"""
     insights = []
     confidence = 0.6
 
@@ -557,7 +593,7 @@ async def analyze_conversation(
         confidence += 0.15
 
     if not insights:
-        return None
+        return None  # 无新洞察，不生成 Dream
 
     confidence = min(max(confidence, 0.3), 1.0)
     return await self.generate_dream(
@@ -570,96 +606,77 @@ async def analyze_conversation(
     )
 ```
 
-#### 新增 `QuantNodes/agent/core/hook.py`
-
-**新增 `DreamHook`**:
+**新增 `should_analyze_conversation()`**:
 
 ```python
-class DreamHook(AgentHook):
-    """对话结束时自动分析并生成 Dream"""
-
-    def __init__(self, dream_engine: "DreamEngine"):
-        self.dream_engine = dream_engine
-        self._current_user_msg = None
-
-    async def before_iteration(self, context: AgentHookContext) -> None:
-        """捕获用户消息"""
-        if context.messages:
-            last_user = None
-            for msg in reversed(context.messages):
-                if msg.get("role") == "user":
-                    last_user = msg.get("content", "")
-                    break
-            self._current_user_msg = last_user
-
-    async def after_iteration(self, context: AgentHookContext) -> None:
-        """对话结束后分析并生成 Dream"""
-        if not context.final_content or not self._current_user_msg:
-            return
-
-        tools_used = [
-            tc.get("name", "") for tc in context.tool_calls
-        ] if context.tool_calls else []
-
-        dream = await self.dream_engine.analyze_conversation(
-            user_message=self._current_user_msg,
-            assistant_response=context.final_content,
-            tools_used=tools_used,
-        )
-
-        if dream and dream.confidence >= self.dream_engine.config.min_confidence:
-            # 将洞察写入 dream-insights.md
-            await self._update_dream_topic(dream)
-
-    async def _update_dream_topic(self, dream) -> None:
-        """更新 dream-insights.md 主题文件"""
-        try:
-            from .memory import MemoryManager
-            mm = MemoryManager(self.dream_engine.dream_store.workspace.parent)
-            existing = mm.read_topic("dream-insights")
-            timestamp = dream.timestamp[:10]
-            new_entry = f"\n### {timestamp} - {dream.type}\n"
-            new_entry += f"- {dream.content}\n"
-            for insight in dream.insights:
-                new_entry += f"  - {insight}\n"
-
-            updated = existing + new_entry
-            mm.write_topic("dream-insights", updated)
-
-            # 更新 MEMORY.md 索引
-            index = mm.read_index()
-            if "topic-dream-insights.md" not in index:
-                index += "\n## Insights\n- Dream洞察记录 (topic-dream-insights.md)\n"
-                mm.write_index(index)
-        except Exception:
-            pass
+def should_analyze_conversation(
+    self, user_message: str, assistant_response: str
+) -> bool:
+    """快速检查对话是否可能包含值得提取的洞察"""
+    combined = user_message + assistant_response
+    return any(kw in combined for kw in self.config.analysis_keywords)
 ```
 
 #### `QuantNodes/agent/core/loop.py`
 
-**注册 DreamHook**:
+**不在 Hook 中触发 Dream，改为在 AgentLoop 层直接调用**:
 
 ```python
-# 在 __init__ 或初始化方法中
-from .dream import DreamEngine
-from .memory import DreamStore
-from .hook import DreamHook
+async def _process_message(self, msg: InboundMessage) -> None:
+    session = self.session_manager.get_session(msg.session_key)
 
-dream_store = DreamStore(self.workspace)
-dream_engine = DreamEngine(dream_store)
-dream_hook = DreamHook(dream_engine)
+    # ... 现有逻辑：构建消息、执行 runner ...
 
-if isinstance(self.hook, CompositeHook):
-    self.hook.add_hook(dream_hook)
+    result = await self.runner.run(spec)
+
+    # Phase D: 对话洞察分析（仅在积累足够后触发）
+    round_count = len([m for m in session.messages if m.get("role") == "user"])
+    if round_count >= self.dream_engine.config.min_rounds_before_activate:
+        if self.dream_engine.should_analyze_conversation(msg.content, result.final_content or ""):
+            dream = await self.dream_engine.analyze_conversation(
+                user_message=msg.content,
+                assistant_response=result.final_content or "",
+                tools_used=result.tools_used,
+            )
+            if dream and dream.confidence >= self.dream_engine.config.min_confidence:
+                await self._update_dream_topic(dream)
+
+    # ... 现有逻辑：保存 Session、append_history ...
 ```
 
-### 6.4 文件变更清单
+**新增 `_update_dream_topic()` 辅助方法**:
+
+```python
+async def _update_dream_topic(self, dream) -> None:
+    """将 Dream 洞察写入 dream-insights.md 主题文件"""
+    try:
+        existing = self.memory_manager.read_topic("dream-insights")
+        timestamp = dream.timestamp[:10]
+        new_entry = f"\n### {timestamp} - {dream.type}\n"
+        new_entry += f"- {dream.content}\n"
+        for insight in dream.insights:
+            new_entry += f"  - {insight}\n"
+
+        updated = existing + new_entry
+        self.memory_manager.write_topic("dream-insights", updated)
+
+        # 更新 MEMORY.md 索引
+        index = self.memory_manager.read_index()
+        if "topic-dream-insights.md" not in index:
+            index += "\n## Insights\n- Dream洞察记录 (topic-dream-insights.md)\n"
+            self.memory_manager.write_index(index)
+    except Exception:
+        pass
+```
+
+`chat()` 和 `chat_stream()` 中同理添加相同逻辑。
+
+### 6.6 文件变更清单
 
 | 文件 | 操作 |
 |------|------|
-| `QuantNodes/agent/core/dream.py` | 修改 — 新增 `analyze_conversation()` |
-| `QuantNodes/agent/core/hook.py` | 修改 — 新增 `DreamHook` 类 |
-| `QuantNodes/agent/core/loop.py` | 修改 — 注册 `DreamHook` |
+| `QuantNodes/agent/core/dream.py` | 修改 — 新增 `analyze_conversation()`, `should_analyze_conversation()`，`DreamConfig` 新增字段 |
+| `QuantNodes/agent/core/loop.py` | 修改 — 三个方法中添加 Dream 分析逻辑，新增 `_update_dream_topic()` |
 
 ---
 
@@ -687,17 +704,18 @@ class AgentLoop:
         # Phase C: MemoryManager（新增）
         self.memory_manager = MemoryManager(self.workspace)
 
-        # Phase D: DreamEngine + DreamHook（新增）
+        # Phase D: DreamEngine（新增）
         dream_store = DreamStore(self.workspace)
         self.dream_engine = DreamEngine(dream_store)
-        dream_hook = DreamHook(self.dream_engine)
-        if isinstance(self.hook, CompositeHook):
-            self.hook.add_hook(dream_hook)
+
+        # Phase F: 截断分析队列（新增）
+        self._pending_dream_analysis: List[Dict] = []
+        self._compaction_counter: int = 0
 ```
 
 #### 7.2.2 `_process_message()` / `chat()` / `chat_stream()` 统一改造
 
-三个方法遵循相同模式：
+三个方法遵循相同模式（以 `_process_message` 为例）：
 
 ```python
 async def _process_message(self, msg: InboundMessage) -> None:
@@ -705,7 +723,11 @@ async def _process_message(self, msg: InboundMessage) -> None:
 
     # 构建消息
     history = [m for m in session.messages if m.get("role") in ("user", "assistant", "tool")]
-    history = truncate_history(history, max_messages=20)
+
+    # Phase F: 截断前捕获被丢弃的消息
+    history, dropped = truncate_history(history, max_messages=20)
+    if dropped:
+        self._pending_dream_analysis.extend(dropped)
 
     messages = self.context_builder.build_messages(
         history=history, current_message=msg.content,
@@ -731,6 +753,22 @@ async def _process_message(self, msg: InboundMessage) -> None:
         model=self.model, max_iterations=self.max_iterations,
     )
     result = await self.runner.run(spec)
+
+    # Phase F: runner 完成后处理待分析截断消息
+    if self._pending_dream_analysis:
+        await self._process_compaction_dreams(msg.session_key)
+
+    # Phase D: 对话洞察分析（仅在积累足够后触发）
+    round_count = len([m for m in session.messages if m.get("role") == "user"])
+    if round_count >= self.dream_engine.config.min_rounds_before_activate:
+        if self.dream_engine.should_analyze_conversation(msg.content, result.final_content or ""):
+            dream = await self.dream_engine.analyze_conversation(
+                user_message=msg.content,
+                assistant_response=result.final_content or "",
+                tools_used=result.tools_used,
+            )
+            if dream and dream.confidence >= self.dream_engine.config.min_confidence:
+                await self._update_dream_topic(dream)
 
     # 保存 Session
     session.add_message("user", msg.content)
@@ -761,28 +799,26 @@ async def _process_message(self, msg: InboundMessage) -> None:
     ▼
 AgentLoop._process_message() / chat() / chat_stream()
     │
-    ├── 1. SessionManager.get_session()     ← 读取历史
-    ├── 2. truncate_history()                ← 裁剪到20条
-    ├── 3. build_messages()                  ← 构建 prompt
-    ├── 4. memory_manager.get_memory_context()  ← Phase C: 注入索引
-    ├── 5. memory.get_recent_history()       ← Phase B: 注入近期摘要
+    ├── 1. SessionManager.get_session()              ← 读取历史
+    ├── 2. truncate_history() → (保留, 丢弃)          ← Phase F: 捕获丢弃消息
+    ├── 3. build_messages()                           ← 构建 prompt
+    ├── 4. memory_manager.get_memory_context()        ← Phase C: 注入索引
+    ├── 5. memory.get_recent_history()                ← Phase B: 注入近期摘要
     │
     ▼
 AgentRunner.run() / run_stream()
     │
     ├── LLM 调用
-    ├── 工具执行
-    ├── DreamHook.after_iteration()         ← Phase D: 分析对话
-    │   └── DreamEngine.analyze_conversation()
-    │       └── DreamStore.save_dream()
-    │       └── MemoryManager.write_topic("dream-insights")
+    ├── 工具执行（truncate_text 截断工具输出）
     │
     ▼
 AgentLoop 后处理
     │
+    ├── _process_compaction_dreams()                  ← Phase F: 截断消息 Dream 分析
+    ├── DreamEngine.analyze_conversation()            ← Phase D: 对话洞察分析
     ├── session.add_message() × 2
-    ├── session_manager.save_session()      ← Phase A: 磁盘持久化
-    ├── memory.append_history()             ← Phase B: 对话摘要
+    ├── session_manager.save_session()                ← Phase A: 磁盘持久化
+    ├── memory.append_history()                       ← Phase B: 对话摘要
     │
     ▼
 Agent 通过 file_ops 工具写入记忆（Phase C）
@@ -795,12 +831,192 @@ Agent 通过 file_ops 工具写入记忆（Phase C）
 
 | 文件 | 操作 |
 |------|------|
-| `QuantNodes/agent/core/loop.py` | 修改 — 初始化 MemoryManager + DreamHook，统一改造三个方法 |
+| `QuantNodes/agent/core/loop.py` | 修改 — 初始化所有组件，统一改造三个方法 |
 | `QuantNodes/agent/__init__.py` | 修改 — 同步 memory_manager 引用 |
 
 ---
 
-## 8. 全量文件变更汇总
+## 8. Phase F: Compaction-Dream 集成
+
+### 8.1 目标
+
+上下文压缩（`truncate_history`）丢弃旧消息时，提取有价值洞察生成 Dream，防止信息永久丢失。
+
+### 8.2 设计决策（已确认）
+
+| 决策点 | 选择 | 理由 |
+|--------|------|------|
+| 实现方案 | **方案 C: 返回值修改** | 最简单，不改 Hook 接口，truncate_history 返回 `(保留, 丢弃)` 元组 |
+| Dream 触发层级 | **仅 AgentLoop 层**（`max=20`） | AgentRunner 内部截断（`max=30`）的消息来自同一次 runner 调用，会在 runner 结束后通过 Session 保存，下次 AgentLoop 调用时如果再被截断才会进入 Dream 分析 |
+| 分析粒度 | **整体分析** | 合并所有被丢弃消息为一个 Dream 摘要 |
+| 频率控制 | **每 N 次截断才分析一次**（`compaction_dream_interval`，默认 5） | 截断可能每次调用都发生，需限制 Dream 提取频率 |
+
+### 8.3 工具输出截断分析
+
+对 `microcompact` 和 `truncate_text` 截断的工具输出进行价值评估：
+
+| 工具 | 截断风险 | Dream 价值 | 截断部分包含的新信息 |
+|------|---------|-----------|-------------------|
+| **`factor`** | 极高 | **极高** | IC 时序数据尾部（最近日期的 IC 值），趋势/regime 信息 |
+| **`web_fetch`** | 几乎必然 | **极高** | 文章主体内容（只看到前100词） |
+| **`wiki`** (list/search) | 高 | 高 | 因子目录完整性、知识图谱结构 |
+| `file_ops` (read_file) | 极高 | 中高 | 代码文件尾部结构 |
+| `code_search` | 极高 | 中 | 搜索结果尾部匹配 |
+| `git_ops` (git_diff) | 极高 | 中 | 多文件变更的尾部 |
+| 其他 | 低-中 | 低 | — |
+
+**结论**: `factor` 和 `web_fetch` 的截断输出值得做 Dream 分析，但工具级 Dream 提取需要 tool-specific extractors，复杂度较高。Phase F 优先实现**消息级截断 Dream**（truncate_history 丢弃的旧消息），工具级截断作为后续优化。
+
+### 8.4 具体改动
+
+#### `QuantNodes/agent/core/autocompact.py`
+
+**修改 `truncate_history()` 返回值**:
+
+```python
+def truncate_history(
+    messages: List[Dict[str, Any]],
+    max_messages: int = 20,
+    keep_system: bool = True,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """裁剪历史消息，返回 (保留的消息, 被丢弃的消息)"""
+    if len(messages) <= max_messages:
+        return messages, []
+
+    system_msgs = []
+    other_msgs = []
+
+    for msg in messages:
+        if keep_system and msg.get("role") == "system":
+            system_msgs.append(msg)
+        else:
+            other_msgs.append(msg)
+
+    dropped = []
+    if len(other_msgs) > max_messages:
+        dropped = other_msgs[:-max_messages]
+        other_msgs = other_msgs[-max_messages:]
+
+    return system_msgs + other_msgs, dropped
+```
+
+#### `QuantNodes/agent/core/runner.py`
+
+**忽略 dropped 返回值**（AgentRunner 内部不参与 Dream 分析）:
+
+```python
+# runner.py:68 和 runner.py:178
+messages, _ = truncate_history(messages, max_messages=30)
+```
+
+#### `QuantNodes/agent/core/loop.py`
+
+**新增截断 Dream 处理逻辑**:
+
+```python
+async def _process_compaction_dreams(self, session_key: str) -> None:
+    """分析被截断的消息，提取洞察生成 Dream"""
+    if not self._pending_dream_analysis:
+        return
+
+    # 频率控制：每 N 次截断才分析一次
+    self._compaction_counter += 1
+    if self._compaction_counter < self.dream_engine.config.compaction_dream_interval:
+        self._pending_dream_analysis.clear()
+        return
+    self._compaction_counter = 0
+
+    # 整体分析：将所有被丢弃的消息合并为一个摘要
+    dropped_text = "\n".join([
+        f"[{m.get('role', '?')}]: {m.get('content', '')[:200]}"
+        for m in self._pending_dream_analysis[-10:]  # 最多取最后10条
+    ])
+
+    # 快速检查是否包含可提取的洞察
+    if not self.dream_engine.should_analyze_conversation(dropped_text, ""):
+        self._pending_dream_analysis.clear()
+        return
+
+    # 生成 Dream
+    dream = await self.dream_engine.generate_dream(
+        dream_type="compaction_insight",
+        content=f"被截断的对话历史摘要 ({len(self._pending_dream_analysis)} 条消息)",
+        source="compaction",
+        insights=[f"截断消息中检测到关键词，已提取摘要"],
+        confidence=0.7,
+        tags=["compaction", "auto"],
+    )
+
+    if dream and dream.confidence >= self.dream_engine.config.min_confidence:
+        await self._update_dream_topic(dream)
+
+    self._pending_dream_analysis.clear()
+```
+
+#### `QuantNodes/agent/core/dream.py`
+
+**`DreamConfig` 新增字段**:
+
+```python
+compaction_dream_interval: int = 5  # 每 N 次截断才分析一次
+```
+
+### 8.5 向后兼容
+
+`truncate_history` 签名变更影响所有调用方：
+
+| 调用方 | 改动 |
+|--------|------|
+| `loop.py:97,151,201` | 改为 `history, dropped = truncate_history(...)` |
+| `runner.py:68,178` | 改为 `messages, _ = truncate_history(...)` |
+| 所有测试文件 | 同步适配新签名 |
+
+### 8.6 文件变更清单
+
+| 文件 | 操作 |
+|------|------|
+| `QuantNodes/agent/core/autocompact.py` | 修改 — `truncate_history` 返回 `(保留, 丢弃)` 元组 |
+| `QuantNodes/agent/core/runner.py` | 修改 — 适配新签名（忽略 dropped） |
+| `QuantNodes/agent/core/loop.py` | 修改 — 三个方法中集成截断 Dream 分析 |
+| `QuantNodes/agent/core/dream.py` | 修改 — `DreamConfig` 新增 `compaction_dream_interval` |
+
+### 8.7 后续优化（不在本次实施范围）
+
+- **工具级截断 Dream**: 针对 `factor` (IC 时序) 和 `web_fetch` (文章内容) 的 tool-specific extractors
+- **截断内容直接注入 Dream**: 将被截断的工具输出作为 Dream 内容，而非仅记录「检测到关键词」
+
+---
+
+## 9. 全量 Dream 触发点总览
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Dream 触发点（共 3 个）                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Phase F: AgentLoop 对话截断                                  │
+│     truncate_history() 丢弃旧消息                                 │
+│     → dropped 消息存入 _pending_dream_analysis                   │
+│     → runner 完成后由 _process_compaction_dreams() 处理           │
+│     → 频率控制：每 compaction_dream_interval 次才分析              │
+│     → 整体分析：合并为一个 Dream 摘要                              │
+│                                                                 │
+│  2. Phase D: AgentLoop 对话分析                                  │
+│     runner 完成后                                               │
+│     → round_count >= min_rounds_before_activate                  │
+│     → should_analyze_conversation() 关键词检查                    │
+│     → analyze_conversation() 生成 Dream                          │
+│                                                                 │
+│  3. Phase C: Agent 主动写入                                      │
+│     Agent 通过 file_ops 工具写入 MEMORY.md + topic 文件           │
+│     → 无需 Dream 系统，直接持久化                                  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 10. 全量文件变更汇总
 
 | Phase | 文件 | 操作类型 |
 |-------|------|----------|
@@ -812,75 +1028,89 @@ Agent 通过 file_ops 工具写入记忆（Phase C）
 | C | `QuantNodes/agent/core/loop.py` | 修改 |
 | C | `QuantNodes/agent/templates/agent/system_prompt.md` | 修改 |
 | D | `QuantNodes/agent/core/dream.py` | 修改 |
-| D | `QuantNodes/agent/core/hook.py` | 修改 |
 | D | `QuantNodes/agent/core/loop.py` | 修改 |
-| E | `QuantNodes/agent/core/loop.py` | 修改 |
+| F | `QuantNodes/agent/core/autocompact.py` | 修改 |
+| F | `QuantNodes/agent/core/runner.py` | 修改 |
+| F | `QuantNodes/agent/core/loop.py` | 修改 |
 | E | `QuantNodes/agent/__init__.py` | 修改 |
 | — | `tests/agent/test_memory_persistence.py` | 新增 |
 
-**涉及文件**: 8个现有文件修改 + 1个新增测试文件
+**涉及文件**: 9 个现有文件修改 + 1 个新增测试文件
 
 ---
 
-## 9. 测试计划
+## 11. 测试计划
 
-### 9.1 Phase A 测试
+### 11.1 Phase A 测试
 
 - `test_session_unification.py` — 验证 `AgentService` 不再有 `_sessions` 字段
 - `test_list_sessions_reads_disk.py` — 验证重启后 Session 仍可查询
 - `test_delete_session_persists.py` — 验证删除操作持久化
 
-### 9.2 Phase B 测试
+### 11.2 Phase B 测试
 
 - `test_history_append_with_tools.py` — 验证 `tools_used` 字段写入
 - `test_get_recent_history.py` — 验证读取和过滤
 - `test_search_history.py` — 验证关键词搜索
 
-### 9.3 Phase C 测试
+### 11.3 Phase C 测试
 
 - `test_memory_manager_index.py` — 验证索引读写
 - `test_memory_manager_topic.py` — 验证主题文件读写
 - `test_memory_context_injection.py` — 验证 System prompt 注入
 - `test_memory_migration.py` — 验证 memory.md 迁移
 
-### 9.4 Phase D 测试
+### 11.4 Phase D 测试
 
 - `test_analyze_conversation.py` — 验证对话分析生成 Dream
-- `test_dream_hook_after_iteration.py` — 验证 Hook 触发
+- `test_should_analyze_conversation.py` — 验证关键词过滤
+- `test_dream_rounds_threshold.py` — 验证 min_rounds_before_activate 门槛
 - `test_dream_topic_update.py` — 验证 dream-insights.md 更新
 - `test_dream_confidence_filter.py` — 验证低置信度过滤
 
-### 9.5 Phase E 测试
+### 11.5 Phase E 测试
 
 - `test_end_to_end_memory_flow.py` — 端到端：消息 → Session + History + Dream + Memory
 - `test_agent_loop_init_memory.py` — 验证初始化包含所有组件
 
+### 11.6 Phase F 测试
+
+- `test_truncate_history_returns_dropped.py` — 验证返回值包含丢弃消息
+- `test_compaction_dream_frequency.py` — 验证频率控制
+- `test_compaction_dream_analysis.py` — 验证截断消息 Dream 分析
+- `test_compaction_dream_no_insight.py` — 验证无洞察时不生成 Dream
+- `test_runner_ignores_dropped.py` — 验证 AgentRunner 忽略 dropped 返回值
+
 ---
 
-## 10. 风险与缓解
+## 12. 风险与缓解
 
 | 风险 | 概率 | 影响 | 缓解 |
 |------|------|------|------|
 | Agent 过度记忆，MEMORY.md 膨胀 | 中 | 低 | MAX_INDEX_LINES=200 限制，Agent 自行管理 |
-| DreamHook 分析耗时影响响应 | 低 | 中 | 异步执行，不阻塞主响应 |
+| Dream 分析耗时影响响应 | 低 | 中 | 异步执行，不阻塞主响应；频率控制 |
 | history.jsonl 无限增长 | 高 | 低 | 定期裁剪，保留最近 10000 条 |
-| memory.md 迁移数据丢失 | 低 | 中 | 保留原文件备份 |
+| memory.md 迁移数据丢失 | 低 | 中 | 直接迁移到 topic 文件 |
 | SessionManager 并发写入冲突 | 低 | 高 | 已有 `_cache` + 文件级写入 |
+| truncate_history 签名变更影响范围 | 中 | 低 | 所有调用方同步适配，测试覆盖 |
+| 截断 Dream 频率过高产生噪音 | 中 | 低 | compaction_dream_interval 频率控制 |
 
 ---
 
-## 11. 实施顺序
+## 13. 实施顺序
 
 ```
-Phase A (Session 统一)     ← 先做，消除数据不一致
+Phase A (Session 统一)          ← 先做，消除数据不一致
     ↓
-Phase B (history 增强)     ← 简单，为 Phase C 打基础
+Phase B (history 增强)          ← 简单，为 Phase C 打基础
     ↓
-Phase C (Memory 自动丰富)  ← 核心特性，Claude Code 风格
+Phase C (Memory 自动丰富)       ← 核心特性，Claude Code 风格
     ↓
-Phase D (Dream 集成)       ← 依赖 Phase C 的 MemoryManager
+Phase D (Dream 集成)            ← 依赖 Phase C 的 MemoryManager
     ↓
-Phase E (AgentLoop 集成)   ← 端到端验证
+Phase F (Compaction-Dream)      ← 依赖 Phase D 的 DreamEngine
+    ↓
+Phase E (AgentLoop 集成)        ← 端到端验证，合并所有变更
 ```
 
 每个 Phase 独立可测试、可提交，不破坏现有功能。
