@@ -9,24 +9,28 @@ from QuantNodes.agent.core.autocompact import truncate_history, microcompact
 class TestTruncateHistory:
     def test_no_truncate_needed(self):
         messages = [{"role": "user", "content": f"msg{i}"} for i in range(10)]
-        result = truncate_history(messages, max_messages=20)
-        assert len(result) == 10
+        kept, dropped = truncate_history(messages, max_messages=20)
+        assert len(kept) == 10
+        assert dropped == []
 
     def test_truncate_without_system(self):
         messages = [{"role": "user", "content": f"msg{i}"} for i in range(30)]
-        result = truncate_history(messages, max_messages=20)
-        assert len(result) == 20
+        kept, dropped = truncate_history(messages, max_messages=20)
+        assert len(kept) == 20
+        assert len(dropped) == 10
 
     def test_truncate_keep_system(self):
         messages = [{"role": "system", "content": "system prompt"}]
         messages += [{"role": "user", "content": f"msg{i}"} for i in range(30)]
-        result = truncate_history(messages, max_messages=20)
-        assert len(result) == 21
-        assert result[0]["role"] == "system"
+        kept, dropped = truncate_history(messages, max_messages=20)
+        assert len(kept) == 21
+        assert kept[0]["role"] == "system"
+        assert len(dropped) == 10
 
     def test_empty_messages(self):
-        result = truncate_history([])
-        assert result == []
+        kept, dropped = truncate_history([])
+        assert kept == []
+        assert dropped == []
 
 
 class TestMicrocompact:

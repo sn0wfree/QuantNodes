@@ -97,3 +97,26 @@ class SessionManager:
                 del self._cache[session_id]
             return True
         return False
+
+    def get_session_info(self, session_id: str) -> dict | None:
+        """获取会话元数据（不加载全部消息）"""
+        session_file = self.workspace / f"{session_id}.json"
+        if not session_file.exists():
+            return None
+        with open(session_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return {
+            "session_id": session_id,
+            "message_count": len(data.get("messages", [])),
+            "created_at": data.get("created_at"),
+            "updated_at": data.get("updated_at"),
+        }
+
+    def list_sessions_with_info(self) -> List[dict]:
+        """列出所有会话及其元数据"""
+        result = []
+        for sid in self.list_sessions():
+            info = self.get_session_info(sid)
+            if info:
+                result.append(info)
+        return sorted(result, key=lambda x: x.get("updated_at", ""), reverse=True)

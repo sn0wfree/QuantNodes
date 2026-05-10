@@ -182,7 +182,8 @@ class Agent:
 
 
 from .core.loop import AgentLoop
-from .core.memory import MemoryStore
+from .core.memory import MemoryStore, MemoryManager, DreamStore
+from .core.dream import DreamEngine
 from .core.autocompact import truncate_history, microcompact
 
 __all__ = [
@@ -190,6 +191,9 @@ __all__ = [
     "Agent",
     "AgentLoop",
     "MemoryStore",
+    "MemoryManager",
+    "DreamStore",
+    "DreamEngine",
     "truncate_history",
     "microcompact",
 ]

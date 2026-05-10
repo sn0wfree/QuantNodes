@@ -65,7 +65,7 @@ class AgentRunner:
             )
             await self.hook.before_iteration(context)
 
-            messages = truncate_history(messages, max_messages=30)
+            messages, _ = truncate_history(messages, max_messages=30)
             messages = microcompact(messages, max_tool_result_chars=spec.max_tool_result_chars)
 
             tool_schemas = spec.tools.get_tool_schemas()
@@ -175,7 +175,7 @@ class AgentRunner:
             )
             await self.hook.before_iteration(context)
 
-            messages = truncate_history(messages, max_messages=30)
+            messages, _ = truncate_history(messages, max_messages=30)
             messages = microcompact(messages, max_tool_result_chars=spec.max_tool_result_chars)
 
             tool_schemas = spec.tools.get_tool_schemas()

@@ -34,6 +34,12 @@ class DreamConfig:
     auto_inject: bool = True
     inject_position: str = "prepend"
     retention_days: int = 30
+    min_rounds_before_activate: int = 5
+    compaction_dream_interval: int = 5
+    analysis_keywords: List[str] = field(default_factory=lambda: [
+        "IC", "ICIR", "因子", "factor", "回测", "策略", "收益", "夏普",
+        "回撤", "胜率", "年化", "记住", "以后", "每次", "偏好",
+    ])
 
 
 class DreamStore:
@@ -126,11 +132,63 @@ class MemoryStore:
         with open(self._memory_file, "w", encoding="utf-8") as f:
             f.write(content)
 
-    def append_history(self, entry: Dict[str, Any]) -> None:
-        """Append session summary to history"""
+    def append_history(
+        self,
+        entry: Dict[str, Any],
+        tools_used: List[str] = None,
+        insights: List[str] = None,
+    ) -> None:
+        """追加对话摘要到历史"""
         entry["timestamp"] = datetime.now().isoformat()
+        if tools_used:
+            entry["tools_used"] = tools_used
+        if insights:
+            entry["insights"] = insights
         with open(self._history_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def get_recent_history(
+        self, limit: int = 50, session_key: str = None
+    ) -> List[Dict[str, Any]]:
+        """读取最近的历史摘要"""
+        if not self._history_file.exists():
+            return []
+        entries = []
+        with open(self._history_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if session_key and data.get("session_key") != session_key:
+                        continue
+                    entries.append(data)
+                except json.JSONDecodeError:
+                    continue
+        return entries[-limit:]
+
+    def search_history(
+        self, query: str, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """按关键词搜索历史摘要"""
+        if not self._history_file.exists():
+            return []
+        results = []
+        with open(self._history_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    user_text = data.get("user", "")
+                    assistant_text = data.get("assistant", "")
+                    if query in user_text or query in assistant_text:
+                        results.append(data)
+                except json.JSONDecodeError:
+                    continue
+        return results[-limit:]
 
     def get_memory_context(self) -> str:
         """Get memory context for prompt injection"""
@@ -142,3 +200,53 @@ class MemoryStore:
     def get_dream_store(self) -> DreamStore:
         """Get DreamStore"""
         return self._dream_store
+
+
+class MemoryManager:
+    """Claude Code 风格的记忆管理器"""
+
+    INDEX_FILE = "MEMORY.md"
+    MAX_INDEX_LINES = 200
+    TOPIC_PREFIX = "topic-"
+
+    def __init__(self, workspace: Path | str):
+        self.workspace = Path(workspace) / "memory"
+        self.workspace.mkdir(parents=True, exist_ok=True)
+        self._index_file = self.workspace / self.INDEX_FILE
+
+    def read_index(self) -> str:
+        """读取记忆索引"""
+        if self._index_file.exists():
+            return self._index_file.read_text(encoding="utf-8")
+        return "# Memory Index\n"
+
+    def write_index(self, content: str) -> None:
+        """写入记忆索引（Agent 通过 file_ops 调用）"""
+        self._index_file.write_text(content, encoding="utf-8")
+
+    def read_topic(self, topic: str) -> str:
+        """读取主题文件"""
+        topic_file = self.workspace / f"{self.TOPIC_PREFIX}{topic}.md"
+        if topic_file.exists():
+            return topic_file.read_text(encoding="utf-8")
+        return ""
+
+    def write_topic(self, topic: str, content: str) -> None:
+        """写入主题文件"""
+        topic_file = self.workspace / f"{self.TOPIC_PREFIX}{topic}.md"
+        topic_file.write_text(content, encoding="utf-8")
+
+    def list_topics(self) -> List[str]:
+        """列出所有主题"""
+        topics = []
+        for f in self.workspace.glob(f"{self.TOPIC_PREFIX}*.md"):
+            topic = f.stem.removeprefix(self.TOPIC_PREFIX)
+            topics.append(topic)
+        return sorted(topics)
+
+    def get_memory_context(self) -> str:
+        """获取注入 System prompt 的记忆上下文（仅索引）"""
+        index = self.read_index()
+        if index.strip() == "# Memory Index":
+            return ""
+        return f"## 记忆索引\n\n{index}\n\n如需查看详细内容，使用 file_ops 读取对应 topic 文件。"

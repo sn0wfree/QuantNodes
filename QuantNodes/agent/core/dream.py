@@ -84,6 +84,50 @@ class DreamEngine:
             pass
         return None
 
+    def should_analyze_conversation(
+        self, user_message: str, assistant_response: str
+    ) -> bool:
+        """快速检查对话是否可能包含值得提取的洞察"""
+        combined = user_message + assistant_response
+        return any(kw in combined for kw in self.config.analysis_keywords)
+
+    async def analyze_conversation(
+        self,
+        user_message: str,
+        assistant_response: str,
+        tools_used: List[str] = None,
+    ) -> Optional[Dream]:
+        """分析对话并生成洞察 Dream（仅在包含新洞察时生成）"""
+        insights = []
+        confidence = 0.6
+
+        if any(kw in user_message for kw in ["IC", "ICIR", "因子", "factor"]):
+            if any(kw in assistant_response for kw in ["IC均值", "ICIR", "因子有效", "因子无效", "IC"]):
+                insights.append("对话涉及因子分析")
+                confidence += 0.1
+
+        if any(kw in user_message for kw in ["回测", "策略", "收益", "夏普"]):
+            if any(kw in assistant_response for kw in ["年化", "夏普", "回撤", "胜率"]):
+                insights.append("对话涉及策略回测")
+                confidence += 0.1
+
+        if any(kw in user_message for kw in ["记住", "以后", "每次", "偏好"]):
+            insights.append("用户表达了偏好或要求记忆")
+            confidence += 0.15
+
+        if not insights:
+            return None
+
+        confidence = min(max(confidence, 0.3), 1.0)
+        return await self.generate_dream(
+            dream_type="conversation_insight",
+            content=f"对话摘要: {user_message[:100]}",
+            source="conversation",
+            insights=insights,
+            confidence=confidence,
+            tags=["conversation", "auto"],
+        )
+
     async def analyze_factor(
         self, factor_name: str, ic_data: Dict[str, Any]
     ) -> Dream:

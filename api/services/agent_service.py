@@ -17,7 +17,6 @@ class AgentService:
     def __init__(self, workspace: str = ".quant_agent"):
         self.workspace = workspace
         self._agent: Optional[Agent] = None
-        self._sessions: dict[str, list] = {}
 
     def _get_agent(self, config: dict = None) -> Agent:
         """Get or create Agent instance"""
@@ -26,6 +25,12 @@ class AgentService:
                 config = self._load_settings_config()
             self._agent = Agent(workspace=self.workspace, config=config)
         return self._agent
+
+    @property
+    def session_manager(self):
+        """获取 Agent 内部的 SessionManager"""
+        agent = self._get_agent()
+        return agent.loop.session_manager
 
     def _load_settings_config(self) -> dict:
         """Load agent config from settings service"""
@@ -59,28 +64,18 @@ class AgentService:
     ) -> dict:
         """Send message and get response (non-streaming)"""
         agent = self._get_agent(config)
-        
-        # Store user message
-        if session_id not in self._sessions:
-            self._sessions[session_id] = []
-        self._sessions[session_id].append({
-            "role": "user",
-            "content": content,
-        })
+
+        # Store user message via SessionManager
+        session = self.session_manager.get_session(session_id)
+        session.add_message("user", content)
 
         try:
             # Run agent
             response = await agent.run(content, session_id=session_id)
-            
+
             # Store assistant response
-            self._sessions[session_id].append({
-                "role": "assistant",
-                "content": response,
-            })
-            
-            # Trim to max messages
-            if len(self._sessions[session_id]) > MAX_SESSION_MESSAGES:
-                self._sessions[session_id] = self._sessions[session_id][-MAX_SESSION_MESSAGES:]
+            session.add_message("assistant", response)
+            self.session_manager.save_session(session)
 
             return {
                 "message_id": f"msg-{uuid.uuid4().hex[:12]}",
@@ -106,14 +101,10 @@ class AgentService:
         """Stream message chunks via WebSocket"""
         agent = self._get_agent(config)
         message_id = f"msg-{uuid.uuid4().hex[:12]}"
-        
-        # Store user message
-        if session_id not in self._sessions:
-            self._sessions[session_id] = []
-        self._sessions[session_id].append({
-            "role": "user",
-            "content": content,
-        })
+
+        # Store user message via SessionManager
+        session = self.session_manager.get_session(session_id)
+        session.add_message("user", content)
 
         try:
             full_content = ""
@@ -144,14 +135,8 @@ class AgentService:
                     yield event
 
             # Store assistant response
-            self._sessions[session_id].append({
-                "role": "assistant",
-                "content": full_content,
-            })
-            
-            # Trim to max messages
-            if len(self._sessions[session_id]) > MAX_SESSION_MESSAGES:
-                self._sessions[session_id] = self._sessions[session_id][-MAX_SESSION_MESSAGES:]
+            session.add_message("assistant", full_content)
+            self.session_manager.save_session(session)
 
         except Exception as e:
             yield {
@@ -162,22 +147,26 @@ class AgentService:
 
     def get_history(self, session_id: str) -> list:
         """Get chat history for session"""
-        return self._sessions.get(session_id, [])
+        session = self.session_manager.get_session(session_id)
+        return [{"role": m["role"], "content": m["content"]} for m in session.messages]
 
     def clear_history(self, session_id: str) -> None:
         """Clear chat history for session"""
-        if session_id in self._sessions:
-            del self._sessions[session_id]
+        self.session_manager.delete_session(session_id)
 
     def list_sessions(self) -> list[dict]:
         """List all sessions with metadata"""
         sessions = []
-        for sid, messages in self._sessions.items():
-            first_msg = messages[0] if messages else None
-            last_msg = messages[-1] if messages else None
+        for info in self.session_manager.list_sessions_with_info():
+            sid = info["session_id"]
+            session = self.session_manager.get_session(sid)
+            first_msg = session.messages[0] if session.messages else None
+            last_msg = session.messages[-1] if session.messages else None
             sessions.append({
                 "session_id": sid,
-                "message_count": len(messages),
+                "message_count": info["message_count"],
+                "created_at": info.get("created_at", ""),
+                "updated_at": info.get("updated_at", ""),
                 "first_message": first_msg.get("content", "")[:100] if first_msg else "",
                 "last_message": last_msg.get("content", "")[:100] if last_msg else "",
             })
@@ -187,16 +176,13 @@ class AgentService:
         """Create a new session"""
         if session_id is None:
             session_id = f"session-{uuid.uuid4().hex[:8]}"
-        if session_id not in self._sessions:
-            self._sessions[session_id] = []
+        session = self.session_manager.get_session(session_id)
+        self.session_manager.save_session(session)
         return {"session_id": session_id, "message_count": 0}
 
     def delete_session(self, session_id: str) -> bool:
         """Delete a session"""
-        if session_id in self._sessions:
-            del self._sessions[session_id]
-            return True
-        return False
+        return self.session_manager.delete_session(session_id)
 
 
 # Singleton instance
