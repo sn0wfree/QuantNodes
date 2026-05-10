@@ -1,16 +1,20 @@
 # coding=utf-8
 """
-Dream Engine - Async Insight Generation
+Dream Engine - Async Insight Generation + Skill Dispatch
 
 Phase 4.2: Dream System
+Phase 4.4: Skill Dispatch Integration
 """
 
 import asyncio
+import logging
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Callable
 
 from .memory import Dream, DreamConfig, DreamStore
+
+logger = logging.getLogger(__name__)
 
 
 class DreamEngine:
@@ -170,3 +174,37 @@ class DreamEngine:
                 "auto_inject": self.config.auto_inject,
             },
         }
+
+    async def dispatch_skills(
+        self, query: str, skill_registry=None
+    ) -> List:
+        """根据查询匹配并执行所有技能，返回 SkillResult 列表"""
+        from ..skills.registry import SkillRegistry
+
+        registry = skill_registry or SkillRegistry()
+        skills = registry.list_all()
+        if not skills:
+            return []
+
+        results = []
+        for skill in skills:
+            try:
+                context = {"query": query}
+                result = await skill.execute(context)
+                results.append(result)
+            except Exception as e:
+                logger.error("Skill %s failed in dispatch: %s", skill.name, e)
+                from ..skills.base import SkillResult
+                results.append(
+                    SkillResult(success=False, error=f"{skill.name}: {str(e)}")
+                )
+        return results
+
+    def push_to_agent(self, dream: Dream) -> None:
+        """将洞察注入 DreamStore（影响后续 Agent 回复）"""
+        self.dream_store.save_dream(dream)
+        for subscriber in self._subscribers:
+            try:
+                asyncio.get_event_loop().create_task(subscriber(dream))
+            except RuntimeError:
+                pass

@@ -53,6 +53,9 @@ class Agent:
         from .tools.web_fetch import WebFetchTool
         from .tools.web_search import WebSearchTool
         from .tools.task import TaskTool
+        from .skills.registry import SkillRegistry
+        from .skills.loader import SkillLoader
+        from .skills.bridge import SkillToolBridge
 
         config = config or {}
         workspace_path = Path(workspace)
@@ -75,6 +78,10 @@ class Agent:
         tool_registry.register(WebFetchTool())
         tool_registry.register(WebSearchTool())
         tool_registry.register(TaskTool(workspace=workspace_path))
+
+        skill_registry = SkillRegistry()
+        self._skill_loader = SkillLoader(skill_registry)
+        self._skill_bridge = SkillToolBridge(skill_registry, tool_registry)
 
         provider = self._create_provider(config)
 

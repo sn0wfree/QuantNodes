@@ -1,10 +1,11 @@
 # coding=utf-8
 """
-Skill Registry - Singleton Registry for Skills
+Skill Registry - Singleton Registry for Skills (Thread-Safe)
 
 Phase 4.1: Skill Infrastructure
 """
 
+import threading
 from typing import Dict, List, Optional
 from collections import defaultdict
 
@@ -12,19 +13,21 @@ from .base import Skill, SkillCategory
 
 
 class SkillRegistry:
-    """Skill Registry (Singleton Pattern)"""
+    """Skill Registry (Singleton + Thread-Safe)"""
 
     _instance: Optional["SkillRegistry"] = None
+    _lock = threading.RLock()
 
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._skills: Dict[str, Skill] = {}
-            cls._instance._categories: Dict[
-                SkillCategory, List[str]
-            ] = defaultdict(list)
-            cls._instance._aliases: Dict[str, str] = {}
-        return cls._instance
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+                cls._instance._skills: Dict[str, Skill] = {}
+                cls._instance._categories: Dict[
+                    SkillCategory, List[str]
+                ] = defaultdict(list)
+                cls._instance._aliases: Dict[str, str] = {}
+            return cls._instance
 
     def register(self, skill: Skill, aliases: List[str] = None) -> None:
         """Register a skill"""
