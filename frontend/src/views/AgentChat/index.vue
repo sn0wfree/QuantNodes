@@ -3,12 +3,35 @@
     <div class="chat-header">
       <div class="header-left">
         <span class="status-dot" :class="{ connected: agent.isConnected.value }"></span>
-        <span class="title">Agent</span>
+        <a-dropdown :trigger="['click']">
+          <a-button type="text" class="session-dropdown">
+            {{ currentSessionLabel }}
+            <template #icon><down-outlined /></template>
+          </a-button>
+          <template #overlay>
+            <a-menu @click="handleMenuClick">
+              <a-menu-item key="new">
+                <template #icon><plus-outlined /></template>
+                New Chat
+              </a-menu-item>
+              <a-menu-divider v-if="store.sessions.length" />
+              <a-menu-item
+                v-for="s in store.sessions"
+                :key="s.session_id"
+                :class="{ 'session-active': s.session_id === store.sessionId }"
+              >
+                <div class="session-item">
+                  <span class="session-name">{{ s.session_id }}</span>
+                  <span class="session-count">{{ s.message_count }} msgs</span>
+                </div>
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
       </div>
       <div class="header-right">
-        <a-button type="text" size="small" @click="handleClear">
-          <template #icon><delete-outlined /></template>
-          New Chat
+        <a-button type="text" size="small" @click="handleNewChat">
+          <template #icon><plus-outlined /></template>
         </a-button>
       </div>
     </div>
@@ -59,18 +82,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '@/stores/agent'
 import { useAgent } from '@/composables/useAgent'
 import ChatMessage from '@/components/Chat/ChatMessage.vue'
 import ChatInput from '@/components/Chat/ChatInput.vue'
 import ToolCallCard from '@/components/Chat/ToolCallCard.vue'
-import { DeleteOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, DownOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 
 const store = useAgentStore()
 const agent = useAgent()
 const messagesContainer = ref<HTMLElement>()
+
+const currentSessionLabel = computed(() => {
+  if (store.sessionId === 'default') return 'Default Session'
+  return store.sessionId
+})
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -88,8 +116,16 @@ const handleSend = (content: string) => {
   agent.sendMessage(content)
 }
 
-const handleClear = () => {
-  store.clearMessages()
+const handleNewChat = async () => {
+  await store.createSession()
+}
+
+const handleMenuClick = async ({ key }: { key: string }) => {
+  if (key === 'new') {
+    await store.createSession()
+  } else {
+    await store.switchSession(key)
+  }
 }
 
 watch(
@@ -124,6 +160,7 @@ watch(
 
 onMounted(() => {
   agent.connect()
+  store.loadSessions()
   scrollToBottom()
 })
 
@@ -165,9 +202,31 @@ onUnmounted(() => {
   background: #52c41a;
 }
 
-.title {
+.session-dropdown {
   font-weight: 500;
   font-size: 15px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-count {
+  font-size: 12px;
+  color: #999;
+}
+
+.session-active {
+  background: #e6f4ff;
 }
 
 .chat-container {

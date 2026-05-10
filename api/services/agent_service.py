@@ -169,6 +169,35 @@ class AgentService:
         if session_id in self._sessions:
             del self._sessions[session_id]
 
+    def list_sessions(self) -> list[dict]:
+        """List all sessions with metadata"""
+        sessions = []
+        for sid, messages in self._sessions.items():
+            first_msg = messages[0] if messages else None
+            last_msg = messages[-1] if messages else None
+            sessions.append({
+                "session_id": sid,
+                "message_count": len(messages),
+                "first_message": first_msg.get("content", "")[:100] if first_msg else "",
+                "last_message": last_msg.get("content", "")[:100] if last_msg else "",
+            })
+        return sessions
+
+    def create_session(self, session_id: str | None = None) -> dict:
+        """Create a new session"""
+        if session_id is None:
+            session_id = f"session-{uuid.uuid4().hex[:8]}"
+        if session_id not in self._sessions:
+            self._sessions[session_id] = []
+        return {"session_id": session_id, "message_count": 0}
+
+    def delete_session(self, session_id: str) -> bool:
+        """Delete a session"""
+        if session_id in self._sessions:
+            del self._sessions[session_id]
+            return True
+        return False
+
 
 # Singleton instance
 agent_service = AgentService()

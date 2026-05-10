@@ -34,6 +34,25 @@ async def clear_history(session_id: str):
     return {"status": "cleared"}
 
 
+@router.get("/chat/sessions")
+async def list_sessions():
+    return agent_service.list_sessions()
+
+
+@router.post("/chat/sessions")
+async def create_session(data: dict = None):
+    session_id = (data or {}).get("session_id")
+    return agent_service.create_session(session_id)
+
+
+@router.delete("/chat/sessions/{session_id}")
+async def delete_session(session_id: str):
+    deleted = agent_service.delete_session(session_id)
+    if not deleted:
+        return {"status": "not_found"}
+    return {"status": "deleted"}
+
+
 @router.websocket("/ws/chat")
 async def websocket_chat(websocket: WebSocket):
     await websocket.accept()
