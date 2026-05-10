@@ -2,6 +2,7 @@
 Agent Service - Bridge between FastAPI and QuantNodes Agent system
 """
 
+import asyncio
 import uuid
 from typing import AsyncGenerator, Optional
 
@@ -21,8 +22,34 @@ class AgentService:
     def _get_agent(self, config: dict = None) -> Agent:
         """Get or create Agent instance"""
         if self._agent is None:
-            self._agent = Agent(workspace=self.workspace, config=config or {})
+            if config is None:
+                config = self._load_settings_config()
+            self._agent = Agent(workspace=self.workspace, config=config)
         return self._agent
+
+    def _load_settings_config(self) -> dict:
+        """Load agent config from settings service"""
+        try:
+            from .settings_service import settings_service
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    settings = pool.submit(
+                        asyncio.run, settings_service.get_settings()
+                    ).result()
+            else:
+                settings = loop.run_until_complete(settings_service.get_settings())
+            return settings.get("agent", {})
+        except Exception:
+            return {}
+
+    def reload_agent(self) -> None:
+        """Destroy cached agent and recreate with current settings"""
+        self._agent = None
+        self._get_agent()
+        import logging
+        logging.getLogger(__name__).info("Agent reloaded with current settings")
 
     async def send_message(
         self,

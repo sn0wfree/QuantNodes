@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any
 from ..services.settings_service import settings_service
+from ..services.agent_service import agent_service
 
 router = APIRouter()
 
@@ -28,13 +29,19 @@ async def get_settings():
 @router.put("")
 async def update_settings(request: SettingsUpdateRequest):
     """Update settings"""
-    return await settings_service.update_settings(request.settings)
+    result = await settings_service.update_settings(request.settings)
+    settings_service.sync_core_config()
+    agent_service.reload_agent()
+    return result
 
 
 @router.post("/reset")
 async def reset_settings():
     """Reset settings to defaults"""
-    return await settings_service.reset_settings()
+    result = await settings_service.reset_settings()
+    settings_service.sync_core_config()
+    agent_service.reload_agent()
+    return result
 
 
 @router.get("/export")
@@ -47,7 +54,10 @@ async def export_settings():
 async def import_settings(request: ImportRequest):
     """Import settings from JSON"""
     try:
-        return await settings_service.import_settings(request.json_data)
+        result = await settings_service.import_settings(request.json_data)
+        settings_service.sync_core_config()
+        agent_service.reload_agent()
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

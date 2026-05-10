@@ -86,6 +86,7 @@
                 <a-select-option value="anthropic">Anthropic</a-select-option>
                 <a-select-option value="azure">Azure OpenAI</a-select-option>
                 <a-select-option value="local">Local (Ollama)</a-select-option>
+                <a-select-option value="custom">Custom (OpenAI-Compatible)</a-select-option>
               </a-select>
             </a-form-item>
             <a-form-item label="Model">
@@ -103,6 +104,12 @@
             </a-form-item>
             <a-form-item label="Temperature">
               <a-slider v-model:value="localSettings.agent.temperature" :min="0" :max="2" :step="0.1" :marks="{ 0: '0', 0.7: '0.7', 1: '1', 2: '2' }" />
+            </a-form-item>
+            <a-form-item label="LLM Request Timeout (seconds)">
+              <a-input-number v-model:value="localSettings.agent.llm_timeout" :min="5" :max="300" :step="5" />
+            </a-form-item>
+            <a-form-item label="Max Retries">
+              <a-input-number v-model:value="localSettings.agent.llm_max_retries" :min="0" :max="5" />
             </a-form-item>
           </a-form>
         </a-card>
@@ -219,6 +226,8 @@ const localSettings = reactive({
     api_base: '',
     max_iterations: 5,
     temperature: 0.7,
+    llm_timeout: 60,
+    llm_max_retries: 3,
   },
   editor: {
     font_size: 14,

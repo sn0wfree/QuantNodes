@@ -1,6 +1,20 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
+import json
+from pathlib import Path
+
+
+def _load_agent_from_settings() -> dict:
+    """Load agent config from .quant_agent/settings.json (single source of truth)"""
+    settings_file = Path(".quant_agent/settings.json")
+    if settings_file.exists():
+        try:
+            data = json.loads(settings_file.read_text(encoding="utf-8"))
+            return data.get("agent", {})
+        except Exception:
+            pass
+    return {}
 
 
 class Settings(BaseSettings):
@@ -16,8 +30,13 @@ class Settings(BaseSettings):
         cors_env = os.environ.get("CORS_ORIGINS", "")
         if cors_env:
             self.CORS_ORIGINS = [origin.strip() for origin in cors_env.split(",")]
+        
+        # Load agent config from settings.json (single source of truth)
+        agent_cfg = _load_agent_from_settings()
+        self.AGENT_PROVIDER = agent_cfg.get("provider", "openai")
+        self.AGENT_MODEL = agent_cfg.get("model", "gpt-4")
     
-    # Agent
+    # Agent (defaults overridden by settings.json at init)
     AGENT_PROVIDER: str = "openai"
     AGENT_MODEL: str = "gpt-4"
     

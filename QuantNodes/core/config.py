@@ -1,7 +1,9 @@
 # coding=utf-8
 
+import json
 from typing import Optional, Dict, Any
 from functools import lru_cache
+from pathlib import Path
 from pydantic_settings import BaseSettings
 
 
@@ -89,11 +91,37 @@ class Settings(BaseSettings):
 
         return data
 
+    def load_from_settings(self) -> None:
+        """Load LLM and backtest settings from .quant_agent/settings.json (single source of truth)"""
+        settings_file = Path(".quant_agent/settings.json")
+        if not settings_file.exists():
+            return
+        try:
+            data = json.loads(settings_file.read_text(encoding="utf-8"))
+            agent = data.get("agent", {})
+            if agent.get("api_key"):
+                self.llm.api_key = agent["api_key"]
+            if agent.get("api_base"):
+                self.llm.base_url = agent["api_base"]
+            if agent.get("model"):
+                self.llm.model = agent["model"]
+            if "llm_timeout" in agent:
+                self.llm.timeout = agent["llm_timeout"]
+            if "llm_max_retries" in agent:
+                self.llm.max_retries = agent["llm_max_retries"]
+            backtest = data.get("backtest", {})
+            if "default_commission" in backtest:
+                self.default_commission = backtest["default_commission"]
+        except Exception:
+            pass
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """获取全局配置（单例）"""
-    return Settings()
+    s = Settings()
+    s.load_from_settings()
+    return s
 
 
 settings = get_settings()

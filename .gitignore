@@ -137,3 +137,9 @@ outputs/
 frontend/node_modules/
 frontend/dist/
 frontend/.env.development
+
+# Agent workspace
+.quant_agent/
+
+# Test screenshots
+tests/screenshots/

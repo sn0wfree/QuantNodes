@@ -39,6 +39,8 @@ class SettingsService:
                 "api_base": "",
                 "max_iterations": 5,
                 "temperature": 0.7,
+                "llm_timeout": 60,
+                "llm_max_retries": 3,
             },
             "editor": {
                 "font_size": 14,
@@ -167,6 +169,29 @@ class SettingsService:
         self._settings = settings
         await self._save_settings()
         return {"status": "updated", "provider": provider}
+
+    def sync_core_config(self) -> None:
+        """Sync settings.json values into QuantNodes.core.config.settings in-memory singleton"""
+        if self._settings is None:
+            return
+        try:
+            from QuantNodes.core.config import settings as core_settings
+            agent = self._settings.get("agent", {})
+            if "api_key" in agent and agent["api_key"]:
+                core_settings.llm.api_key = agent["api_key"]
+            if "api_base" in agent and agent["api_base"]:
+                core_settings.llm.base_url = agent["api_base"]
+            if "model" in agent:
+                core_settings.llm.model = agent["model"]
+            if "llm_timeout" in agent:
+                core_settings.llm.timeout = agent["llm_timeout"]
+            if "llm_max_retries" in agent:
+                core_settings.llm.max_retries = agent["llm_max_retries"]
+            backtest = self._settings.get("backtest", {})
+            if "default_commission" in backtest:
+                core_settings.default_commission = backtest["default_commission"]
+        except Exception:
+            pass
 
 
 # Singleton instance
