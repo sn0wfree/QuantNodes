@@ -1,18 +1,51 @@
 <template>
   <div class="agent-chat">
+    <div class="chat-header">
+      <div class="header-left">
+        <span class="status-dot" :class="{ connected: agent.isConnected.value }"></span>
+        <span class="title">Agent</span>
+      </div>
+      <div class="header-right">
+        <a-button type="text" size="small" @click="handleClear">
+          <template #icon><delete-outlined /></template>
+          New Chat
+        </a-button>
+      </div>
+    </div>
+
     <div class="chat-container">
       <div class="messages" ref="messagesContainer">
         <ChatMessage
           v-for="message in store.messages"
           :key="message.id"
           :role="message.role"
+          :content="message.role === 'assistant' ? message.content : undefined"
+          :time="formatTime(message.timestamp)"
         >
-          {{ message.content }}
+          <template v-if="message.role === 'user'">{{ message.content }}</template>
         </ChatMessage>
 
-        <ChatMessage v-if="agent.isStreaming.value" role="assistant">
-          {{ agent.streamContent.value }}
-          <span class="typing-indicator">|</span>
+        <template v-if="store.messages.length">
+          <div class="tool-calls-section" v-if="agent.currentToolCalls.value.length > 0">
+            <ToolCallCard
+              v-for="tc in agent.currentToolCalls.value"
+              :key="tc.id"
+              :toolName="tc.name"
+              :arguments="tc.arguments"
+              :result="tc.result ? { output: tc.result } : undefined"
+              :status="tc.status"
+            />
+          </div>
+        </template>
+
+        <ChatMessage v-if="agent.isStreaming.value" role="assistant" :content="agent.streamContent.value">
+          <template v-if="!agent.streamContent.value">
+            <span class="typing-indicator">
+              <span class="dot"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </span>
+          </template>
         </ChatMessage>
 
         <a-empty v-if="!store.messages.length && !agent.isStreaming.value" description="Start a conversation with the Agent" />
@@ -31,6 +64,9 @@ import { useAgentStore } from '@/stores/agent'
 import { useAgent } from '@/composables/useAgent'
 import ChatMessage from '@/components/Chat/ChatMessage.vue'
 import ChatInput from '@/components/Chat/ChatInput.vue'
+import ToolCallCard from '@/components/Chat/ToolCallCard.vue'
+import { DeleteOutlined } from '@ant-design/icons-vue'
+import dayjs from 'dayjs'
 
 const store = useAgentStore()
 const agent = useAgent()
@@ -44,11 +80,18 @@ const scrollToBottom = () => {
   })
 }
 
+const formatTime = (timestamp: number) => {
+  return dayjs(timestamp).format('HH:mm')
+}
+
 const handleSend = (content: string) => {
   agent.sendMessage(content)
 }
 
-// Watch message count for new messages
+const handleClear = () => {
+  store.clearMessages()
+}
+
 watch(
   () => store.messages.length,
   () => {
@@ -56,7 +99,6 @@ watch(
   }
 )
 
-// Watch stream content for auto-scroll during streaming
 watch(
   () => agent.streamContent.value,
   () => {
@@ -64,7 +106,13 @@ watch(
   }
 )
 
-// Watch streaming state to scroll when streaming ends
+watch(
+  () => agent.currentToolCalls.value.length,
+  () => {
+    scrollToBottom()
+  }
+)
+
 watch(
   () => agent.isStreaming.value,
   (isStreaming, wasStreaming) => {
@@ -89,6 +137,37 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: #fff;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d9d9d9;
+}
+
+.status-dot.connected {
+  background: #52c41a;
+}
+
+.title {
+  font-weight: 500;
+  font-size: 15px;
 }
 
 .chat-container {
@@ -104,21 +183,46 @@ onUnmounted(() => {
   padding: 16px;
 }
 
+.tool-calls-section {
+  margin: 8px 0;
+  padding-left: 44px;
+}
+
 .input-area {
   padding: 16px;
   border-top: 1px solid #f0f0f0;
 }
 
 .typing-indicator {
-  animation: blink 1s infinite;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 0;
 }
 
-@keyframes blink {
-  0%, 50% {
-    opacity: 1;
+.typing-indicator .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #999;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-indicator .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
   }
-  51%, 100% {
-    opacity: 0;
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
   }
 }
 </style>

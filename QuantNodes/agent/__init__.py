@@ -167,13 +167,18 @@ class Agent:
             session_id: 会话ID
             
         Yields:
-            回复片段
+            dict: 事件字典
+                - {"type": "token", "content": str} - 流式文本token
+                - {"type": "tool_call", "id": str, "name": str, "arguments": dict}
+                - {"type": "tool_result", "id": str, "name": str, "content": str, "success": bool}
+                - {"type": "done", "content": str, "tools_used": list, "stop_reason": str}
+                - {"type": "error", "content": str}
         """
         if self._loop.provider is None:
-            yield "Error: LLM provider not configured. Set QUANTNODES__LLM__API_KEY in .env"
+            yield {"type": "error", "content": "LLM provider not configured. Set QUANTNODES__LLM__API_KEY in .env"}
             return
-        result = await self._loop.chat(message, session_id=session_id)
-        yield result
+        async for event in self._loop.chat_stream(message, session_id=session_id):
+            yield event
 
 
 from .core.loop import AgentLoop

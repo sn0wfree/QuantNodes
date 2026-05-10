@@ -182,6 +182,58 @@ class AgentLoop:
 
         return result.final_content or ""
 
+    async def chat_stream(self, message: str, session_id: str = "default"):
+        """流式单轮对话API（不经过消息总线）
+
+        Yields:
+            dict: 事件字典（token, tool_call, tool_result, done, error）
+        """
+        if self.provider is None:
+            yield {"type": "error", "content": "LLM provider not configured."}
+            return
+
+        session = self.session_manager.get_session(session_id)
+
+        history = [
+            m for m in session.messages
+            if m.get("role") in ("user", "assistant", "tool")
+        ]
+        history = truncate_history(history, max_messages=20)
+
+        messages = self.context_builder.build_messages(
+            history=history,
+            current_message=message,
+        )
+
+        memory_ctx = self.memory.get_memory_context()
+        if memory_ctx and messages and messages[0].get("role") == "system":
+            messages[0]["content"] += f"\n\n{memory_ctx}"
+
+        spec = AgentRunSpec(
+            initial_messages=messages,
+            tools=self.tool_registry,
+            model=self.model,
+            max_iterations=self.max_iterations,
+        )
+
+        final_content = ""
+        async for event in self.runner.run_stream(spec):
+            if event["type"] == "done":
+                final_content = event.get("content", "")
+            yield event
+
+        session.add_message("user", message)
+        if final_content:
+            session.add_message("assistant", final_content)
+
+        self.memory.append_history({
+            "session_key": session_id,
+            "user": message[:200],
+            "assistant": final_content[:200],
+        })
+
+        self.session_manager.save_session(session)
+
     def stop(self) -> None:
         """停止主循环"""
         self._running = False

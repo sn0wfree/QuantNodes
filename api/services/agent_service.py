@@ -116,15 +116,32 @@ class AgentService:
         })
 
         try:
-            # Stream agent response
             full_content = ""
-            async for chunk in agent.chat(content, session_id=session_id):
-                full_content += chunk
-                yield {
-                    "type": "chunk",
-                    "content": chunk,
-                    "message_id": message_id,
-                }
+            tools_used = []
+            async for event in agent.chat(content, session_id=session_id):
+                event["message_id"] = message_id
+
+                if event["type"] == "token":
+                    full_content += event.get("content", "")
+                    yield event
+                elif event["type"] == "tool_call":
+                    tools_used.append(event.get("name", ""))
+                    yield event
+                elif event["type"] == "tool_result":
+                    yield event
+                elif event["type"] == "done":
+                    final = event.get("content", "")
+                    if final:
+                        full_content = final
+                    yield {
+                        "type": "done",
+                        "message_id": message_id,
+                        "content": full_content,
+                        "tools_used": list(set(tools_used)),
+                        "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+                    }
+                elif event["type"] == "error":
+                    yield event
 
             # Store assistant response
             self._sessions[session_id].append({
@@ -136,12 +153,6 @@ class AgentService:
             if len(self._sessions[session_id]) > MAX_SESSION_MESSAGES:
                 self._sessions[session_id] = self._sessions[session_id][-MAX_SESSION_MESSAGES:]
 
-            # Send done signal
-            yield {
-                "type": "done",
-                "message_id": message_id,
-                "usage": {"prompt_tokens": 0, "completion_tokens": 0},
-            }
         except Exception as e:
             yield {
                 "type": "error",

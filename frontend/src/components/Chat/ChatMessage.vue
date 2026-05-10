@@ -9,8 +9,18 @@
       </a-avatar>
     </div>
     <div class="content">
-      <div class="bubble">
-        <slot />
+      <div class="bubble" :class="{ 'bubble-markdown': role === 'assistant' }">
+        <template v-if="role === 'assistant' && content">
+          <MarkdownRenderer :content="content" />
+        </template>
+        <template v-else>
+          <slot />
+        </template>
+      </div>
+      <div class="message-actions" v-if="role === 'assistant' && content">
+        <a-button type="text" size="small" @click="handleCopy">
+          <template #icon><copy-outlined /></template>
+        </a-button>
       </div>
       <div class="time" v-if="time">{{ time }}</div>
     </div>
@@ -18,12 +28,26 @@
 </template>
 
 <script setup lang="ts">
-import { UserOutlined, RobotOutlined } from '@ant-design/icons-vue'
+import { UserOutlined, RobotOutlined, CopyOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import MarkdownRenderer from './MarkdownRenderer.vue'
 
-defineProps<{
+const props = defineProps<{
   role: 'user' | 'assistant'
+  content?: string
   time?: string
 }>()
+
+const handleCopy = async () => {
+  if (props.content) {
+    try {
+      await navigator.clipboard.writeText(props.content)
+      message.success('Copied')
+    } catch {
+      message.error('Copy failed')
+    }
+  }
+}
 </script>
 
 <style scoped>
@@ -54,6 +78,10 @@ defineProps<{
   word-break: break-word;
 }
 
+.bubble-markdown {
+  padding: 8px 12px;
+}
+
 .user .bubble {
   background: #1677ff;
   color: #fff;
@@ -62,6 +90,16 @@ defineProps<{
 .assistant .bubble {
   background: #f5f5f5;
   color: #333;
+}
+
+.message-actions {
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.chat-message:hover .message-actions {
+  opacity: 1;
 }
 
 .time {

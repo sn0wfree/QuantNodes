@@ -5,9 +5,10 @@ QuantNodes LLM Provider适配器
 适配现有LLMClientBase到Agent Provider接口
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Callable, Awaitable
 import asyncio
 import json
+import re
 
 from .base import LLMProvider, LLMResponse, ToolCallRequest
 from QuantNodes.ai.llm.base import LLMClientBase, Message as QNMessage, MessageRole
@@ -104,4 +105,85 @@ class QuantNodesLLMProvider(LLMProvider):
             tool_calls=tool_calls,
             finish_reason="tool_calls" if tool_calls else "stop",
             usage=qn_response.usage or {},
+        )
+
+    async def chat_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.7,
+        on_content_delta: Callable[[str], Awaitable[None]] | None = None,
+    ) -> LLMResponse:
+        """流式调用QuantNodes LLM客户端"""
+        messages = self._enforce_role_alternation(messages)
+        qn_messages = self._convert_messages(messages)
+
+        if tools:
+            tools_desc = "\n".join([
+                f"- {t['function']['name']}: {t['function']['description']}"
+                for t in tools
+            ])
+            system_msg = next((m for m in qn_messages if m.role == MessageRole.SYSTEM), None)
+            if system_msg:
+                system_msg.content += f"\n\n可用工具:\n{tools_desc}"
+                system_msg.content += "\n\n如果需要调用工具，请使用```tool_call```代码块输出JSON格式的工具调用。"
+
+        full_content = ""
+        tool_call_buffer = ""
+        in_tool_call = False
+        streamed_content = ""
+
+        def _iter_chunks():
+            return self.client.chat_stream(
+                messages=qn_messages,
+                model=model or self.default_model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+        loop = asyncio.get_event_loop()
+        chunks = await loop.run_in_executor(None, lambda: list(_iter_chunks()))
+
+        for chunk in chunks:
+            delta = chunk.content or ""
+            if not delta:
+                continue
+
+            full_content += delta
+
+            if in_tool_call:
+                tool_call_buffer += delta
+                if "```" in tool_call_buffer:
+                    in_tool_call = False
+                    tool_call_buffer = ""
+                continue
+
+            if "```tool_call" in full_content:
+                parts = full_content.split("```tool_call", 1)
+                before = parts[0]
+                if before[len(streamed_content):].strip():
+                    new_text = before[len(streamed_content):]
+                    streamed_content = before
+                    if on_content_delta:
+                        await on_content_delta(new_text)
+                in_tool_call = True
+                tool_call_buffer = delta
+                continue
+
+            new_text = full_content[len(streamed_content):]
+            if new_text:
+                streamed_content = full_content
+                if on_content_delta:
+                    await on_content_delta(new_text)
+
+        tool_calls = self._parse_tool_calls(full_content)
+        content = full_content.split("```tool_call")[0].strip() if tool_calls else full_content.strip()
+
+        return LLMResponse(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason="tool_calls" if tool_calls else "stop",
+            usage={},
         )

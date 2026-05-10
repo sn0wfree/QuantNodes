@@ -148,6 +148,148 @@ class AgentRunner:
             had_injections=had_injections,
         )
 
+    async def run_stream(self, spec: AgentRunSpec):
+        """执行主循环（流式版本）
+
+        Yields:
+            dict: 事件字典，类型包括:
+                - {"type": "token", "content": str} - 流式文本token
+                - {"type": "tool_call", "id": str, "name": str, "arguments": dict} - 工具调用开始
+                - {"type": "tool_result", "id": str, "name": str, "content": str, "success": bool} - 工具执行结果
+                - {"type": "done", "content": str, "tools_used": list, "stop_reason": str} - 完成
+                - {"type": "error", "content": str} - 错误
+        """
+        messages = list(spec.initial_messages)
+        tools_used: List[str] = []
+        total_usage: Dict[str, int] = {}
+        error: str | None = None
+        stop_reason = "max_iterations"
+        had_injections = False
+        final_content = ""
+
+        for iteration in range(spec.max_iterations):
+            context = AgentHookContext(
+                iteration=iteration,
+                messages=list(messages),
+                usage=dict(total_usage),
+            )
+            await self.hook.before_iteration(context)
+
+            messages = truncate_history(messages, max_messages=30)
+            messages = microcompact(messages, max_tool_result_chars=spec.max_tool_result_chars)
+
+            tool_schemas = spec.tools.get_tool_schemas()
+
+            async def on_delta(delta: str):
+                nonlocal final_content
+                final_content += delta
+                yield {"type": "token", "content": delta}
+
+            collected_tokens = []
+
+            async def collect_tokens(delta: str):
+                collected_tokens.append(delta)
+
+            response = await self.provider.chat_stream(
+                messages=messages,
+                tools=tool_schemas if tool_schemas else None,
+                model=spec.model,
+                on_content_delta=collect_tokens,
+            )
+
+            for token in collected_tokens:
+                yield {"type": "token", "content": token}
+
+            context.response = response
+            total_usage = self._merge_usage(total_usage, response.usage)
+
+            if response.error:
+                error = response.error
+                stop_reason = "error"
+                yield {"type": "error", "content": error}
+                assistant_msg = self._build_assistant_message(response)
+                messages.append(assistant_msg)
+                break
+
+            if not response.should_execute_tools:
+                stop_reason = "completed"
+                assistant_msg = self._build_assistant_message(response)
+                messages.append(assistant_msg)
+                break
+
+            await self.hook.before_execute_tools(context)
+
+            for tc in response.tool_calls:
+                yield {
+                    "type": "tool_call",
+                    "id": tc.id,
+                    "name": tc.name,
+                    "arguments": tc.arguments,
+                }
+
+            tool_results, tool_events = await self._execute_tools(
+                response.tool_calls,
+                spec.tools,
+                spec.concurrent_tools,
+                spec.max_tool_result_chars,
+            )
+
+            tools_used.extend([tc.name for tc in response.tool_calls])
+            context.tool_calls = response.tool_calls
+            context.tool_results = tool_results
+            context.tool_events = tool_events
+
+            for result, tc in zip(tool_results, response.tool_calls):
+                success = not str(result).startswith("Error:")
+                yield {
+                    "type": "tool_result",
+                    "id": tc.id,
+                    "name": tc.name,
+                    "content": str(result),
+                    "success": success,
+                }
+
+            assistant_msg = self._build_assistant_message(response)
+            messages.append(assistant_msg)
+
+            for result, tool_call in zip(tool_results, response.tool_calls):
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "name": tool_call.name,
+                    "content": str(result),
+                })
+
+            await self.hook.after_iteration(context)
+
+            if spec.injection_callback:
+                injections = await spec.injection_callback()
+                if injections:
+                    messages.extend(injections)
+                    had_injections = True
+
+            final_content = ""
+
+        if not final_content:
+            if messages and messages[-1].get("role") == "assistant":
+                final_content = messages[-1].get("content") or ""
+
+        context = AgentHookContext(
+            iteration=spec.max_iterations,
+            messages=messages,
+            final_content=final_content,
+            stop_reason=stop_reason,
+            error=error,
+        )
+        final_content = self.hook.finalize_content(context, final_content)
+
+        yield {
+            "type": "done",
+            "content": final_content or "",
+            "tools_used": list(set(tools_used)),
+            "stop_reason": stop_reason,
+        }
+
     async def _execute_tools(
         self,
         tool_calls: List[Any],
