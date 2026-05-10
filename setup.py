@@ -1,7 +1,7 @@
 # coding=utf-8
 from setuptools import setup, find_packages
 
-__version__ = '0.4.1'
+__version__ = '2.5.0'
 __author__ = 'sn0wfree'
 
 setup(

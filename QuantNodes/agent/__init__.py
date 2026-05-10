@@ -11,7 +11,7 @@ Usage:
     response = await agent.run("帮我生成一个动量策略")
 """
 
-__version__ = "0.1.0"
+__version__ = "2.5.0"
 
 
 class Agent:

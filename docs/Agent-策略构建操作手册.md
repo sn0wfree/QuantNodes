@@ -684,4 +684,4 @@ cd frontend && npm run dev
 
 **文档版本**：v1.0  
 **更新时间**：2026-05-08  
-**适用版本**：QuantNodes v0.4.0+
+**适用版本**：QuantNodes v2.4.0+

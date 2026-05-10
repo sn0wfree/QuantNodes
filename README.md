@@ -291,7 +291,7 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 
 ## 变更日志
 
-### v0.5.0 (2026-05-10)
+### v2.5.0 (2026-05-10)
 
 - ✅ Agent 智能体系统：15 个内置工具，支持文件操作、代码搜索、Git、Web 搜索等
 - ✅ 新增 `web_fetch` 工具：网页抓取，支持 text/html 格式
@@ -304,14 +304,14 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - ✅ 修复 `should_execute_tools` 逻辑 Bug
 - ✅ 2698+ 测试用例
 
-### v0.4.1 (2026-05-09)
+### v2.4.1 (2026-05-09)
 
 - ✅ CLI 优化：依赖安装自动化（Python 依赖通过 pyproject.toml，前端依赖首次 import 时自动安装）
 - ✅ CLI 优化：init 流程简化（只初始化 Wiki 和创建配置文件）
 - ✅ llmwikify Wiki 集成：初始化时自动创建 raw/, wiki/, wiki.md, index.md, log.md
 - ✅ 目录结构优化：Wiki 放在项目根目录，与 data/ 平级
 
-### v0.4.0 (2026-05-08)
+### v2.4.0 (2026-05-08)
 
 - ✅ Feature 3A - WikiFactorProxy：因子库读写接口，支持 llmwikify 解析 PDF
 - ✅ Feature 3B - 研报复现：从研报提取因子公式，验证有效性，存入 Wiki 因子库
@@ -321,7 +321,7 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - ✅ 2574+ 测试用例，覆盖率 ~80%
 - ✅ 统一前端到 Vue 3 + Ant Design Vue 4.x
 
-### v0.3.0 (2026-04-30)
+### v2.3.0 (2026-04-30)
 
 - ✅ 实现 config-driven 回测的算子扩展机制（通用 fallback + custom_operators 加载）
 - ✅ 迁移 6 个独有算子到 factor_functions（mad, weighted_aggr_mean, fill_null_by_strategy 等）
@@ -329,7 +329,7 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - ✅ ts_corr 协方差公式修复 + group_winsorize 实现
 - ✅ 算子构建规范文档
 
-### v0.2.0 (2026-04-28)
+### v2.2.0 (2026-04-28)
 
 - ✅ 实现 DataPreprocessingFun 类，完全移除 QuantStudio 依赖
 - ✅ 统一 PointOperation/TimeOperation 空数据处理
@@ -339,7 +339,7 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - ✅ 添加 pandas_utils 工具模块
 - ✅ 添加 Vue 3 前端应用骨架 (后统一为 Vue)
 
-### v0.1.0 (2026-04-27)
+### v2.1.0 (2026-04-27)
 
 - ✅ 完成 9/9 阶段重构
 - ✅ 97+ 因子算子实现
