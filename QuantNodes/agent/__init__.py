@@ -46,6 +46,10 @@ class Agent:
         from .tools.backtest import BacktestTool
         from .tools.factor import FactorTool
         from .tools.config_backtest import ConfigBacktestTool
+        from .tools.wiki import WikiTool
+        from .tools.file_ops import FileOpsTool
+        from .tools.code_search import CodeSearchTool
+        from .tools.git_ops import GitOpsTool
 
         config = config or {}
         workspace_path = Path(workspace)
@@ -61,6 +65,10 @@ class Agent:
         tool_registry.register(BacktestTool())
         tool_registry.register(FactorTool())
         tool_registry.register(ConfigBacktestTool())
+        tool_registry.register(WikiTool(wiki_path=str(workspace_path / "wiki")))
+        tool_registry.register(FileOpsTool(workspace=workspace_path))
+        tool_registry.register(CodeSearchTool(workspace=workspace_path))
+        tool_registry.register(GitOpsTool(workspace=workspace_path))
 
         provider = self._create_provider(config)
 
@@ -76,15 +84,42 @@ class Agent:
         """根据配置创建 LLM Provider"""
         try:
             from .providers.quantnodes import QuantNodesLLMProvider
-            from QuantNodes.ai.llm.openai import OpenAIClient
+            from QuantNodes.ai.llm.openai import OpenAIClient, AzureOpenAIClient
 
-            client = OpenAIClient(
-                api_key=config.get("api_key"),
-                api_base=config.get("api_base"),
-            )
+            provider_type = config.get("provider", "openai")
+            api_key = config.get("api_key")
+            api_base = config.get("api_base")
+            model = config.get("model", "gpt-4o")
+            timeout = config.get("llm_timeout", 60)
+            max_retries = config.get("llm_max_retries", 3)
+
+            if provider_type == "azure":
+                client = AzureOpenAIClient(
+                    api_key=api_key,
+                    azure_endpoint=api_base,
+                    timeout=timeout,
+                    max_retries=max_retries,
+                )
+            else:
+                # openai, anthropic (via compatible proxy), local (ollama), custom
+                base_url = api_base or None
+                # Normalize: OpenAIClient appends /chat/completions internally
+                if base_url:
+                    base_url = base_url.rstrip("/")
+                    for suffix in ("/chat/completions", "/v1/chat/completions", "/v1"):
+                        if base_url.endswith(suffix):
+                            base_url = base_url[: -len(suffix)]
+                            break
+                client = OpenAIClient(
+                    api_key=api_key,
+                    base_url=base_url,
+                    timeout=timeout,
+                    max_retries=max_retries,
+                )
+
             return QuantNodesLLMProvider(
                 client,
-                default_model=config.get("model", "gpt-4o"),
+                default_model=model,
             )
         except (ImportError, Exception) as e:
             import logging

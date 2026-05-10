@@ -33,7 +33,7 @@ class LLMResponse:
     def should_execute_tools(self) -> bool:
         if not self.has_tool_calls:
             return False
-        return self.finish_reason in ("tool_calls", "stop")
+        return self.finish_reason == "tool_calls"
 
 
 class LLMProvider(ABC):

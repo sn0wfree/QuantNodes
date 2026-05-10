@@ -15,6 +15,9 @@ from .backtest import BacktestTool
 from .factor import FactorTool
 from .config_backtest import ConfigBacktestTool
 from .wiki import WikiTool
+from .file_ops import FileOpsTool
+from .code_search import CodeSearchTool
+from .git_ops import GitOpsTool
 
 __all__ = [
     "Tool",
@@ -28,4 +31,7 @@ __all__ = [
     "FactorTool",
     "ConfigBacktestTool",
     "WikiTool",
+    "FileOpsTool",
+    "CodeSearchTool",
+    "GitOpsTool",
 ]

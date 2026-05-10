@@ -4,16 +4,70 @@
 
 | 工具名 | 功能 | 安全限制 | 并发安全 |
 |--------|------|----------|----------|
+| file_ops | 文件读写编辑 | 路径限制 | 否 |
+| code_search | 代码搜索 | 只读 | 是 |
+| git_ops | Git 操作 | 路径限制 | 否 |
 | sandbox | 代码安全验证 | 无 | 是 |
 | pipeline | Pipeline构建验证 | 无 | 是 |
 | strategy | 策略生成 | 无 | 是 |
 | backtest | 回测执行 | 否 | 否 |
 | factor | 因子分析 | 是 | 是 |
+| wiki | Wiki知识库 | 路径限制 | 否 |
 | echo | 测试工具 | 是 | 是 |
 
 ---
 
 ## 详细说明
+
+### file_ops - 文件操作工具
+
+安全地读取、写入、编辑文件，列出目录内容，glob模式匹配。
+
+**参数**:
+- `action` (string, 必需): 操作类型 read_file/write_file/edit_file/list_files/glob_files
+- `path` (string): 文件或目录路径（相对于工作目录）
+- `content` (string): 要写入的内容（write_file）
+- `old_string` (string): 要替换的旧字符串（edit_file）
+- `new_string` (string): 替换后的新字符串（edit_file）
+- `pattern` (string): glob模式（glob_files）
+- `offset` (integer): 读取起始行号，默认1
+- `limit` (integer): 读取最大行数，默认2000
+
+**安全限制**:
+- 路径必须在工作目录内（防 path traversal）
+- 文件大小限制 1MB
+
+---
+
+### code_search - 代码搜索工具
+
+在工作目录中搜索代码内容和文件名。
+
+**参数**:
+- `action` (string, 必需): 搜索类型 grep/find_files/search_code
+- `pattern` (string, 必需): 搜索模式（正则表达式或 glob）
+- `path` (string): 搜索目录
+- `include` (string): 文件名过滤，如 *.py
+- `context_lines` (integer): 上下文行数，默认3
+
+**安全限制**:
+- 只读操作，可并发执行
+- 结果数量限制 50 条
+
+---
+
+### git_ops - Git 操作工具
+
+安全地执行 git 命令。
+
+**参数**:
+- `action` (string, 必需): git_status/git_diff/git_log/git_commit
+- `path` (string): 文件路径（git_diff）
+- `message` (string): 提交消息（git_commit）
+- `files` (array): 要提交的文件列表
+- `n` (integer): 显示最近n条提交，默认10
+
+---
 
 ### sandbox - 沙箱工具
 

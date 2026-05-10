@@ -359,13 +359,13 @@ class TestLLMResponseProperties:
         )
         assert response.should_execute_tools is True
 
-    def test_should_execute_tools_true_with_stop(self):
+    def test_should_execute_tools_false_with_stop(self):
         response = LLMResponse(
             content="Hi",
             tool_calls=[ToolCallRequest(id="1", name="echo", arguments={})],
             finish_reason="stop",
         )
-        assert response.should_execute_tools is True
+        assert response.should_execute_tools is False
 
     def test_should_execute_tools_false_no_tool_calls(self):
         response = LLMResponse(content="Hi", finish_reason="stop")
