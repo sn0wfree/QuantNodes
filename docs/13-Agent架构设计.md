@@ -144,7 +144,7 @@ agent/
 │   ├── memory.py                  # 记忆存储
 │   ├── hook.py                    # 执行钩子系统
 │   └── autocompact.py             # 会话历史压缩
-├── tools/                         # 工具系统
+├── tools/                         # 工具系统（15个工具）
 │   ├── base.py                    # Tool基类
 │   ├── registry.py                # 工具注册表
 │   ├── sandbox.py                 # CodeSandbox封装
@@ -153,7 +153,14 @@ agent/
 │   ├── backtest.py                # 回测运行工具
 │   ├── factor.py                  # 因子分析工具
 │   ├── config_backtest.py         # 配置驱动回测
-│   └── mcp.py                     # MCP工具桥 (Phase 3)
+│   ├── wiki.py                    # Wiki知识库
+│   ├── file_ops.py                # 文件读写编辑
+│   ├── code_search.py             # 代码搜索
+│   ├── git_ops.py                 # Git操作
+│   ├── web_fetch.py               # 网页抓取
+│   ├── web_search.py              # 网络搜索
+│   ├── task.py                    # 任务管理
+│   └── echo.py                    # 测试工具
 ├── bus/                           # 消息总线
 │   ├── events.py                  # Inbound/Outbound消息
 │   └── queue.py                   # 异步队列
@@ -167,22 +174,14 @@ agent/
 │   ├── loader.py                  # YAML配置解析器
 │   ├── executor.py                # 配置执行器
 │   └── templates/                 # 策略模板
-├── wiki/                          # llmwikify集成 (Phase 3)
-│   └── client.py                  # MCP客户端
-├── skills/                        # 技能系统 (Phase 4)
-│   └── loader.py                  # 渐进式加载器
 ├── templates/                     # Prompt模板
 │   └── agent/
 │       ├── identity.md
 │       ├── system_prompt.md
 │       └── tools_description.md
-├── utils/                         # 工具函数
-│   ├── helpers.py
-│   └── prompt_templates.py
-├── cli/                           # 命令行界面
-│   └── main.py
-└── web/                           # Web界面
-    └── app.py
+└── utils/                         # 工具函数
+    ├── helpers.py
+    └── prompt_templates.py
 ```
 
 ### 3.2 研究工作区

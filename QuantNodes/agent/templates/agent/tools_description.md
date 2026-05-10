@@ -7,11 +7,15 @@
 | file_ops | 文件读写编辑 | 路径限制 | 否 |
 | code_search | 代码搜索 | 只读 | 是 |
 | git_ops | Git 操作 | 路径限制 | 否 |
+| web_fetch | 网页抓取 | URL安全检查 | 是 |
+| web_search | 网络搜索 | 只读 | 是 |
+| task | 任务管理 | 路径限制 | 否 |
 | sandbox | 代码安全验证 | 无 | 是 |
 | pipeline | Pipeline构建验证 | 无 | 是 |
 | strategy | 策略生成 | 无 | 是 |
 | backtest | 回测执行 | 否 | 否 |
 | factor | 因子分析 | 是 | 是 |
+| config_backtest | YAML配置回测 | 否 | 否 |
 | wiki | Wiki知识库 | 路径限制 | 否 |
 | echo | 测试工具 | 是 | 是 |
 
@@ -66,6 +70,52 @@
 - `message` (string): 提交消息（git_commit）
 - `files` (array): 要提交的文件列表
 - `n` (integer): 显示最近n条提交，默认10
+
+---
+
+### web_fetch - 网页抓取工具
+
+抓取指定 URL 的网页内容，支持纯文本和 HTML 格式。
+
+**参数**:
+- `url` (string, 必需): 要抓取的 URL（必须是 http/https）
+- `format` (string): 返回格式 text/html，默认 text
+
+**安全限制**:
+- 禁止访问本地地址（localhost, 127.0.0.1 等）
+- 请求超时 10 秒
+- 内容截断 50KB
+
+---
+
+### web_search - 网络搜索工具
+
+使用 DuckDuckGo 搜索关键词，无需 API Key。
+
+**参数**:
+- `query` (string, 必需): 搜索关键词
+- `max_results` (integer): 最大返回结果数，默认 5，最大 20
+
+**返回**:
+- `results` (array): 搜索结果列表，每项包含 title, url, snippet
+
+---
+
+### task - 任务管理工具
+
+创建、更新、列表任务，数据持久化到 JSON 文件。
+
+**参数**:
+- `action` (string, 必需): create_task/update_task/list_tasks
+- `title` (string): 任务标题（create_task 时必需）
+- `description` (string): 任务描述
+- `priority` (string): 优先级 low/medium/high，默认 medium
+- `task_id` (string): 任务 ID（update_task 时必需）
+- `status` (string): 任务状态 pending/in_progress/completed/cancelled
+
+**安全限制**:
+- 任务数量限制 100 个
+- 数据存储在 .quant_agent/tasks.json
 
 ---
 

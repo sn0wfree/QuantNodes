@@ -73,6 +73,11 @@ quantnodes run --frontend-only    # 仅前端
 quantnodes run --daemon           # 后台运行
 quantnodes run --port 8080        # 指定前端端口
 quantnodes run --api-port 9000    # 指定后端端口
+
+# Agent 对话
+quantnodes chat                   # 交互模式
+quantnodes chat "你好"             # 单次提问
+quantnodes chat --workspace .     # 指定工作目录
 ```
 
 ---
