@@ -50,6 +50,9 @@ class Agent:
         from .tools.file_ops import FileOpsTool
         from .tools.code_search import CodeSearchTool
         from .tools.git_ops import GitOpsTool
+        from .tools.web_fetch import WebFetchTool
+        from .tools.web_search import WebSearchTool
+        from .tools.task import TaskTool
 
         config = config or {}
         workspace_path = Path(workspace)
@@ -69,6 +72,9 @@ class Agent:
         tool_registry.register(FileOpsTool(workspace=workspace_path))
         tool_registry.register(CodeSearchTool(workspace=workspace_path))
         tool_registry.register(GitOpsTool(workspace=workspace_path))
+        tool_registry.register(WebFetchTool())
+        tool_registry.register(WebSearchTool())
+        tool_registry.register(TaskTool(workspace=workspace_path))
 
         provider = self._create_provider(config)
 

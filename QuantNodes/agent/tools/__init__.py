@@ -18,6 +18,9 @@ from .wiki import WikiTool
 from .file_ops import FileOpsTool
 from .code_search import CodeSearchTool
 from .git_ops import GitOpsTool
+from .web_fetch import WebFetchTool
+from .web_search import WebSearchTool
+from .task import TaskTool
 
 __all__ = [
     "Tool",
@@ -34,4 +37,7 @@ __all__ = [
     "FileOpsTool",
     "CodeSearchTool",
     "GitOpsTool",
+    "WebFetchTool",
+    "WebSearchTool",
+    "TaskTool",
 ]

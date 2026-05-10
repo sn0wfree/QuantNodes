@@ -17,6 +17,7 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 - **AI 原生设计**: 内置策略生成器和 Pipeline 优化器
 - **Config-Driven 回测**: YAML 配置文件驱动回测，支持算子扩展
 - **零 QuantStudio 依赖**: 完全自主实现，代码清晰可控
+- **Agent 智能体**: 15 个内置工具，支持文件操作、代码搜索、Git、Web 搜索等
 
 ## 架构概览
 
@@ -38,6 +39,22 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 ```
 QuantNodes/
 ├── QuantNodes/                    # 主包
+│   ├── agent/                     # Agent 智能体系统
+│   │   ├── core/                  # Agent 核心（loop, runner, context）
+│   │   ├── tools/                 # 15 个内置工具
+│   │   │   ├── file_ops.py        # 文件读/写/编辑
+│   │   │   ├── code_search.py     # 代码搜索（grep/find）
+│   │   │   ├── git_ops.py         # Git 操作
+│   │   │   ├── web_fetch.py       # 网页抓取
+│   │   │   ├── web_search.py      # 网络搜索
+│   │   │   ├── task.py            # 任务管理
+│   │   │   └── ...                # 更多工具
+│   │   └── providers/             # LLM Provider
+│   │
+│   ├── cli/                       # 命令行工具
+│   │   ├── __init__.py            # CLI 主入口
+│   │   └── enhanced.py            # Rich Agent 交互终端
+│   │
 │   ├── core/                      # 核心架构
 │   │   ├── node.py                # BaseNode, Pipeline
 │   │   ├── control.py             # IfNode, MapNode, WhileNode
@@ -110,6 +127,38 @@ quantnodes run --api-only
 # 仅启动前端
 quantnodes run --frontend-only
 ```
+
+### Agent 对话
+
+```bash
+# 交互模式
+quantnodes chat
+
+# 单次提问
+quantnodes chat "帮我生成一个动量因子"
+
+# 指定工作目录
+quantnodes chat --workspace ./my_project
+```
+
+### Agent 工具
+
+| 工具 | 功能 | read_only |
+|------|------|-----------|
+| `file_ops` | 文件读/写/编辑/列表/glob | ❌ |
+| `code_search` | grep/ find_files/ search_code | ✅ |
+| `git_ops` | status/ diff/ log/ commit | ❌ |
+| `web_fetch` | 网页抓取 | ✅ |
+| `web_search` | DuckDuckGo 搜索 | ✅ |
+| `task` | 任务管理（创建/更新/列表） | ❌ |
+| `pipeline` | Pipeline 验证 | ✅ |
+| `factor` | 因子分析 | ✅ |
+| `backtest` | 回测执行 | ❌ |
+| `config_backtest` | YAML 配置回测 | ❌ |
+| `strategy` | 策略生成 | ❌ |
+| `wiki` | Wiki 知识库 | ❌ |
+| `sandbox` | 代码沙箱验证 | ✅ |
+| `echo` | 回声测试 | ✅ |
 
 ### 基本使用
 
@@ -238,6 +287,19 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - [Feature 3D - 用户友好自定义算子 API](docs/Feature3D-用户友好自定义算子API设计.md)
 
 ## 变更日志
+
+### v0.5.0 (2026-05-10)
+
+- ✅ Agent 智能体系统：15 个内置工具，支持文件操作、代码搜索、Git、Web 搜索等
+- ✅ 新增 `web_fetch` 工具：网页抓取，支持 text/html 格式
+- ✅ 新增 `web_search` 工具：DuckDuckGo 网络搜索
+- ✅ 新增 `task` 工具：任务管理（创建/更新/列表），JSON 持久化
+- ✅ 新增 `quantnodes chat` 命令：Rich Agent 交互终端
+- ✅ CLI 重构为包结构（`cli/`）
+- ✅ 修复 `compile_expression` 方言 import Bug
+- ✅ 修复 Agent `api_base` URL 双重拼接 Bug
+- ✅ 修复 `should_execute_tools` 逻辑 Bug
+- ✅ 2698+ 测试用例
 
 ### v0.4.1 (2026-05-09)
 

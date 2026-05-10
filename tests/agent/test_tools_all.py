@@ -19,6 +19,9 @@ from QuantNodes.agent.tools.pipeline import PipelineTool
 from QuantNodes.agent.tools.factor import FactorTool
 from QuantNodes.agent.tools.backtest import BacktestTool
 from QuantNodes.agent.tools.config_backtest import ConfigBacktestTool
+from QuantNodes.agent.tools.web_fetch import WebFetchTool
+from QuantNodes.agent.tools.web_search import WebSearchTool
+from QuantNodes.agent.tools.task import TaskTool
 from QuantNodes.agent.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 
@@ -469,3 +472,247 @@ class TestAgentLoop:
         sb = loop.session_manager.get_session("session_b")
         assert sa.messages[0]["content"] == "A question"
         assert sb.messages[0]["content"] == "B question"
+
+
+# ─── WebFetchTool ─────────────────────────────────────────────────────
+
+class TestWebFetchTool:
+    def test_name(self):
+        tool = WebFetchTool()
+        assert tool.name == "web_fetch"
+
+    def test_read_only(self):
+        tool = WebFetchTool()
+        assert tool.read_only is True
+
+    @pytest.mark.asyncio
+    async def test_empty_url(self):
+        tool = WebFetchTool()
+        result = await tool.execute(url="")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_local_url_blocked(self):
+        tool = WebFetchTool()
+        result = await tool.execute(url="http://localhost:8080/secret")
+        assert "error" in result
+        assert "not allowed" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_localhost_127_blocked(self):
+        tool = WebFetchTool()
+        result = await tool.execute(url="http://127.0.0.1:3000/data")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_non_http_blocked(self):
+        tool = WebFetchTool()
+        result = await tool.execute(url="file:///etc/passwd")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_fetch_text_format(self):
+        tool = WebFetchTool()
+        result = await tool.execute(url="https://httpbin.org/get", format="text")
+        assert result.get("status_code") == 200
+        assert "content" in result
+
+    @pytest.mark.asyncio
+    async def test_fetch_html_format(self):
+        tool = WebFetchTool()
+        result = await tool.execute(url="https://httpbin.org/get", format="html")
+        assert result.get("status_code") == 200
+        assert "content" in result
+
+
+# ─── WebSearchTool ─────────────────────────────────────────────────────
+
+class TestWebSearchTool:
+    def test_name(self):
+        tool = WebSearchTool()
+        assert tool.name == "web_search"
+
+    def test_read_only(self):
+        tool = WebSearchTool()
+        assert tool.read_only is True
+
+    @pytest.mark.asyncio
+    async def test_empty_query(self):
+        tool = WebSearchTool()
+        result = await tool.execute(query="")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_search_returns_results(self):
+        tool = WebSearchTool()
+        mock_html = '''
+        <html><body>
+        <div class="result">
+            <div class="result__title"><a href="https://example.com">Example</a></div>
+            <div class="result__snippet">An example page</div>
+        </div>
+        </body></html>
+        '''
+        mock_resp = MagicMock()
+        mock_resp.text = mock_html
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            result = await tool.execute(query="python programming", max_results=3)
+        assert "results" in result
+        assert "query" in result
+        assert result["query"] == "python programming"
+        assert len(result["results"]) == 1
+        assert result["results"][0]["title"] == "Example"
+        assert result["results"][0]["url"] == "https://example.com"
+
+    @pytest.mark.asyncio
+    async def test_search_max_results_respected(self):
+        tool = WebSearchTool()
+        mock_html = '''
+        <html><body>
+        <div class="result">
+            <div class="result__title"><a href="https://a.com">A</a></div>
+            <div class="result__snippet">A</div>
+        </div>
+        <div class="result">
+            <div class="result__title"><a href="https://b.com">B</a></div>
+            <div class="result__snippet">B</div>
+        </div>
+        <div class="result">
+            <div class="result__title"><a href="https://c.com">C</a></div>
+            <div class="result__snippet">C</div>
+        </div>
+        </body></html>
+        '''
+        mock_resp = MagicMock()
+        mock_resp.text = mock_html
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            result = await tool.execute(query="test", max_results=2)
+        assert len(result["results"]) <= 2
+
+    @pytest.mark.asyncio
+    async def test_search_result_structure(self):
+        tool = WebSearchTool()
+        mock_html = '''
+        <html><body>
+        <div class="result">
+            <div class="result__title"><a href="https://python.org">Python</a></div>
+            <div class="result__snippet">The Python language</div>
+        </div>
+        </body></html>
+        '''
+        mock_resp = MagicMock()
+        mock_resp.text = mock_html
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            result = await tool.execute(query="python", max_results=1)
+        results = result.get("results", [])
+        assert len(results) == 1
+        assert "title" in results[0]
+        assert "url" in results[0]
+        assert "snippet" in results[0]
+
+
+# ─── TaskTool ─────────────────────────────────────────────────────────
+
+class TestTaskTool:
+    def test_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool = TaskTool(workspace=tmp)
+            assert tool.name == "task"
+
+    def test_read_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool = TaskTool(workspace=tmp)
+            assert tool.read_only is False
+
+    @pytest.mark.asyncio
+    async def test_create_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool = TaskTool(workspace=tmp)
+            result = await tool.execute(action="create_task", title="Test task", priority="high")
+            assert result["status"] == "ok"
+            assert result["task"]["title"] == "Test task"
+            assert result["task"]["priority"] == "high"
+            assert result["task"]["status"] == "pending"
+            assert "id" in result["task"]
+
+    @pytest.mark.asyncio
+    async def test_create_task_empty_title(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool = TaskTool(workspace=tmp)
+            result = await tool.execute(action="create_task", title="")
+            assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_update_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool = TaskTool(workspace=tmp)
+            create_result = await tool.execute(action="create_task", title="Task")
+            task_id = create_result["task"]["id"]
+            result = await tool.execute(action="update_task", task_id=task_id, status="completed")
+            assert result["status"] == "ok"
+            assert result["task"]["status"] == "completed"
+
+    @pytest.mark.asyncio
+    async def test_update_task_not_found(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool = TaskTool(workspace=tmp)
+            result = await tool.execute(action="update_task", task_id="nonexistent")
+            assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_list_tasks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool = TaskTool(workspace=tmp)
+            await tool.execute(action="create_task", title="A")
+            await tool.execute(action="create_task", title="B")
+            result = await tool.execute(action="list_tasks")
+            assert result["total"] == 2
+
+    @pytest.mark.asyncio
+    async def test_list_tasks_filter_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool = TaskTool(workspace=tmp)
+            r1 = await tool.execute(action="create_task", title="A")
+            await tool.execute(action="create_task", title="B")
+            await tool.execute(action="update_task", task_id=r1["task"]["id"], status="completed")
+            result = await tool.execute(action="list_tasks", status="completed")
+            assert result["total"] == 1
+            assert result["tasks"][0]["title"] == "A"
+
+    @pytest.mark.asyncio
+    async def test_persistence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool1 = TaskTool(workspace=tmp)
+            await tool1.execute(action="create_task", title="Persistent")
+            tool2 = TaskTool(workspace=tmp)
+            result = await tool2.execute(action="list_tasks")
+            assert result["total"] == 1
+            assert result["tasks"][0]["title"] == "Persistent"
+
+    @pytest.mark.asyncio
+    async def test_unknown_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tool = TaskTool(workspace=tmp)
+            result = await tool.execute(action="unknown")
+            assert "error" in result
