@@ -65,17 +65,8 @@ class AgentService:
         """Send message and get response (non-streaming)"""
         agent = self._get_agent(config)
 
-        # Store user message via SessionManager
-        session = self.session_manager.get_session(session_id)
-        session.add_message("user", content)
-
         try:
-            # Run agent
             response = await agent.run(content, session_id=session_id)
-
-            # Store assistant response
-            session.add_message("assistant", response)
-            self.session_manager.save_session(session)
 
             return {
                 "message_id": f"msg-{uuid.uuid4().hex[:12]}",
@@ -85,7 +76,7 @@ class AgentService:
             }
         except Exception as e:
             return {
-                "message_id": f"msg-error",
+                "message_id": "msg-error",
                 "content": f"Error: {str(e)}",
                 "tools_used": [],
                 "usage": {},
@@ -101,10 +92,6 @@ class AgentService:
         """Stream message chunks via WebSocket"""
         agent = self._get_agent(config)
         message_id = f"msg-{uuid.uuid4().hex[:12]}"
-
-        # Store user message via SessionManager
-        session = self.session_manager.get_session(session_id)
-        session.add_message("user", content)
 
         try:
             full_content = ""
@@ -133,10 +120,6 @@ class AgentService:
                     }
                 elif event["type"] == "error":
                     yield event
-
-            # Store assistant response
-            session.add_message("assistant", full_content)
-            self.session_manager.save_session(session)
 
         except Exception as e:
             yield {
