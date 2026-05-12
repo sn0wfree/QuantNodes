@@ -8,6 +8,7 @@ export function useAgent() {
   const isStreaming = ref(false)
   const streamContent = ref('')
   const currentToolCalls = ref<ToolCallEvent[]>([])
+  const pendingPermission = ref<{ requestId: string; toolName: string; arguments?: Record<string, any> } | null>(null)
 
   const wsUrl = '/api/ws/chat'
 
@@ -80,6 +81,13 @@ export function useAgent() {
             timestamp: Date.now(),
           })
           break
+        case 'permission_request':
+          pendingPermission.value = {
+            requestId: data.request_id,
+            toolName: data.tool_name || data.tool || 'unknown',
+            arguments: data.arguments,
+          }
+          break
       }
     },
     onDisconnect: () => {
@@ -107,13 +115,25 @@ export function useAgent() {
     })
   }
 
+  const respondPermission = (requestId: string, approved: boolean, remember: boolean = false) => {
+    pendingPermission.value = null
+    send({
+      type: 'permission_response',
+      request_id: requestId,
+      approved,
+      remember,
+    })
+  }
+
   return {
     isConnected,
     isStreaming,
     streamContent,
     currentToolCalls,
+    pendingPermission,
     connect,
     sendMessage,
+    respondPermission,
     disconnect,
   }
 }

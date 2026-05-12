@@ -96,6 +96,16 @@
       @select="handleModelSelect"
       @close="showModelSelector = false"
     />
+    <PermissionDialog
+      v-if="agent.pendingPermission.value"
+      :open="true"
+      :toolName="agent.pendingPermission.value.toolName"
+      :arguments="agent.pendingPermission.value.arguments"
+      :requestId="agent.pendingPermission.value.requestId"
+      @allow="(id, remember) => agent.respondPermission(id, true, remember)"
+      @deny="(id) => agent.respondPermission(id, false)"
+      @close="agent.respondPermission(agent.pendingPermission.value!.requestId, false)"
+    />
   </div>
 </template>
 
@@ -110,6 +120,7 @@ import ChatInput from '@/components/Chat/ChatInput.vue'
 import ToolCallCard from '@/components/Chat/ToolCallCard.vue'
 import CommandPalette from '@/components/Chat/CommandPalette.vue'
 import ModelSelector from '@/components/Chat/ModelSelector.vue'
+import PermissionDialog from '@/components/Chat/PermissionDialog.vue'
 import { PlusOutlined, DownOutlined, ControlOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { get, put } from '@/api'
