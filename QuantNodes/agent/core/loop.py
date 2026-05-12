@@ -343,8 +343,13 @@ class AgentLoop:
 
         return result.final_content or ""
 
-    async def chat_stream(self, message: str, session_id: str = "default"):
+    async def chat_stream(self, message: str, session_id: str = "default", model: str | None = None):
         """流式单轮对话API（不经过消息总线）
+
+        Args:
+            message: 用户输入
+            session_id: 会话ID
+            model: 可选，覆盖本次对话使用的模型
 
         Yields:
             dict: 事件字典（token, tool_call, tool_result, done, error）
@@ -377,7 +382,7 @@ class AgentLoop:
         spec = AgentRunSpec(
             initial_messages=messages,
             tools=self.tool_registry,
-            model=self.model,
+            model=model or self.model,
             max_iterations=self.max_iterations,
         )
 

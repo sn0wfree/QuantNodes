@@ -159,12 +159,13 @@ class Agent:
         """
         return await self._loop.chat(prompt, session_id=session_id)
 
-    async def chat(self, message: str, session_id: str = "default"):
+    async def chat(self, message: str, session_id: str = "default", model: str | None = None):
         """流式对话（生成器）
         
         Args:
             message: 用户输入
             session_id: 会话ID
+            model: 可选，覆盖本次对话使用的模型
             
         Yields:
             dict: 事件字典
@@ -177,7 +178,7 @@ class Agent:
         if self._loop.provider is None:
             yield {"type": "error", "content": "LLM provider not configured. Set QUANTNODES__LLM__API_KEY in .env"}
             return
-        async for event in self._loop.chat_stream(message, session_id=session_id):
+        async for event in self._loop.chat_stream(message, session_id=session_id, model=model):
             yield event
 
 

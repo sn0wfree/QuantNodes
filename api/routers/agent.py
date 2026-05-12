@@ -73,11 +73,13 @@ async def websocket_chat(websocket: WebSocket):
                 continue
             
             session_id = data.get("session_id", session_id)
+            model = data.get("model")
             
             # Stream response
             async for chunk in agent_service.stream_message(
                 content=content,
                 session_id=session_id,
+                config={"model": model} if model else None,
             ):
                 await websocket.send_json(chunk)
                 

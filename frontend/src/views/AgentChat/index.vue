@@ -30,6 +30,13 @@
         </a-dropdown>
       </div>
       <div class="header-right">
+        <a-select
+          v-model:value="store.currentModel"
+          size="small"
+          style="width: 220px"
+          :options="modelOptions"
+          @change="handleModelChange"
+        />
         <a-button type="text" size="small" @click="handleNewChat">
           <template #icon><plus-outlined /></template>
         </a-button>
@@ -89,6 +96,8 @@ import ChatMessage from '@/components/Chat/ChatMessage.vue'
 import ChatInput from '@/components/Chat/ChatInput.vue'
 import ToolCallCard from '@/components/Chat/ToolCallCard.vue'
 import { PlusOutlined, DownOutlined } from '@ant-design/icons-vue'
+import { message } from 'ant-design-vue'
+import { get, put } from '@/api'
 import dayjs from 'dayjs'
 
 const store = useAgentStore()
@@ -99,6 +108,14 @@ const currentSessionLabel = computed(() => {
   if (store.sessionId === 'default') return 'Default Session'
   return store.sessionId
 })
+
+const modelOptions = [
+  { label: 'MiniMax M2.5 (Free)', value: 'minimax/minimax-m2.5:free' },
+  { label: 'MiniMax M2.5', value: 'minimax/minimax-m2.5' },
+  { label: 'MiniMax M2.7', value: 'minimax/minimax-m2.7' },
+  { label: 'GPT-4o', value: 'openai/gpt-4o' },
+  { label: 'GPT-4o Mini', value: 'openai/gpt-4o-mini' },
+]
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -118,6 +135,15 @@ const handleSend = (content: string) => {
 
 const handleNewChat = async () => {
   await store.createSession()
+}
+
+const handleModelChange = async (model: string) => {
+  try {
+    await put('/settings', { settings: { agent: { model } } })
+    message.success(`Switched to ${model}`)
+  } catch {
+    message.error('Failed to switch model')
+  }
 }
 
 const handleMenuClick = async ({ key }: { key: string }) => {
@@ -158,10 +184,18 @@ watch(
   }
 )
 
-onMounted(() => {
+onMounted(async () => {
   agent.connect()
   store.loadSessions()
   scrollToBottom()
+  try {
+    const settings = await get<any>('/settings')
+    if (settings?.agent?.model) {
+      store.currentModel = settings.agent.model
+    }
+  } catch {
+    // use default model
+  }
 })
 
 onUnmounted(() => {

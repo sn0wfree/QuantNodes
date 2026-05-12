@@ -79,7 +79,7 @@ export function useAgent() {
     },
   })
 
-  const sendMessage = (content: string) => {
+  const sendMessage = (content: string, model?: string) => {
     store.messages.push({
       id: `user-${Date.now()}`,
       role: 'user',
@@ -95,6 +95,7 @@ export function useAgent() {
       type: 'message',
       content,
       session_id: store.sessionId,
+      model: model || store.currentModel,
     })
   }
 

@@ -30,6 +30,7 @@ export const useAgentStore = defineStore('agent', () => {
   const isLoading = ref(false)
   const sessionId = ref<string>('default')
   const sessions = ref<SessionInfo[]>([])
+  const currentModel = ref<string>('minimax/minimax-m2.5:free')
 
   const clearMessages = () => {
     messages.value = []
@@ -92,6 +93,7 @@ export const useAgentStore = defineStore('agent', () => {
     isLoading,
     sessionId,
     sessions,
+    currentModel,
     clearMessages,
     loadSessions,
     createSession,
