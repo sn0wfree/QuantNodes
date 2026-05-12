@@ -34,7 +34,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import type { Message, ToolCallEvent } from '@/stores/agent'
 import ChatMessage from './ChatMessage.vue'
 import ToolCallCard from './ToolCallCard.vue'
