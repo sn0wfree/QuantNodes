@@ -110,6 +110,7 @@ const getTagColor = (tag: string) => {
 watch(() => props.open, (val) => {
   if (val) {
     query.value = ''
+    store.modelsLoaded = false
     store.fetchModels()
   }
 })

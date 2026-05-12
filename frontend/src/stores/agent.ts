@@ -105,8 +105,35 @@ export const useAgentStore = defineStore('agent', () => {
     if (modelsLoaded.value) return
     modelsLoading.value = true
     try {
+      // Fetch from single provider (OpenRouter etc.)
       const data = await get<{ models: ModelInfo[]; source: string }>('/settings/models')
-      models.value = data.models
+      let allModels = data.models || []
+
+      // Also fetch from configured multi-providers
+      try {
+        const providerModels = await get<Record<string, Array<{ id: string; name: string }>>>('/settings/providers/models/all')
+        for (const [providerName, providerModelsList] of Object.entries(providerModels)) {
+          for (const m of providerModelsList) {
+            // Avoid duplicates
+            if (!allModels.find(existing => existing.id === m.id)) {
+              allModels.push({
+                id: m.id,
+                name: m.name || m.id,
+                provider: providerName,
+                contextWindow: 0,
+                priceIn: 0,
+                priceOut: 0,
+                tags: [],
+                modality: 'text->text',
+              })
+            }
+          }
+        }
+      } catch {
+        // Multi-provider models fetch is optional
+      }
+
+      models.value = allModels
       modelsLoaded.value = true
     } catch {
       models.value = MODEL_REGISTRY
