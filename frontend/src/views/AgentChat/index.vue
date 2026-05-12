@@ -30,13 +30,16 @@
         </a-dropdown>
       </div>
       <div class="header-right">
-        <a-select
-          v-model:value="store.currentModel"
-          size="small"
-          style="width: 220px"
-          :options="modelOptions"
-          @change="handleModelChange"
-        />
+        <a-tooltip title="Switch Model (Ctrl+O)">
+          <a-button type="text" size="small" @click="showModelSelector = true">
+            <template #icon><control-outlined /></template>
+          </a-button>
+        </a-tooltip>
+        <a-tooltip title="Commands (Ctrl+K)">
+          <a-button type="text" size="small" @click="showCommandPalette = true">
+            <template #icon><appstore-outlined /></template>
+          </a-button>
+        </a-tooltip>
         <a-button type="text" size="small" @click="handleNewChat">
           <template #icon><plus-outlined /></template>
         </a-button>
@@ -82,9 +85,17 @@
       </div>
 
       <div class="input-area">
-        <ChatInput :disabled="agent.isStreaming.value" @send="handleSend" />
+        <ChatInput ref="chatInputRef" :disabled="agent.isStreaming.value" @send="handleSend" />
       </div>
     </div>
+
+    <CommandPalette :open="showCommandPalette" @close="showCommandPalette = false" />
+    <ModelSelector
+      :open="showModelSelector"
+      :currentModel="store.currentModel"
+      @select="handleModelSelect"
+      @close="showModelSelector = false"
+    />
   </div>
 </template>
 
@@ -92,10 +103,14 @@
 import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
 import { useAgentStore } from '@/stores/agent'
 import { useAgent } from '@/composables/useAgent'
+import { useKeyboard } from '@/composables/useKeyboard'
+import { useCommands } from '@/composables/useCommands'
 import ChatMessage from '@/components/Chat/ChatMessage.vue'
 import ChatInput from '@/components/Chat/ChatInput.vue'
 import ToolCallCard from '@/components/Chat/ToolCallCard.vue'
-import { PlusOutlined, DownOutlined } from '@ant-design/icons-vue'
+import CommandPalette from '@/components/Chat/CommandPalette.vue'
+import ModelSelector from '@/components/Chat/ModelSelector.vue'
+import { PlusOutlined, DownOutlined, ControlOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import { get, put } from '@/api'
 import dayjs from 'dayjs'
@@ -103,19 +118,15 @@ import dayjs from 'dayjs'
 const store = useAgentStore()
 const agent = useAgent()
 const messagesContainer = ref<HTMLElement>()
+const chatInputRef = ref()
+
+const showCommandPalette = ref(false)
+const showModelSelector = ref(false)
 
 const currentSessionLabel = computed(() => {
   if (store.sessionId === 'default') return 'Default Session'
   return store.sessionId
 })
-
-const modelOptions = [
-  { label: 'MiniMax M2.5 (Free)', value: 'minimax/minimax-m2.5:free' },
-  { label: 'MiniMax M2.5', value: 'minimax/minimax-m2.5' },
-  { label: 'MiniMax M2.7', value: 'minimax/minimax-m2.7' },
-  { label: 'GPT-4o', value: 'openai/gpt-4o' },
-  { label: 'GPT-4o Mini', value: 'openai/gpt-4o-mini' },
-]
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -137,7 +148,8 @@ const handleNewChat = async () => {
   await store.createSession()
 }
 
-const handleModelChange = async (model: string) => {
+const handleModelSelect = async (model: string) => {
+  store.currentModel = model
   try {
     await put('/settings', { settings: { agent: { model } } })
     message.success(`Switched to ${model}`)
@@ -153,6 +165,33 @@ const handleMenuClick = async ({ key }: { key: string }) => {
     await store.switchSession(key)
   }
 }
+
+const handleClearHistory = async () => {
+  try {
+    await store.clearMessages()
+    message.success('History cleared')
+  } catch {
+    message.error('Failed to clear history')
+  }
+}
+
+// Keyboard shortcuts
+const keyboard = useKeyboard()
+keyboard.register('ctrl+k', () => { showCommandPalette.value = true })
+keyboard.register('ctrl+o', () => { showModelSelector.value = true })
+keyboard.register('ctrl+n', () => { handleNewChat() })
+keyboard.register('ctrl+l', () => { handleClearHistory() })
+keyboard.register('escape', () => {
+  showCommandPalette.value = false
+  showModelSelector.value = false
+})
+
+// Command palette commands
+const { register: registerCommand } = useCommands()
+registerCommand({ id: 'new-chat', label: 'New Chat', group: 'Sessions', shortcut: 'Ctrl+N', action: handleNewChat })
+registerCommand({ id: 'clear-history', label: 'Clear History', group: 'Sessions', action: handleClearHistory })
+registerCommand({ id: 'switch-model', label: 'Switch Model...', group: 'Model', shortcut: 'Ctrl+O', action: () => { showModelSelector.value = true } })
+registerCommand({ id: 'cmd-palette', label: 'Command Palette', group: 'View', shortcut: 'Ctrl+K', action: () => { showCommandPalette.value = true } })
 
 watch(
   () => store.messages.length,
