@@ -75,4 +75,30 @@ body.dark .ant-table {
 body.dark .ant-modal-content {
   background: #1f1f1f;
 }
+
+/* Chat layout CSS variables - light mode (default) */
+:root {
+  --chat-sidebar-width: 200px;
+  --chat-sidebar-collapsed: 48px;
+  --chat-topbar-height: 40px;
+  --chat-header-height: 36px;
+  --chat-statusbar-height: 28px;
+  --chat-keybinds-height: 28px;
+  --chat-border-color: #f0f0f0;
+  --chat-bg-primary: #ffffff;
+  --chat-bg-secondary: #fafafa;
+  --chat-text-primary: #333333;
+  --chat-text-secondary: #666666;
+  --chat-text-muted: #999999;
+}
+
+/* Chat layout CSS variables - dark mode */
+body.dark {
+  --chat-border-color: #303030;
+  --chat-bg-primary: #1a1a1a;
+  --chat-bg-secondary: #141414;
+  --chat-text-primary: #e8e8e8;
+  --chat-text-secondary: #aaaaaa;
+  --chat-text-muted: #666666;
+}
 </style>
