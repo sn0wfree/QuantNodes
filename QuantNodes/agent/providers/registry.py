@@ -136,6 +136,24 @@ class ProviderRegistry:
             for name, config in self._providers.items()
         }
 
+    def get_client(self, config: ProviderConfig):
+        """为指定 provider 创建 OpenAIClient"""
+        from QuantNodes.ai.llm.openai import OpenAIClient
+        return OpenAIClient(
+            api_key=config.api_key,
+            base_url=config.api_base,
+            timeout=config.timeout,
+            max_retries=config.max_retries,
+            extra_headers=config.extra_headers,
+        )
+
+    def get_default_client(self):
+        """获取默认 provider 的 client"""
+        config = self._get_default_or_first()
+        if config:
+            return self.get_client(config)
+        return None
+
     @property
     def default_provider_name(self) -> Optional[str]:
         return self._default_provider
