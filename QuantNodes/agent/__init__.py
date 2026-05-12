@@ -63,6 +63,17 @@ class Agent:
 
         self._max_tokens = config.get("max_tokens", 102400)
 
+        # Build/Plan dual mode support
+        self._mode_models = config.get("mode_models", {})
+        self._default_mode = config.get("default_mode", "build")
+        # Fallback: if mode_models is empty, derive from single model field
+        if not self._mode_models:
+            model = config.get("model", "")
+            self._mode_models = {
+                "build": {"model": model, "max_tokens": self._max_tokens},
+                "plan": {"model": model, "max_tokens": 16000},
+            }
+
         bus = MessageBus()
         tool_registry = ToolRegistry()
 
@@ -94,6 +105,7 @@ class Agent:
             tool_registry=tool_registry,
             model=config.get("model"),
             max_tokens=self._max_tokens,
+            mode_models=self._mode_models,
         )
 
     def _create_provider(self, config: dict):
@@ -183,7 +195,7 @@ class Agent:
         """
         return await self._loop.chat(prompt, session_id=session_id)
 
-    async def chat(self, message: str, session_id: str = "default", model: str | None = None, max_tokens: int | None = None):
+    async def chat(self, message: str, session_id: str = "default", model: str | None = None, max_tokens: int | None = None, mode: str | None = None):
         """流式对话（生成器）
         
         Args:
@@ -191,6 +203,7 @@ class Agent:
             session_id: 会话ID
             model: 可选，覆盖本次对话使用的模型
             max_tokens: 可选，覆盖本次对话的最大token数
+            mode: 可选，'build' 或 'plan'，从 mode_models 中解析模型
             
         Yields:
             dict: 事件字典
@@ -203,7 +216,18 @@ class Agent:
         if self._loop.provider is None:
             yield {"type": "error", "content": "LLM provider not configured. Set QUANTNODES__LLM__API_KEY in .env"}
             return
-        async for event in self._loop.chat_stream(message, session_id=session_id, model=model, max_tokens=max_tokens or getattr(self, '_max_tokens', 102400)):
+
+        # Resolve model from mode if provided
+        resolved_model = model
+        resolved_max_tokens = max_tokens or self._max_tokens
+        if mode and mode in self._mode_models:
+            mode_config = self._mode_models[mode]
+            if not model:
+                resolved_model = mode_config.get("model") or model
+            if not max_tokens:
+                resolved_max_tokens = mode_config.get("max_tokens", resolved_max_tokens)
+
+        async for event in self._loop.chat_stream(message, session_id=session_id, model=resolved_model, max_tokens=resolved_max_tokens):
             yield event
 
 

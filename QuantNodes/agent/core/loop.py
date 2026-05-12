@@ -37,6 +37,7 @@ class AgentLoop:
         session_manager: SessionManager | None = None,
         tool_registry: ToolRegistry | None = None,
         hook: AgentHook | None = None,
+        mode_models: dict | None = None,
     ):
         self.bus = bus
         self.provider = provider
@@ -45,6 +46,7 @@ class AgentLoop:
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.hook = hook or CompositeHook()
+        self.mode_models = mode_models or {}
 
         templates_dir = self.workspace.parent / "templates" / "agent"
         if not templates_dir.exists():

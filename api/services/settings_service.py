@@ -41,6 +41,11 @@ class SettingsService:
                 "temperature": 0.7,
                 "llm_timeout": 60,
                 "llm_max_retries": 3,
+                "default_mode": "build",
+                "mode_models": {
+                    "build": {"model": "", "max_tokens": 102400},
+                    "plan": {"model": "", "max_tokens": 16000},
+                },
             },
             "editor": {
                 "font_size": 14,
