@@ -124,7 +124,6 @@ export const useAgentStore = defineStore('agent', () => {
                 priceIn: 0,
                 priceOut: 0,
                 tags: [],
-                modality: 'text->text',
               })
             }
           }

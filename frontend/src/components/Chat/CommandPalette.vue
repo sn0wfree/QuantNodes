@@ -1,6 +1,6 @@
 <template>
   <a-modal
-    v-model:open="visible"
+    :open="props.open"
     :footer="null"
     :closable="false"
     :width="500"
@@ -46,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { SearchOutlined } from '@ant-design/icons-vue'
 import { useCommands, type Command } from '@/composables/useCommands'
 
@@ -58,7 +58,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { commands, execute, search, groups } = useCommands()
+const { commands, execute, search } = useCommands()
 
 const query = ref('')
 const selectedId = ref('')

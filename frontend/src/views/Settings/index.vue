@@ -305,7 +305,7 @@ import {
   PlusOutlined,
 } from '@ant-design/icons-vue'
 import { useAppStore } from '@/stores/app'
-import { get, put, post } from '@/api'
+import { get, put, post, del } from '@/api'
 
 const appStore = useAppStore()
 
