@@ -89,8 +89,33 @@
                 <a-select-option value="custom">Custom (OpenAI-Compatible)</a-select-option>
               </a-select>
             </a-form-item>
-            <a-form-item label="Model">
+            <a-form-item label="Default Mode">
+              <a-radio-group v-model:value="localSettings.agent.default_mode">
+                <a-radio-button value="build">Build</a-radio-button>
+                <a-radio-button value="plan">Plan</a-radio-button>
+              </a-radio-group>
+              <div class="field-help">Which mode is active by default when opening chat</div>
+            </a-form-item>
+            <a-divider>Build Mode</a-divider>
+            <a-form-item label="Build Model">
+              <a-input v-model:value="localSettings.agent.mode_models.build.model" placeholder="e.g. deepseek-chat, gpt-4o" />
+              <div class="field-help">Model used for code writing and implementation tasks</div>
+            </a-form-item>
+            <a-form-item label="Build Max Tokens">
+              <a-input-number v-model:value="localSettings.agent.mode_models.build.max_tokens" :min="1024" :max="1000000" :step="1024" style="width: 200px" />
+            </a-form-item>
+            <a-divider>Plan Mode</a-divider>
+            <a-form-item label="Plan Model">
+              <a-input v-model:value="localSettings.agent.mode_models.plan.model" placeholder="e.g. deepseek-reasoner, claude-3.5-sonnet" />
+              <div class="field-help">Model used for analysis, reasoning, and planning tasks</div>
+            </a-form-item>
+            <a-form-item label="Plan Max Tokens">
+              <a-input-number v-model:value="localSettings.agent.mode_models.plan.max_tokens" :min="1024" :max="1000000" :step="1024" style="width: 200px" />
+            </a-form-item>
+            <a-divider>Fallback (Legacy)</a-divider>
+            <a-form-item label="Fallback Model">
               <a-input v-model:value="localSettings.agent.model" placeholder="gpt-4" />
+              <div class="field-help">Used when mode_models is not configured</div>
             </a-form-item>
             <a-form-item label="API Key">
               <a-input-password v-model:value="localSettings.agent.api_key" placeholder="sk-..." />
@@ -104,10 +129,6 @@
             </a-form-item>
             <a-form-item label="Temperature">
               <a-slider v-model:value="localSettings.agent.temperature" :min="0" :max="2" :step="0.1" :marks="{ 0: '0', 0.7: '0.7', 1: '1', 2: '2' }" />
-            </a-form-item>
-            <a-form-item label="Max Tokens">
-              <a-input-number v-model:value="localSettings.agent.max_tokens" :min="1024" :max="1000000" :step="1024" style="width: 200px" />
-              <div class="field-help">Maximum tokens for LLM response. Default: 102400</div>
             </a-form-item>
             <a-form-item label="LLM Request Timeout (seconds)">
               <a-input-number v-model:value="localSettings.agent.llm_timeout" :min="5" :max="300" :step="5" />
@@ -471,6 +492,11 @@ const localSettings = reactive({
     max_tokens: 102400,
     llm_timeout: 60,
     llm_max_retries: 3,
+    default_mode: 'build',
+    mode_models: {
+      build: { model: '', max_tokens: 102400 },
+      plan: { model: '', max_tokens: 16000 },
+    },
   },
   editor: {
     font_size: 14,

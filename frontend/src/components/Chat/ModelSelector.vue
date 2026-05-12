@@ -63,6 +63,7 @@ import { useAgentStore } from '@/stores/agent'
 const props = defineProps<{
   open: boolean
   currentModel: string
+  mode?: 'build' | 'plan'
 }>()
 
 const emit = defineEmits<{

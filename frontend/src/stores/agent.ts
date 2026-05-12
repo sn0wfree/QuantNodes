@@ -45,6 +45,14 @@ export const useAgentStore = defineStore('agent', () => {
   const modelsLoading = ref(false)
   const modelsLoaded = ref(false)
 
+  // Build/Plan dual mode
+  const currentMode = ref<'build' | 'plan'>('build')
+  const modeModels = ref<Record<string, { model: string; max_tokens: number }>>({
+    build: { model: '', max_tokens: 102400 },
+    plan: { model: '', max_tokens: 16000 },
+  })
+  const defaultMode = ref<string>('build')
+
   const clearMessages = () => {
     messages.value = []
   }
@@ -101,6 +109,37 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  const switchMode = (mode: 'build' | 'plan') => {
+    currentMode.value = mode
+    // Update currentModel to match the mode's model
+    const modeConfig = modeModels.value[mode]
+    if (modeConfig?.model) {
+      currentModel.value = modeConfig.model
+    }
+  }
+
+  const loadModeModels = async () => {
+    try {
+      const settings = await get<any>('/settings')
+      if (settings?.agent?.mode_models) {
+        modeModels.value = settings.agent.mode_models
+      }
+      if (settings?.agent?.default_mode) {
+        defaultMode.value = settings.agent.default_mode
+        currentMode.value = settings.agent.default_mode
+      }
+      // Initialize currentModel from current mode's model
+      const activeConfig = modeModels.value[currentMode.value]
+      if (activeConfig?.model) {
+        currentModel.value = activeConfig.model
+      } else if (settings?.agent?.model) {
+        currentModel.value = settings.agent.model
+      }
+    } catch {
+      // use defaults
+    }
+  }
+
   const fetchModels = async () => {
     if (modelsLoaded.value) return
     modelsLoading.value = true
@@ -152,11 +191,16 @@ export const useAgentStore = defineStore('agent', () => {
     models,
     modelsLoading,
     modelsLoaded,
+    currentMode,
+    modeModels,
+    defaultMode,
     clearMessages,
     loadSessions,
     createSession,
     switchSession,
     deleteSession,
+    switchMode,
+    loadModeModels,
     fetchModels,
   }
 })

@@ -112,6 +112,7 @@ export function useAgent() {
       content,
       session_id: store.sessionId,
       model: model || store.currentModel,
+      mode: store.currentMode,
     })
   }
 

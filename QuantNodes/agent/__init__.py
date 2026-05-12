@@ -219,9 +219,10 @@ class Agent:
 
         # Resolve model from mode if provided
         resolved_model = model
-        resolved_max_tokens = max_tokens or self._max_tokens
-        if mode and mode in self._mode_models:
-            mode_config = self._mode_models[mode]
+        resolved_max_tokens = max_tokens or getattr(self, '_max_tokens', 102400)
+        mode_models = getattr(self, '_mode_models', {})
+        if mode and mode in mode_models:
+            mode_config = mode_models[mode]
             if not model:
                 resolved_model = mode_config.get("model") or model
             if not max_tokens:

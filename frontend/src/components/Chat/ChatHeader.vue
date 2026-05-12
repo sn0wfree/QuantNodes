@@ -1,7 +1,12 @@
 <template>
   <div class="chat-header">
     <div class="header-left">
-      <span class="session-title"># {{ currentSessionLabel }}</span>
+      <a-segmented
+        v-model:value="currentMode"
+        :options="modeOptions"
+        size="small"
+        @change="handleModeChange"
+      />
     </div>
     <div class="header-right">
       <span v-if="tokenCount" class="token-info">
@@ -12,10 +17,29 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useAgentStore } from '@/stores/agent'
+
+const store = useAgentStore()
+
+const currentMode = computed({
+  get: () => store.currentMode,
+  set: (val) => store.switchMode(val as 'build' | 'plan'),
+})
+
+const modeOptions = [
+  { label: 'Build', value: 'build' },
+  { label: 'Plan', value: 'plan' },
+]
+
 defineProps<{
   currentSessionLabel: string
   tokenCount?: number
 }>()
+
+const handleModeChange = (val: string) => {
+  store.switchMode(val as 'build' | 'plan')
+}
 </script>
 
 <style scoped>
@@ -33,12 +57,6 @@ defineProps<{
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.session-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--chat-text-primary, #333);
 }
 
 .header-right {

@@ -56,6 +56,7 @@ import { useAgent } from '@/composables/useAgent'
 import { useKeyboard } from '@/composables/useKeyboard'
 import { useCommands } from '@/composables/useCommands'
 import { useChatSession } from '@/composables/useChatSession'
+import { useAgentStore } from '@/stores/agent'
 import ChatHeader from '@/components/Chat/ChatHeader.vue'
 import MessageList from '@/components/Chat/MessageList.vue'
 import ChatInput from '@/components/Chat/ChatInput.vue'
@@ -65,6 +66,7 @@ import ModelSelector from '@/components/Chat/ModelSelector.vue'
 import PermissionDialog from '@/components/Chat/PermissionDialog.vue'
 import { get, put } from '@/api'
 
+const store = useAgentStore()
 const agent = useAgent()
 const session = useChatSession()
 const messageListRef = ref()
@@ -72,7 +74,7 @@ const messageListRef = ref()
 const showModelSelector = ref(false)
 
 const currentSessionLabel = session.currentSessionLabel
-const agentName = 'Build'
+const agentName = computed(() => store.currentMode === 'plan' ? 'Plan' : 'Build')
 const tokenCount = computed(() => {
   const msgs = session.store.messages
   return msgs.length * 500
@@ -105,6 +107,8 @@ keyboard.register('ctrl+o', () => { showModelSelector.value = true })
 keyboard.register('ctrl+n', () => { session.createSession() })
 keyboard.register('ctrl+l', () => { session.clearHistory() })
 keyboard.register('escape', () => { showModelSelector.value = false })
+keyboard.register('ctrl+shift+b', () => { store.switchMode('build') })
+keyboard.register('ctrl+shift+p', () => { store.switchMode('plan') })
 
 // Command palette commands
 const { register: registerCommand } = useCommands()
@@ -113,10 +117,13 @@ registerCommand({ id: 'clear-history', label: 'Clear History', group: 'Sessions'
 registerCommand({ id: 'export-md', label: 'Export as Markdown', group: 'Sessions', action: () => session.exportSession('markdown') })
 registerCommand({ id: 'export-json', label: 'Export as JSON', group: 'Sessions', action: () => session.exportSession('json') })
 registerCommand({ id: 'switch-model', label: 'Switch Model...', group: 'Model', shortcut: 'Ctrl+O', action: () => { showModelSelector.value = true } })
+registerCommand({ id: 'mode-build', label: 'Switch to Build Mode', group: 'Mode', shortcut: 'Ctrl+Shift+B', action: () => { store.switchMode('build') } })
+registerCommand({ id: 'mode-plan', label: 'Switch to Plan Mode', group: 'Mode', shortcut: 'Ctrl+Shift+P', action: () => { store.switchMode('plan') } })
 
 onMounted(async () => {
   agent.connect()
   session.store.loadSessions()
+  session.store.loadModeModels()
   try {
     const settings = await get<any>('/settings')
     if (settings?.agent?.model) {
