@@ -23,6 +23,15 @@ class ImportRequest(BaseModel):
     json_data: str
 
 
+class ProviderCreateRequest(BaseModel):
+    name: str
+    config: Dict[str, Any]
+
+
+class ProviderUpdateRequest(BaseModel):
+    config: Dict[str, Any]
+
+
 @router.get("")
 async def get_settings():
     """Get all settings"""
@@ -195,6 +204,59 @@ async def _fetch_models_from_provider_async(api_base: str, api_key: str) -> list
     import asyncio
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: _fetch_models_from_provider(api_base, api_key))
+
+
+# ── Provider CRUD Endpoints ──────────────────────────────────────────
+
+
+@router.get("/providers")
+async def get_providers():
+    """Get all configured providers"""
+    return await settings_service.get_providers()
+
+
+@router.post("/providers")
+async def add_provider(request: ProviderCreateRequest):
+    """Add a new provider"""
+    result = await settings_service.add_provider(request.name, request.config)
+    settings_service.sync_core_config()
+    agent_service.reload_agent()
+    return {"name": request.name, **result}
+
+
+@router.put("/providers/{name}")
+async def update_provider(name: str, request: ProviderUpdateRequest):
+    """Update an existing provider"""
+    try:
+        result = await settings_service.update_provider(name, request.config)
+        settings_service.sync_core_config()
+        agent_service.reload_agent()
+        return {"name": name, **result}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.delete("/providers/{name}")
+async def delete_provider(name: str):
+    """Delete a provider"""
+    deleted = await settings_service.delete_provider(name)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
+    settings_service.sync_core_config()
+    agent_service.reload_agent()
+    return {"status": "deleted", "name": name}
+
+
+@router.post("/providers/{name}/test")
+async def test_provider(name: str):
+    """Test provider connectivity"""
+    return await settings_service.test_provider(name)
+
+
+@router.get("/providers/models/all")
+async def get_all_provider_models():
+    """Fetch models from all configured providers"""
+    return await settings_service.get_provider_models()
 
 
 @router.get("/{section}")

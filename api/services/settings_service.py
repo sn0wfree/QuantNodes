@@ -170,6 +170,104 @@ class SettingsService:
         await self._save_settings()
         return {"status": "updated", "provider": provider}
 
+    async def get_providers(self) -> Dict[str, Any]:
+        """Get all configured providers"""
+        settings = await self._load_settings()
+        return settings.get("agent", {}).get("providers", {})
+
+    async def add_provider(self, name: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Add a new provider"""
+        settings = await self._load_settings()
+        if "agent" not in settings:
+            settings["agent"] = {}
+        if "providers" not in settings["agent"]:
+            settings["agent"]["providers"] = {}
+        settings["agent"]["providers"][name] = config
+        self._settings = settings
+        await self._save_settings()
+        return settings["agent"]["providers"][name]
+
+    async def update_provider(self, name: str, config: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing provider"""
+        settings = await self._load_settings()
+        providers = settings.get("agent", {}).get("providers", {})
+        if name not in providers:
+            raise ValueError(f"Provider '{name}' not found")
+        providers[name] = {**providers[name], **config}
+        self._settings = settings
+        await self._save_settings()
+        return providers[name]
+
+    async def delete_provider(self, name: str) -> bool:
+        """Delete a provider"""
+        settings = await self._load_settings()
+        providers = settings.get("agent", {}).get("providers", {})
+        if name not in providers:
+            return False
+        del providers[name]
+        self._settings = settings
+        await self._save_settings()
+        return True
+
+    async def test_provider(self, name: str) -> Dict[str, Any]:
+        """Test provider connectivity by fetching /models"""
+        settings = await self._load_settings()
+        providers = settings.get("agent", {}).get("providers", {})
+        if name not in providers:
+            return {"ok": False, "error": f"Provider '{name}' not found"}
+        p = providers[name]
+        api_base = p.get("api_base", "")
+        api_key = p.get("api_key", "")
+        if not api_base:
+            return {"ok": False, "error": "No api_base configured"}
+        try:
+            url = f"{api_base.rstrip('/')}/models"
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+            import asyncio
+            loop = asyncio.get_event_loop()
+            import requests as http_requests
+            resp = await loop.run_in_executor(
+                None, lambda: http_requests.get(url, headers=headers, timeout=15)
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                count = len(data.get("data", []))
+                return {"ok": True, "model_count": count}
+            return {"ok": False, "error": f"HTTP {resp.status_code}: {resp.text[:200]}"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    async def get_provider_models(self) -> Dict[str, Any]:
+        """Fetch models from all configured providers"""
+        settings = await self._load_settings()
+        providers = settings.get("agent", {}).get("providers", {})
+        result = {}
+        for name, p in providers.items():
+            api_base = p.get("api_base", "")
+            api_key = p.get("api_key", "")
+            if not api_base:
+                continue
+            try:
+                import asyncio
+                import requests as http_requests
+                loop = asyncio.get_event_loop()
+                url = f"{api_base.rstrip('/')}/models"
+                headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+                resp = await loop.run_in_executor(
+                    None, lambda: http_requests.get(url, headers=headers, timeout=15)
+                )
+                if resp.status_code == 200:
+                    raw = resp.json().get("data", [])
+                    result[name] = [
+                        {"id": m.get("id", ""), "name": m.get("name", m.get("id", ""))}
+                        for m in raw
+                    ]
+                else:
+                    result[name] = []
+            except Exception:
+                result[name] = []
+        return result
+
     def sync_core_config(self) -> None:
         """Sync settings.json values into QuantNodes.core.config.settings in-memory singleton"""
         if self._settings is None:
