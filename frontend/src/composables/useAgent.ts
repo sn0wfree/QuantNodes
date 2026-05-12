@@ -72,6 +72,14 @@ export function useAgent() {
           streamContent.value = ''
           currentToolCalls.value = []
           break
+        case 'system':
+          store.systemMessages.push({
+            id: `sys-${Date.now()}`,
+            type: data.content?.includes('Compacting') ? 'compact' : 'info',
+            content: data.content || '',
+            timestamp: Date.now(),
+          })
+          break
       }
     },
     onDisconnect: () => {

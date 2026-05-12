@@ -78,6 +78,61 @@ class AgentLoop:
         """注册工具"""
         self.tool_registry.register(tool)
 
+    def _estimate_tokens(self, messages: List[Dict[str, Any]], current_message: str = "") -> int:
+        """估算消息列表的 token 数（粗略估算: 1 token ≈ 4 chars）"""
+        total_chars = 0
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                total_chars += len(content)
+            elif isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict):
+                        total_chars += len(str(part.get("text", "")))
+        total_chars += len(current_message)
+        return total_chars // 4
+
+    def _get_context_limit(self, model: str | None) -> int:
+        """获取模型的上下文窗口大小"""
+        limits = {
+            "minimax/minimax-m2.5:free": 1000000,
+            "minimax/minimax-m2.5": 1000000,
+            "minimax/minimax-m2.7": 1000000,
+            "openai/gpt-4o": 128000,
+            "openai/gpt-4o-mini": 128000,
+            "anthropic/claude-3.5-sonnet": 200000,
+        }
+        return limits.get(model or "", 128000)
+
+    def _auto_compact(self, messages: List[Dict[str, Any]], model: str | None) -> List[Dict[str, Any]]:
+        """自动压缩：保留系统消息，将历史消息摘要化"""
+        system_msgs = [m for m in messages if m.get("role") == "system"]
+        non_system_msgs = [m for m in messages if m.get("role") != "system"]
+
+        if not non_system_msgs:
+            return messages
+
+        # 保留最后 4 条消息，其余压缩为摘要
+        keep_count = min(4, len(non_system_msgs))
+        kept = non_system_msgs[-keep_count:]
+        dropped = non_system_msgs[:-keep_count]
+
+        if not dropped:
+            return messages
+
+        # 构建摘要文本（不调用 LLM，用简单截断）
+        summary_parts = []
+        for msg in dropped:
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            if isinstance(content, str) and content:
+                summary_parts.append(f"[{role}]: {content[:200]}")
+
+        summary = "Previous conversation summary:\n" + "\n".join(summary_parts)
+        summary_msg = {"role": "system", "content": summary}
+
+        return system_msgs + [summary_msg] + kept
+
     def get_session_lock(self, session_key: str) -> asyncio.Lock:
         """获取会话级锁"""
         if session_key not in self._session_locks:
@@ -378,6 +433,13 @@ class AgentLoop:
 
         # Phase C + B + D: 注入记忆上下文
         self._inject_memory_context(messages, session_id)
+
+        # Auto Compact: 检查是否需要压缩上下文
+        estimated_tokens = self._estimate_tokens(messages)
+        context_limit = self._get_context_limit(model or self.model)
+        if estimated_tokens > context_limit * 0.9:
+            yield {"type": "system", "content": f"Context approaching limit ({estimated_tokens}/{context_limit} tokens). Compacting..."}
+            messages = self._auto_compact(messages, model or self.model)
 
         spec = AgentRunSpec(
             initial_messages=messages,

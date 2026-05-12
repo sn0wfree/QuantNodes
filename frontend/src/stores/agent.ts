@@ -10,6 +10,13 @@ export interface ToolCallEvent {
   status: 'running' | 'success' | 'error'
 }
 
+export interface SystemMessage {
+  id: string
+  type: 'compact' | 'info' | 'warning'
+  content: string
+  timestamp: number
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -31,6 +38,7 @@ export const useAgentStore = defineStore('agent', () => {
   const sessionId = ref<string>('default')
   const sessions = ref<SessionInfo[]>([])
   const currentModel = ref<string>('minimax/minimax-m2.5:free')
+  const systemMessages = ref<SystemMessage[]>([])
 
   const clearMessages = () => {
     messages.value = []
@@ -94,6 +102,7 @@ export const useAgentStore = defineStore('agent', () => {
     sessionId,
     sessions,
     currentModel,
+    systemMessages,
     clearMessages,
     loadSessions,
     createSession,
