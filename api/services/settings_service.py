@@ -187,6 +187,8 @@ class SettingsService:
                 core_settings.llm.timeout = agent["llm_timeout"]
             if "llm_max_retries" in agent:
                 core_settings.llm.max_retries = agent["llm_max_retries"]
+            if "max_tokens" in agent:
+                core_settings.llm.max_tokens = agent["max_tokens"]
             backtest = self._settings.get("backtest", {})
             if "default_commission" in backtest:
                 core_settings.default_commission = backtest["default_commission"]

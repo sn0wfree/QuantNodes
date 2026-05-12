@@ -61,6 +61,8 @@ class Agent:
         workspace_path = Path(workspace)
         workspace_path.mkdir(parents=True, exist_ok=True)
 
+        self._max_tokens = config.get("max_tokens", 102400)
+
         bus = MessageBus()
         tool_registry = ToolRegistry()
 
@@ -91,6 +93,7 @@ class Agent:
             workspace=workspace_path,
             tool_registry=tool_registry,
             model=config.get("model"),
+            max_tokens=self._max_tokens,
         )
 
     def _create_provider(self, config: dict):
@@ -105,6 +108,7 @@ class Agent:
             model = config.get("model", "gpt-4o")
             timeout = config.get("llm_timeout", 60)
             max_retries = config.get("llm_max_retries", 3)
+            max_tokens = config.get("max_tokens", 102400)
 
             if provider_type == "azure":
                 client = AzureOpenAIClient(
@@ -133,6 +137,7 @@ class Agent:
             return QuantNodesLLMProvider(
                 client,
                 default_model=model,
+                default_max_tokens=max_tokens,
             )
         except (ImportError, Exception) as e:
             import logging
@@ -159,13 +164,14 @@ class Agent:
         """
         return await self._loop.chat(prompt, session_id=session_id)
 
-    async def chat(self, message: str, session_id: str = "default", model: str | None = None):
+    async def chat(self, message: str, session_id: str = "default", model: str | None = None, max_tokens: int | None = None):
         """流式对话（生成器）
         
         Args:
             message: 用户输入
             session_id: 会话ID
             model: 可选，覆盖本次对话使用的模型
+            max_tokens: 可选，覆盖本次对话的最大token数
             
         Yields:
             dict: 事件字典
@@ -178,7 +184,7 @@ class Agent:
         if self._loop.provider is None:
             yield {"type": "error", "content": "LLM provider not configured. Set QUANTNODES__LLM__API_KEY in .env"}
             return
-        async for event in self._loop.chat_stream(message, session_id=session_id, model=model):
+        async for event in self._loop.chat_stream(message, session_id=session_id, model=model, max_tokens=max_tokens or getattr(self, '_max_tokens', 102400)):
             yield event
 
 

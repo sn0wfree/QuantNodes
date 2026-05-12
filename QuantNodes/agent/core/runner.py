@@ -22,6 +22,7 @@ class AgentRunSpec:
     initial_messages: List[Dict[str, Any]]
     tools: ToolRegistry
     model: str | None = None
+    max_tokens: int = 102400
     max_iterations: int = 5
     max_tool_result_chars: int = 4000
     concurrent_tools: bool = False
@@ -74,6 +75,7 @@ class AgentRunner:
                 messages=messages,
                 tools=tool_schemas if tool_schemas else None,
                 model=spec.model,
+                max_tokens=spec.max_tokens,
             )
 
             context.response = response
@@ -82,6 +84,8 @@ class AgentRunner:
             if response.error:
                 error = response.error
                 stop_reason = "error"
+                import logging
+                logging.getLogger(__name__).error("LLM error in run: %s", error)
                 assistant_msg = self._build_assistant_message(response)
                 messages.append(assistant_msg)
                 break
@@ -194,6 +198,7 @@ class AgentRunner:
                 messages=messages,
                 tools=tool_schemas if tool_schemas else None,
                 model=spec.model,
+                max_tokens=spec.max_tokens,
                 on_content_delta=collect_tokens,
             )
 
@@ -206,6 +211,8 @@ class AgentRunner:
             if response.error:
                 error = response.error
                 stop_reason = "error"
+                import logging
+                logging.getLogger(__name__).error("LLM error in run_stream: %s", error)
                 yield {"type": "error", "content": error}
                 assistant_msg = self._build_assistant_message(response)
                 messages.append(assistant_msg)

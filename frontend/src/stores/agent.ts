@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { get, post, del } from '@/api'
+import { MODEL_REGISTRY } from '@/constants/models'
+import type { ModelInfo } from '@/constants/models'
 
 export interface ToolCallEvent {
   id: string
@@ -39,6 +41,9 @@ export const useAgentStore = defineStore('agent', () => {
   const sessions = ref<SessionInfo[]>([])
   const currentModel = ref<string>('minimax/minimax-m2.5:free')
   const systemMessages = ref<SystemMessage[]>([])
+  const models = ref<ModelInfo[]>([])
+  const modelsLoading = ref(false)
+  const modelsLoaded = ref(false)
 
   const clearMessages = () => {
     messages.value = []
@@ -96,6 +101,21 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
+  const fetchModels = async () => {
+    if (modelsLoaded.value) return
+    modelsLoading.value = true
+    try {
+      const data = await get<{ models: ModelInfo[]; source: string }>('/settings/models')
+      models.value = data.models
+      modelsLoaded.value = true
+    } catch {
+      models.value = MODEL_REGISTRY
+      modelsLoaded.value = true
+    } finally {
+      modelsLoading.value = false
+    }
+  }
+
   return {
     messages,
     isLoading,
@@ -103,10 +123,14 @@ export const useAgentStore = defineStore('agent', () => {
     sessions,
     currentModel,
     systemMessages,
+    models,
+    modelsLoading,
+    modelsLoaded,
     clearMessages,
     loadSessions,
     createSession,
     switchSession,
     deleteSession,
+    fetchModels,
   }
 })

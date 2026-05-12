@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, List
+import requests as http_requests
 from ..services.settings_service import settings_service
 from ..services.agent_service import agent_service
+
+MAINSTREAM_PAID_PROVIDERS = {"qwen", "anthropic"}
 
 router = APIRouter()
 
@@ -72,6 +75,126 @@ async def get_api_keys():
 async def update_api_key(request: APIKeyUpdateRequest):
     """Update API key"""
     return await settings_service.update_api_key(request.provider, request.api_key)
+
+
+def _normalize_base_url(api_base: str) -> str:
+    """Extract base URL from api_base, stripping path suffixes."""
+    url = api_base.rstrip("/")
+    for suffix in ("/chat/completions", "/v1/chat/completions", "/v1"):
+        if url.endswith(suffix):
+            url = url[: -len(suffix)]
+            break
+    return url
+
+
+def _fetch_models_from_provider(api_base: str, api_key: str) -> List[Dict[str, Any]]:
+    """Call provider's /models endpoint and return raw model list."""
+    base = _normalize_base_url(api_base)
+    url = f"{base}/models"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    resp = http_requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    return resp.json().get("data", [])
+
+
+def _filter_and_format_models(raw_models: list) -> List[Dict[str, Any]]:
+    """Filter to free + mainstream paid, format for frontend."""
+    result = []
+    for m in raw_models:
+        model_id = m.get("id", "")
+        provider = model_id.split("/")[0] if "/" in model_id else ""
+        pricing = m.get("pricing", {})
+        prompt_price = float(pricing.get("prompt", "1") or "1")
+
+        is_free = prompt_price == 0 or model_id.endswith(":free")
+        is_mainstream_paid = provider in MAINSTREAM_PAID_PROVIDERS and not is_free
+
+        if not is_free and not is_mainstream_paid:
+            continue
+
+        tags = []
+        if is_free:
+            tags.append("free")
+        supported = m.get("supported_parameters", [])
+        if "tools" in supported:
+            tags.append("tools")
+
+        ctx = m.get("context_length", 0)
+        result.append({
+            "id": model_id,
+            "name": m.get("name", model_id),
+            "provider": provider,
+            "contextWindow": ctx,
+            "priceIn": prompt_price * 1_000_000,
+            "priceOut": float(pricing.get("completion", "0") or "0") * 1_000_000,
+            "tags": tags,
+            "modality": m.get("architecture", {}).get("modality", "text->text"),
+        })
+
+    result.sort(key=lambda x: (not x["tags"].__contains__("free"), x["provider"], x["name"]))
+    return result
+
+
+FALLBACK_MODELS: List[Dict[str, Any]] = [
+    {
+        "id": "minimax/minimax-m2.5:free",
+        "name": "MiniMax M2.5 (Free)",
+        "provider": "MiniMax",
+        "contextWindow": 1000000,
+        "priceIn": 0,
+        "priceOut": 0,
+        "tags": ["free"],
+        "modality": "text->text",
+    },
+    {
+        "id": "qwen/qwen3-235b-a22b:free",
+        "name": "Qwen3 235B A22B (Free)",
+        "provider": "qwen",
+        "contextWindow": 131072,
+        "priceIn": 0,
+        "priceOut": 0,
+        "tags": ["free", "tools"],
+        "modality": "text->text",
+    },
+    {
+        "id": "anthropic/claude-sonnet-4",
+        "name": "Claude Sonnet 4",
+        "provider": "anthropic",
+        "contextWindow": 200000,
+        "priceIn": 3.0,
+        "priceOut": 15.0,
+        "tags": ["tools"],
+        "modality": "text->text",
+    },
+]
+
+
+@router.get("/models")
+async def list_available_models():
+    """Fetch available models from the configured API provider."""
+    settings = await settings_service.get_settings()
+    agent_cfg = settings.get("agent", {})
+    api_base = agent_cfg.get("api_base", "")
+    api_key = agent_cfg.get("api_key", "")
+
+    if not api_base:
+        return {"models": FALLBACK_MODELS, "source": "fallback", "cached": False}
+
+    try:
+        raw = await _fetch_models_from_provider_async(api_base, api_key)
+        models = _filter_and_format_models(raw)
+        if not models:
+            return {"models": FALLBACK_MODELS, "source": "fallback", "cached": False}
+        return {"models": models, "source": "provider", "cached": False}
+    except Exception:
+        return {"models": FALLBACK_MODELS, "source": "fallback", "cached": False}
+
+
+async def _fetch_models_from_provider_async(api_base: str, api_key: str) -> list:
+    """Async wrapper for _fetch_models_from_provider."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: _fetch_models_from_provider(api_base, api_key))
 
 
 @router.get("/{section}")

@@ -107,12 +107,13 @@ async def websocket_chat(websocket: WebSocket):
             
             session_id = data.get("session_id", session_id)
             model = data.get("model")
+            max_tokens = data.get("max_tokens")
             
             # Stream response
             async for chunk in agent_service.stream_message(
                 content=content,
                 session_id=session_id,
-                config={"model": model} if model else None,
+                config={"model": model, "max_tokens": max_tokens} if model or max_tokens else None,
             ):
                 await websocket.send_json(chunk)
                 

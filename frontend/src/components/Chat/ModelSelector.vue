@@ -17,7 +17,12 @@
         <template #prefix><search-outlined /></template>
       </a-input>
 
-      <div class="model-list">
+      <a-spin v-if="store.modelsLoading" class="loading-spinner" />
+
+      <div v-else class="model-list">
+        <div v-if="filteredGroups.length === 0" class="no-results">
+          No models found
+        </div>
         <div v-for="group in filteredGroups" :key="group.provider" class="model-group">
           <div class="group-label">{{ group.provider }}</div>
           <div
@@ -33,7 +38,7 @@
                 {{ model.name }}
               </span>
               <span class="model-tags" v-if="model.tags.length">
-                <a-tag v-for="tag in model.tags" :key="tag" size="small" :color="tag === 'free' ? 'green' : 'default'">
+                <a-tag v-for="tag in model.tags" :key="tag" size="small" :color="getTagColor(tag)">
                   {{ tag }}
                 </a-tag>
               </span>
@@ -52,7 +57,8 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { SearchOutlined, CheckCircleFilled } from '@ant-design/icons-vue'
-import { MODEL_REGISTRY, formatPrice, formatContextWindow } from '@/constants/models'
+import { formatPrice, formatContextWindow } from '@/constants/models'
+import { useAgentStore } from '@/stores/agent'
 
 const props = defineProps<{
   open: boolean
@@ -64,6 +70,8 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const store = useAgentStore()
+
 const visible = computed({
   get: () => props.open,
   set: () => emit('close'),
@@ -73,13 +81,14 @@ const query = ref('')
 
 const filteredGroups = computed(() => {
   const models = query.value
-    ? MODEL_REGISTRY.filter(m =>
+    ? store.models.filter(m =>
         m.name.toLowerCase().includes(query.value.toLowerCase()) ||
-        m.provider.toLowerCase().includes(query.value.toLowerCase())
+        m.provider.toLowerCase().includes(query.value.toLowerCase()) ||
+        m.id.toLowerCase().includes(query.value.toLowerCase())
       )
-    : MODEL_REGISTRY
+    : store.models
 
-  const map = new Map<string, typeof MODEL_REGISTRY>()
+  const map = new Map<string, typeof store.models>()
   for (const m of models) {
     if (!map.has(m.provider)) map.set(m.provider, [])
     map.get(m.provider)!.push(m)
@@ -92,8 +101,17 @@ const handleSelect = (modelId: string) => {
   emit('close')
 }
 
+const getTagColor = (tag: string) => {
+  if (tag === 'free') return 'green'
+  if (tag === 'tools') return 'blue'
+  return 'default'
+}
+
 watch(() => props.open, (val) => {
-  if (val) query.value = ''
+  if (val) {
+    query.value = ''
+    store.fetchModels()
+  }
 })
 </script>
 
@@ -106,9 +124,21 @@ watch(() => props.open, (val) => {
   margin-bottom: 12px;
 }
 
+.loading-spinner {
+  display: flex;
+  justify-content: center;
+  padding: 40px 0;
+}
+
 .model-list {
   max-height: 400px;
   overflow-y: auto;
+}
+
+.no-results {
+  text-align: center;
+  color: #999;
+  padding: 20px 0;
 }
 
 .model-group {

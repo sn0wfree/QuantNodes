@@ -17,10 +17,11 @@ from QuantNodes.ai.llm.base import LLMClientBase, Message as QNMessage, MessageR
 class QuantNodesLLMProvider(LLMProvider):
     """适配QuantNodes现有LLM客户端的Provider"""
 
-    def __init__(self, client: LLMClientBase, default_model: str | None = None):
+    def __init__(self, client: LLMClientBase, default_model: str | None = None, default_max_tokens: int = 102400):
         super().__init__()
         self.client = client
         self.default_model = default_model
+        self.default_max_tokens = default_max_tokens
 
     def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[QNMessage]:
         """将OpenAI格式消息转换为QuantNodes格式"""
@@ -66,7 +67,7 @@ class QuantNodesLLMProvider(LLMProvider):
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]] | None = None,
         model: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int | None = None,
         temperature: float = 0.7,
         tool_choice: str | Dict[str, Any] | None = None,
     ) -> LLMResponse:
@@ -84,15 +85,24 @@ class QuantNodesLLMProvider(LLMProvider):
                 system_msg.content += f"\n\n可用工具:\n{tools_desc}"
                 system_msg.content += "\n\n如果需要调用工具，请使用```tool_call```代码块输出JSON格式的工具调用。"
 
+        effective_max_tokens = max_tokens or self.default_max_tokens
+
         def _call():
             return self.client.chat(
                 messages=qn_messages,
                 model=model or self.default_model,
                 temperature=temperature,
-                max_tokens=max_tokens
+                max_tokens=effective_max_tokens
             )
 
-        qn_response = await asyncio.get_event_loop().run_in_executor(None, _call)
+        try:
+            qn_response = await asyncio.get_event_loop().run_in_executor(None, _call)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "LLM chat failed: model=%s, error=%s", model or self.default_model, e, exc_info=True
+            )
+            raise
 
         content = qn_response.content
         tool_calls = self._parse_tool_calls(content)
@@ -112,7 +122,7 @@ class QuantNodesLLMProvider(LLMProvider):
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]] | None = None,
         model: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int | None = None,
         temperature: float = 0.7,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> LLMResponse:
@@ -130,6 +140,8 @@ class QuantNodesLLMProvider(LLMProvider):
                 system_msg.content += f"\n\n可用工具:\n{tools_desc}"
                 system_msg.content += "\n\n如果需要调用工具，请使用```tool_call```代码块输出JSON格式的工具调用。"
 
+        effective_max_tokens = max_tokens or self.default_max_tokens
+
         full_content = ""
         tool_call_buffer = ""
         in_tool_call = False
@@ -140,11 +152,18 @@ class QuantNodesLLMProvider(LLMProvider):
                 messages=qn_messages,
                 model=model or self.default_model,
                 temperature=temperature,
-                max_tokens=max_tokens,
+                max_tokens=effective_max_tokens,
             )
 
         loop = asyncio.get_event_loop()
-        chunks = await loop.run_in_executor(None, lambda: list(_iter_chunks()))
+        try:
+            chunks = await loop.run_in_executor(None, lambda: list(_iter_chunks()))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(
+                "LLM stream failed: model=%s, error=%s", model or self.default_model, e, exc_info=True
+            )
+            raise
 
         for chunk in chunks:
             delta = chunk.content or ""

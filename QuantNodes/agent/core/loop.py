@@ -33,6 +33,7 @@ class AgentLoop:
         workspace: Path | str,
         model: str | None = None,
         max_iterations: int = 5,
+        max_tokens: int = 102400,
         session_manager: SessionManager | None = None,
         tool_registry: ToolRegistry | None = None,
         hook: AgentHook | None = None,
@@ -42,6 +43,7 @@ class AgentLoop:
         self.workspace = Path(workspace)
         self.model = model
         self.max_iterations = max_iterations
+        self.max_tokens = max_tokens
         self.hook = hook or CompositeHook()
 
         templates_dir = self.workspace.parent / "templates" / "agent"
@@ -297,6 +299,7 @@ class AgentLoop:
                 initial_messages=messages,
                 tools=self.tool_registry,
                 model=self.model,
+                max_tokens=self.max_tokens,
                 max_iterations=self.max_iterations,
             )
 
@@ -372,6 +375,7 @@ class AgentLoop:
             initial_messages=messages,
             tools=self.tool_registry,
             model=self.model,
+            max_tokens=self.max_tokens,
             max_iterations=self.max_iterations,
         )
 
@@ -398,13 +402,14 @@ class AgentLoop:
 
         return result.final_content or ""
 
-    async def chat_stream(self, message: str, session_id: str = "default", model: str | None = None):
+    async def chat_stream(self, message: str, session_id: str = "default", model: str | None = None, max_tokens: int | None = None):
         """流式单轮对话API（不经过消息总线）
 
         Args:
             message: 用户输入
             session_id: 会话ID
             model: 可选，覆盖本次对话使用的模型
+            max_tokens: 可选，覆盖本次对话的最大token数
 
         Yields:
             dict: 事件字典（token, tool_call, tool_result, done, error）
@@ -445,6 +450,7 @@ class AgentLoop:
             initial_messages=messages,
             tools=self.tool_registry,
             model=model or self.model,
+            max_tokens=max_tokens or self.max_tokens,
             max_iterations=self.max_iterations,
         )
 

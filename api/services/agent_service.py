@@ -92,12 +92,13 @@ class AgentService:
         """Stream message chunks via WebSocket"""
         agent = self._get_agent(config)
         model = config.get("model") if config else None
+        max_tokens = config.get("max_tokens") if config else None
         message_id = f"msg-{uuid.uuid4().hex[:12]}"
 
         try:
             full_content = ""
             tools_used = []
-            async for event in agent.chat(content, session_id=session_id, model=model):
+            async for event in agent.chat(content, session_id=session_id, model=model, max_tokens=max_tokens):
                 event["message_id"] = message_id
 
                 if event["type"] == "token":

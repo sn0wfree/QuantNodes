@@ -44,6 +44,7 @@ class LLMConfig(BaseSettings):
     model: str = "gpt-4"
     timeout: int = 60
     max_retries: int = 3
+    max_tokens: int = 102400
 
 
 class Settings(BaseSettings):
@@ -109,6 +110,8 @@ class Settings(BaseSettings):
                 self.llm.timeout = agent["llm_timeout"]
             if "llm_max_retries" in agent:
                 self.llm.max_retries = agent["llm_max_retries"]
+            if "max_tokens" in agent:
+                self.llm.max_tokens = agent["max_tokens"]
             backtest = data.get("backtest", {})
             if "default_commission" in backtest:
                 self.default_commission = backtest["default_commission"]

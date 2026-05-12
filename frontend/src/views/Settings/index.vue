@@ -105,6 +105,10 @@
             <a-form-item label="Temperature">
               <a-slider v-model:value="localSettings.agent.temperature" :min="0" :max="2" :step="0.1" :marks="{ 0: '0', 0.7: '0.7', 1: '1', 2: '2' }" />
             </a-form-item>
+            <a-form-item label="Max Tokens">
+              <a-input-number v-model:value="localSettings.agent.max_tokens" :min="1024" :max="1000000" :step="1024" style="width: 200px" />
+              <div class="field-help">Maximum tokens for LLM response. Default: 102400</div>
+            </a-form-item>
             <a-form-item label="LLM Request Timeout (seconds)">
               <a-input-number v-model:value="localSettings.agent.llm_timeout" :min="5" :max="300" :step="5" />
             </a-form-item>
@@ -226,6 +230,7 @@ const localSettings = reactive({
     api_base: '',
     max_iterations: 5,
     temperature: 0.7,
+    max_tokens: 102400,
     llm_timeout: 60,
     llm_max_retries: 3,
   },

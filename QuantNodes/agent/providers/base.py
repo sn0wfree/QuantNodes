@@ -76,7 +76,7 @@ class LLMProvider(ABC):
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]] | None = None,
         model: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int = 102400,
         temperature: float = 0.7,
         tool_choice: str | Dict[str, Any] | None = None,
     ) -> LLMResponse:
@@ -88,7 +88,7 @@ class LLMProvider(ABC):
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]] | None = None,
         model: str | None = None,
-        max_tokens: int = 1024,
+        max_tokens: int = 102400,
         temperature: float = 0.7,
         on_content_delta: Callable[[str], Awaitable[None]] | None = None,
     ) -> LLMResponse:

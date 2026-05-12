@@ -71,6 +71,8 @@ class OpenAIClient(LLMClientBase):
         """获取请求头"""
         headers = {
             "Content-Type": "application/json",
+            "HTTP-Referer": "https://quantnodes.local",
+            "X-OpenRouter-Title": "QuantNodes",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -133,7 +135,24 @@ class OpenAIClient(LLMClientBase):
                     raise RateLimitError("Rate limit exceeded")
                 elif response.status_code == 401:
                     raise AuthenticationError("Invalid API key")
+                elif response.status_code in (500, 502, 503):
+                    if attempt < self.max_retries - 1:
+                        wait_time = 2 ** attempt
+                        self.logger.warning(
+                            f"Server error {response.status_code}, retrying in {wait_time}s. "
+                            f"URL: {url} | Body: {response.text[:500]}"
+                        )
+                        time.sleep(wait_time)
+                        continue
+                    self.logger.error(
+                        f"API error after {self.max_retries} retries: {response.status_code}. "
+                        f"URL: {url} | Body: {response.text[:500]}"
+                    )
+                    raise APIError(f"API error: {response.status_code} - {response.text}")
                 elif response.status_code != 200:
+                    self.logger.error(
+                        f"API error: {response.status_code}. URL: {url} | Body: {response.text[:500]}"
+                    )
                     raise APIError(f"API error: {response.status_code} - {response.text}")
 
                 if stream:
@@ -145,10 +164,12 @@ class OpenAIClient(LLMClientBase):
             except requests.exceptions.Timeout:
                 if attempt < self.max_retries - 1:
                     continue
+                self.logger.error(f"Request timeout after {self.max_retries} retries. URL: {url}")
                 raise APIError("Request timeout")
             except requests.exceptions.RequestException as e:
                 if attempt < self.max_retries - 1:
                     continue
+                self.logger.error(f"Request failed: {e}. URL: {url}")
                 raise APIError(f"Request failed: {str(e)}")
 
     def _call_api_stream(
@@ -175,39 +196,69 @@ class OpenAIClient(LLMClientBase):
 
         payload.update(kwargs)
 
-        try:
-            response = requests.post(
-                url,
-                headers=self._get_headers(),
-                json=payload,
-                timeout=self.timeout,
-                stream=True,
-            )
+        for attempt in range(self.max_retries):
+            try:
+                response = requests.post(
+                    url,
+                    headers=self._get_headers(),
+                    json=payload,
+                    timeout=self.timeout,
+                    stream=True,
+                )
 
-            if response.status_code == 429:
-                raise RateLimitError("Rate limit exceeded")
-            elif response.status_code == 401:
-                raise AuthenticationError("Invalid API key")
-            elif response.status_code != 200:
-                raise APIError(f"API error: {response.status_code}")
-
-            for line in response.iter_lines():
-                if not line:
-                    continue
-                line = line.decode('utf-8')
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
-                    try:
-                        import json
-                        chunk_data = json.loads(data)
-                        yield self._parse_stream_chunk(chunk_data)
-                    except json.JSONDecodeError:
+                if response.status_code == 429:
+                    if attempt < self.max_retries - 1:
+                        wait_time = 2 ** attempt
+                        self.logger.warning(f"Rate limit hit, waiting {wait_time}s")
+                        time.sleep(wait_time)
                         continue
+                    raise RateLimitError("Rate limit exceeded")
+                elif response.status_code == 401:
+                    raise AuthenticationError("Invalid API key")
+                elif response.status_code in (500, 502, 503):
+                    if attempt < self.max_retries - 1:
+                        wait_time = 2 ** attempt
+                        self.logger.warning(
+                            f"Server error {response.status_code}, retrying in {wait_time}s. "
+                            f"URL: {url} | Body: {response.text[:500]}"
+                        )
+                        time.sleep(wait_time)
+                        continue
+                    self.logger.error(
+                        f"Stream API error after {self.max_retries} retries: {response.status_code}. "
+                        f"URL: {url} | Body: {response.text[:500]}"
+                    )
+                    raise APIError(f"API error: {response.status_code} - {response.text}")
+                elif response.status_code != 200:
+                    self.logger.error(
+                        f"Stream API error: {response.status_code}. URL: {url} | Body: {response.text[:500]}"
+                    )
+                    raise APIError(f"API error: {response.status_code} - {response.text}")
 
-        except requests.exceptions.RequestException as e:
-            raise APIError(f"Stream request failed: {str(e)}")
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    line = line.decode('utf-8')
+                    if line.startswith("data: "):
+                        data = line[6:]
+                        if data == "[DONE]":
+                            break
+                        try:
+                            import json
+                            chunk_data = json.loads(data)
+                            yield self._parse_stream_chunk(chunk_data)
+                        except json.JSONDecodeError:
+                            continue
+                return
+
+            except requests.exceptions.Timeout:
+                if attempt < self.max_retries - 1:
+                    continue
+                raise APIError("Request timeout")
+            except requests.exceptions.RequestException as e:
+                if attempt < self.max_retries - 1:
+                    continue
+                raise APIError(f"Stream request failed: {str(e)}")
 
     def _message_to_dict(self, message: Message) -> Dict[str, str]:
         """将 Message 转换为字典"""
