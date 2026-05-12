@@ -1,13 +1,5 @@
 <template>
   <div class="chat-message" :class="[role]">
-    <div class="avatar">
-      <a-avatar v-if="role === 'user'" :size="32">
-        <template #icon><user-outlined /></template>
-      </a-avatar>
-      <a-avatar v-else :size="32" style="background-color: #1677ff">
-        <template #icon><robot-outlined /></template>
-      </a-avatar>
-    </div>
     <div class="content">
       <div class="bubble" :class="{ 'bubble-markdown': role === 'assistant' }">
         <template v-if="role === 'assistant' && content">
@@ -28,7 +20,7 @@
 </template>
 
 <script setup lang="ts">
-import { UserOutlined, RobotOutlined, CopyOutlined } from '@ant-design/icons-vue'
+import { CopyOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 
@@ -53,43 +45,44 @@ const handleCopy = async () => {
 <style scoped>
 .chat-message {
   display: flex;
-  gap: 12px;
   margin-bottom: 16px;
 }
 
 .chat-message.user {
-  flex-direction: row-reverse;
+  justify-content: flex-start;
 }
 
-.chat-message.user .content {
-  align-items: flex-end;
+.chat-message.assistant {
+  justify-content: flex-start;
 }
 
 .content {
   display: flex;
   flex-direction: column;
-  max-width: 70%;
+  max-width: 80%;
 }
 
 .bubble {
-  padding: 12px 16px;
-  border-radius: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
   line-height: 1.6;
   word-break: break-word;
 }
 
 .bubble-markdown {
-  padding: 8px 12px;
+  padding: 4px 0;
 }
 
 .user .bubble {
-  background: #1677ff;
-  color: #fff;
+  background: transparent;
+  border-left: 3px solid #1677ff;
+  padding-left: 12px;
+  color: inherit;
 }
 
 .assistant .bubble {
-  background: #f5f5f5;
-  color: #333;
+  background: transparent;
+  color: var(--chat-text-primary, #333);
 }
 
 .message-actions {
@@ -104,7 +97,7 @@ const handleCopy = async () => {
 
 .time {
   font-size: 12px;
-  color: #999;
+  color: var(--chat-text-muted, #999);
   margin-top: 4px;
 }
 </style>

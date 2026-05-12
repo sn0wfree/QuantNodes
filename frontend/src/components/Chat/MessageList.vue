@@ -1,26 +1,23 @@
 <template>
   <div class="messages" ref="messagesContainer" @scroll="handleScroll">
-    <ChatMessage
-      v-for="message in messages"
-      :key="message.id"
-      :role="message.role"
-      :content="message.role === 'assistant' ? message.content : undefined"
-      :time="formatTime(message.timestamp)"
-    >
-      <template v-if="message.role === 'user'">{{ message.content }}</template>
-    </ChatMessage>
+    <template v-for="item in enrichedMessages" :key="item.id">
+      <ChatMessage
+        v-if="item.type === 'message'"
+        :role="item.data.role"
+        :content="item.data.role === 'assistant' ? item.data.content : undefined"
+        :time="formatTime(item.data.timestamp)"
+      >
+        <template v-if="item.data.role === 'user'">{{ item.data.content }}</template>
+      </ChatMessage>
 
-    <template v-if="messages.length">
-      <div class="tool-calls-section" v-if="toolCalls.length > 0">
-        <ToolCallCard
-          v-for="tc in toolCalls"
-          :key="tc.id"
-          :toolName="tc.name"
-          :arguments="tc.arguments"
-          :result="tc.result ? { output: tc.result } : undefined"
-          :status="tc.status"
-        />
-      </div>
+      <ToolCallCard
+        v-else-if="item.type === 'tool_call'"
+        :toolName="item.data.name"
+        :arguments="item.data.arguments"
+        :result="item.data.result ? { output: item.data.result } : undefined"
+        :status="item.data.status"
+        class="inline-tool-call"
+      />
     </template>
 
     <ChatMessage v-if="isStreaming" role="assistant" :content="streamContent">
@@ -34,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { Message, ToolCallEvent } from '@/stores/agent'
 import ChatMessage from './ChatMessage.vue'
 import ToolCallCard from './ToolCallCard.vue'
@@ -61,6 +58,35 @@ const { scrollToBottom, handleScroll } = useChatScroll(messagesContainer, {
   ],
 })
 
+interface MessageItem {
+  id: string
+  type: 'message' | 'tool_call'
+  data: any
+  timestamp: number
+}
+
+const enrichedMessages = computed(() => {
+  const items: MessageItem[] = []
+  let tcIndex = 0
+  for (const msg of props.messages) {
+    items.push({
+      id: msg.id,
+      type: 'message',
+      data: msg,
+      timestamp: msg.timestamp,
+    })
+  }
+  for (const tc of props.toolCalls) {
+    items.push({
+      id: tc.id,
+      type: 'tool_call',
+      data: tc,
+      timestamp: Date.now() + tcIndex++,
+    })
+  }
+  return items.sort((a, b) => a.timestamp - b.timestamp)
+})
+
 const formatTime = (timestamp: number) => {
   return dayjs(timestamp).format('HH:mm')
 }
@@ -75,8 +101,9 @@ defineExpose({ scrollToBottom })
   padding: 16px;
 }
 
-.tool-calls-section {
-  margin: 8px 0;
-  padding-left: 44px;
+.inline-tool-call {
+  margin-left: 16px;
+  margin-bottom: 12px;
+  max-width: 80%;
 }
 </style>
