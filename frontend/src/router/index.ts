@@ -13,12 +13,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Dashboard' },
       },
       {
-        path: 'chat',
-        name: 'AgentChat',
-        component: () => import('@/views/AgentChat/index.vue'),
-        meta: { title: 'Agent Chat' },
-      },
-      {
         path: 'wiki/factors',
         name: 'FactorList',
         component: () => import('@/views/Wiki/FactorList.vue'),
@@ -77,6 +71,18 @@ const routes: RouteRecordRaw[] = [
         name: 'Settings',
         component: () => import('@/views/Settings/index.vue'),
         meta: { title: 'Settings' },
+      },
+    ],
+  },
+  {
+    path: '/chat',
+    component: () => import('@/components/Layout/ChatLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'AgentChat',
+        component: () => import('@/views/AgentChat/index.vue'),
+        meta: { title: 'Agent Chat' },
       },
     ],
   },

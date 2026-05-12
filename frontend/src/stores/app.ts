@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue'
 
 export const useAppStore = defineStore('app', () => {
   const sidebarCollapsed = ref(false)
+  const chatSidebarCollapsed = ref(true)
   const theme = ref<'light' | 'dark'>(
     (localStorage.getItem('quantnodes-theme') as 'light' | 'dark') || 'light'
   )
@@ -19,6 +20,10 @@ export const useAppStore = defineStore('app', () => {
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
+  const toggleChatSidebar = () => {
+    chatSidebarCollapsed.value = !chatSidebarCollapsed.value
+  }
+
   const setTheme = (newTheme: 'light' | 'dark') => {
     theme.value = newTheme
     localStorage.setItem('quantnodes-theme', newTheme)
@@ -31,10 +36,12 @@ export const useAppStore = defineStore('app', () => {
 
   return {
     sidebarCollapsed,
+    chatSidebarCollapsed,
     theme,
     locale,
     isDarkMode,
     toggleSidebar,
+    toggleChatSidebar,
     setTheme,
     setLocale,
   }
