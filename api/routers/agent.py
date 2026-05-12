@@ -1,6 +1,8 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi.responses import PlainTextResponse
 from ..schemas.agent import ChatMessage, ChatResponse
 from ..services.agent_service import agent_service
+from datetime import datetime
 
 router = APIRouter()
 
@@ -51,6 +53,37 @@ async def delete_session(session_id: str):
     if not deleted:
         return {"status": "not_found"}
     return {"status": "deleted"}
+
+
+@router.get("/chat/export/{session_id}")
+async def export_session(session_id: str, format: str = "markdown"):
+    """Export session as Markdown or JSON"""
+    history = agent_service.get_history(session_id)
+
+    if format == "json":
+        import json
+        return PlainTextResponse(
+            json.dumps(history, indent=2, ensure_ascii=False),
+            media_type="application/json",
+        )
+
+    # Markdown format
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    lines = [
+        f"# QuantNodes Chat Export",
+        f"Session: {session_id} | Date: {now}",
+        "",
+        "---",
+        "",
+    ]
+    for msg in history:
+        role = msg.get("role", "unknown").capitalize()
+        content = msg.get("content", "")
+        lines.append(f"## {role}")
+        lines.append(content)
+        lines.append("")
+
+    return PlainTextResponse("\n".join(lines), media_type="text/markdown")
 
 
 @router.websocket("/ws/chat")

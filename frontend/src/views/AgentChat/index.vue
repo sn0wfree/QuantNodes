@@ -175,6 +175,22 @@ const handleClearHistory = async () => {
   }
 }
 
+const handleExportSession = async (format: 'markdown' | 'json' = 'markdown') => {
+  try {
+    const response = await fetch(`/api/chat/export/${store.sessionId}?format=${format}`)
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `chat-${store.sessionId}-${dayjs().format('YYYY-MM-DD-HHmm')}.${format === 'markdown' ? 'md' : 'json'}`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success('Session exported')
+  } catch {
+    message.error('Failed to export session')
+  }
+}
+
 // Keyboard shortcuts
 const keyboard = useKeyboard()
 keyboard.register('ctrl+k', () => { showCommandPalette.value = true })
@@ -190,6 +206,8 @@ keyboard.register('escape', () => {
 const { register: registerCommand } = useCommands()
 registerCommand({ id: 'new-chat', label: 'New Chat', group: 'Sessions', shortcut: 'Ctrl+N', action: handleNewChat })
 registerCommand({ id: 'clear-history', label: 'Clear History', group: 'Sessions', action: handleClearHistory })
+registerCommand({ id: 'export-md', label: 'Export as Markdown', group: 'Sessions', action: () => handleExportSession('markdown') })
+registerCommand({ id: 'export-json', label: 'Export as JSON', group: 'Sessions', action: () => handleExportSession('json') })
 registerCommand({ id: 'switch-model', label: 'Switch Model...', group: 'Model', shortcut: 'Ctrl+O', action: () => { showModelSelector.value = true } })
 registerCommand({ id: 'cmd-palette', label: 'Command Palette', group: 'View', shortcut: 'Ctrl+K', action: () => { showCommandPalette.value = true } })
 
