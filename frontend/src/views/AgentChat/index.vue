@@ -11,9 +11,11 @@
       :toolCalls="agent.currentToolCalls.value"
       :isStreaming="agent.isStreaming.value"
       :streamContent="agent.streamContent.value"
+      @send="handleSend"
     />
 
     <ChatInput
+      class="chat-input-fixed"
       :disabled="agent.isStreaming.value"
       :agentName="agentName"
       :modelName="currentModelLabel"
@@ -137,5 +139,9 @@ onUnmounted(() => {
   flex-direction: column;
   background: var(--chat-bg-primary, #fff);
   overflow: hidden;
+}
+
+.chat-input-fixed {
+  flex-shrink: 0;
 }
 </style>

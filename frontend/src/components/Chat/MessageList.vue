@@ -26,7 +26,7 @@
       </template>
     </ChatMessage>
 
-    <EmptyState v-if="!messages.length && !isStreaming" />
+    <EmptyState v-if="!messages.length && !isStreaming" @send="(text: string) => $emit('send', text)" />
   </div>
 </template>
 
@@ -45,6 +45,10 @@ const props = defineProps<{
   toolCalls: ToolCallEvent[]
   isStreaming: boolean
   streamContent: string
+}>()
+
+defineEmits<{
+  send: [text: string]
 }>()
 
 const messagesContainer = ref<HTMLElement>()

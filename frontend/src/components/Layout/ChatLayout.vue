@@ -27,7 +27,7 @@
         </div>
       </div>
       <div class="chat-body">
-        <slot />
+        <router-view />
       </div>
     </div>
     <CommandPalette :open="showCommandPalette" @close="showCommandPalette = false" />
