@@ -97,18 +97,39 @@ class Agent:
         )
 
     def _create_provider(self, config: dict):
-        """根据配置创建 LLM Provider"""
+        """根据配置创建 LLM Provider
+
+        支持两种模式：
+        1. 多Provider模式：config中包含providers字典，使用ProviderRegistry动态路由
+        2. 单Provider模式（向后兼容）：仅api_key + api_base，绑定单个client
+        """
         try:
             from .providers.quantnodes import QuantNodesLLMProvider
+            from .providers.registry import ProviderRegistry
+
+            providers_data = config.get("providers", {})
+            model = config.get("model", "gpt-4o")
+            max_tokens = config.get("max_tokens", 102400)
+            fallback = config.get("fallback_providers", [])
+
+            if providers_data:
+                # 多Provider模式：使用ProviderRegistry
+                registry = ProviderRegistry.from_settings(config)
+                return QuantNodesLLMProvider(
+                    registry=registry,
+                    default_model=model,
+                    default_max_tokens=max_tokens,
+                    fallback_providers=fallback,
+                )
+
+            # 单Provider模式（向后兼容）
             from QuantNodes.ai.llm.openai import OpenAIClient, AzureOpenAIClient
 
             provider_type = config.get("provider", "openai")
             api_key = config.get("api_key")
             api_base = config.get("api_base")
-            model = config.get("model", "gpt-4o")
             timeout = config.get("llm_timeout", 60)
             max_retries = config.get("llm_max_retries", 3)
-            max_tokens = config.get("max_tokens", 102400)
 
             if provider_type == "azure":
                 client = AzureOpenAIClient(
@@ -118,9 +139,7 @@ class Agent:
                     max_retries=max_retries,
                 )
             else:
-                # openai, anthropic (via compatible proxy), local (ollama), custom
                 base_url = api_base or None
-                # Normalize: OpenAIClient appends /chat/completions internally
                 if base_url:
                     base_url = base_url.rstrip("/")
                     for suffix in ("/chat/completions", "/v1/chat/completions", "/v1"):
