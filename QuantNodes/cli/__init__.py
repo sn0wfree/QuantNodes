@@ -32,8 +32,17 @@ def is_initialized() -> bool:
 
 
 def get_project_root() -> Path:
-    """Get the QuantNodes package root directory."""
-    return Path(__file__).parent.parent
+    """Get the QuantNodes project root directory.
+
+    Walks up from this file to find the repo root (containing pyproject.toml).
+    Works from any working directory.
+    """
+    current = Path(__file__).resolve().parent
+    while current != current.parent:
+        if (current / "pyproject.toml").exists():
+            return current
+        current = current.parent
+    return Path(__file__).resolve().parent.parent
 
 
 def create_directory_structure():
