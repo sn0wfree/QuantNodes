@@ -1,98 +1,34 @@
 <template>
   <div class="agent-chat">
-    <div class="chat-header">
-      <div class="header-left">
-        <span class="status-dot" :class="{ connected: agent.isConnected.value }"></span>
-        <a-dropdown :trigger="['click']">
-          <a-button type="text" class="session-dropdown">
-            {{ currentSessionLabel }}
-            <template #icon><down-outlined /></template>
-          </a-button>
-          <template #overlay>
-            <a-menu @click="handleMenuClick">
-              <a-menu-item key="new">
-                <template #icon><plus-outlined /></template>
-                New Chat
-              </a-menu-item>
-              <a-menu-divider v-if="store.sessions.length" />
-              <a-menu-item
-                v-for="s in store.sessions"
-                :key="s.session_id"
-                :class="{ 'session-active': s.session_id === store.sessionId }"
-              >
-                <div class="session-item">
-                  <span class="session-name">{{ s.session_id }}</span>
-                  <span class="session-count">{{ s.message_count }} msgs</span>
-                </div>
-              </a-menu-item>
-            </a-menu>
-          </template>
-        </a-dropdown>
-      </div>
-      <div class="header-right">
-        <a-tooltip title="Switch Model (Ctrl+O)">
-          <a-button type="text" size="small" @click="showModelSelector = true">
-            <template #icon><control-outlined /></template>
-          </a-button>
-        </a-tooltip>
-        <a-tooltip title="Commands (Ctrl+K)">
-          <a-button type="text" size="small" @click="showCommandPalette = true">
-            <template #icon><appstore-outlined /></template>
-          </a-button>
-        </a-tooltip>
-        <a-button type="text" size="small" @click="handleNewChat">
-          <template #icon><plus-outlined /></template>
-        </a-button>
-      </div>
-    </div>
+    <ChatHeader
+      :isConnected="agent.isConnected.value"
+      :currentSessionLabel="currentSessionLabel"
+      :sessions="session.store.sessions"
+      :activeSessionId="session.store.sessionId"
+      @openModelSelector="showModelSelector = true"
+      @openCommandPalette="showCommandPalette = true"
+      @newChat="handleNewChat"
+      @menuClick="session.handleMenuClick"
+    />
 
     <div class="chat-container">
-      <div class="messages" ref="messagesContainer">
-        <ChatMessage
-          v-for="message in store.messages"
-          :key="message.id"
-          :role="message.role"
-          :content="message.role === 'assistant' ? message.content : undefined"
-          :time="formatTime(message.timestamp)"
-        >
-          <template v-if="message.role === 'user'">{{ message.content }}</template>
-        </ChatMessage>
-
-        <template v-if="store.messages.length">
-          <div class="tool-calls-section" v-if="agent.currentToolCalls.value.length > 0">
-            <ToolCallCard
-              v-for="tc in agent.currentToolCalls.value"
-              :key="tc.id"
-              :toolName="tc.name"
-              :arguments="tc.arguments"
-              :result="tc.result ? { output: tc.result } : undefined"
-              :status="tc.status"
-            />
-          </div>
-        </template>
-
-        <ChatMessage v-if="agent.isStreaming.value" role="assistant" :content="agent.streamContent.value">
-          <template v-if="!agent.streamContent.value">
-            <span class="typing-indicator">
-              <span class="dot"></span>
-              <span class="dot"></span>
-              <span class="dot"></span>
-            </span>
-          </template>
-        </ChatMessage>
-
-        <a-empty v-if="!store.messages.length && !agent.isStreaming.value" description="Start a conversation with the Agent" />
-      </div>
+      <MessageList
+        ref="messageListRef"
+        :messages="session.store.messages"
+        :toolCalls="agent.currentToolCalls.value"
+        :isStreaming="agent.isStreaming.value"
+        :streamContent="agent.streamContent.value"
+      />
 
       <div class="input-area">
-        <ChatInput ref="chatInputRef" :disabled="agent.isStreaming.value" @send="handleSend" />
+        <ChatInput :disabled="agent.isStreaming.value" @send="handleSend" />
       </div>
     </div>
 
     <CommandPalette :open="showCommandPalette" @close="showCommandPalette = false" />
     <ModelSelector
       :open="showModelSelector"
-      :currentModel="store.currentModel"
+      :currentModel="session.store.currentModel"
       @select="handleModelSelect"
       @close="showModelSelector = false"
     />
@@ -110,57 +46,39 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onMounted, onUnmounted } from 'vue'
-import { useAgentStore } from '@/stores/agent'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { message } from 'ant-design-vue'
 import { useAgent } from '@/composables/useAgent'
 import { useKeyboard } from '@/composables/useKeyboard'
 import { useCommands } from '@/composables/useCommands'
-import ChatMessage from '@/components/Chat/ChatMessage.vue'
+import { useChatSession } from '@/composables/useChatSession'
+import ChatHeader from '@/components/Chat/ChatHeader.vue'
+import MessageList from '@/components/Chat/MessageList.vue'
 import ChatInput from '@/components/Chat/ChatInput.vue'
-import ToolCallCard from '@/components/Chat/ToolCallCard.vue'
 import CommandPalette from '@/components/Chat/CommandPalette.vue'
 import ModelSelector from '@/components/Chat/ModelSelector.vue'
 import PermissionDialog from '@/components/Chat/PermissionDialog.vue'
-import { PlusOutlined, DownOutlined, ControlOutlined, AppstoreOutlined } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
 import { get, put } from '@/api'
-import dayjs from 'dayjs'
 
-const store = useAgentStore()
 const agent = useAgent()
-const messagesContainer = ref<HTMLElement>()
-const chatInputRef = ref()
+const session = useChatSession()
+const messageListRef = ref()
 
 const showCommandPalette = ref(false)
 const showModelSelector = ref(false)
 
-const currentSessionLabel = computed(() => {
-  if (store.sessionId === 'default') return 'Default Session'
-  return store.sessionId
-})
-
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-    }
-  })
-}
-
-const formatTime = (timestamp: number) => {
-  return dayjs(timestamp).format('HH:mm')
-}
+const currentSessionLabel = session.currentSessionLabel
 
 const handleSend = (content: string) => {
   agent.sendMessage(content)
 }
 
 const handleNewChat = async () => {
-  await store.createSession()
+  await session.createSession()
 }
 
 const handleModelSelect = async (model: string) => {
-  store.currentModel = model
+  session.store.currentModel = model
   try {
     await put('/settings', { settings: { agent: { model } } })
     message.success(`Switched to ${model}`)
@@ -169,45 +87,12 @@ const handleModelSelect = async (model: string) => {
   }
 }
 
-const handleMenuClick = async ({ key }: { key: string }) => {
-  if (key === 'new') {
-    await store.createSession()
-  } else {
-    await store.switchSession(key)
-  }
-}
-
-const handleClearHistory = async () => {
-  try {
-    await store.clearMessages()
-    message.success('History cleared')
-  } catch {
-    message.error('Failed to clear history')
-  }
-}
-
-const handleExportSession = async (format: 'markdown' | 'json' = 'markdown') => {
-  try {
-    const response = await fetch(`/api/chat/export/${store.sessionId}?format=${format}`)
-    const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `chat-${store.sessionId}-${dayjs().format('YYYY-MM-DD-HHmm')}.${format === 'markdown' ? 'md' : 'json'}`
-    a.click()
-    URL.revokeObjectURL(url)
-    message.success('Session exported')
-  } catch {
-    message.error('Failed to export session')
-  }
-}
-
 // Keyboard shortcuts
 const keyboard = useKeyboard()
 keyboard.register('ctrl+k', () => { showCommandPalette.value = true })
 keyboard.register('ctrl+o', () => { showModelSelector.value = true })
 keyboard.register('ctrl+n', () => { handleNewChat() })
-keyboard.register('ctrl+l', () => { handleClearHistory() })
+keyboard.register('ctrl+l', () => { session.clearHistory() })
 keyboard.register('escape', () => {
   showCommandPalette.value = false
   showModelSelector.value = false
@@ -216,50 +101,19 @@ keyboard.register('escape', () => {
 // Command palette commands
 const { register: registerCommand } = useCommands()
 registerCommand({ id: 'new-chat', label: 'New Chat', group: 'Sessions', shortcut: 'Ctrl+N', action: handleNewChat })
-registerCommand({ id: 'clear-history', label: 'Clear History', group: 'Sessions', action: handleClearHistory })
-registerCommand({ id: 'export-md', label: 'Export as Markdown', group: 'Sessions', action: () => handleExportSession('markdown') })
-registerCommand({ id: 'export-json', label: 'Export as JSON', group: 'Sessions', action: () => handleExportSession('json') })
+registerCommand({ id: 'clear-history', label: 'Clear History', group: 'Sessions', action: session.clearHistory })
+registerCommand({ id: 'export-md', label: 'Export as Markdown', group: 'Sessions', action: () => session.exportSession('markdown') })
+registerCommand({ id: 'export-json', label: 'Export as JSON', group: 'Sessions', action: () => session.exportSession('json') })
 registerCommand({ id: 'switch-model', label: 'Switch Model...', group: 'Model', shortcut: 'Ctrl+O', action: () => { showModelSelector.value = true } })
 registerCommand({ id: 'cmd-palette', label: 'Command Palette', group: 'View', shortcut: 'Ctrl+K', action: () => { showCommandPalette.value = true } })
 
-watch(
-  () => store.messages.length,
-  () => {
-    scrollToBottom()
-  }
-)
-
-watch(
-  () => agent.streamContent.value,
-  () => {
-    scrollToBottom()
-  }
-)
-
-watch(
-  () => agent.currentToolCalls.value.length,
-  () => {
-    scrollToBottom()
-  }
-)
-
-watch(
-  () => agent.isStreaming.value,
-  (isStreaming, wasStreaming) => {
-    if (wasStreaming && !isStreaming) {
-      scrollToBottom()
-    }
-  }
-)
-
 onMounted(async () => {
   agent.connect()
-  store.loadSessions()
-  scrollToBottom()
+  session.store.loadSessions()
   try {
     const settings = await get<any>('/settings')
     if (settings?.agent?.model) {
-      store.currentModel = settings.agent.model
+      session.store.currentModel = settings.agent.model
     }
   } catch {
     // use default model
@@ -279,58 +133,6 @@ onUnmounted(() => {
   background: #fff;
 }
 
-.chat-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #d9d9d9;
-}
-
-.status-dot.connected {
-  background: #52c41a;
-}
-
-.session-dropdown {
-  font-weight: 500;
-  font-size: 15px;
-}
-
-.session-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.session-name {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-count {
-  font-size: 12px;
-  color: #999;
-}
-
-.session-active {
-  background: #e6f4ff;
-}
-
 .chat-container {
   flex: 1;
   display: flex;
@@ -338,52 +140,8 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-}
-
-.tool-calls-section {
-  margin: 8px 0;
-  padding-left: 44px;
-}
-
 .input-area {
   padding: 16px;
   border-top: 1px solid #f0f0f0;
-}
-
-.typing-indicator {
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px 0;
-}
-
-.typing-indicator .dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #999;
-  animation: typing 1.4s infinite;
-}
-
-.typing-indicator .dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.typing-indicator .dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes typing {
-  0%, 60%, 100% {
-    transform: translateY(0);
-    opacity: 0.4;
-  }
-  30% {
-    transform: translateY(-4px);
-    opacity: 1;
-  }
 }
 </style>
