@@ -45,6 +45,7 @@ class OpenAIClient(LLMClientBase):
         model: Optional[str] = None,
         timeout: int = 60,
         max_retries: int = 3,
+        extra_headers: Optional[Dict[str, str]] = None,
         **kwargs
     ):
         """
@@ -56,6 +57,7 @@ class OpenAIClient(LLMClientBase):
             model: 默认模型
             timeout: 请求超时时间
             max_retries: 最大重试次数
+            extra_headers: 额外请求头（如 OpenRouter 的 X-OpenRouter-Title）
             **kwargs: 额外配置
         """
         super().__init__(
@@ -66,16 +68,16 @@ class OpenAIClient(LLMClientBase):
             **kwargs
         )
         self.model = model or self.DEFAULT_MODEL
+        self.extra_headers = extra_headers or {}
 
     def _get_headers(self) -> Dict[str, str]:
         """获取请求头"""
         headers = {
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://quantnodes.local",
-            "X-OpenRouter-Title": "QuantNodes",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
+        headers.update(self.extra_headers)
         return headers
 
     def _call_api(
