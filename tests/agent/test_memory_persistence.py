@@ -377,8 +377,8 @@ class TestPhaseEAgentLoopIntegration:
             assert hasattr(loop, 'dream_engine')
             assert hasattr(loop, '_pending_dream_analysis')
             assert hasattr(loop, '_compaction_counter')
-            assert loop._compaction_counter == 0
-            assert loop._pending_dream_analysis == []
+            assert loop._compaction_counter == {}
+            assert loop._pending_dream_analysis == {}
 
     def test_inject_memory_context(self):
         from QuantNodes.agent.core.loop import AgentLoop
