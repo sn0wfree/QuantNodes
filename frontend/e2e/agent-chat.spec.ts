@@ -74,12 +74,18 @@ test.describe('Agent Chat Page', () => {
     await expect(header).toBeVisible({ timeout: 10000 })
   })
 
-  test('ChatStatusBar shows agent/model info', async ({ page }) => {
+  test('ChatInputFooter shows agent indicator and model name', async ({ page }) => {
     await page.goto('/chat')
     await page.waitForLoadState('networkidle')
 
-    const statusBar = page.locator('.chat-statusbar')
-    await expect(statusBar).toBeVisible({ timeout: 10000 })
+    const inputFooter = page.locator('.chat-input-footer')
+    await expect(inputFooter).toBeVisible({ timeout: 10000 })
+
+    const agentDot = inputFooter.locator('.agent-dot')
+    await expect(agentDot).toBeVisible()
+
+    const modelName = inputFooter.locator('.model-name')
+    await expect(modelName).toBeVisible()
   })
 
   test('ChatKeybindHints visible at bottom', async ({ page }) => {
@@ -159,7 +165,7 @@ test.describe('Agent Chat Page', () => {
       { name: 'ChatHeader', selector: '.chat-header' },
       { name: 'MessageList', selector: '.messages' },
       { name: 'ChatInput', selector: '.chat-input-wrapper, .chat-input' },
-      { name: 'ChatStatusBar', selector: '.chat-statusbar' },
+      { name: 'ChatInputFooter', selector: '.chat-input-footer' },
       { name: 'ChatKeybindHints', selector: '.chat-keybinds' },
     ]
 

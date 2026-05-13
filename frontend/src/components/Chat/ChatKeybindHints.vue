@@ -1,13 +1,11 @@
 <template>
-  <div class="chat-keybinds">
+  <div class="chat-keybinds" v-if="show">
     <template v-if="isStreaming">
       <span class="hint"><kbd>esc</kbd> interrupt</span>
     </template>
     <template v-else>
       <span class="hint"><kbd>ctrl+k</kbd> commands</span>
       <span class="hint"><kbd>ctrl+n</kbd> new</span>
-      <span class="hint"><kbd>ctrl+o</kbd> model</span>
-      <span class="hint"><kbd>?</kbd> help</span>
     </template>
   </div>
 </template>
@@ -15,19 +13,18 @@
 <script setup lang="ts">
 defineProps<{
   isStreaming?: boolean
+  show?: boolean
 }>()
 </script>
 
 <style scoped>
 .chat-keybinds {
-  height: 28px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  border-top: 1px solid var(--chat-border-color, #f0f0f0);
-  background: var(--chat-bg-secondary, #fafafa);
-  font-size: 12px;
+  gap: 12px;
+  font-size: 11px;
   color: var(--chat-text-muted, #999);
   flex-shrink: 0;
 }
@@ -40,13 +37,12 @@ defineProps<{
 
 kbd {
   display: inline-block;
-  padding: 1px 5px;
-  font-size: 11px;
+  padding: 0 4px;
+  font-size: 10px;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   color: var(--chat-text-secondary, #666);
   background: var(--chat-bg-primary, #fff);
   border: 1px solid var(--chat-border-color, #d9d9d9);
   border-radius: 3px;
-  box-shadow: 0 1px 0 var(--chat-border-color, #d9d9d9);
 }
 </style>

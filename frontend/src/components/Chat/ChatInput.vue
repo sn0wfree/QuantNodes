@@ -1,11 +1,6 @@
 <template>
   <div class="chat-input-wrapper">
-    <div class="input-context" v-if="agentName || modelName">
-      <span class="context-agent" v-if="agentName">{{ agentName }}</span>
-      <span class="context-separator" v-if="agentName && modelName">·</span>
-      <span class="context-model" v-if="modelName">{{ modelName }}</span>
-    </div>
-    <div class="chat-input">
+    <div class="chat-input" :class="{ 'is-empty': !inputValue.trim() }">
       <a-textarea
         v-model:value="inputValue"
         :auto-size="{ minRows: 1, maxRows: 6 }"
@@ -17,33 +12,44 @@
         <template #icon><send-outlined /></template>
       </a-button>
     </div>
+    <ChatInputFooter
+      :currentMode="currentMode"
+      :modelName="modelName"
+      :quality="quality"
+      :tokenCount="tokenCount"
+      @toggleMode="$emit('toggleMode')"
+      @openModelSelector="$emit('openModelSelector')"
+      @qualityChange="(q: string) => $emit('qualityChange', q)"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { SendOutlined } from '@ant-design/icons-vue'
+import ChatInputFooter from './ChatInputFooter.vue'
 
 const props = defineProps<{
   disabled?: boolean
   agentName?: string
   modelName?: string
+  currentMode: 'build' | 'plan'
+  quality?: string
+  tokenCount?: number
 }>()
 
 const emit = defineEmits<{
   send: [content: string]
+  toggleMode: []
+  openModelSelector: []
+  qualityChange: [quality: string]
 }>()
 
 const inputValue = ref('')
 
 const placeholder = computed(() => {
-  if (props.agentName && props.modelName) {
-    return `Message ${props.agentName} · ${props.modelName}...`
-  }
-  if (props.modelName) {
-    return `Message ${props.modelName}...`
-  }
-  return 'Ask anything...'
+  const mode = props.currentMode === 'build' ? 'Build' : 'Plan'
+  return `Message ${mode}...`
 })
 
 const handleSend = () => {
@@ -64,25 +70,8 @@ const handleEnter = (e: KeyboardEvent) => {
 
 <style scoped>
 .chat-input-wrapper {
-  padding: 0 16px 12px;
-}
-
-.input-context {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px 0;
-  font-size: 12px;
-  color: var(--chat-text-muted, #999);
-}
-
-.context-agent {
-  font-weight: 500;
-  color: var(--chat-text-secondary, #666);
-}
-
-.context-separator {
-  color: var(--chat-border-color, #d9d9d9);
+  padding: 0 16px 8px;
+  flex-shrink: 0;
 }
 
 .chat-input {

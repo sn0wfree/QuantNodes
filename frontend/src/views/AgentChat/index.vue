@@ -1,8 +1,11 @@
 <template>
   <div class="agent-chat">
     <ChatHeader
-      :currentSessionLabel="currentSessionLabel"
-      :tokenCount="tokenCount"
+      :sessionLabel="currentSessionLabel"
+      :hasMessages="session.store.messages.length > 0"
+      @compact="handleCompact"
+      @share="handleShare"
+      @togglePanel="handleTogglePanel"
     />
 
     <MessageList
@@ -17,18 +20,22 @@
     <ChatInput
       class="chat-input-fixed"
       :disabled="agent.isStreaming.value"
-      :agentName="agentName"
       :modelName="currentModelLabel"
-      @send="handleSend"
-    />
-
-    <ChatStatusBar
-      :agentName="agentName"
-      :modelName="currentModelLabel"
+      :currentMode="store.currentMode"
+      :quality="store.quality"
       :tokenCount="tokenCount"
+      @send="handleSend"
+      @toggleMode="handleToggleMode"
+      @openModelSelector="showModelSelector = true"
+      @qualityChange="handleQualityChange"
     />
 
-    <ChatKeybindHints :isStreaming="agent.isStreaming.value" />
+    <ChatStatusBar :statusText="statusText" />
+
+    <ChatKeybindHints
+      :isStreaming="agent.isStreaming.value"
+      :show="true"
+    />
 
     <ModelSelector
       :open="showModelSelector"
@@ -73,11 +80,20 @@ const messageListRef = ref()
 
 const showModelSelector = ref(false)
 
-const currentSessionLabel = session.currentSessionLabel
-const agentName = computed(() => store.currentMode === 'plan' ? 'Plan' : 'Build')
+const currentSessionLabel = computed(() => {
+  const msg = session.store.messages[0]
+  return msg ? msg.content.slice(0, 40) : 'New Session'
+})
+
 const tokenCount = computed(() => {
   const msgs = session.store.messages
   return msgs.length * 500
+})
+
+const statusText = computed(() => {
+  if (agent.isStreaming.value) return 'Thinking...'
+  if (!session.store.messages.length) return ''
+  return `${session.store.messages.length} messages`
 })
 
 const currentModelLabel = computed(() => {
@@ -89,6 +105,28 @@ const currentModelLabel = computed(() => {
 
 const handleSend = (content: string) => {
   agent.sendMessage(content)
+}
+
+const handleToggleMode = () => {
+  const next = store.currentMode === 'build' ? 'plan' : 'build'
+  store.switchMode(next)
+}
+
+const handleQualityChange = (q: string) => {
+  store.quality = q as 'high' | 'medium' | 'low'
+}
+
+const handleCompact = () => {
+  // TODO: implement session compaction
+}
+
+const handleShare = () => {
+  // TODO: implement session sharing
+}
+
+const handleTogglePanel = () => {
+  // TODO: implement context panel toggle
+  message.info('Context panel coming in Phase 1')
 }
 
 const handleModelSelect = async (model: string) => {

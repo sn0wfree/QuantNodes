@@ -52,6 +52,7 @@ export const useAgentStore = defineStore('agent', () => {
     plan: { model: '', max_tokens: 16000 },
   })
   const defaultMode = ref<string>('build')
+  const quality = ref<'high' | 'medium' | 'low'>('high')
 
   const clearMessages = () => {
     messages.value = []
@@ -194,6 +195,7 @@ export const useAgentStore = defineStore('agent', () => {
     currentMode,
     modeModels,
     defaultMode,
+    quality,
     clearMessages,
     loadSessions,
     createSession,

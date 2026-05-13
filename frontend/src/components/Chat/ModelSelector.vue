@@ -63,7 +63,6 @@ import { useAgentStore } from '@/stores/agent'
 const props = defineProps<{
   open: boolean
   currentModel: string
-  mode?: 'build' | 'plan'
 }>()
 
 const emit = defineEmits<{
@@ -139,7 +138,7 @@ watch(() => props.open, (val) => {
 
 .no-results {
   text-align: center;
-  color: #999;
+  color: var(--chat-text-muted, #999);
   padding: 20px 0;
 }
 
@@ -150,7 +149,7 @@ watch(() => props.open, (val) => {
 .group-label {
   padding: 4px 0;
   font-size: 12px;
-  color: #999;
+  color: var(--chat-text-muted, #999);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;

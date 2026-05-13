@@ -1,45 +1,41 @@
 <template>
   <div class="chat-header">
     <div class="header-left">
-      <a-segmented
-        v-model:value="currentMode"
-        :options="modeOptions"
-        size="small"
-        @change="handleModeChange"
-      />
+      <span class="session-name">{{ sessionLabel }}</span>
     </div>
     <div class="header-right">
-      <span v-if="tokenCount" class="token-info">
-        {{ tokenCount.toLocaleString() }} tokens
-      </span>
+      <a-tooltip title="Compact session">
+        <a-button type="text" size="small" :disabled="!hasMessages" @click="$emit('compact')">
+          <template #icon><compress-outlined /></template>
+        </a-button>
+      </a-tooltip>
+      <a-tooltip title="Share session">
+        <a-button type="text" size="small" :disabled="!hasMessages" @click="$emit('share')">
+          <template #icon><share-alt-outlined /></template>
+        </a-button>
+      </a-tooltip>
+      <a-tooltip title="Toggle context panel">
+        <a-button type="text" size="small" @click="$emit('togglePanel')">
+          <template #icon><right-square-outlined /></template>
+        </a-button>
+      </a-tooltip>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useAgentStore } from '@/stores/agent'
-
-const store = useAgentStore()
-
-const currentMode = computed({
-  get: () => store.currentMode,
-  set: (val) => store.switchMode(val as 'build' | 'plan'),
-})
-
-const modeOptions = [
-  { label: 'Build', value: 'build' },
-  { label: 'Plan', value: 'plan' },
-]
+import { CompressOutlined, ShareAltOutlined, RightSquareOutlined } from '@ant-design/icons-vue'
 
 defineProps<{
-  currentSessionLabel: string
-  tokenCount?: number
+  sessionLabel: string
+  hasMessages?: boolean
 }>()
 
-const handleModeChange = (val: string) => {
-  store.switchMode(val as 'build' | 'plan')
-}
+defineEmits<{
+  compact: []
+  share: []
+  togglePanel: []
+}>()
 </script>
 
 <style scoped>
@@ -57,16 +53,21 @@ const handleModeChange = (val: string) => {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.session-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--chat-text-primary, #333);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.token-info {
-  font-size: 12px;
-  color: var(--chat-text-muted, #999);
+  gap: 2px;
 }
 </style>
