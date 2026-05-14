@@ -14,13 +14,11 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 - **统一节点架构**: 万物皆 Node，Pipeline 是唯一组合原语
 - **317+ 内置算子**: 涵盖时间序列、截面运算、多截面聚合等，装饰器注册表模式
 - **多数据库支持**: ClickHouse、DuckDB、MySQL、SQLite、CSV、Parquet
-- **AI 原生设计**: 内置策略生成器和 Pipeline 优化器
+- **外部 Agent 支持**: 通过 API 为外部 Agent 提供方法调用和提示词
 - **Config-Driven 回测**: YAML 配置文件驱动回测，支持算子扩展
-- **零 QuantStudio 依赖**: 完全自主实现，代码清晰可控
-- **Agent 智能体**: 15 个内置工具，支持文件操作、代码搜索、Git、Web 搜索等
-- **真流式输出**: Token 级别实时流式响应，工具调用过程可视化
-- **Markdown 渲染**: Agent 回复支持代码高亮、表格、列表等富文本格式
-- **Session 管理**: 多会话切换、历史记录、新建/删除对话
+- **零 LLM 依赖**: QuantNodes 不包含 LLM，外部 Agent 自行提供
+- **提示词库**: 内置完整策略提示词，外部 Agent 可直接使用
+- **方法库**: 纯 Python 方法，外部 Agent 通过 API 调用
 
 ## 架构概览
 
@@ -42,56 +40,49 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 ```
 QuantNodes/
 ├── QuantNodes/                    # 主包
-│   ├── agent/                     # Agent 智能体系统
-│   │   ├── core/                  # Agent 核心（loop, runner, context）
-│   │   ├── tools/                 # 15 个内置工具
-│   │   │   ├── file_ops.py        # 文件读/写/编辑
-│   │   │   ├── code_search.py     # 代码搜索（grep/find）
-│   │   │   ├── git_ops.py         # Git 操作
-│   │   │   ├── web_fetch.py       # 网页抓取
-│   │   │   ├── web_search.py      # 网络搜索
-│   │   │   ├── task.py            # 任务管理
-│   │   │   └── ...                # 更多工具
-│   │   └── providers/             # LLM Provider
+│   ├── methods/                    # 方法库（外部 Agent API）
+│   │   ├── backtest.py           # run_backtest()
+│   │   ├── sandbox.py            # validate_code(), execute_code()
+│   │   ├── pipeline.py           # validate_pipeline()
+│   │   ├── factor.py             # analyze_factor()
+│   │   ├── wiki.py              # query_wiki()
+│   │   ├── file_ops.py          # 文件操作
+│   │   ├── code_search.py       # 代码搜索
+│   │   └── git_ops.py           # Git 操作
 │   │
-│   ├── cli/                       # 命令行工具
-│   │   ├── __init__.py            # CLI 主入口
-│   │   └── enhanced.py            # Rich Agent 交互终端
+│   ├── prompts/                   # 提示词库
+│   │   ├── strategy/            # 策略提示词
+│   │   │   ├── momentum.py     # 动量策略
+│   │   │   ├── mean_reversion.py # 均值回归
+│   │   │   └── ...
+│   │   ├── backtest/           # 回测提示词
+│   │   └── factor/              # 因子提示词
+│   │
+│   ├── archive/agent/             # 归档的 Agent 代码
+│   │
+│   ├── agent/                     # Agent 系统（部分保留）
+│   │   ├── tools/                 # 保留的工具实现
 │   │
 │   ├── core/                      # 核心架构
-│   │   ├── node.py                # BaseNode, Pipeline
-│   │   ├── control.py             # IfNode, MapNode, WhileNode
-│   │   ├── expression.py          # Expression, LambdaExpression
-│   │   ├── serialization.py       # 序列化支持
-│   │   ├── data_preprocessing.py  # DataPreprocessingFun
-│   │   └── pandas_utils.py        # Pandas 工具函数
-│   │
 │   ├── factor_node/               # 因子引擎
-│   │   ├── factor.py              # Factor, DerivativeFactor
-│   │   ├── factor_functions.py    # 317+ 算子 + 注册表 (Polars)
-│   │   └── factor_operation.py    # Point/Time/Section/PanelOperation
-│   │
 │   ├── database_node/             # 数据库节点
-│   │   ├── clickhouse_node.py     # ClickHouse 引擎
-│   │   ├── duckdb_node.py         # DuckDB 引擎
-│   │   ├── mysql_node.py          # MySQL 引擎
-│   │   └── csv_node.py            # CSV 读取
-│   │
-│   ├── symbolic/                  # 符号计算引擎
-│   │   ├── expression.py          # SQL 表达式 AST
-│   │   ├── compiler.py            # SQL 编译器
-│   │   └── dialect.py             # ClickHouse/DuckDB/MySQL 方言
-│   │
 │   ├── backtest/                 # 回测引擎
-│   │   ├── backtest_node.py       # BacktestNode
-│   │   ├── strategy_node.py       # StrategyNode
-│   │   └── broker_node.py         # BrokerNode
-│   │
-│   ├── operator_node/             # SQL 构建节点
-│   ├── ai/                        # AI 元节点
-│   ├── conf_node/                 # 配置节点
-│   ├── ui_node/                   # UI 数据准备节点
-│   └── app/                       # Streamlit 应用
+│   └── ...
+│
+├── api/                          # API 服务器
+│   ├── routers/
+│   │   ├── prompts.py           # 提示词端点
+│   │   ├── code.py              # 代码验证/执行端点
+│   │   └── strategy.py          # 策略端点
+│   └── archive/                  # 归档的 API 代码
+│
+├── frontend/src/
+│   ├── views/                    # 展示页面
+│   │   ├── Dashboard/
+│   │   ├── Portfolios/
+│   │   ├── Status/
+│   │   └── ...
+│   └── archive/                  # 归档的 Chat UI 代码
 │
 ├── tests/                        # 测试套件
 ├── examples/                     # 示例代码
@@ -131,37 +122,34 @@ quantnodes run --api-only
 quantnodes run --frontend-only
 ```
 
-### Agent 对话
+### 外部 Agent API
+
+QuantNodes 通过 REST API 为外部 Agent 提供方法调用和提示词。
+
+#### 获取策略提示词
 
 ```bash
-# 交互模式
-quantnodes chat
-
-# 单次提问
-quantnodes chat "帮我生成一个动量因子"
-
-# 指定工作目录
-quantnodes chat --workspace ./my_project
+curl -X GET "http://localhost:8000/api/prompts/strategy/momentum" \
+  -H "X-API-Key: qn_live_xxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
-### Agent 工具
+#### 验证代码安全
 
-| 工具 | 功能 | read_only |
-|------|------|-----------|
-| `file_ops` | 文件读/写/编辑/列表/glob | ❌ |
-| `code_search` | grep/ find_files/ search_code | ✅ |
-| `git_ops` | status/ diff/ log/ commit | ❌ |
-| `web_fetch` | 网页抓取 | ✅ |
-| `web_search` | DuckDuckGo 搜索 | ✅ |
-| `task` | 任务管理（创建/更新/列表） | ❌ |
-| `pipeline` | Pipeline 验证 | ✅ |
-| `factor` | 因子分析 | ✅ |
-| `backtest` | 回测执行 | ❌ |
-| `config_backtest` | YAML 配置回测 | ❌ |
-| `strategy` | 策略生成 | ❌ |
-| `wiki` | Wiki 知识库 | ❌ |
-| `sandbox` | 代码沙箱验证 | ✅ |
-| `echo` | 回声测试 | ✅ |
+```bash
+curl -X POST "http://localhost:8000/api/code/validate" \
+  -H "X-API-Key: qn_live_xxxxxxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"code": "import pandas as pd\\nprint(pd.DataFrame())"}'
+```
+
+#### 运行回测
+
+```bash
+curl -X POST "http://localhost:8000/api/backtest/run" \
+  -H "X-API-Key: qn_live_xxxxxxxxxxxxxxxxxxxxxxxx" \
+  -H "Content-Type: application/json" \
+  -d '{"pipeline_code": "...", "start_date": "2020-01-01", "end_date": "2024-12-31"}'
+```
 
 ### 基本使用
 
@@ -270,7 +258,7 @@ pytest tests/ -v
 
 # 运行特定测试
 pytest tests/test_factor_functions.py -v
-pytest tests/agent/test_config_executor.py -v
+pytest tests/test_backtest_tool.py -v
 
 # 查看覆盖率
 pytest tests/ --cov=QuantNodes --cov-report=html
@@ -290,6 +278,17 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - [Feature 3D - 用户友好自定义算子 API](docs/Feature3D-用户友好自定义算子API设计.md)
 
 ## 变更日志
+
+### v2.6.0 (2026-05-14)
+
+- ✅ **架构重构**: 从"带 UI 的 Agent 系统"转向"外部 Agent 方法库 + 提示词库"
+- ✅ **移除 Chat UI**: 前端不再有交互式 Chat
+- ✅ **移除 Agent LLM**: QuantNodes 不再包含 LLM
+- ✅ **新增 methods/**: 纯方法实现，外部 Agent 可通过 API 调用
+- ✅ **新增 prompts/**: 完整策略提示词库，含参考代码
+- ✅ **API 重构**: 新增 prompts、code 路由，移除 chat 路由
+- ✅ **API Key 认证**: 支持 X-API-Key 和 Authorization Bearer 认证
+- ✅ **前端展示页面**: Dashboard、Portfolios、Status 视图
 
 ### v2.5.0 (2026-05-10)
 
