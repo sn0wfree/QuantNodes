@@ -70,7 +70,7 @@ const handleEnter = (e: KeyboardEvent) => {
 
 <style scoped>
 .chat-input-wrapper {
-  padding: 0 16px 8px;
+  padding: 0 16px 4px;
   flex-shrink: 0;
 }
 
@@ -79,14 +79,14 @@ const handleEnter = (e: KeyboardEvent) => {
   gap: 8px;
   align-items: flex-end;
   border: 1px solid var(--chat-border-color, #d9d9d9);
-  border-radius: 8px;
-  padding: 8px 12px;
+  border-radius: 6px;
+  padding: 6px 10px;
   background: var(--chat-bg-primary, #fff);
   transition: border-color 0.2s;
 }
 
 .chat-input:focus-within {
-  border-color: #1677ff;
+  border-color: var(--chat-border-active, #1677ff);
 }
 
 .chat-input :deep(.ant-input) {

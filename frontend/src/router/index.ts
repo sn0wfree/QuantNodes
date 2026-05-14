@@ -72,14 +72,8 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Settings/index.vue'),
         meta: { title: 'Settings' },
       },
-    ],
-  },
-  {
-    path: '/chat',
-    component: () => import('@/components/Layout/ChatLayout.vue'),
-    children: [
       {
-        path: '',
+        path: 'chat',
         name: 'AgentChat',
         component: () => import('@/views/AgentChat/index.vue'),
         meta: { title: 'Agent Chat' },

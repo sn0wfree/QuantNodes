@@ -3,8 +3,10 @@ from fastapi.responses import PlainTextResponse
 from ..schemas.agent import ChatMessage, ChatResponse
 from ..services.agent_service import agent_service
 from datetime import datetime
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/agent/status")
@@ -18,10 +20,12 @@ async def get_status():
 
 @router.post("/chat", response_model=ChatResponse)
 async def send_message(message: ChatMessage):
+    logger.info(f"[chat] Received request: content={message.content[:50]!r}..., session_id={message.session_id}")
     result = await agent_service.send_message(
         content=message.content,
         session_id=message.session_id or "default",
     )
+    logger.info(f"[chat] Response type: {type(result)}, keys: {result.keys() if isinstance(result, dict) else 'N/A'}")
     return ChatResponse(**result)
 
 

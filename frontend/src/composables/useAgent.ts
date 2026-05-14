@@ -17,8 +17,6 @@ export function useAgent() {
     onMessage: (data) => {
       switch (data.type) {
         case 'token':
-          streamContent.value += data.content
-          break
         case 'chunk':
           streamContent.value += data.content
           break

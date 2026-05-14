@@ -57,7 +57,7 @@
             :class="{ active: s.session_id === activeSessionId }"
             @click="switchSession(s.session_id)"
           >
-            <span class="session-name">{{ s.session_id }}</span>
+            <span class="session-name" :title="s.session_id">{{ sessionLabel(s) }}</span>
             <span class="session-count">{{ s.message_count }}</span>
           </div>
           <div v-if="!sessions.length" class="session-empty">No sessions yet</div>
@@ -140,6 +140,15 @@ const handleMenuClick = ({ key }: { key: string }) => {
 const switchSession = (id: string) => {
   emit('switchSession', id)
 }
+
+const sessionLabel = (s: SessionInfo) => {
+  if (s.first_message) {
+    const text = s.first_message.replace(/[<>]/g, '').slice(0, 40)
+    return text + (s.first_message.length > 40 ? '...' : '')
+  }
+  if (s.session_id === 'default') return 'Default Session'
+  return s.session_id
+}
 </script>
 
 <style scoped>
@@ -148,7 +157,7 @@ const switchSession = (id: string) => {
   flex-direction: column;
   background: #001529;
   color: rgba(255, 255, 255, 0.85);
-  transition: width 0.2s ease;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   flex-shrink: 0;
 }

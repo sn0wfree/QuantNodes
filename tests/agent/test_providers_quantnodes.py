@@ -32,20 +32,20 @@ class MockLLMClient:
 class TestQuantNodesLLMProviderInit:
     def test_init_with_client(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
         assert provider.client == mock_client
         assert provider.default_model is None
 
     def test_init_with_default_model(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client, default_model="gpt-4")
+        provider = QuantNodesLLMProvider(client=mock_client, default_model="gpt-4")
         assert provider.default_model == "gpt-4"
 
 
 class TestMessageConversion:
     def test_convert_single_user_message(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         messages = [{"role": "user", "content": "Hello"}]
         result = provider._convert_messages(messages)
@@ -56,7 +56,7 @@ class TestMessageConversion:
 
     def test_convert_single_assistant_message(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         messages = [{"role": "assistant", "content": "Hi there"}]
         result = provider._convert_messages(messages)
@@ -67,7 +67,7 @@ class TestMessageConversion:
 
     def test_convert_system_message(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         messages = [{"role": "system", "content": "Be helpful"}]
         result = provider._convert_messages(messages)
@@ -78,7 +78,7 @@ class TestMessageConversion:
 
     def test_convert_multiple_messages(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         messages = [
             {"role": "system", "content": "Sys"},
@@ -94,7 +94,7 @@ class TestMessageConversion:
 
     def test_convert_message_without_content(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         messages = [{"role": "user"}]
         result = provider._convert_messages(messages)
@@ -104,7 +104,7 @@ class TestMessageConversion:
 
     def test_convert_message_without_role(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         messages = [{"content": "Hello"}]
         result = provider._convert_messages(messages)
@@ -116,7 +116,7 @@ class TestMessageConversion:
 class TestToolCallParsing:
     def test_parse_single_tool_call(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         content = """Let me check that.
 
@@ -137,7 +137,7 @@ class TestToolCallParsing:
 
     def test_parse_multiple_tool_calls(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         content = """```tool_call
 {"id": "call_1", "name": "echo", "arguments": {"message": "first"}}
@@ -155,7 +155,7 @@ class TestToolCallParsing:
 
     def test_parse_no_tool_calls(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         content = "Just a normal response without tool calls."
         result = provider._parse_tool_calls(content)
@@ -164,7 +164,7 @@ class TestToolCallParsing:
 
     def test_parse_invalid_json_tool_call(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         content = """```tool_call
 this is not valid json
@@ -176,7 +176,7 @@ this is not valid json
 
     def test_parse_tool_call_with_missing_fields(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         content = """```tool_call
 {"name": "echo"}
@@ -191,7 +191,7 @@ this is not valid json
 
     def test_parse_tool_call_with_empty_content(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         result = provider._parse_tool_calls("")
 
@@ -201,7 +201,7 @@ this is not valid json
 class TestQuantNodesLLMProviderChat:
     def test_chat_basic(self):
         mock_client = MockLLMClient(response_content="Hello from LLM")
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         async def _test():
             response = await provider.chat(
@@ -222,7 +222,7 @@ class TestQuantNodesLLMProviderChat:
             response_content="Hi",
             usage={"prompt_tokens": 10, "completion_tokens": 5}
         )
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         async def _test():
             return await provider.chat(messages=[{"role": "user", "content": "Hi"}])
@@ -239,7 +239,7 @@ class TestQuantNodesLLMProviderChat:
 {"id": "call_1", "name": "echo", "arguments": {"message": "test"}}
 ```"""
         mock_client = MockLLMClient(response_content=response_with_tool)
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         tools = [
             {
@@ -270,7 +270,7 @@ class TestQuantNodesLLMProviderChat:
 
     def test_chat_with_model_parameter(self):
         mock_client = MockLLMClient(response_content="Hi")
-        provider = QuantNodesLLMProvider(mock_client, default_model="default-model")
+        provider = QuantNodesLLMProvider(client=mock_client, default_model="default-model")
 
         async def _test():
             return await provider.chat(
@@ -284,7 +284,7 @@ class TestQuantNodesLLMProviderChat:
 
     def test_chat_with_temperature_and_max_tokens(self):
         mock_client = MockLLMClient(response_content="Hi")
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         async def _test():
             return await provider.chat(
@@ -299,7 +299,7 @@ class TestQuantNodesLLMProviderChat:
 
     def test_chat_role_alternation_applied(self):
         mock_client = MockLLMClient(response_content="Hi")
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         messages = [
             {"role": "user", "content": "First"},
@@ -315,7 +315,7 @@ class TestQuantNodesLLMProviderChat:
 
     def test_chat_tool_system_message_without_system_prompt(self):
         mock_client = MockLLMClient(response_content="Hi")
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         tools = [
             {
@@ -491,7 +491,7 @@ class TestRoleAlternationEdgeCases:
 class TestToolCallParsingEdgeCases:
     def test_parse_tool_call_with_whitespace(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         content = """```tool_call
         {
@@ -506,7 +506,7 @@ class TestToolCallParsingEdgeCases:
 
     def test_parse_tool_call_with_trailing_text(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         content = """```tool_call
 {"id": "call_1", "name": "echo", "arguments": {}}
@@ -519,7 +519,7 @@ Some more text after the tool call."""
 
     def test_parse_tool_call_with_leading_text(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         content = """Some text before.
 
@@ -532,7 +532,7 @@ Some more text after the tool call."""
 
     def test_parse_tool_call_none_content(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         result = provider._parse_tool_calls(None)
         assert len(result) == 0
@@ -541,14 +541,14 @@ Some more text after the tool call."""
 class TestMessageConversionEdgeCases:
     def test_convert_messages_empty_list(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         result = provider._convert_messages([])
         assert result == []
 
     def test_convert_message_unknown_role_defaults_to_user(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         messages = [{"role": "unknown_role", "content": "test"}]
         result = provider._convert_messages(messages)
@@ -558,7 +558,7 @@ class TestMessageConversionEdgeCases:
 
     def test_convert_message_none_content(self):
         mock_client = MockLLMClient()
-        provider = QuantNodesLLMProvider(mock_client)
+        provider = QuantNodesLLMProvider(client=mock_client)
 
         messages = [{"role": "user", "content": None}]
         result = provider._convert_messages(messages)

@@ -517,6 +517,20 @@ def cmd_run(args) -> int:
         
         if not args.api_only:
             print(f"\n启动前端: http://{host}:{frontend_port}")
+            # Wait for backend to be ready before starting frontend
+            import time
+            import urllib.request
+            import urllib.error
+            print("  等待后端就绪...")
+            for i in range(30):
+                try:
+                    urllib.request.urlopen(f"http://localhost:{api_port}/docs", timeout=2)
+                    print("  ✓ 后端已就绪")
+                    break
+                except (urllib.error.URLError, OSError):
+                    time.sleep(1)
+            else:
+                print("  ⚠ 后端未就绪，继续启动前端")
             frontend_proc, frontend_fd = start_frontend_server(host, frontend_port, api_port)
             processes.append(("Frontend", frontend_proc))
             log_fds.append(frontend_fd)

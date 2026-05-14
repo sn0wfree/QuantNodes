@@ -72,9 +72,9 @@ const formattedTokens = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 28px;
-  padding: 0 12px 2px;
-  font-size: 12px;
+  height: 24px;
+  padding: 0 4px 0 0;
+  font-size: 11px;
   color: var(--chat-text-muted, #999);
   flex-shrink: 0;
 }
@@ -89,10 +89,10 @@ const formattedTokens = computed(() => {
 .agent-indicator {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   cursor: pointer;
-  padding: 1px 6px;
-  border-radius: 4px;
+  padding: 0 4px;
+  border-radius: 3px;
   transition: background 0.15s;
   user-select: none;
 }

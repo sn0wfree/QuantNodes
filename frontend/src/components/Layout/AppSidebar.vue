@@ -1,5 +1,5 @@
 <template>
-  <a-layout-sider class="sidebar" :collapsed="collapsed" collapsible @collapse="onCollapse">
+  <a-layout-sider class="sidebar" :collapsed="false">
     <a-menu
       :selectedKeys="selectedKeys"
       v-model:openKeys="openKeys"
@@ -63,13 +63,11 @@ import {
 
 const router = useRouter()
 const route = useRoute()
-const collapsed = ref(false)
 
 const openKeys = ref<string[]>([])
 
 const selectedKeys = computed(() => [route.path])
 
-// Auto-expand sub-menu when navigating to wiki routes
 watch(
   () => route.path,
   (path) => {
@@ -79,10 +77,6 @@ watch(
   },
   { immediate: true }
 )
-
-const onCollapse = (val: boolean) => {
-  collapsed.value = val
-}
 
 const handleMenuClick = ({ key }: { key: string }) => {
   router.push(key)

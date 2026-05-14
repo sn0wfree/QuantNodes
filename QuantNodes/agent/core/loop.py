@@ -7,6 +7,7 @@ Phase A-F: Memory Persistence 集成
 """
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Dict, Any, List
 
@@ -21,6 +22,8 @@ from .hook import AgentHook, CompositeHook
 from .memory import MemoryStore, MemoryManager, DreamStore
 from .dream import DreamEngine
 from .autocompact import truncate_history
+
+logger = logging.getLogger(__name__)
 
 
 class AgentLoop:
@@ -349,26 +352,31 @@ class AgentLoop:
 
     async def chat(self, message: str, session_id: str = "default") -> str:
         """简单的单轮对话API（不经过消息总线）"""
+        logger.info(f"[loop.chat] Called: session_id={session_id}, message_length={len(message)}")
+
         if self.provider is None:
+            logger.warning("[loop.chat] Provider is None!")
             return "Error: LLM provider not configured."
 
         session = self.session_manager.get_session(session_id)
+        logger.info(f"[loop.chat] Session obtained: {session_id}")
 
         history = [
             m for m in session.messages
             if m.get("role") in ("user", "assistant", "tool")
         ]
+        logger.info(f"[loop.chat] History length: {len(history)}")
+
         # Phase F: 截断前捕获被丢弃的消息
         history, dropped = truncate_history(history, max_messages=20)
         if dropped:
-            if session_id not in self._pending_dream_analysis:
-                self._pending_dream_analysis[session_id] = []
-            self._pending_dream_analysis[session_id].extend(dropped)
+            logger.info(f"[loop.chat] Dropped {len(dropped)} messages during truncation")
 
         messages = self.context_builder.build_messages(
             history=history,
             current_message=message,
         )
+        logger.info(f"[loop.chat] Built messages count: {len(messages)}")
 
         # Phase C + B + D: 注入记忆上下文
         self._inject_memory_context(messages, session_id)
@@ -380,8 +388,10 @@ class AgentLoop:
             max_tokens=self.max_tokens,
             max_iterations=self.max_iterations,
         )
+        logger.info(f"[loop.chat] Running agent spec...")
 
         result = await self.runner.run(spec)
+        logger.info(f"[loop.chat] Runner completed: final_content_length={len(result.final_content) if result.final_content else 0}")
 
         # Phase D + F: Dream 分析
         await self._process_dream_analysis(
@@ -401,6 +411,7 @@ class AgentLoop:
         )
 
         self.session_manager.save_session(session)
+        logger.info(f"[loop.chat] Done: returning {len(result.final_content) if result.final_content else 0} chars")
 
         return result.final_content or ""
 

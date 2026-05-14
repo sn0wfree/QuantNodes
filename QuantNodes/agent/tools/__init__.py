@@ -6,6 +6,8 @@ Tool基类 / 注册表 / 具体工具实现
 """
 
 from .base import Tool, ToolExecutionResult
+from .base_v2 import ToolV2, ToolCategory, ToolMetadata, ToolV1Compat
+from .context import ToolContext, ToolContextFactory
 from .registry import ToolRegistry
 from .echo import EchoTool
 from .sandbox import SandboxTool
@@ -25,6 +27,12 @@ from .task import TaskTool
 __all__ = [
     "Tool",
     "ToolExecutionResult",
+    "ToolV2",
+    "ToolCategory",
+    "ToolMetadata",
+    "ToolV1Compat",
+    "ToolContext",
+    "ToolContextFactory",
     "ToolRegistry",
     "EchoTool",
     "SandboxTool",

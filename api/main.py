@@ -8,7 +8,16 @@ from .routers import agent, wiki, backtest, factor, skill, dream, stats, strateg
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler("/tmp/server.log"),
+            logging.StreamHandler()
+        ]
+    )
+
     print(f"Starting QuantNodes API v{app_settings.VERSION}")
     from .services.agent_service import agent_service
     agent_service._get_agent()

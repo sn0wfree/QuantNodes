@@ -1,19 +1,12 @@
 <template>
   <div class="agent-chat">
-    <ChatHeader
-      :sessionLabel="currentSessionLabel"
-      :hasMessages="session.store.messages.length > 0"
-      @compact="handleCompact"
-      @share="handleShare"
-      @togglePanel="handleTogglePanel"
-    />
-
     <MessageList
       ref="messageListRef"
       :messages="session.store.messages"
       :toolCalls="agent.currentToolCalls.value"
       :isStreaming="agent.isStreaming.value"
       :streamContent="agent.streamContent.value"
+      :mode="store.currentMode"
       @send="handleSend"
     />
 
@@ -30,12 +23,28 @@
       @qualityChange="handleQualityChange"
     />
 
-    <ChatStatusBar :statusText="statusText" />
+    <div class="chat-bottombar">
+      <span class="status-text">{{ statusText }}</span>
+      <span class="hints">
+        <template v-if="agent.isStreaming.value">
+          <span class="hint"><kbd>esc</kbd> interrupt</span>
+        </template>
+        <template v-else>
+          <span class="hint"><kbd>ctrl+k</kbd> commands</span>
+          <span class="hint"><kbd>ctrl+n</kbd> new</span>
+        </template>
+      </span>
+    </div>
 
-    <ChatKeybindHints
-      :isStreaming="agent.isStreaming.value"
-      :show="true"
-    />
+    <Transition name="panel-slide">
+      <div v-if="appStore.contextPanelOpen" class="panels-container">
+        <div class="panels-inner" :style="{ width: (appStore.contextPanelWidth + appStore.toolsPanelWidth) + 'px' }">
+          <ChatContextPanel :open="true" />
+          <div class="resize-handle" @mousedown.prevent="startToolsResize" />
+          <ToolsPanel v-if="appStore.toolsPanelOpen" />
+        </div>
+      </div>
+    </Transition>
 
     <ModelSelector
       :open="showModelSelector"
@@ -53,6 +62,7 @@
       @deny="(id) => agent.respondPermission(id, false)"
       @close="agent.respondPermission(agent.pendingPermission.value!.requestId, false)"
     />
+    <CommandPalette :open="showCommandPalette" @close="showCommandPalette = false" />
   </div>
 </template>
 
@@ -64,26 +74,24 @@ import { useKeyboard } from '@/composables/useKeyboard'
 import { useCommands } from '@/composables/useCommands'
 import { useChatSession } from '@/composables/useChatSession'
 import { useAgentStore } from '@/stores/agent'
-import ChatHeader from '@/components/Chat/ChatHeader.vue'
+import { useAppStore } from '@/stores/app'
 import MessageList from '@/components/Chat/MessageList.vue'
 import ChatInput from '@/components/Chat/ChatInput.vue'
-import ChatStatusBar from '@/components/Chat/ChatStatusBar.vue'
-import ChatKeybindHints from '@/components/Chat/ChatKeybindHints.vue'
+import ChatContextPanel from '@/components/Chat/ChatContextPanel.vue'
+import ToolsPanel from '@/components/Chat/ToolsPanel.vue'
 import ModelSelector from '@/components/Chat/ModelSelector.vue'
 import PermissionDialog from '@/components/Chat/PermissionDialog.vue'
+import CommandPalette from '@/components/Chat/CommandPalette.vue'
 import { get, put } from '@/api'
 
 const store = useAgentStore()
+const appStore = useAppStore()
 const agent = useAgent()
 const session = useChatSession()
 const messageListRef = ref()
+const showCommandPalette = ref(false)
 
 const showModelSelector = ref(false)
-
-const currentSessionLabel = computed(() => {
-  const msg = session.store.messages[0]
-  return msg ? msg.content.slice(0, 40) : 'New Session'
-})
 
 const tokenCount = computed(() => {
   const msgs = session.store.messages
@@ -116,19 +124,6 @@ const handleQualityChange = (q: string) => {
   store.quality = q as 'high' | 'medium' | 'low'
 }
 
-const handleCompact = () => {
-  // TODO: implement session compaction
-}
-
-const handleShare = () => {
-  // TODO: implement session sharing
-}
-
-const handleTogglePanel = () => {
-  // TODO: implement context panel toggle
-  message.info('Context panel coming in Phase 1')
-}
-
 const handleModelSelect = async (model: string) => {
   session.store.currentModel = model
   try {
@@ -158,6 +153,31 @@ registerCommand({ id: 'switch-model', label: 'Switch Model...', group: 'Model', 
 registerCommand({ id: 'mode-build', label: 'Switch to Build Mode', group: 'Mode', shortcut: 'Ctrl+Shift+B', action: () => { store.switchMode('build') } })
 registerCommand({ id: 'mode-plan', label: 'Switch to Plan Mode', group: 'Mode', shortcut: 'Ctrl+Shift+P', action: () => { store.switchMode('plan') } })
 
+// Resize handlers
+function startToolsResize(e: MouseEvent) {
+  const startX = e.clientX
+  const startWidth = appStore.toolsPanelWidth
+
+  const onMouseMove = (ev: MouseEvent) => {
+    const delta = ev.clientX - startX
+    appStore.toolsPanelWidth = Math.max(200, Math.min(450, startWidth + delta))
+  }
+
+  const onMouseUp = () => {
+    document.removeEventListener('mousemove', onMouseMove)
+    document.removeEventListener('mouseup', onMouseUp)
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    document.body.style.pointerEvents = ''
+  }
+
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  document.body.style.pointerEvents = 'none'
+  document.addEventListener('mousemove', onMouseMove)
+  document.addEventListener('mouseup', onMouseUp)
+}
+
 onMounted(async () => {
   agent.connect()
   session.store.loadSessions()
@@ -179,6 +199,7 @@ onUnmounted(() => {
 
 <style scoped>
 .agent-chat {
+  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -188,5 +209,92 @@ onUnmounted(() => {
 
 .chat-input-fixed {
   flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.chat-bottombar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 24px;
+  padding: 0 16px;
+  font-size: 11px;
+  color: var(--chat-text-muted, #999);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.status-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hints {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+kbd {
+  display: inline-block;
+  padding: 0 4px;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--chat-text-secondary, #666);
+  background: var(--chat-bg-primary, #fff);
+  border: 1px solid var(--chat-border-color, #d9d9d9);
+  border-radius: 3px;
+}
+
+/* Panels overlay */
+.panels-container {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  z-index: 100;
+}
+
+.panels-inner {
+  display: flex;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.resize-handle {
+  width: 6px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.resize-handle:hover {
+  background: var(--chat-border-active, #1677ff);
+  opacity: 0.3;
+}
+
+/* Panel slide transition */
+.panel-slide-enter-active,
+.panel-slide-leave-active {
+  transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+}
+
+.panel-slide-enter-from,
+.panel-slide-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
 }
 </style>

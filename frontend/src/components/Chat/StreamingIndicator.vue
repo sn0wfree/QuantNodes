@@ -23,7 +23,7 @@ defineProps<{
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #999;
+  background: var(--chat-text-muted, #999);
   animation: typing 1.4s infinite;
 }
 
@@ -44,5 +44,15 @@ defineProps<{
     transform: translateY(-4px);
     opacity: 1;
   }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

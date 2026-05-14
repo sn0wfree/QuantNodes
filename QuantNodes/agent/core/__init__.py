@@ -10,6 +10,7 @@ from .hook import AgentHook, CompositeHook
 from .runner import AgentRunner, AgentRunSpec, AgentRunResult
 from .loop import AgentLoop
 from .memory import MemoryStore
+from .compaction import ContextCompactor, CompactionConfig, CompactionResult, compact_messages
 
 __all__ = [
     "ContextBuilder",
@@ -20,4 +21,8 @@ __all__ = [
     "AgentRunResult",
     "AgentLoop",
     "MemoryStore",
+    "ContextCompactor",
+    "CompactionConfig",
+    "CompactionResult",
+    "compact_messages",
 ]

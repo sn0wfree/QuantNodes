@@ -4,9 +4,12 @@ Agent Service - Bridge between FastAPI and QuantNodes Agent system
 
 import asyncio
 import uuid
+import logging
 from typing import AsyncGenerator, Optional
 
 from QuantNodes.agent import Agent
+
+logger = logging.getLogger(__name__)
 
 MAX_SESSION_MESSAGES = 100
 
@@ -63,10 +66,14 @@ class AgentService:
         config: dict = None,
     ) -> dict:
         """Send message and get response (non-streaming)"""
+        logger.info(f"[agent_service] Starting send_message: session_id={session_id}")
         agent = self._get_agent(config)
+        logger.info(f"[agent_service] Agent obtained: {agent is not None}")
 
         try:
+            logger.info(f"[agent_service] Calling agent.run()...")
             response = await agent.run(content, session_id=session_id)
+            logger.info(f"[agent_service] agent.run() completed: response_length={len(response) if response else 0}")
 
             return {
                 "message_id": f"msg-{uuid.uuid4().hex[:12]}",
@@ -75,6 +82,7 @@ class AgentService:
                 "usage": {},
             }
         except Exception as e:
+            logger.error(f"[agent_service] Exception in send_message: {type(e).__name__}: {e}", exc_info=True)
             return {
                 "message_id": "msg-error",
                 "content": f"Error: {str(e)}",

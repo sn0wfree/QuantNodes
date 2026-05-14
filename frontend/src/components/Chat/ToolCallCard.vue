@@ -1,5 +1,5 @@
 <template>
-  <div class="tool-call-card" :class="{ 'card-running': status === 'running' }">
+  <div class="tool-call-card" :class="[`status-${status}`, { compact }]">
     <div class="tool-header" @click="expanded = !expanded">
       <right-outlined :class="{ expanded }" class="expand-icon" />
       <tool-outlined class="tool-icon" />
@@ -29,6 +29,7 @@ const props = defineProps<{
   arguments?: Record<string, any>
   result?: Record<string, any> | string
   status: 'running' | 'success' | 'error'
+  compact?: boolean
 }>()
 
 const expanded = ref(false)
@@ -83,8 +84,30 @@ const formatResult = (result: any) => {
   font-size: 13px;
 }
 
-.card-running {
-  border-color: #1677ff;
+.tool-call-card.compact {
+  border-width: 0;
+  border-radius: 4px;
+  background: var(--chat-bg-tertiary, #f0f0f0);
+}
+
+.compact .tool-header {
+  padding: 4px 8px;
+}
+
+.compact .tool-name {
+  font-size: 12px;
+}
+
+.status-running {
+  border-color: var(--chat-info, #1677ff);
+}
+
+.status-error {
+  border-color: var(--chat-error, #ff4d4f);
+}
+
+.status-success {
+  border-color: var(--chat-border-color, #f0f0f0);
 }
 
 .tool-header {
@@ -97,7 +120,7 @@ const formatResult = (result: any) => {
 }
 
 .tool-header:hover {
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--chat-bg-hover, rgba(0, 0, 0, 0.02));
 }
 
 .expand-icon {
@@ -111,7 +134,7 @@ const formatResult = (result: any) => {
 }
 
 .tool-icon {
-  color: #1677ff;
+  color: var(--chat-info, #1677ff);
 }
 
 .tool-name {
@@ -149,7 +172,7 @@ const formatResult = (result: any) => {
 }
 
 .code-block {
-  background: #f6f8fa;
+  background: var(--chat-bg-tertiary, #f6f8fa);
   padding: 6px 10px;
   border-radius: 4px;
   overflow-x: auto;

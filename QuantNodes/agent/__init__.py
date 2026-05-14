@@ -140,6 +140,8 @@ class Agent:
             provider_type = config.get("provider", "openai")
             api_key = config.get("api_key")
             api_base = config.get("api_base")
+            use_litellm = config.get("use_litellm", True)
+            rate_limit_rps = config.get("rate_limit_rps", 0.5)
             timeout = config.get("llm_timeout", 60)
             max_retries = config.get("llm_max_retries", 3)
 
@@ -152,12 +154,6 @@ class Agent:
                 )
             else:
                 base_url = api_base or None
-                if base_url:
-                    base_url = base_url.rstrip("/")
-                    for suffix in ("/chat/completions", "/v1/chat/completions", "/v1"):
-                        if base_url.endswith(suffix):
-                            base_url = base_url[: -len(suffix)]
-                            break
                 client = OpenAIClient(
                     api_key=api_key,
                     base_url=base_url,
@@ -165,10 +161,18 @@ class Agent:
                     max_retries=max_retries,
                 )
 
+            litellm_base_url = api_base
+
             return QuantNodesLLMProvider(
-                client,
+                api_key=api_key,
+                api_base=litellm_base_url,
+                client=client,
                 default_model=model,
                 default_max_tokens=max_tokens,
+                use_litellm=use_litellm,
+                rate_limit_rps=rate_limit_rps,
+                max_retries=max_retries,
+                timeout=timeout,
             )
         except (ImportError, Exception) as e:
             import logging

@@ -1,6 +1,6 @@
 <template>
   <a-layout class="app-layout">
-    <AppHeader />
+    <AppHeader @togglePanel="appStore.toggleContextPanel()" />
     <a-layout>
       <AppSidebar />
       <a-layout-content class="content">
@@ -13,6 +13,9 @@
 <script setup lang="ts">
 import AppHeader from './AppHeader.vue'
 import AppSidebar from './AppSidebar.vue'
+import { useAppStore } from '@/stores/app'
+
+const appStore = useAppStore()
 </script>
 
 <style scoped>
@@ -21,14 +24,11 @@ import AppSidebar from './AppSidebar.vue'
 }
 
 .content {
-  margin: 16px;
-  padding: 24px;
-  background: #fff;
-  border-radius: 8px;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
   overflow-y: auto;
-}
-
-:global(html[data-theme="dark"]) .content {
-  background: #1f1f1f;
+  background: transparent;
 }
 </style>

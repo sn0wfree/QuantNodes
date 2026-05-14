@@ -6,6 +6,7 @@
         :role="item.data.role"
         :content="item.data.role === 'assistant' ? item.data.content : undefined"
         :time="formatTime(item.data.timestamp)"
+        :fullTime="formatFullTime(item.data.timestamp)"
       >
         <template v-if="item.data.role === 'user'">{{ item.data.content }}</template>
       </ChatMessage>
@@ -16,17 +17,24 @@
         :arguments="item.data.arguments"
         :result="item.data.result ? { output: item.data.result } : undefined"
         :status="item.data.status"
+        :compact="true"
         class="inline-tool-call"
       />
     </template>
 
     <ChatMessage v-if="isStreaming" role="assistant" :content="streamContent">
       <template v-if="!streamContent">
-        <StreamingIndicator :show="true" />
+        <Transition name="fade" mode="out-in">
+          <StreamingIndicator :show="true" :key="streamKey" />
+        </Transition>
       </template>
     </ChatMessage>
 
-    <EmptyState v-if="!messages.length && !isStreaming" @send="(text: string) => $emit('send', text)" />
+    <EmptyState
+      v-if="!messages.length && !isStreaming"
+      :mode="mode"
+      @send="(text: string) => $emit('send', text)"
+    />
   </div>
 </template>
 
@@ -45,6 +53,7 @@ const props = defineProps<{
   toolCalls: ToolCallEvent[]
   isStreaming: boolean
   streamContent: string
+  mode?: 'build' | 'plan'
 }>()
 
 defineEmits<{
@@ -52,6 +61,8 @@ defineEmits<{
 }>()
 
 const messagesContainer = ref<HTMLElement>()
+
+const streamKey = computed(() => `streaming-${props.isStreaming}-${props.messages.length}`)
 
 const { scrollToBottom, handleScroll } = useChatScroll(messagesContainer, {
   watchSources: [
@@ -95,6 +106,10 @@ const formatTime = (timestamp: number) => {
   return dayjs(timestamp).format('HH:mm')
 }
 
+const formatFullTime = (timestamp: number) => {
+  return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
+}
+
 defineExpose({ scrollToBottom })
 </script>
 
@@ -102,12 +117,12 @@ defineExpose({ scrollToBottom })
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 10px 16px;
 }
 
 .inline-tool-call {
   margin-left: 16px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   max-width: 80%;
 }
 </style>
