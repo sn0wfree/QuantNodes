@@ -1,3 +1,3 @@
-from . import agent, wiki, backtest, factor, skill, dream, stats, strategy, settings
+from . import wiki, backtest, factor, skill, dream, stats, strategy, settings, prompts, code
 
-__all__ = ["agent", "wiki", "backtest", "factor", "skill", "dream", "stats", "strategy", "settings"]
+__all__ = ["wiki", "backtest", "factor", "skill", "dream", "stats", "strategy", "settings", "prompts", "code"]
