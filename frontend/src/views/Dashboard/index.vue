@@ -43,12 +43,12 @@
       <a-col :span="6">
         <a-card hoverable>
           <a-statistic
-            title="Insights"
-            :value="stats.insights"
+            title="Portfolios"
+            :value="stats.portfolios || 0"
             :value-style="{ color: '#722ed1' }"
           >
             <template #prefix>
-              <BulbOutlined />
+              <WalletOutlined />
             </template>
           </a-statistic>
         </a-card>
@@ -85,10 +85,6 @@
       <a-col :span="8">
         <a-card title="Quick Actions">
           <a-space direction="vertical" style="width: 100%">
-            <a-button type="primary" block @click="$router.push('/chat')">
-              <template #icon><MessageOutlined /></template>
-              Agent Chat
-            </a-button>
             <a-button block @click="$router.push('/wiki/factors')">
               <template #icon><ExperimentOutlined /></template>
               Browse Factors
@@ -105,18 +101,11 @@
               <template #icon><BarChartOutlined /></template>
               Factor Analysis
             </a-button>
+            <a-button block @click="$router.push('/status')">
+              <template #icon><CheckCircleOutlined /></template>
+              System Status
+            </a-button>
           </a-space>
-        </a-card>
-
-        <a-card title="System Status" style="margin-top: 16px">
-          <a-descriptions :column="1" size="small">
-            <a-descriptions-item label="API Status">
-              <a-badge :status="apiStatus" :text="apiStatusText" />
-            </a-descriptions-item>
-            <a-descriptions-item label="Agent Status">
-              <a-badge :status="agentStatus" :text="agentStatusText" />
-            </a-descriptions-item>
-          </a-descriptions>
         </a-card>
       </a-col>
     </a-row>
@@ -124,15 +113,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   ExperimentOutlined,
   BranchesOutlined,
   LineChartOutlined,
-  BulbOutlined,
-  MessageOutlined,
+  WalletOutlined,
   BarChartOutlined,
+  CheckCircleOutlined,
 } from '@ant-design/icons-vue'
 import { get } from '@/api'
 
@@ -140,18 +129,11 @@ const stats = ref({
   factors: 0,
   strategies: 0,
   backtests: 0,
-  insights: 0,
+  portfolios: 0,
 })
 
 const recentActivity = ref<any[]>([])
 const loading = ref(true)
-const apiConnected = ref(false)
-const agentConnected = ref(false)
-
-const apiStatus = computed(() => apiConnected.value ? 'success' : 'error')
-const apiStatusText = computed(() => apiConnected.value ? 'Connected' : 'Disconnected')
-const agentStatus = computed(() => agentConnected.value ? 'success' : 'default')
-const agentStatusText = computed(() => agentConnected.value ? 'Ready' : 'Initializing')
 
 const fetchStats = async () => {
   try {
@@ -169,35 +151,14 @@ const fetchActivity = async () => {
     recentActivity.value = data
   } catch (error) {
     console.error('Failed to fetch activity:', error)
-    message.error('Failed to load recent activity')
   } finally {
     loading.value = false
-  }
-}
-
-const checkAgentStatus = async () => {
-  try {
-    const data = await get<{ status: string; initialized: boolean }>('/agent/status')
-    agentConnected.value = data.initialized
-  } catch {
-    agentConnected.value = false
-  }
-}
-
-const checkApiStatus = async () => {
-  try {
-    await get('/health')
-    apiConnected.value = true
-  } catch {
-    apiConnected.value = false
   }
 }
 
 onMounted(() => {
   fetchStats()
   fetchActivity()
-  checkApiStatus()
-  checkAgentStatus()
 })
 </script>
 

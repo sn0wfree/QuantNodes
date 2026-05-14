@@ -72,6 +72,18 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Settings/index.vue'),
         meta: { title: 'Settings' },
       },
+      {
+        path: 'portfolios',
+        name: 'Portfolios',
+        component: () => import('@/views/Portfolios/index.vue'),
+        meta: { title: 'Portfolios' },
+      },
+      {
+        path: 'status',
+        name: 'Status',
+        component: () => import('@/views/Status/index.vue'),
+        meta: { title: 'Status' },
+      },
     ],
   },
   {
