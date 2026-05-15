@@ -96,31 +96,31 @@ Phase 6 ──┬── 依赖：Phase 1-5 全部完成
 
 | Step | Task | Source → Dest |
 |------|------|---------------|
-| 1.1 | 创建归档目录 | `frontend/src/archive/chat/`, `QuantNodes/archive/agent/` |
-| 1.2 | 归档 Chat 视图 | `frontend/src/views/AgentChat/` → `archive/chat/AgentChat/` |
-| 1.3 | 归档 Chat 组件 | `frontend/src/components/Chat/` → `archive/chat/Chat/` |
-| 1.4 | 归档 agent store & API | `frontend/src/stores/agent.ts`, `frontend/src/api/agent.ts` → `archive/` |
-| 1.5 | 归档 `QuantNodes/agent/` | `core/loop.py`, `session/`, `providers/`, `skills/` → `archive/agent/` |
+| 1.1 | 创建归档目录 | `archive/frontend/src/archive/chat/`, `archive/QuantNodes/agent/` |
+| 1.2 | 归档 Chat 视图 | `frontend/src/views/AgentChat/` → `archive/frontend/src/archive/chat/AgentChat/` |
+| 1.3 | 归档 Chat 组件 | `frontend/src/components/Chat/` → `archive/frontend/src/archive/chat/Chat/` |
+| 1.4 | 归档 agent store & API | `frontend/src/stores/agent.ts`, `frontend/src/api/agent.ts` → `archive/frontend/src/archive/` |
+| 1.5 | 归档 `QuantNodes/agent/` | `core/loop.py`, `session/`, `providers/`, `skills/` → `archive/QuantNodes/agent/` |
 | 1.6 | 更新 import 路径 | 全局搜索 `from ../AgentChat` 等引用，标记为 archive |
 | 1.7 | 前端 router 清理 | `router/index.ts` 移除 `/chat`, `/agent` 路由 |
 
 **归档目录结构：**
 ```
-frontend/src/archive/
-├── chat/
-│   ├── AgentChat/           # views/AgentChat/
-│   ├── Chat/                # components/Chat/
-│   └── agent/               # stores/agent.ts, api/agent.ts
+archive/
+├── frontend/src/archive/
+│   ├── chat/
+│   │   ├── AgentChat/           # views/AgentChat/
+│   │   ├── Chat/                # components/Chat/
+│   │   └── agent/               # stores/agent.ts, api/agent.ts
+│   └── ...
+├── QuantNodes/agent/
+│   ├── core/
+│   │   └── loop.py
+│   ├── session/
+│   ├── providers/
+│   ├── skills/
+│   └── tools/               # 未迁移的工具
 └── ...
-
-QuantNodes/archive/
-└── agent/
-    ├── core/
-    │   └── loop.py
-    ├── session/
-    ├── providers/
-    ├── skills/
-    └── tools/               # 未迁移的工具
 ```
 
 **前端 router 调整：**
@@ -492,39 +492,35 @@ QuantNodes/
 │       ├── factor_service.py
 │       ├── pipeline_service.py
 │       └── wiki_service.py
-├── archive/                   # 归档（Chat 相关）
-│   └── agent/
-│       ├── core/
-│       ├── session/
-│       ├── providers/
-│       ├── skills/
-│       └── tools/            # 未迁移的工具
-└── QuantNodes/               # QuantNodes 主模块
-    ├── database_node/
-    ├── cache_node/
-    └── ...
-
-frontend/src/
-├── views/                     # 展示页面
-│   ├── Dashboard/
-│   ├── Strategies/
-│   ├── Backtests/
-│   ├── Portfolios/
-│   ├── Factors/
-│   └── Status/
-├── archive/                   # 归档的 Chat 组件
-│   └── chat/
-│       ├── AgentChat/
-│       └── Chat/
-├── components/                # 基础组件（保留）
-├── api/                       # API 客户端
-│   ├── backtest.ts
-│   ├── strategy.ts
-│   └── prompts.ts
-├── stores/
-│   └── app.ts
-└── router/
-    └── index.ts
+├── archive/                           # 统一归档目录
+│   ├── QuantNodes/                # QuantNodes 包归档
+│   │   └── agent/                  # Agent 系统归档
+│   │       ├── core/
+│   │       ├── session/
+│   │       ├── providers/
+│   │       └── skills/
+│   ├── frontend/                   # 前端归档
+│   │   └── src/archive/            # 前端 Chat UI
+│   ├── api/                       # API 归档
+│   │   └── archive/               # API Agent 端点
+│   └── docs/                      # 文档归档
+│       └── archived/              # 历史文档
+├── QuantNodes/                    # QuantNodes 主包
+│   ├── methods/                   # 纯方法（外部 Agent API）
+│   ├── prompts/                   # 提示词库
+│   ├── factor_node/               # 因子引擎（317+算子）
+│   ├── backtest/                  # 回测引擎
+│   ├── core/                      # 核心架构（BaseNode, Pipeline）
+│   ├── database_node/             # 多数据库支持
+│   └── ...
+├── api/                           # API 服务器
+│   ├── routers/
+│   └── services/
+├── frontend/src/                   # 前端源码
+│   ├── views/                     # 展示页面
+│   ├── components/                # 基础组件
+│   └── ...
+└── tests/                         # 测试套件
 ```
 
 ---
@@ -633,7 +629,7 @@ result = requests.post(
 ## 8. 验证清单
 
 ### Phase 1 完成标准
-- [ ] `frontend/src/archive/chat/` 存在且包含所有 Chat 相关代码
+- [ ] `archive/frontend/src/archive/chat/` 存在且包含所有 Chat 相关代码
 - [ ] `frontend/src/views/` 中无 AgentChat 相关代码
 - [ ] `frontend/src/components/` 中无 Chat 相关组件
 - [ ] `router/index.ts` 已更新，无 `/chat` 路由

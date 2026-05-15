@@ -39,54 +39,30 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 
 ```
 QuantNodes/
-├── QuantNodes/                    # 主包
-│   ├── methods/                    # 方法库（外部 Agent API）
-│   │   ├── backtest.py           # run_backtest()
-│   │   ├── sandbox.py            # validate_code(), execute_code()
-│   │   ├── pipeline.py           # validate_pipeline()
-│   │   ├── factor.py             # analyze_factor()
-│   │   ├── wiki.py              # query_wiki()
-│   │   ├── file_ops.py          # 文件操作
-│   │   ├── code_search.py       # 代码搜索
-│   │   └── git_ops.py           # Git 操作
-│   │
-│   ├── prompts/                   # 提示词库
-│   │   ├── strategy/            # 策略提示词
-│   │   │   ├── momentum.py     # 动量策略
-│   │   │   ├── mean_reversion.py # 均值回归
-│   │   │   └── ...
-│   │   ├── backtest/           # 回测提示词
-│   │   └── factor/              # 因子提示词
-│   │
-│   ├── archive/agent/             # 归档的 Agent 代码
-│   │
-│   ├── agent/                     # Agent 系统（部分保留）
-│   │   ├── tools/                 # 保留的工具实现
-│   │
-│   ├── core/                      # 核心架构
-│   ├── factor_node/               # 因子引擎
-│   ├── database_node/             # 数据库节点
-│   ├── backtest/                 # 回测引擎
+├── archive/                          # 统一归档目录
+│   ├── QuantNodes/                   # QuantNodes 包归档
+│   │   ├── agent/                    # Agent 系统归档
+│   │   └── test/                     # 测试数据归档
+│   ├── frontend/                    # 前端归档
+│   │   └── src/archive/             # 前端 Chat UI 归档
+│   ├── api/                         # API 归档
+│   │   └── archive/                 # API 归档
+│   └── docs/                        # 文档归档
+│       └── archived/                # 历史文档
+├── QuantNodes/                      # 主包
+│   ├── methods/                     # 方法库（外部 Agent API）
+│   ├── prompts/                     # 提示词库
+│   ├── factor_node/                 # 因子引擎
+│   ├── core/                        # 核心架构
+│   ├── database_node/               # 数据库节点
 │   └── ...
-│
-├── api/                          # API 服务器
-│   ├── routers/
-│   │   ├── prompts.py           # 提示词端点
-│   │   ├── code.py              # 代码验证/执行端点
-│   │   └── strategy.py          # 策略端点
-│   └── archive/                  # 归档的 API 代码
-│
-├── frontend/src/
-│   ├── views/                    # 展示页面
-│   │   ├── Dashboard/
-│   │   ├── Portfolios/
-│   │   ├── Status/
-│   │   └── ...
-│   └── archive/                  # 归档的 Chat UI 代码
-│
-├── tests/                        # 测试套件
-├── examples/                     # 示例代码
-└── docs/                        # 设计文档
+├── api/                             # API 服务器
+│   └── routers/
+├── frontend/src/                    # 前端展示页面
+│   └── views/
+├── tests/                           # 测试套件
+├── examples/                        # 示例代码
+└── docs/                           # 设计文档
 ```
 
 ## 快速开始
