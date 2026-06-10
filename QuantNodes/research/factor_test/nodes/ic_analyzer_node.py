@@ -30,7 +30,7 @@ class ICAnalyzerNode(BaseNode):
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})
-        factor_data = context.get('FactorNeutralize') or context.get('FactorPreprocess')
+        factor_data = context.get('FactorNeutralize') if context.get('FactorNeutralize') is not None else context.get('FactorPreprocess')
         price = context.get('LoadData', {}).get('price')
 
         if factor_data is None or price is None:

@@ -40,7 +40,7 @@ class GroupAnalyzerNode(BaseNode):
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})
-        factor_data = context.get('FactorNeutralize') or context.get('FactorPreprocess')
+        factor_data = context.get('FactorNeutralize') if context.get('FactorNeutralize') is not None else context.get('FactorPreprocess')
         price = context.get('LoadData', {}).get('price')
         index_cp = context.get('LoadData', {}).get('index_cp')
 
@@ -143,8 +143,8 @@ class GroupAnalyzerNode(BaseNode):
             benchmark_simp = cal_net_simple(benchmark_cmp, adj_dates)
 
             # 超额净值
-            group_daily_excnet_simp = group_daily_net_simp - np.array(benchmark_simp) + 1
-            group_daily_excnet_cmp = group_daily_net_cmp - np.array(benchmark_cmp.to_frame()) + 1
+            group_daily_excnet_simp = group_daily_net_simp.sub(benchmark_simp.values, axis=0) + 1
+            group_daily_excnet_cmp = group_daily_net_cmp.sub(benchmark_cmp.values, axis=0) + 1
         else:
             group_daily_excnet_simp = group_daily_net_simp.copy()
             group_daily_excnet_cmp = group_daily_net_cmp.copy()

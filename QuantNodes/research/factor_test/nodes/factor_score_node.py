@@ -34,7 +34,7 @@ class FactorScoreNode(BaseNode):
             return {}
 
         context = kwargs.get('context', {})
-        factor_data = context.get('FactorNeutralize') or context.get('FactorPreprocess')
+        factor_data = context.get('FactorNeutralize') if context.get('FactorNeutralize') is not None else context.get('FactorPreprocess')
         mv = context.get('LoadData', {}).get('mv_float')
         industry = context.get('LoadData', {}).get('id_citic1')
         price = context.get('LoadData', {}).get('price')

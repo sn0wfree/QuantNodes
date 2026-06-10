@@ -44,11 +44,18 @@ class TradabilityFilterNode(BaseNode):
         n_dt = len(trade_dt)
         n_stk = len(stklist)
 
-        # 加载可交易性数据
-        st = loader.load_h5('stk_daily.h5', 'st')
-        suspend = loader.load_h5('stk_daily.h5', 'suspend')
-        ud_limit = loader.load_h5('stk_daily.h5', 'ud_limit').abs()
-        ipo_days = loader.load_h5('stk_daily.h5', 'ipo_days')
+        # 加载可交易性数据 (优先从 context, 回退到 loader)
+        def _get(key):
+            if key in load_data:
+                return load_data[key]
+            return loader.load_h5('stk_daily.h5', key) if loader else None
+
+        st = _get('st')
+        suspend = _get('suspend')
+        ud_limit = _get('ud_limit')
+        if ud_limit is not None:
+            ud_limit = ud_limit.abs()
+        ipo_days = _get('ipo_days')
 
         # 初始化: 全部可交易
         if_tradable = pd.DataFrame(np.ones((n_dt, n_stk)))
