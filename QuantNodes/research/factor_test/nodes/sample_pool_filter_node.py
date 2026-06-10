@@ -1,0 +1,91 @@
+# coding: utf-8
+"""Node 2: 样本池筛选 / Sample Pool Filter Node
+
+Migrated from factor_utils.py:155-234 select_range()
+"""
+
+import sys
+from pathlib import Path
+from typing import Dict
+
+import numpy as np
+import pandas as pd
+
+_PROJECT_ROOT = str(Path(__file__).resolve().parents[4])
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
+from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.utils.constants import INDEX_MAPPING
+
+
+class SamplePoolFilterNode(BaseNode):
+    """根据指数范围和行业筛选样本池
+
+    输入: context["LoadData"] 的输出
+    输出: stock_sample (1=选中, nan=剔除)
+    """
+
+    def __init__(self, name: str = "SamplePoolFilter", config: dict = None, **kwargs):
+        super().__init__(name, config, **kwargs)
+        self._sample_index = config.get('sample_index', 'all') if config else 'all'
+        self._sample_industry = config.get('sample_industry', 'all') if config else 'all'
+        self._sample_customdir = config.get('sample_index_customdir') if config else None
+
+    def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
+        context = kwargs.get('context', {})
+        load_data = context.get('LoadData', input_data)
+
+        stklist = load_data['stklist']
+        trade_dt = load_data['trade_dt']
+        loader = load_data['_loader']
+
+        n_dt = len(trade_dt)
+        n_stk = len(stklist)
+
+        # 指数筛选
+        index_filt = np.ones((n_dt, n_stk))
+        if self._sample_index != 'all':
+            if self._sample_index in INDEX_MAPPING:
+                h5_file, key = INDEX_MAPPING[self._sample_index]
+                if_index = loader.load_h5(h5_file, key)
+                if_index = if_index.replace(np.nan, 0)
+                index_filt = index_filt * if_index.values
+            elif self._sample_index == 'ZZ800':
+                if_300 = loader.load_h5('stk_daily.h5', 'id_300').replace(np.nan, 0)
+                if_500 = loader.load_h5('stk_daily.h5', 'id_500').replace(np.nan, 0)
+                index_filt = index_filt * (if_300 + if_500).values
+            elif self._sample_index == 'custom' and self._sample_customdir:
+                if_index = loader.load_custom(self._sample_customdir)
+                if_index = if_index.replace(np.nan, 0)
+                index_filt = index_filt * if_index.values
+            else:
+                raise ValueError(f"不支持的指数: {self._sample_index}")
+
+        # 行业筛选
+        industry_filt = np.ones((n_dt, n_stk))
+        if self._sample_industry != 'all':
+            if isinstance(self._sample_industry, tuple):
+                ind_key, ind_name = self._sample_industry
+            else:
+                ind_key = 'id_citic1'
+                ind_name = self._sample_industry
+
+            id_industry = loader.load_h5('stk_daily.h5', ind_key)
+            ind_name_data = loader.load_h5('stk_daily.h5', f'ind_name_{ind_key.replace("id_", "").upper()}')
+
+            # 找到行业名称对应的编号
+            ind_idx = np.where(ind_name_data.values == ind_name)[0]
+            if len(ind_idx) > 0:
+                ind_num = ind_idx[0] + 1  # 行业编号从 1 开始
+                industry_filt[id_industry.values != ind_num] = 0
+            else:
+                raise ValueError(f"行业 '{ind_name}' 未找到")
+
+        # 合并筛选
+        stock_sample = index_filt * industry_filt
+        stock_sample[stock_sample > 0] = 1
+        stock_sample = pd.DataFrame(stock_sample)
+        stock_sample = stock_sample.replace(0, np.nan)
+
+        return stock_sample
