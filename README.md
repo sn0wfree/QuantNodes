@@ -252,6 +252,8 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 - [Feature 3B - 研报复现](docs/Feature3B-实施计划.md)
 - [Feature 3C - AutoResearch 自动因子挖掘](docs/Feature3C-实施计划.md)
 - [Feature 3D - 用户友好自定义算子 API](docs/Feature3D-用户友好自定义算子API设计.md)
+- [v2.6.0 实际架构基线](docs/Architecture-v2.6.md)
+- [单因子回测节点化整合设计](docs/SingleFactorBacktest-Integration-Design.md)
 
 ## 变更日志
 
