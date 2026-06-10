@@ -21,7 +21,11 @@ class DataLoader:
         path = self.api + filename
         h5_store = pd.HDFStore(path, mode='r')
         try:
-            if key in h5_store.keys():
+            # 标准化 key: HDFStore 自动加 / 前缀
+            norm_key = key if key.startswith('/') else '/' + key
+            if norm_key in h5_store.keys():
+                return h5_store.get(norm_key)
+            elif key in h5_store.keys():
                 return h5_store.get(key)
             else:
                 raise KeyError(f"Key '{key}' not found in {path}. Available: {h5_store.keys()}")

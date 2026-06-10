@@ -58,7 +58,11 @@ class TradabilityFilterNode(BaseNode):
         ipo_days = _get('ipo_days')
 
         # 初始化: 全部可交易
-        if_tradable = pd.DataFrame(np.ones((n_dt, n_stk)))
+        if_tradable = pd.DataFrame(
+            np.ones((n_dt, n_stk)),
+            index=trade_dt.iloc[:, 0].values,
+            columns=stklist.iloc[:, 0].values
+        )
 
         s = self._tradable_setting
 
