@@ -112,11 +112,19 @@ class ConfigBacktestRunner:
     def _build_broker(self, config: StrategyConfig) -> ExecutionBrokerNode:
         """从 config 构建经纪商"""
         bt = config.backtest
-        return ExecutionBrokerNode(config={
-            "cash": bt.initial_cash if bt else 1000000,
+        broker_config = {
+            "cash": bt.initial_cash if bt else 1_000_000,
             "commission": bt.commission if bt else 0.001,
             "slippage": bt.slippage if bt else 0.001,
-        })
+        }
+        
+        # 传递可选的Broker参数
+        if bt and hasattr(bt, 'positions'):
+            for key in ("trade_on_close", "hedging"):
+                if key in bt.positions:
+                    broker_config[key] = bt.positions[key]
+        
+        return ExecutionBrokerNode(config=broker_config)
 
     def _apply_risk(
         self, orders_result: OrdersResult, risk_nodes: List[RiskNode]

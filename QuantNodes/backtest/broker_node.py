@@ -255,7 +255,8 @@ class SimulatedBrokerNode(BrokerNode):
                 result.trades.append(trade)
                 result.commission += fee
 
-        result.cash = self._cash
+        # 注意: 不再重置 result.cash 为 self._cash
+        # result.cash 已经通过上面的 result.cash -= cost 正确跟踪
         return result
 
     def _adjusted_price(self, price: float, size: float) -> float:
