@@ -922,7 +922,12 @@ def cmd_factor_dashboard(args) -> int:
     print("=" * 60)
 
     try:
-        generate_dashboard_html(collector, title=title, output_path=output)
+        streaming = getattr(args, "streaming", False) or getattr(args, "watch", False)
+        refresh_sec = getattr(args, "refresh", 10)
+        generate_dashboard_html(
+            collector, title=title, output_path=output,
+            streaming=streaming, refresh_interval_sec=refresh_sec,
+        )
     except Exception as e:
         print(f"错误: 生成 dashboard 失败: {e}")
         return 1
@@ -932,6 +937,32 @@ def cmd_factor_dashboard(args) -> int:
     collector.save(metrics_json)
     print(f"✓ Dashboard: {output}")
     print(f"✓ Metrics JSON: {metrics_json}")
+
+    # Watch 模式: 后台定时刷新
+    if getattr(args, "watch", False):
+        import time as _time
+        refresh_sec = getattr(args, "refresh", 10)
+        print(f"\n[Watch] 每 {refresh_sec}s 刷新 dashboard (Ctrl+C 退出)...")
+        try:
+            while True:
+                _time.sleep(refresh_sec)
+                # 重载 pool + 重新生成
+                try:
+                    pool = TrajectoryPool(pool_dir)
+                    collector = MetricCollector()
+                    for r in rounds:
+                        round_entries = [e for e in pool.all() if e.round_idx == r]
+                        if not round_entries:
+                            continue
+                        collector.update_quality_from_pool(pool, round_idx=r)
+                    generate_dashboard_html(
+                        collector, title=title, output_path=output,
+                        streaming=True, refresh_interval_sec=refresh_sec,
+                    )
+                except Exception:
+                    pass  # pool 可能被其他进程写入, 忽略暂时错误
+        except KeyboardInterrupt:
+            print("\n[Watch] 停止监控")
     return 0
 
 
@@ -1222,10 +1253,13 @@ def main():
     fetch_parser.add_argument("--universe", default="沪深300", help="股票池 (默认 沪深300)")
     fetch_parser.add_argument("--factors", default="", help="逗号分隔的因子列表")
 
-    dash_parser = subparsers.add_parser("factor-dashboard", help="生成 3 类指标 dashboard (Week 13)")
+    dash_parser = subparsers.add_parser("factor-dashboard", help="生成 3 类指标 dashboard (Week 13/16)")
     dash_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
     dash_parser.add_argument("--output", default=None, help="HTML 输出路径")
     dash_parser.add_argument("--title", default=None, help="报告标题")
+    dash_parser.add_argument("--streaming", action="store_true", help="启用 streaming 模式 (自动刷新 10s)")
+    dash_parser.add_argument("--refresh", type=int, default=10, help="streaming 刷新间隔秒数 (默认 10)")
+    dash_parser.add_argument("--watch", action="store_true", help="后台模式: 每 10s 刷新 dashboard")
     
     subparsers.add_parser("version", help="显示版本")
     subparsers.add_parser("help", help="显示帮助")

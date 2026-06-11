@@ -462,10 +462,33 @@ class PipelineRunner:
             loop.snapshot_path = str(snap_path)
             print(f"  [ProcessPool] 预序列化快照: {snap_path}")
 
-        return loop.run(
+        # 连接 MetricCollector (streaming)
+        from QuantNodes.core.monitoring import MetricCollector
+        collector = MetricCollector()
+        loop.metric_collector = collector
+
+        result = loop.run(
             initial_directions=initial_directions,
             initial_candidates=initial_candidates,
         )
+
+        # 演化结束后, 追加写入 JSON + 生成 streaming dashboard
+        if pool.size > 0:
+            metrics_json = pool.base_dir / "metrics.json"
+            collector.append_json(metrics_json)
+            print(f"  [Streaming] 指标追加: {metrics_json}")
+            # 生成 streaming dashboard (可选: 若 feedback.enabled)
+            from QuantNodes.core.monitoring import generate_dashboard_html
+            dashboard_html = pool.base_dir.parent / "dashboard_streaming.html"
+            generate_dashboard_html(
+                collector,
+                title=f"演化 Dashboard (Streaming): {self.config.factor.name}",
+                output_path=str(dashboard_html),
+                streaming=True,
+            )
+            print(f"  [Streaming] Dashboard: {dashboard_html}")
+
+        return result
 
     @property
     def context(self) -> dict:

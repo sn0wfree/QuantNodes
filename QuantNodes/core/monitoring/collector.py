@@ -227,6 +227,8 @@ class MetricCollector:
     def load(cls, path: Path | str) -> "MetricCollector":
         """从 JSON 加载。"""
         path = Path(path)
+        if not path.exists():
+            return cls()
         data = json.loads(path.read_text(encoding="utf-8"))
         c = cls()
         for m in data.get("rag", []):
@@ -236,6 +238,28 @@ class MetricCollector:
         for m in data.get("quality", []):
             c.quality_history.append(QualityMetrics(**m))
         return c
+
+    def append_json(self, path: Path | str) -> None:
+        """追加写入 JSON (streaming 模式: 读旧数据 → 追加 → 写回)。
+
+        读已有文件 → 合并 → 写回, 支持多轮逐步写入。
+        """
+        path = Path(path)
+        existing = self.load(path) if path.exists() else MetricCollector()
+        # 合并: 保留已有的, 追加新的 (跳过已存在的 round)
+        existing_rounds = {m.round for m in existing.rag_history}
+        for m in self.rag_history:
+            if m.round not in existing_rounds:
+                existing.rag_history.append(m)
+        evo_existing = {m.round for m in existing.evolution_history}
+        for m in self.evolution_history:
+            if m.round not in evo_existing:
+                existing.evolution_history.append(m)
+        qg_existing = {m.round for m in existing.quality_history}
+        for m in self.quality_history:
+            if m.round not in qg_existing:
+                existing.quality_history.append(m)
+        existing.save(path)
 
     def save_csv(self, path_prefix: Path | str) -> None:
         """保存 3 类指标为 3 个 CSV。"""

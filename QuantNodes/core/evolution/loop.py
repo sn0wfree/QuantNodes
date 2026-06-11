@@ -89,6 +89,7 @@ class EvolutionLoop:
         self.workers = workers
         self.snapshot_path: str | None = None  # ProcessPool: 预序列化路径
         self.rag_metrics_history: list[dict] = []  # 每 round 评估结果
+        self.metric_collector = None  # 延迟注入, 用于 streaming
         self.hypothesizer = Hypothesizer(
             model=settings.hypothesizer.model,
             max_correction_attempts=settings.hypothesizer.max_correction_attempts,
@@ -110,6 +111,29 @@ class EvolutionLoop:
             max_correction_attempts=settings.crosser.max_correction_attempts,
             seed=settings.crosser.seed,
         )
+
+    def _stream_metrics(self, round_idx: int, directions: list[str]) -> None:
+        """每轮调用, 更新 metric_collector (如有注入)。"""
+        if self.metric_collector is None:
+            return
+        from ..monitoring import (
+            EvolutionMetrics, QualityMetrics, RagMetrics,
+        )
+        # RAG: 从 rag_metrics_history 提取最新
+        for m in self.rag_metrics_history:
+            if m.get("round") == round_idx:
+                self.metric_collector.add_rag(RagMetrics(
+                    round=m.get("round", round_idx),
+                    n_queries=m.get("n_queries", 0),
+                    hit_at_5=m.get("hit_at_5", 0.0),
+                    ndcg_at_5=m.get("ndcg_at_5", 0.0),
+                    mrr=m.get("mrr", 0.0),
+                    diversity=m.get("diversity", 1.0),
+                ))
+        # Evolution: 累积统计
+        self.metric_collector.update_evolution_from_pool(self.pool, round_idx)
+        # Quality: 3 通道
+        self.metric_collector.update_quality_from_pool(self.pool, round_idx)
 
     def sync_knowledge_base(self) -> int:
         """从 pool 同步未索引 entry 到 KB, 返回新加数。"""
@@ -230,6 +254,7 @@ class EvolutionLoop:
                 best_metric_so_far, entry, self.settings.metric, no_improve_counter,
             )
         result.rounds_completed = 1
+        self._stream_metrics(0, directions or [])
 
         # ------------------------------------------------------------------
         # Round 1..N: 演化 (workers=1: 串行; workers>1: 并行多候选)
@@ -299,6 +324,9 @@ class EvolutionLoop:
             else:
                 no_improve_counter += 1
             result.rounds_completed = round_idx
+
+            # Streaming: 每轮更新 MetricCollector (如有注入)
+            self._stream_metrics(round_idx, directions)
 
             if (
                 self.settings.early_stop_patience > 0

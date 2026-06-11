@@ -198,8 +198,15 @@ def generate_dashboard_html(
     collector: MetricCollector,
     title: str = "QuantNodes 演化 Dashboard",
     output_path: Path | str | None = None,
+    streaming: bool = False,
+    refresh_interval_sec: int = 10,
 ) -> str:
-    """生成完整 HTML dashboard, 6 figure + 概览表。"""
+    """生成完整 HTML dashboard, 6 figure + 概览表。
+
+    Args:
+        streaming: True → 加 JS 定时刷新 (读取同目录 metrics.json)
+        refresh_interval_sec: 刷新间隔秒数 (默认 10s)
+    """
     import plotly.graph_objects as go
 
     figures = [
@@ -233,6 +240,39 @@ def generate_dashboard_html(
 
     plotly_cdn = '<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>'
 
+    # Streaming JS (可选)
+    streaming_js = ""
+    if streaming:
+        # JS: 定时刷新, 检测 metrics.json 变化后重新加载
+        streaming_js = f"""
+<script>
+(function() {{
+  var INTERVAL = {refresh_interval_sec} * 1000;
+  var lastModified = 0;
+  var metricsPath = "{str(Path(output_path).parent / (Path(output_path).stem + '_metrics.json')) if output_path else 'metrics.json'}";
+
+  function checkUpdate() {{
+    fetch(metricsPath + '?t=' + Date.now(), {{method: 'HEAD'}})
+      .then(r => {{
+        var m = new Date(r.headers.get('Last-Modified') || 0).getTime();
+        if (m > lastModified) {{
+          lastModified = m;
+          location.reload();
+        }}
+      }})
+      .catch(() => {{}});
+  }}
+
+  setInterval(checkUpdate, INTERVAL);
+  console.log("[Streaming] 每 {refresh_interval_sec}s 检测更新...");
+</script>
+"""
+    streaming_badge = (
+        '<span style="background:#06A77D;color:white;padding:2px 8px;'
+        'border-radius:4px;font-size:12px;margin-left:10px;">LIVE</span>'
+        if streaming else ""
+    )
+
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -244,17 +284,21 @@ h1 {{ border-bottom: 2px solid #4C78A8; padding-bottom: 8px; }}
 h2 {{ border-top: 1px solid #ddd; padding-top: 12px; color: #2E86AB; }}
 table {{ background: #fafafa; }}
 th {{ background: #4C78A8; color: white; }}
+.live-badge {{ animation: pulse 2s infinite; }}
+@keyframes pulse {{ 0%, 100% {{ opacity: 1; }} 50% {{ opacity: 0.5; }} }}
 </style>
 {plotly_cdn}
 </head>
 <body>
-<h1>{title}</h1>
+<h1>{title} {streaming_badge}</h1>
 {_OVERVIEW_TEMPLATE.format(**overview)}
 {"".join(fig_html_parts)}
 <hr>
 <p style="color: #888; font-size: 12px;">
-生成自 QuantNodes 演化框架 (Week 13 Monitoring Dashboard)
+生成自 QuantNodes 演化框架 (Week 16 Streaming Dashboard)
+{'  · 自动刷新: ' + str(refresh_interval_sec) + 's' if streaming else ''}
 </p>
+{streaming_js}
 </body>
 </html>
 """
