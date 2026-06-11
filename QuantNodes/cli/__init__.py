@@ -597,6 +597,7 @@ QuantNodes CLI - 量化研究节点架构命令行工具
     evolve      多轮演化主入口 (Week 5)
     factor-info 显示 TrajectoryPool 统计 (Week 5)
     factor-best 显示 Top-N 最佳 entry (Week 5)
+    factor-visual 生成可视化 HTML 报告 (Week 6)
     version     显示版本
     help        显示帮助
 
@@ -607,10 +608,12 @@ evolve 选项:
     --max-rounds N         覆盖 config.evolution.max_rounds
     --early-stop N         覆盖 config.evolution.early_stop_patience
 
-factor-info / factor-best 选项:
+factor-info / factor-best / factor-visual 选项:
     --pool-dir PATH        TrajectoryPool 目录
     --top N                Top-N (默认 5, 仅 factor-best)
-    --metric NAME          排序指标 (默认 sharpe, 仅 factor-best)
+    --metric NAME          排序指标 (默认 sharpe, 仅 factor-best/visual)
+    --output PATH          HTML 输出路径 (仅 factor-visual)
+    --title TITLE          报告标题 (仅 factor-visual)
 
 init 选项:
     --force           强制重新初始化 (覆盖现有配置)
@@ -633,6 +636,7 @@ run 选项:
     quantnodes evolve --config configs/evolve.yaml --directions momentum,reversal --max-rounds 3
     quantnodes factor-info --pool-dir output/trajectory
     quantnodes factor-best --pool-dir output/trajectory --top 10 --metric sharpe
+    quantnodes factor-visual --pool-dir output/trajectory --output report.html
     quantnodes version
 
 详细文档: docs/QuickStart.md
@@ -788,6 +792,38 @@ def cmd_factor_best(args) -> int:
     return 0
 
 
+def cmd_factor_visual(args) -> int:
+    """生成可视化 HTML 报告 (谱系 DAG + 指标分布 + 拦截率 + 趋势)。
+
+    用法:
+        quantnodes factor-visual --pool-dir output/trajectory/ \\
+                                --output report.html --metric sharpe
+    """
+    from QuantNodes.core.trajectory import TrajectoryPool
+    from QuantNodes.core.visualization import generate_html
+
+    pool_dir = args.pool_dir
+    if not Path(pool_dir).exists():
+        print(f"错误: pool 目录不存在: {pool_dir}")
+        return 1
+
+    pool = TrajectoryPool(pool_dir)
+    if pool.size == 0:
+        print("错误: pool 为空, 无 entry 可视化")
+        return 1
+
+    output = args.output or str(Path(pool_dir).parent / f"{Path(pool_dir).name}_report.html")
+    title = args.title or f"QuantNodes 演化报告: {pool_dir}"
+    try:
+        generate_html(pool, metric=args.metric, title=title, output_path=output)
+    except Exception as e:
+        print(f"错误: 生成报告失败: {e}")
+        return 1
+    print(f"✓ HTML 报告已生成: {output}")
+    print(f"  size: {pool.size}, metric: {args.metric}")
+    return 0
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -828,6 +864,12 @@ def main():
     best_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
     best_parser.add_argument("--top", type=int, default=5, help="Top-N (默认 5)")
     best_parser.add_argument("--metric", default="sharpe", help="排序指标 (默认 sharpe)")
+
+    visual_parser = subparsers.add_parser("factor-visual", help="生成可视化 HTML 报告 (Week 6)")
+    visual_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+    visual_parser.add_argument("--output", default=None, help="HTML 输出路径 (默认 <pool-dir>_report.html)")
+    visual_parser.add_argument("--metric", default="sharpe", help="用于可视化的指标 (默认 sharpe)")
+    visual_parser.add_argument("--title", default=None, help="报告标题")
     
     subparsers.add_parser("version", help="显示版本")
     subparsers.add_parser("help", help="显示帮助")
@@ -846,6 +888,8 @@ def main():
         return cmd_factor_info(args)
     elif args.command == "factor-best":
         return cmd_factor_best(args)
+    elif args.command == "factor-visual":
+        return cmd_factor_visual(args)
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "help":

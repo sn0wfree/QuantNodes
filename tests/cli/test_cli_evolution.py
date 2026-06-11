@@ -13,6 +13,7 @@ from QuantNodes.cli import (
     cmd_evolve,
     cmd_factor_best,
     cmd_factor_info,
+    cmd_factor_visual,
     cmd_help,
 )
 from QuantNodes.core.feedback import FactorFeedback
@@ -32,6 +33,7 @@ def test_cmd_help_mentions_evolution():
     assert "evolve" in out
     assert "factor-info" in out
     assert "factor-best" in out
+    assert "factor-visual" in out
 
 
 # ============================================================================
@@ -230,3 +232,97 @@ evolution:
         assert "演化失败" in buf.getvalue()
     finally:
         Path(cfg_path).unlink()
+
+
+# ============================================================================
+# 5. cmd_factor_visual (Week 6)
+# ============================================================================
+
+def _populate_pool_with_entries(pool: TrajectoryPool, n: int = 3) -> None:
+    for i in range(n):
+        pool.add(TrajectoryEntry(
+            entry_id=f"e{i}",
+            round_idx=i % 2,
+            operation="original" if i == 0 else "mutation",
+            feedback=FactorFeedback(factor_name=f"f{i}", decision=True, summary="ok"),
+            metrics={"sharpe": 0.5 + i * 0.3},
+        ))
+
+
+def test_factor_visual_writes_html(tmp_path):
+    """factor-visual 生成 HTML 报告。"""
+    pool = TrajectoryPool(tmp_path / "pool")
+    _populate_pool_with_entries(pool)
+    out_html = tmp_path / "report.html"
+    pool_dir = str(tmp_path / "pool")
+
+    class Args:
+        pass
+    args = Args()
+    args.pool_dir = pool_dir
+    args.output = str(out_html)
+    args.metric = "sharpe"
+    args.title = "Test Report"
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_factor_visual(args)
+    assert rc == 0
+    assert out_html.exists()
+    assert out_html.stat().st_size > 1000
+    out = buf.getvalue()
+    assert "HTML 报告已生成" in out
+
+
+def test_factor_visual_empty_pool(tmp_path):
+    """空 pool → exit 1。"""
+    pool = TrajectoryPool(tmp_path / "pool")  # 空
+    class Args:
+        pass
+    args = Args()
+    args.pool_dir = str(tmp_path / "pool")
+    args.output = None
+    args.metric = "sharpe"
+    args.title = None
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_factor_visual(args)
+    assert rc == 1
+    assert "pool 为空" in buf.getvalue()
+
+
+def test_factor_visual_missing_dir():
+    """pool 目录不存在 → exit 1。"""
+    class Args:
+        pass
+    args = Args()
+    args.pool_dir = "/nonexistent/path/xyz"
+    args.output = None
+    args.metric = "sharpe"
+    args.title = None
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_factor_visual(args)
+    assert rc == 1
+    assert "pool 目录不存在" in buf.getvalue()
+
+
+def test_factor_visual_default_output_path(tmp_path):
+    """output=None 时默认写到 <pool-dir>_report.html。"""
+    pool_dir_path = tmp_path / "mypool"
+    pool = TrajectoryPool(pool_dir_path)
+    _populate_pool_with_entries(pool)
+
+    class Args:
+        pass
+    args = Args()
+    args.pool_dir = str(pool_dir_path)
+    args.output = None
+    args.metric = "sharpe"
+    args.title = None
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_factor_visual(args)
+    assert rc == 0
+    # 默认: <tmp_path>/mypool_report.html
+    expected = tmp_path / "mypool_report.html"
+    assert expected.exists()
