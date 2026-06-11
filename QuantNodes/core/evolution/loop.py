@@ -63,6 +63,8 @@ class EvolutionLoop:
         selector: Optional[ParentSelector] = None,
         knowledge_base: Optional[KnowledgeBase] = None,
         rag_top_k: int = 3,
+        max_ancestor_depth: int = 2,
+        max_descendant_depth: int = 2,
     ):
         self.settings = settings
         self.pool = pool
@@ -75,12 +77,16 @@ class EvolutionLoop:
         )
         self.knowledge_base = knowledge_base
         self.rag_top_k = rag_top_k
+        self.max_ancestor_depth = max_ancestor_depth
+        self.max_descendant_depth = max_descendant_depth
         self.hypothesizer = Hypothesizer(
             model=settings.hypothesizer.model,
             max_correction_attempts=settings.hypothesizer.max_correction_attempts,
             seed=settings.hypothesizer.seed,
             knowledge_base=knowledge_base,
             rag_top_k=rag_top_k,
+            max_ancestor_depth=max_ancestor_depth,
+            max_descendant_depth=max_descendant_depth,
         )
         self.mutator = Mutator(
             model=settings.mutator.model,

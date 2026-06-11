@@ -77,11 +77,17 @@ class BaseOperator:
 class Hypothesizer(BaseOperator):
     """从研究假设生成初始因子 (round 0)。"""
 
-    def __init__(self, *args, knowledge_base=None, rag_top_k: int = 3, **kwargs):
+    def __init__(
+        self, *args, knowledge_base=None, rag_top_k: int = 3,
+        max_ancestor_depth: int = 2, max_descendant_depth: int = 2,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         from ..knowledge import KnowledgeBase
         self.knowledge_base: KnowledgeBase | None = knowledge_base
         self.rag_top_k = rag_top_k
+        self.max_ancestor_depth = max_ancestor_depth
+        self.max_descendant_depth = max_descendant_depth
 
     def set_knowledge_base(self, kb) -> None:
         """注入 KnowledgeBase (在 EvolutionLoop 中设置)。"""
@@ -100,6 +106,8 @@ class Hypothesizer(BaseOperator):
                 description=description,
                 kb=self.knowledge_base,
                 top_k=self.rag_top_k,
+                max_ancestor_depth=self.max_ancestor_depth,
+                max_descendant_depth=self.max_descendant_depth,
             )
         else:
             prompt = _HYPOTHESIZE_PROMPT.format(

@@ -94,26 +94,40 @@ class KnowledgeBase:
         self,
         text: str,
         top_k: int = 5,
+        max_ancestor_depth: int = 2,
+        max_descendant_depth: int = 2,
     ) -> list[dict[str, Any]]:
-        """检索 + 附加谱系 (parents + children) 上下文。"""
+        """检索 + 附加谱系 (parents + children, 可配深度) 上下文。
+
+        Args:
+            text: 查询文本
+            top_k: 检索数量
+            max_ancestor_depth: 祖先深度 (1=parent, 2=grandparent, ...)
+            max_descendant_depth: 后裔深度
+        """
         results = self.query(text, top_k=top_k)
         out = []
         for entry, score in results:
             ctx = {
                 "entry": entry,
                 "score": score,
+                "ancestors": [],
+                "descendants": [],
                 "parents": [],
                 "children": [],
             }
             if self.pool and entry is not None:
-                # 父辈: 从 entry.parent_ids 查
-                for pid in entry.parent_ids:
-                    try:
-                        ctx["parents"].append(self.pool.get(pid))
-                    except KeyError:
-                        pass
-                # 子代
-                ctx["children"] = self.pool.children_of(entry.entry_id)
+                from .lineage_expand import expand_lineage
+                expanded = expand_lineage(
+                    self.pool, entry.entry_id,
+                    max_ancestor_depth=max_ancestor_depth,
+                    max_descendant_depth=max_descendant_depth,
+                )
+                ctx["ancestors"] = [e for _, e in expanded["ancestors"]]
+                ctx["descendants"] = [e for _, e in expanded["descendants"]]
+                # 兼容旧字段 (depth=1)
+                ctx["parents"] = [e for d, e in expanded["ancestors"] if d == 1]
+                ctx["children"] = [e for d, e in expanded["descendants"] if d == 1]
             out.append(ctx)
         return out
 
