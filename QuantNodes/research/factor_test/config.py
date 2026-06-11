@@ -11,6 +11,9 @@ class FactorSetting(BaseModel):
     factor_dir: str = Field(..., description="因子文件路径")
     factor_key: str = Field(default='', description="H5 key (如因子在 H5 中)")
     format: str = Field(default='h5', description="数据格式: h5/csv/npy/parquet")
+    hypothesis: str = Field(default='', description="研究假设 (供 LLM 一致性检查)")
+    description: str = Field(default='', description="因子描述 (供 LLM 一致性检查)")
+    expression: str = Field(default='', description="代码表达式 (供 LLM 一致性检查)")
 
 
 class TradableSetting(BaseModel):
@@ -83,12 +86,30 @@ class OutputSetting(BaseModel):
     format: list = Field(default=['parquet', 'json'], description="输出格式")
 
 
+class FeedbackSetting(BaseModel):
+    """FactorFeedback 集成配置
+
+    enabled=False 时, 现有行为完全不变 (向后兼容)。
+    enabled=True 时, pipeline_runner 自动包装 5 个分析节点返回为 FactorFeedback,
+    聚合到 ctx['Feedback'], 并可选择持久化到 output_dir。
+    """
+    enabled: bool = Field(default=False, description="是否启用 FactorFeedback 自动包装")
+    output_dir: Optional[str] = Field(
+        default=None,
+        description="Parquet/JSON 持久化目录 (None=不持久化, 仅返回 ctx)",
+    )
+    judge_enabled: bool = Field(default=False, description="是否启用 LLMJudge (hypothesis↔expression 一致性)")
+    judge_model: str = Field(default="mock", description="LLMJudge 模型名 (mock/deepseek-v3/...)")
+    judge_max_attempts: int = Field(default=3, description="LLMJudge 解析失败最大重试次数")
+
+
 class SingleFactorTestConfig(BaseModel):
     """单因子回测完整配置"""
     factor: FactorSetting
     preprocess: PreprocessSetting
     analysis: AnalysisSetting = Field(default_factory=AnalysisSetting)
     output: OutputSetting = Field(default_factory=OutputSetting)
+    feedback: FeedbackSetting = Field(default_factory=FeedbackSetting)
     data_path: str = Field(default='./testdata/test_h5_new/', description="数据根目录")
     load_keys: list = Field(
         default=['stklist', 'trade_dt', 'cp', 'id_citic1', 'mv_float'],

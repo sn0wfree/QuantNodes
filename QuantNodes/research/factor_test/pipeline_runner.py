@@ -6,9 +6,15 @@
 - Phase 2 (Context 共享): ICAnalyzer / GroupAnalyzer / FactorScore / RiskCorrelation
 - Phase 3 (依赖分析): LongShort
 - Phase 4 (输出): FactorTestReport
+
+FactorFeedback 集成 (Week 1.5, 可选):
+- feedback.enabled=False: 现有行为完全不变 (向后兼容)
+- feedback.enabled=True:  5 个分析节点返回值自动包装为 FactorFeedback,
+  聚合到 ctx['Feedback'], 可选持久化到 feedback.output_dir
 """
 
 import sys
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +24,13 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parents[3])
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+from QuantNodes.core.feedback import (
+    FactorFeedback,
+    FeedbackChannel,
+    FeedbackCollector,
+    LLMJudge,
+    ensure_feedback,
+)
 from QuantNodes.research.factor_test.config import SingleFactorTestConfig
 from QuantNodes.research.factor_test.nodes.load_data_node import LoadDataNode
 from QuantNodes.research.factor_test.nodes.sample_pool_filter_node import SamplePoolFilterNode
@@ -32,6 +45,8 @@ from QuantNodes.research.factor_test.nodes.factor_score_node import FactorScoreN
 from QuantNodes.research.factor_test.nodes.risk_correlation_node import RiskCorrelationNode
 from QuantNodes.research.factor_test.nodes.factor_test_report_node import FactorTestReportNode
 
+_ANALYSIS_NODES = ("ICAnalyzer", "GroupAnalyzer", "LongShort", "FactorScore", "RiskCorrelation")
+
 
 class PipelineRunner:
     """单因子回测管线编排器
@@ -44,6 +59,11 @@ class PipelineRunner:
         # 或从 YAML:
         runner = PipelineRunner.from_yaml("config.yaml")
         result = runner.run()
+
+    FactorFeedback 集成:
+        当 config.feedback.enabled=True 时, 5 个分析节点返回值会自动包装为
+        FactorFeedback, 聚合到 ctx['Feedback'] = {node_name: FactorFeedback}。
+        若 config.feedback.output_dir 不为 None, 还会持久化到该目录。
     """
 
     def __init__(self, config: SingleFactorTestConfig):
@@ -70,13 +90,20 @@ class PipelineRunner:
 
         Returns:
             dict: 完整结果, 包含各节点输出
+                  当 config.feedback.enabled=True 时, 还包含 'Feedback' 键
         """
         cfg = self.config
         ctx = {}
+        feedback_enabled = cfg.feedback.enabled
+        factor_id = str(uuid.uuid4())
+        factor_name = cfg.factor.name
+        judge = self._maybe_build_judge(cfg) if feedback_enabled else None
 
         print("=" * 60)
         print(f"单因子回测: {cfg.factor.name}")
         print(f"时间范围: {cfg.preprocess.adj_date_beg} ~ {cfg.preprocess.adj_date_end}")
+        if feedback_enabled:
+            print(f"FactorFeedback: ENABLED (factor_id={factor_id[:8]}...)")
         print("=" * 60)
 
         # ============================================================
@@ -184,11 +211,89 @@ class PipelineRunner:
         })
         ctx['FactorTestReport'] = report.execute(context=ctx)
 
+        # ============================================================
+        # Phase 4: FactorFeedback 自动包装 (可选)
+        # ============================================================
+        if feedback_enabled:
+            ctx['Feedback'] = self._build_feedback(
+                ctx, factor_id, factor_name, judge,
+            )
+            self._maybe_persist_feedback(ctx['Feedback'], cfg)
+            n_passed = sum(1 for fb in ctx['Feedback'].values() if fb.decision)
+            print(f"\n[Feedback] 包装完成: {len(ctx['Feedback'])} 节点, {n_passed} 通过")
+
         print("\n" + "=" * 60)
         print("单因子回测完成!")
         print("=" * 60)
 
         return ctx
+
+    def _build_feedback(
+        self,
+        ctx: dict,
+        factor_id: str,
+        factor_name: str,
+        judge: Optional[LLMJudge],
+    ) -> dict:
+        """包装 5 个分析节点返回值为 FactorFeedback。
+
+        包装策略:
+            - 节点返回 dict → ensure_feedback() 创建 metadata-only FactorFeedback
+            - 节点已是 FactorFeedback → 直接用其 channels
+            - 都通过同一个 FeedbackCollector 聚合, 共享 factor_id
+            - judge 不为 None 时追加 LLM 一致性通道
+        """
+        feedbacks: dict[str, FactorFeedback] = {}
+        for node_name in _ANALYSIS_NODES:
+            result = ctx.get(node_name)
+            if result is None:
+                continue
+            collector = FeedbackCollector(factor_id, factor_name)
+            fb = ensure_feedback(result, factor_id, factor_name)
+            for _ch, ch_fb in fb.channels.items():
+                collector.add_feedback(ch_fb)
+            if not fb.channels:
+                collector.add(
+                    channel=FeedbackChannel.VALUE,
+                    passed=fb.decision,
+                    detail=fb.summary or f"{node_name} 节点无显式通道反馈",
+                    score=1.0 if fb.decision else 0.0,
+                )
+            if judge is not None:
+                hypothesis = getattr(self.config.factor, "hypothesis", "") or ""
+                description = getattr(self.config.factor, "description", "") or ""
+                expression = getattr(self.config.factor, "expression", "") or ""
+                if hypothesis or description or expression:
+                    llm_fb = judge.judge(hypothesis, description, expression)
+                    collector.add_feedback(llm_fb)
+            feedbacks[node_name] = collector.finalize(
+                summary=fb.summary or f"{node_name} 节点执行完成",
+            )
+        return feedbacks
+
+    def _maybe_persist_feedback(
+        self,
+        feedbacks: dict[str, FactorFeedback],
+        cfg: SingleFactorTestConfig,
+    ) -> None:
+        """可选: 持久化 Feedback 到 Parquet。"""
+        if cfg.feedback.output_dir is None:
+            return
+        out = Path(cfg.feedback.output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        parquet_path = out / "feedback.parquet"
+        for node_name, fb in feedbacks.items():
+            fb.save_parquet(parquet_path)
+
+    @staticmethod
+    def _maybe_build_judge(cfg: SingleFactorTestConfig) -> Optional[LLMJudge]:
+        """若 judge_enabled, 构建 LLMJudge; 否则 None。"""
+        if not cfg.feedback.judge_enabled:
+            return None
+        return LLMJudge(
+            model=cfg.feedback.judge_model,
+            max_correction_attempts=cfg.feedback.judge_max_attempts,
+        )
 
     @property
     def context(self) -> dict:
