@@ -21,7 +21,7 @@ include = ["QuantNodes*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-v --strict-markers --ignore=QuantNodes"
+addopts = "-v --strict-markers"
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",

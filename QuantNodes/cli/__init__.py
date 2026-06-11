@@ -13,6 +13,7 @@ import sys
 import os
 import subprocess
 import argparse
+import json
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple, List, Any
@@ -592,8 +593,24 @@ QuantNodes CLI - 量化研究节点架构命令行工具
 命令:
     init        初始化当前目录
     run         启动服务
+    chat        启动 Agent 对话模式
+    evolve      多轮演化主入口 (Week 5)
+    factor-info 显示 TrajectoryPool 统计 (Week 5)
+    factor-best 显示 Top-N 最佳 entry (Week 5)
     version     显示版本
     help        显示帮助
+
+evolve 选项:
+    --config PATH          YAML 配置文件路径 (必填)
+    --directions LIST      逗号分隔的研究方向
+    --initial-json JSON    初始 candidates JSON
+    --max-rounds N         覆盖 config.evolution.max_rounds
+    --early-stop N         覆盖 config.evolution.early_stop_patience
+
+factor-info / factor-best 选项:
+    --pool-dir PATH        TrajectoryPool 目录
+    --top N                Top-N (默认 5, 仅 factor-best)
+    --metric NAME          排序指标 (默认 sharpe, 仅 factor-best)
 
 init 选项:
     --force           强制重新初始化 (覆盖现有配置)
@@ -613,6 +630,9 @@ run 选项:
     quantnodes run --port 18380 --api-port 9000  # 前端:18380, 后端:9000 (指定后端)
     quantnodes run --daemon
     quantnodes run --api-only
+    quantnodes evolve --config configs/evolve.yaml --directions momentum,reversal --max-rounds 3
+    quantnodes factor-info --pool-dir output/trajectory
+    quantnodes factor-best --pool-dir output/trajectory --top 10 --metric sharpe
     quantnodes version
 
 详细文档: docs/QuickStart.md
@@ -629,6 +649,142 @@ def cmd_chat(args):
         chat_single(args.message, workspace=workspace)
     else:
         chat(workspace=workspace)
+    return 0
+
+
+# ============================================================
+# Week 5: 演化实验 CLI (evolve / factor-info / factor-best)
+# ============================================================
+
+def _load_runner_from_config(config_path: str):
+    """从 YAML 配置构造 PipelineRunner (延迟 import 避免顶层依赖)。"""
+    from QuantNodes.research.factor_test.pipeline_runner import PipelineRunner
+    return PipelineRunner.from_yaml(config_path)
+
+
+def cmd_evolve(args) -> int:
+    """多轮演化主入口。
+
+    用法:
+        quantnodes evolve --config configs/single_factor.yaml \\
+                         --directions momentum,reversal,volatility \\
+                         --max-rounds 3
+    """
+    from QuantNodes.core.evolution import FactorCandidate
+
+    config_path = args.config
+    if not Path(config_path).exists():
+        print(f"错误: 配置文件不存在: {config_path}")
+        return 1
+
+    directions = [d.strip() for d in (args.directions or "").split(",") if d.strip()]
+    initial = None
+    if args.initial_json:
+        try:
+            raw = json.loads(args.initial_json)
+            initial = [FactorCandidate(**c) for c in raw]
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"错误: --initial-json 解析失败: {e}")
+            return 1
+
+    try:
+        runner = _load_runner_from_config(config_path)
+    except Exception as e:
+        print(f"错误: 加载配置失败: {e}")
+        return 1
+
+    # CLI 参数覆盖 config (如指定)
+    if args.max_rounds is not None:
+        runner.config.evolution.max_rounds = args.max_rounds
+    if args.early_stop is not None:
+        runner.config.evolution.early_stop_patience = args.early_stop
+
+    print("=" * 60)
+    print(f"演化实验: {config_path}")
+    print(f"  方向: {directions or '(无, 走 initial_candidates)'}")
+    print(f"  max_rounds: {runner.config.evolution.max_rounds}")
+    print(f"  early_stop: {runner.config.evolution.early_stop_patience}")
+    print("=" * 60)
+
+    try:
+        result = runner.run_evolution(
+            initial_directions=directions or None,
+            initial_candidates=initial,
+        )
+    except Exception as e:
+        print(f"错误: 演化失败: {e}")
+        return 1
+
+    print()
+    print("=" * 60)
+    print(f"演化完成: {result.rounds_completed} 轮")
+    print(f"  总数: {result.total_count}, 拒绝: {result.rejected_count}")
+    print(f"  Top {len(result.best_entries)} entries:")
+    for i, e in enumerate(result.best_entries[:5], 1):
+        metric_val = e.metrics.get(runner.config.evolution.metric, 0)
+        name = e.feedback.factor_name if e.feedback else e.entry_id[:8]
+        print(f"    {i}. {name} [{e.operation} r{e.round_idx}] "
+              f"{runner.config.evolution.metric}={metric_val:.4f}")
+    print("=" * 60)
+    return 0
+
+
+def cmd_factor_info(args) -> int:
+    """显示 TrajectoryPool 统计信息。
+
+    用法:
+        quantnodes factor-info --pool-dir output/trajectory/
+    """
+    from QuantNodes.core.trajectory import TrajectoryPool
+
+    pool_dir = args.pool_dir
+    if not Path(pool_dir).exists():
+        print(f"错误: pool 目录不存在: {pool_dir}")
+        return 1
+
+    pool = TrajectoryPool(pool_dir)
+    print("=" * 60)
+    print(f"TrajectoryPool: {pool_dir}")
+    print(f"  size: {pool.size}")
+    by_round: dict = {}
+    for e in pool.all():
+        by_round.setdefault(e.round_idx, 0)
+        by_round[e.round_idx] += 1
+    print(f"  by_round: {by_round}")
+    by_op: dict = {}
+    for e in pool.all():
+        by_op.setdefault(e.operation, 0)
+        by_op[e.operation] += 1
+    print(f"  by_operation: {by_op}")
+    n_passed = sum(1 for e in pool.all() if e.feedback and e.feedback.decision)
+    print(f"  passed: {n_passed} / {pool.size}")
+    print("=" * 60)
+    return 0
+
+
+def cmd_factor_best(args) -> int:
+    """显示 Top-N 最佳 entry (按 metric 排序)。
+
+    用法:
+        quantnodes factor-best --pool-dir output/trajectory/ --top 5 --metric sharpe
+    """
+    from QuantNodes.core.trajectory import TrajectoryPool
+
+    pool_dir = args.pool_dir
+    if not Path(pool_dir).exists():
+        print(f"错误: pool 目录不存在: {pool_dir}")
+        return 1
+
+    pool = TrajectoryPool(pool_dir)
+    top = pool.best(top_n=args.top, metric=args.metric)
+    print("=" * 60)
+    print(f"Top {len(top)} entries by {args.metric}:")
+    for i, e in enumerate(top, 1):
+        metric_val = e.metrics.get(args.metric, 0)
+        name = e.feedback.factor_name if e.feedback else e.entry_id[:8]
+        print(f"  {i}. {name} [{e.operation} r{e.round_idx}] "
+              f"{args.metric}={metric_val:.4f}")
+    print("=" * 60)
     return 0
 
 
@@ -657,6 +813,22 @@ def main():
     chat_parser.add_argument("message", nargs="?", help="单次提问（不指定则进入交互模式）")
     chat_parser.add_argument("--workspace", default=".", help="工作目录")
     
+    # Week 5: 演化实验子命令
+    evolve_parser = subparsers.add_parser("evolve", help="多轮演化主入口")
+    evolve_parser.add_argument("--config", required=True, help="YAML 配置文件路径")
+    evolve_parser.add_argument("--directions", default="", help="逗号分隔的研究方向")
+    evolve_parser.add_argument("--initial-json", default=None, help="初始 candidates JSON")
+    evolve_parser.add_argument("--max-rounds", type=int, default=None, help="覆盖 config.max_rounds")
+    evolve_parser.add_argument("--early-stop", type=int, default=None, help="覆盖 config.early_stop_patience")
+    
+    info_parser = subparsers.add_parser("factor-info", help="显示 TrajectoryPool 统计")
+    info_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+    
+    best_parser = subparsers.add_parser("factor-best", help="显示 Top-N 最佳 entry")
+    best_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+    best_parser.add_argument("--top", type=int, default=5, help="Top-N (默认 5)")
+    best_parser.add_argument("--metric", default="sharpe", help="排序指标 (默认 sharpe)")
+    
     subparsers.add_parser("version", help="显示版本")
     subparsers.add_parser("help", help="显示帮助")
     
@@ -668,6 +840,12 @@ def main():
         return cmd_run(args)
     elif args.command == "chat":
         return cmd_chat(args)
+    elif args.command == "evolve":
+        return cmd_evolve(args)
+    elif args.command == "factor-info":
+        return cmd_factor_info(args)
+    elif args.command == "factor-best":
+        return cmd_factor_best(args)
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "help":
