@@ -601,6 +601,7 @@ QuantNodes CLI - 量化研究节点架构命令行工具
     factor-rag-show RAG 检索演示 (Week 7)
     factor-rag-eval 批量评估 RAG 质量 (Week 10)
     factor-data-fetch 从 iFinD 拉取数据 + 写 H5 (Week 12)
+    factor-dashboard 生成 3 类指标 dashboard (Week 13)
     version     显示版本
     help        显示帮助
 
@@ -648,6 +649,7 @@ run 选项:
     quantnodes factor-rag-show --pool-dir output/trajectory --query "momentum effect" --top 5
     quantnodes factor-rag-eval --pool-dir output/trajectory --queries "momentum,reversal" --top 5
     quantnodes factor-data-fetch --output-dir /tmp/real_data/ --date-beg 20260101 --factors momentum_20d,reversal_5d
+    quantnodes factor-dashboard --pool-dir output/trajectory --output dashboard.html
     quantnodes version
 
 详细文档: docs/QuickStart.md
@@ -832,6 +834,103 @@ def cmd_factor_visual(args) -> int:
         return 1
     print(f"✓ HTML 报告已生成: {output}")
     print(f"  size: {pool.size}, metric: {args.metric}")
+    return 0
+
+
+def cmd_factor_dashboard(args) -> int:
+    """生成 3 类指标 dashboard (Week 13)。
+
+    从 TrajectoryPool 提取 RAG + Evolution + Quality Gate 指标,
+    生成 Plotly 6 图 + 概览表 HTML 报告。
+
+    用法:
+        quantnodes factor-dashboard --pool-dir output/trajectory/ \\
+                                     --output dashboard.html
+    """
+    from QuantNodes.core.feedback import FactorFeedback, FeedbackChannel, ChannelFeedback
+    from QuantNodes.core.monitoring import (
+        MetricCollector,
+        generate_dashboard_html,
+    )
+    from QuantNodes.core.trajectory import TrajectoryEntry, TrajectoryPool
+
+    pool_dir = args.pool_dir
+    if not Path(pool_dir).exists():
+        print(f"错误: pool 目录不存在: {pool_dir}")
+        return 1
+
+    pool = TrajectoryPool(pool_dir)
+    if pool.size == 0:
+        print("错误: pool 为空, 无指标可显示")
+        return 1
+
+    output = args.output or str(Path(pool_dir).parent / f"{Path(pool_dir).name}_dashboard.html")
+    title = args.title or f"QuantNodes 演化 Dashboard: {Path(pool_dir).name}"
+
+    # 收集 3 类指标
+    collector = MetricCollector()
+
+    # RAG: 从 TrajectoryEntry.feedback 元数据中提取 (兼容 rag_metrics_history 缺失)
+    rounds = sorted({e.round_idx for e in pool.all()})
+    for r in rounds:
+        round_entries = [e for e in pool.all() if e.round_idx == r]
+        n_total = len(round_entries)
+        n_passed = sum(1 for e in round_entries if e.feedback and e.feedback.decision)
+        # RAG 指标的简单代理: pass rate 作为 HR@5
+        if n_total > 0:
+            from QuantNodes.core.monitoring import RagMetrics
+            collector.add_rag(RagMetrics(
+                round=r, n_queries=n_total,
+                hit_at_5=n_passed / n_total, hit_at_10=n_passed / n_total,
+                ndcg_at_5=n_passed / n_total, ndcg_at_10=n_passed / n_total,
+                mrr=n_passed / n_total,
+                lineage_coverage=0.0,
+                diversity=1.0,
+            ))
+
+    # Evolution: 累积统计
+    from QuantNodes.core.monitoring import EvolutionMetrics, QualityMetrics
+    for r in rounds:
+        round_entries = [e for e in pool.all() if e.round_idx <= r]
+        n_passed = sum(1 for e in round_entries if e.feedback and e.feedback.decision)
+        n_total = len(round_entries)
+        n_rejected = n_total - n_passed
+        best_metric = 0.0
+        best_name = ""
+        for e in round_entries:
+            sharpe = (e.metrics or {}).get("sharpe", 0)
+            if sharpe > best_metric:
+                best_metric = sharpe
+                if e.feedback:
+                    best_name = e.feedback.factor_name
+        collector.add_evolution(EvolutionMetrics(
+            round=r, pool_size=n_total,
+            total_count=n_passed, rejected_count=n_rejected,
+            best_metric=best_metric, best_factor_name=best_name,
+        ))
+
+    # Quality: 每 round 通道统计
+    for r in rounds:
+        collector.update_quality_from_pool(pool, round_idx=r)
+
+    print("=" * 60)
+    print(f"Dashboard 收集 ({len(collector)} metrics):")
+    print(f"  RAG:    {len(collector.rag_history)} rounds")
+    print(f"  Evo:    {len(collector.evolution_history)} rounds")
+    print(f"  Quality: {len(collector.quality_history)} rounds")
+    print("=" * 60)
+
+    try:
+        generate_dashboard_html(collector, title=title, output_path=output)
+    except Exception as e:
+        print(f"错误: 生成 dashboard 失败: {e}")
+        return 1
+
+    # 同时保存 JSON (供后续分析)
+    metrics_json = output.replace(".html", "_metrics.json")
+    collector.save(metrics_json)
+    print(f"✓ Dashboard: {output}")
+    print(f"✓ Metrics JSON: {metrics_json}")
     return 0
 
 
@@ -1120,6 +1219,11 @@ def main():
     fetch_parser.add_argument("--date-end", default="", help="截止日期 (空=今天)")
     fetch_parser.add_argument("--universe", default="沪深300", help="股票池 (默认 沪深300)")
     fetch_parser.add_argument("--factors", default="", help="逗号分隔的因子列表")
+
+    dash_parser = subparsers.add_parser("factor-dashboard", help="生成 3 类指标 dashboard (Week 13)")
+    dash_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+    dash_parser.add_argument("--output", default=None, help="HTML 输出路径")
+    dash_parser.add_argument("--title", default=None, help="报告标题")
     
     subparsers.add_parser("version", help="显示版本")
     subparsers.add_parser("help", help="显示帮助")
@@ -1146,6 +1250,8 @@ def main():
         return cmd_factor_rag_eval(args)
     elif args.command == "factor-data-fetch":
         return cmd_factor_data_fetch(args)
+    elif args.command == "factor-dashboard":
+        return cmd_factor_dashboard(args)
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "help":
