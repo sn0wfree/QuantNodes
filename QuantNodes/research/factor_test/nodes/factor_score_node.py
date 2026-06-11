@@ -96,7 +96,7 @@ class FactorScoreNode(BaseNode):
                 valid = [s for s in stocks if s in cycle.columns]
                 if valid:
                     gn = cycle[valid].mean(axis=1)
-                    group_daily_ret.loc[gn.index[1:], g] = gn.pct_change().iloc[1:]
+                    group_daily_ret.loc[gn.index[1:], g] = gn.pct_change(fill_method=None).iloc[1:]
 
         group_daily_net_cmp = (group_daily_ret + 1).cumprod()
         group_daily_net_simp = group_daily_net_cmp.copy() * np.nan

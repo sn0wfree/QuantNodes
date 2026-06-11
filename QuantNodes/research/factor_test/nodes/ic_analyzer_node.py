@@ -46,7 +46,7 @@ class ICAnalyzerNode(BaseNode):
         price_adj = price.loc[price.index.isin(adj_dates)]
 
         # 下一期收益
-        stock_cycle_ret = price_adj.pct_change().shift(-1)
+        stock_cycle_ret = price_adj.pct_change(fill_method=None).shift(-1)
 
         ic = pd.Series(np.nan, index=adj_dates, dtype=float)
         rank_ic = pd.Series(np.nan, index=adj_dates, dtype=float)

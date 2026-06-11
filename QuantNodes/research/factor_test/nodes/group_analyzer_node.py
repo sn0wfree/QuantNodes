@@ -78,7 +78,7 @@ class GroupAnalyzerNode(BaseNode):
 
         # 各期每组收益
         price_adj = price.loc[price.index.isin(adj_dates)]
-        stock_cycle_ret = price_adj.pct_change().shift(-1)
+        stock_cycle_ret = price_adj.pct_change(fill_method=None).shift(-1)
 
         group_num = pd.DataFrame(np.nan, index=adj_dates, columns=range(1, n_groups + 1))
         group_ret = group_num.copy()
@@ -97,7 +97,8 @@ class GroupAnalyzerNode(BaseNode):
                 if g in temp.index:
                     group_num.loc[t_i, g] = temp.loc[g, 'count']
                     group_ret.loc[t_i, g] = temp.loc[g, 'mean']
-                    vals = ret_i[fg == g].dropna()
+                    mask = fg[fg == g].index
+                    vals = ret_i.reindex(mask).dropna()
                     if len(vals) > 0:
                         group_winratio.loc[t_i, g] = (vals > 0).mean()
                         pos = vals[vals > 0].mean()
@@ -126,7 +127,7 @@ class GroupAnalyzerNode(BaseNode):
                     valid_stocks = [s for s in stocks_g if s in cycle_net.columns]
                     if valid_stocks:
                         group_net = cycle_net[valid_stocks].mean(axis=1)
-                        group_daily_ret.loc[group_net.index[1:], g] = group_net.pct_change().iloc[1:]
+                        group_daily_ret.loc[group_net.index[1:], g] = group_net.pct_change(fill_method=None).iloc[1:]
 
         group_daily_net_cmp = (group_daily_ret + 1).cumprod()
         group_daily_net_simp = group_daily_net_cmp.copy() * np.nan
@@ -207,7 +208,7 @@ class GroupAnalyzerNode(BaseNode):
                 cycle = price_full.loc[t_i:t_ii] / price_full.loc[t_i]
                 valid = [s for s in stocks_with_factor if s in cycle.columns]
                 if valid:
-                    benchmark.loc[cycle.index[1:]] = cycle[valid].mean(axis=1).pct_change().iloc[1:]
+                    benchmark.loc[cycle.index[1:]] = cycle[valid].mean(axis=1).pct_change(fill_method=None).iloc[1:]
             return (benchmark + 1).cumprod()
 
         elif hedge in INDEX_CP_MAPPING and index_cp is not None:
