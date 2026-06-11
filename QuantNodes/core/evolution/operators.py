@@ -80,14 +80,19 @@ class Hypothesizer(BaseOperator):
     def __init__(
         self, *args, knowledge_base=None, rag_top_k: int = 3,
         max_ancestor_depth: int = 2, max_descendant_depth: int = 2,
+        use_compress: bool = False, compressor=None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        from ..knowledge import KnowledgeBase
+        from ..knowledge import Compressor, KnowledgeBase
         self.knowledge_base: KnowledgeBase | None = knowledge_base
         self.rag_top_k = rag_top_k
         self.max_ancestor_depth = max_ancestor_depth
         self.max_descendant_depth = max_descendant_depth
+        self.use_compress = use_compress
+        self.compressor = compressor if compressor is not None else (
+            Compressor(model="mock") if use_compress else None
+        )
 
     def set_knowledge_base(self, kb) -> None:
         """注入 KnowledgeBase (在 EvolutionLoop 中设置)。"""
@@ -108,6 +113,8 @@ class Hypothesizer(BaseOperator):
                 top_k=self.rag_top_k,
                 max_ancestor_depth=self.max_ancestor_depth,
                 max_descendant_depth=self.max_descendant_depth,
+                use_compress=self.use_compress,
+                compressor=self.compressor,
             )
         else:
             prompt = _HYPOTHESIZE_PROMPT.format(

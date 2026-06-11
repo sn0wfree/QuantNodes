@@ -616,6 +616,10 @@ factor-info / factor-best / factor-visual / factor-rag-show 选项:
     --output PATH          HTML 输出路径 (仅 factor-visual)
     --title TITLE          报告标题 (仅 factor-visual)
     --query TEXT           查询文本 (仅 factor-rag-show)
+    --compress             启用谱系压缩 (Week 9, 仅 factor-rag-show)
+    --ancestor-depth N     祖先深度 (默认 2, 仅 --compress)
+    --descendant-depth N   后裔深度 (默认 2, 仅 --compress)
+    --max-tokens N         压缩最大字符数 (默认 200, 仅 --compress)
 
 init 选项:
     --force           强制重新初始化 (覆盖现有配置)
@@ -834,7 +838,12 @@ def cmd_factor_rag_show(args) -> int:
         quantnodes factor-rag-show --pool-dir output/trajectory/ \\
                                    --query "momentum effect" --top 5
     """
-    from QuantNodes.core.knowledge import IdentityRetriever, KnowledgeBase
+    from QuantNodes.core.knowledge import (
+        Compressor,
+        IdentityRetriever,
+        KnowledgeBase,
+        expand_lineage,
+    )
     from QuantNodes.core.trajectory import TrajectoryPool
 
     pool_dir = args.pool_dir
@@ -856,6 +865,9 @@ def cmd_factor_rag_show(args) -> int:
         print(f"无匹配结果 (query: {args.query!r})")
         return 0
 
+    use_compress = getattr(args, "compress", False)
+    compressor = Compressor(model="mock", max_tokens=args.max_tokens) if use_compress else None
+
     print("=" * 60)
     print(f"Top {len(results)} 检索结果 (query: {args.query!r}):")
     for i, (entry, score) in enumerate(results, 1):
@@ -866,6 +878,16 @@ def cmd_factor_rag_show(args) -> int:
         sharpe = (entry.metrics or {}).get("sharpe", 0)
         print(f"  {i}. {name}  score={score:.3f}  sharpe={sharpe:.2f}")
         print(f"     expression: {expr}")
+        if use_compress and compressor is not None:
+            expanded = expand_lineage(
+                pool, entry.entry_id,
+                max_ancestor_depth=args.ancestor_depth,
+                max_descendant_depth=args.descendant_depth,
+            )
+            c_anc = compressor.compress(expanded["ancestors"], relation="ancestors")
+            c_desc = compressor.compress(expanded["descendants"], relation="descendants")
+            print(f"     ↑ ancestors ({c_anc.original_count}): {c_anc.summary[:80]}")
+            print(f"     ↓ descendants ({c_desc.original_count}): {c_desc.summary[:80]}")
     print("=" * 60)
     return 0
 
@@ -921,6 +943,10 @@ def main():
     rag_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
     rag_parser.add_argument("--query", required=True, help="查询文本")
     rag_parser.add_argument("--top", type=int, default=5, help="Top-K (默认 5)")
+    rag_parser.add_argument("--compress", action="store_true", help="启用谱系压缩 (Week 9)")
+    rag_parser.add_argument("--ancestor-depth", type=int, default=2, help="祖先深度 (默认 2)")
+    rag_parser.add_argument("--descendant-depth", type=int, default=2, help="后裔深度 (默认 2)")
+    rag_parser.add_argument("--max-tokens", type=int, default=200, help="压缩最大字符数 (默认 200)")
     
     subparsers.add_parser("version", help="显示版本")
     subparsers.add_parser("help", help="显示帮助")

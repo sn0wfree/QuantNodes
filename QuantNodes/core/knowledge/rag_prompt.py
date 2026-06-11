@@ -3,6 +3,8 @@
 用途: Hypothesizer / Mutator 在生成新因子前, 检索 top-k 历史因子作为 in-context 示例。
 
 Week 8 升级: 谱系 RAG — 每个示例附 ancestors/descendants 上下文, 树状展开。
+Week 9 升级: 谱系压缩 — use_compress=True 时, 祖先/后裔段先用 LLM/启发式
+            总结为 1 段简短描述, 减少 token 消耗。
 """
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ from typing import Any, Optional
 
 from ..trajectory import TrajectoryEntry, TrajectoryPool
 from .knowledge_base import KnowledgeBase
+from .lineage_compress import Compressor, compress_lineage
 from .lineage_expand import expand_lineage, expand_lineage_batch
 
 
@@ -25,6 +28,8 @@ _RAG_EXAMPLE_TEMPLATE = """---
 """
 
 _LINEAGE_RELATION_TEMPLATE = """{relation} (depth={depth}): {name} | sharpe={sharpe} | {expression}"""
+
+_LINEAGE_COMPRESSED_TEMPLATE = """{relation} ({n} entries): {summary}"""
 
 _RAG_TASK_TEMPLATE = """
 现在, 请基于以下研究假设生成新因子:
@@ -45,8 +50,10 @@ def build_rag_prompt(
     include_lineage: bool = True,
     max_ancestor_depth: int = 2,
     max_descendant_depth: int = 2,
+    use_compress: bool = False,
+    compressor: Optional[Compressor] = None,
 ) -> str:
-    """构造带 RAG 上下文的 prompt (Week 8 升级版: 含谱系)。
+    """构造带 RAG 上下文的 prompt (Week 9 升级版: 含谱系 + 压缩)。
 
     Args:
         direction: 研究方向 (hypothesis)
@@ -54,12 +61,15 @@ def build_rag_prompt(
         kb: KnowledgeBase (None=不附 RAG 上下文)
         top_k: 检索 top-k 数量
         min_score: 最小相似度阈值
-        include_lineage: 是否附加祖先/后裔 (默认 True)
+        include_lineage: 是否附加祖先/后裔
         max_ancestor_depth: 祖先展开深度
         max_descendant_depth: 后裔展开深度
+        use_compress: 是否压缩谱系段 (默认 False, 沿用 Week 8 多行格式)
+        compressor: Compressor 实例 (use_compress=True 时必填,
+                    内部未传时自动构造 mock Compressor)
 
     Returns:
-        str: 完整 prompt (含 RAG 段 + 谱系 + 任务段)
+        str: 完整 prompt
     """
     rag_section = ""
     if kb is not None and len(kb) > 0:
@@ -74,6 +84,8 @@ def build_rag_prompt(
                         kb.pool, entry.entry_id,
                         max_ancestor_depth=max_ancestor_depth,
                         max_descendant_depth=max_descendant_depth,
+                        use_compress=use_compress,
+                        compressor=compressor,
                     )
                     if lineage_str:
                         example_parts.append(lineage_str)
@@ -112,6 +124,8 @@ def _format_lineage(
     root_id: str,
     max_ancestor_depth: int = 2,
     max_descendant_depth: int = 2,
+    use_compress: bool = False,
+    compressor: Optional[Compressor] = None,
 ) -> str:
     """格式化谱系上下文, 嵌入示例后。"""
     expanded = expand_lineage(
@@ -119,12 +133,25 @@ def _format_lineage(
         max_ancestor_depth=max_ancestor_depth,
         max_descendant_depth=max_descendant_depth,
     )
-    if not expanded["ancestors"] and not expanded["descendants"]:
+    ancestors = expanded["ancestors"]
+    descendants = expanded["descendants"]
+
+    if not ancestors and not descendants:
         return ""
 
-    parts: list[str] = []
-    parts.append("  谱系上下文:")
-    for depth, entry in expanded["ancestors"]:
+    if use_compress:
+        # Week 9: 压缩模式
+        comp = compressor or Compressor(model="mock")
+        return _format_lineage_compressed(ancestors, descendants, comp)
+
+    # Week 8: 多行展开模式
+    return _format_lineage_expanded(ancestors, descendants)
+
+
+def _format_lineage_expanded(ancestors, descendants) -> str:
+    """Week 8 风格: 多行展开。"""
+    parts: list[str] = ["  谱系上下文:"]
+    for depth, entry in ancestors:
         cfg = entry.config_snapshot or {}
         factor_cfg = cfg.get("factor", {}) if isinstance(cfg, dict) else {}
         parts.append("  " + _LINEAGE_RELATION_TEMPLATE.format(
@@ -134,7 +161,7 @@ def _format_lineage(
             sharpe=(entry.metrics or {}).get("sharpe", "?"),
             expression=factor_cfg.get("expression", "")[:40],
         ))
-    for depth, entry in expanded["descendants"]:
+    for depth, entry in descendants:
         cfg = entry.config_snapshot or {}
         factor_cfg = cfg.get("factor", {}) if isinstance(cfg, dict) else {}
         parts.append("  " + _LINEAGE_RELATION_TEMPLATE.format(
@@ -143,5 +170,25 @@ def _format_lineage(
             name=factor_cfg.get("name", entry.entry_id[:8]),
             sharpe=(entry.metrics or {}).get("sharpe", "?"),
             expression=factor_cfg.get("expression", "")[:40],
+        ))
+    return "\n".join(parts)
+
+
+def _format_lineage_compressed(ancestors, descendants, compressor: Compressor) -> str:
+    """Week 9 风格: 1 行总结 ancestors + 1 行总结 descendants。"""
+    parts: list[str] = ["  谱系上下文 (压缩):"]
+    if ancestors:
+        c_anc = compressor.compress(ancestors, relation="ancestors")
+        parts.append("  " + _LINEAGE_COMPRESSED_TEMPLATE.format(
+            relation="↑ ancestors",
+            n=c_anc.original_count,
+            summary=c_anc.summary,
+        ))
+    if descendants:
+        c_desc = compressor.compress(descendants, relation="descendants")
+        parts.append("  " + _LINEAGE_COMPRESSED_TEMPLATE.format(
+            relation="↓ descendants",
+            n=c_desc.original_count,
+            summary=c_desc.summary,
         ))
     return "\n".join(parts)

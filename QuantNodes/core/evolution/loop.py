@@ -65,6 +65,8 @@ class EvolutionLoop:
         rag_top_k: int = 3,
         max_ancestor_depth: int = 2,
         max_descendant_depth: int = 2,
+        use_compress: bool = False,
+        compressor=None,
     ):
         self.settings = settings
         self.pool = pool
@@ -79,6 +81,8 @@ class EvolutionLoop:
         self.rag_top_k = rag_top_k
         self.max_ancestor_depth = max_ancestor_depth
         self.max_descendant_depth = max_descendant_depth
+        self.use_compress = use_compress
+        self.compressor = compressor
         self.hypothesizer = Hypothesizer(
             model=settings.hypothesizer.model,
             max_correction_attempts=settings.hypothesizer.max_correction_attempts,
@@ -87,6 +91,8 @@ class EvolutionLoop:
             rag_top_k=rag_top_k,
             max_ancestor_depth=max_ancestor_depth,
             max_descendant_depth=max_descendant_depth,
+            use_compress=use_compress,
+            compressor=compressor,
         )
         self.mutator = Mutator(
             model=settings.mutator.model,
