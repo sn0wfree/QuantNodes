@@ -103,6 +103,35 @@ class FeedbackSetting(BaseModel):
     judge_max_attempts: int = Field(default=3, description="LLMJudge 解析失败最大重试次数")
 
 
+class QualityGateConfig(BaseModel):
+    """QualityGate 集成配置 (Week 3)。
+
+    enabled=False: 不构造 QualityGateNode, 行为不变
+    enabled=True:  构造 QualityGateNode, 可在 run_evolution() 中拦截低质量因子
+    """
+    enabled: bool = Field(default=False, description="是否启用 QualityGateNode")
+    zoo_path: Optional[str] = Field(default=None, description="FactorZoo 路径 (None=内存)")
+
+
+class EvolutionConfig(BaseModel):
+    """演化主循环配置 (Week 4)。
+
+    enabled=False: 不演化, run_evolution() 抛错
+    enabled=True:  启用多轮演化循环
+    """
+    enabled: bool = Field(default=False, description="是否启用演化模式")
+    max_rounds: int = Field(default=3, description="演化总轮数 (不含 round 0 原始)")
+    parents_per_round: int = Field(default=1, description="每轮选几个 parent (crossover 时强制 2)")
+    parent_selection_strategy: str = Field(
+        default="top_percent_plus_random",
+        description="选择策略: best/random/weighted/weighted_inverse/top_percent_plus_random",
+    )
+    top_percent_threshold: float = Field(default=0.3, description="top_percent_plus_random 阈值")
+    metric: str = Field(default="sharpe", description="用于排序/加权的指标")
+    pool_dir: Optional[str] = Field(default=None, description="TrajectoryPool 路径 (None=output.dir/trajectory)")
+    early_stop_patience: int = Field(default=0, description="连续 N 轮无改善则停 (0=不启用)")
+
+
 class SingleFactorTestConfig(BaseModel):
     """单因子回测完整配置"""
     factor: FactorSetting
@@ -110,6 +139,8 @@ class SingleFactorTestConfig(BaseModel):
     analysis: AnalysisSetting = Field(default_factory=AnalysisSetting)
     output: OutputSetting = Field(default_factory=OutputSetting)
     feedback: FeedbackSetting = Field(default_factory=FeedbackSetting)
+    quality_gate: QualityGateConfig = Field(default_factory=QualityGateConfig)
+    evolution: EvolutionConfig = Field(default_factory=EvolutionConfig)
     data_path: str = Field(default='./testdata/test_h5_new/', description="数据根目录")
     load_keys: list = Field(
         default=['stklist', 'trade_dt', 'cp', 'id_citic1', 'mv_float'],

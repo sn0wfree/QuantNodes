@@ -31,6 +31,13 @@ from QuantNodes.core.feedback import (
     LLMJudge,
     ensure_feedback,
 )
+from QuantNodes.core.evolution import (
+    EvolutionLoop,
+    EvolutionResult,
+    FactorCandidate,
+)
+from QuantNodes.core.quality_gate import QualityGateNode
+from QuantNodes.core.trajectory import TrajectoryPool
 from QuantNodes.research.factor_test.config import SingleFactorTestConfig
 from QuantNodes.research.factor_test.nodes.load_data_node import LoadDataNode
 from QuantNodes.research.factor_test.nodes.sample_pool_filter_node import SamplePoolFilterNode
@@ -295,6 +302,152 @@ class PipelineRunner:
             max_correction_attempts=cfg.feedback.judge_max_attempts,
         )
 
+    # ============================================================
+    # Week 4: 演化集成
+    # ============================================================
+
+    def _build_quality_gate(self) -> Optional["QualityGateNode"]:
+        """根据 config.quality_gate.enabled 构造 QualityGateNode。"""
+        if not self.config.quality_gate.enabled:
+            return None
+        from QuantNodes.core.quality_gate import FactorZoo, QualityGateNode, QualityGateSetting
+        from pathlib import Path as _P
+        zoo_path = (
+            _P(self.config.quality_gate.zoo_path)
+            if self.config.quality_gate.zoo_path
+            else None
+        )
+        zoo = FactorZoo(zoo_path) if zoo_path is not None else FactorZoo()
+        return QualityGateNode(QualityGateSetting(), zoo=zoo)
+
+    def _build_trajectory_pool(self) -> Optional["TrajectoryPool"]:
+        """根据 config.evolution.pool_dir 构造 TrajectoryPool。"""
+        if not self.config.evolution.enabled:
+            return None
+        from QuantNodes.core.trajectory import TrajectoryPool
+        from pathlib import Path as _P
+        if self.config.evolution.pool_dir:
+            base = _P(self.config.evolution.pool_dir)
+        else:
+            base = _P(self.config.output.dir) / "trajectory"
+        return TrajectoryPool(base)
+
+    def _build_evolution_loop(
+        self,
+        pool: "TrajectoryPool",
+        quality_gate: Optional["QualityGateNode"],
+    ) -> "EvolutionLoop":
+        """构造 EvolutionLoop, evaluate_fn 默认委托给 self._run_candidate。"""
+        from QuantNodes.core.evolution import EvolutionLoop, EvolutionSetting
+        settings = EvolutionSetting(
+            enabled=True,
+            max_rounds=self.config.evolution.max_rounds,
+            parents_per_round=self.config.evolution.parents_per_round,
+            parent_selection_strategy=self.config.evolution.parent_selection_strategy,
+            top_percent_threshold=self.config.evolution.top_percent_threshold,
+            metric=self.config.evolution.metric,
+            early_stop_patience=self.config.evolution.early_stop_patience,
+        )
+        return EvolutionLoop(
+            settings=settings,
+            pool=pool,
+            quality_gate=quality_gate,
+            evaluate_fn=self._evaluate_candidate,
+        )
+
+    def _evaluate_candidate(
+        self,
+        candidate: "FactorCandidate",
+    ) -> tuple[bool, dict, "FactorFeedback"]:
+        """EvolutionLoop 评估回调: 执行单次回测 + 提取 metrics + 构造 feedback。
+
+        Returns:
+            (passed, metrics, feedback)
+        """
+        from QuantNodes.core.evolution import FactorCandidate as _FC
+        from QuantNodes.core.feedback import FactorFeedback
+        if not isinstance(candidate, _FC):
+            raise TypeError(f"expected FactorCandidate, got {type(candidate)}")
+
+        try:
+            ctx = self._run_one_factor(candidate)
+        except Exception as e:  # noqa: BLE001
+            return False, {}, FactorFeedback(
+                factor_id=candidate.factor_id,
+                factor_name=candidate.name,
+                decision=False,
+                summary=f"evaluate failed: {e}",
+            )
+
+        passed = bool(ctx.get("status") != "rejected")
+        metrics = _extract_metrics_from_ctx(ctx)
+        factor_id = str(candidate.factor_id)
+        factor_name = str(candidate.name)
+        feedback = FactorFeedback(
+            factor_id=factor_id,
+            factor_name=factor_name,
+            decision=passed,
+            summary="ok" if passed else "rejected",
+            metadata=metrics,
+        )
+        if self.config.feedback.enabled and "Feedback" in ctx:
+            for node_fb in ctx["Feedback"].values():
+                for ch, ch_fb in node_fb.channels.items():
+                    feedback.channels[ch] = ch_fb
+        return passed, metrics, feedback
+
+    def _run_one_factor(self, candidate: "FactorCandidate") -> dict:
+        """执行单次回测 (Phase 1-12), 不写 TrajectoryPool。
+
+        临时把 candidate 的 expression / name 注入 config.factor 后跑 12 节点。
+        """
+        from QuantNodes.core.evolution import FactorCandidate as _FC
+        from QuantNodes.core.feedback import FactorFeedback
+        if not isinstance(candidate, _FC):
+            raise TypeError(f"expected FactorCandidate, got {type(candidate)}")
+        # 临时覆盖 factor.name / expression
+        original_name = self.config.factor.name
+        self.config.factor.name = candidate.name
+        if not hasattr(self.config.factor, "expression") or not self.config.factor.expression:
+            try:
+                self.config.factor.expression = candidate.expression  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        try:
+            ctx = self.run()
+            return ctx
+        finally:
+            self.config.factor.name = original_name
+
+    def run_evolution(
+        self,
+        initial_directions: list[str] | None = None,
+        initial_candidates: list["FactorCandidate"] | None = None,
+    ) -> "EvolutionResult":
+        """多轮演化主入口。
+
+        Args:
+            initial_directions: round 0 用的研究假设列表 (Hypothesizer 处理)
+            initial_candidates: round 0 用的直接候选 (跳过 Hypothesizer)
+
+        Returns:
+            EvolutionResult: best entries + 统计
+
+        Raises:
+            ValueError: config.evolution.enabled=False
+        """
+        from QuantNodes.core.evolution import EvolutionResult
+        if not self.config.evolution.enabled:
+            raise ValueError("config.evolution.enabled=False, 无法运行演化")
+
+        pool = self._build_trajectory_pool()
+        quality_gate = self._build_quality_gate()
+        loop = self._build_evolution_loop(pool, quality_gate)
+        return loop.run(
+            initial_directions=initial_directions,
+            initial_candidates=initial_candidates,
+        )
+
     @property
     def context(self) -> dict:
         """获取当前上下文"""
@@ -335,3 +488,39 @@ def run_single_factor_test_yaml(yaml_path: str) -> dict:
 # 需要 import pandas 用于 type hints
 # ============================================================
 import pandas as pd
+
+
+# ============================================================
+# 工具: 从 ctx 提取指标 (IC, Sharpe, ARR, MDD, Calmar)
+# ============================================================
+
+def _extract_metrics_from_ctx(ctx: dict) -> dict:
+    """从单次回测 ctx 提取关键指标, 供 TrajectoryEntry.metrics。"""
+    metrics: dict = {}
+    ic = ctx.get("ICAnalyzer") or {}
+    ic_result = ic.get("ic_result") if isinstance(ic, dict) else None
+    if isinstance(ic_result, dict):
+        for src_key, dst_key in (
+            ("IC均值", "ic_mean"),
+            ("Rank IC均值", "rank_ic_mean"),
+            ("ICIR", "ic_ir"),
+        ):
+            if src_key in ic_result and ic_result[src_key] is not None:
+                try:
+                    metrics[dst_key] = float(ic_result[src_key])
+                except (TypeError, ValueError):
+                    pass
+    ls = ctx.get("LongShort") or {}
+    if isinstance(ls, dict):
+        for src_key, dst_key in (
+            ("sharpe", "sharpe"),
+            ("annualized_return", "arr"),
+            ("max_drawdown", "mdd"),
+            ("calmar", "calmar"),
+        ):
+            if src_key in ls and ls[src_key] is not None:
+                try:
+                    metrics[dst_key] = float(ls[src_key])
+                except (TypeError, ValueError):
+                    pass
+    return metrics
