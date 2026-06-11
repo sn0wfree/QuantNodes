@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -114,3 +115,86 @@ def test_workers2_metrics_correct(tmp_path):
         (e.metrics or {}).get("sharpe", 0) == 0.5
         for e in pool.all() if e.feedback and e.feedback.decision
     )
+
+
+# ============================================================================
+# 4. ProcessPool mode (2)
+# ============================================================================
+
+def test_processpool_subprocess_evaluate():
+    """ProcessPool subprocess_evaluate 运行 12 节点并返回结果。"""
+    import pandas as pd, numpy as np
+    from QuantNodes.core.parallel.worker_process import RunnerSnapshot, subprocess_evaluate
+
+    n_days, n_stocks = 60, 20
+    dates = [int(d.strftime('%Y%m%d')) for d in pd.bdate_range('2026-01-04', periods=n_days)]
+    stocks = list(range(100001, 100001 + n_stocks))
+    context = {
+        'LoadData': {
+            'factor': pd.DataFrame(np.random.randn(n_days, n_stocks), index=dates, columns=stocks),
+            'price': pd.DataFrame(100 * np.exp(np.cumsum(np.random.randn(n_days, n_stocks) * 0.02, axis=0)), index=dates, columns=stocks),
+            'id_citic1': pd.DataFrame(np.random.randint(1, 31, (n_days, n_stocks)), index=dates, columns=stocks),
+            'mv_float': pd.DataFrame(np.random.lognormal(10, 1, (n_days, n_stocks)), index=dates, columns=stocks),
+            'st': pd.DataFrame(np.zeros((n_days, n_stocks), dtype=int), index=dates, columns=stocks),
+            'suspend': pd.DataFrame(np.zeros((n_days, n_stocks), dtype=int), index=dates, columns=stocks),
+            'ud_limit': pd.DataFrame(np.zeros((n_days, n_stocks), dtype=int), index=dates, columns=stocks),
+            'ipo_days': pd.DataFrame(np.ones((n_days, n_stocks), dtype=int) * 500, index=dates, columns=stocks),
+            'index_cp': pd.DataFrame({'000300.SH': np.arange(3500, 3560), '000905.SH': np.arange(6000, 6060)}, index=dates),
+            'stklist': pd.DataFrame(stocks, columns=[0]),
+            'trade_dt': pd.DataFrame(dates, columns=[0]),
+            '_loader': None,
+        }
+    }
+    with tempfile.TemporaryDirectory() as td:
+        snap = RunnerSnapshot(
+            {'preprocess': {'adj_date_beg': 20260101, 'adj_date_end': 20260630, 'adj_mode': ['M', 'end']},
+             'analysis': {'ic': {'min_group_size': 5}, 'group': {'groups': 5, 'factor_direction': 1, 'floor_mode': 'group', 'hedge': 'equal'}}},
+            context
+        )
+        snap_path = Path(td) / 'snap.pkl'
+        snap.save(snap_path)
+        cand = FactorCandidate(factor_id='test', name='test_factor', expression='close - open')
+        result = subprocess_evaluate(cand.__dict__, str(snap_path))
+        assert result['passed'] is True
+        assert result['error'] is None
+
+
+def test_processpool_parallel_evaluate():
+    """parallel_evaluate ProcessPool 模式并行评估。"""
+    import pandas as pd, numpy as np
+    from QuantNodes.core.parallel.worker_process import RunnerSnapshot
+    from QuantNodes.core.parallel import parallel_evaluate
+
+    n_days, n_stocks = 60, 20
+    dates = [int(d.strftime('%Y%m%d')) for d in pd.bdate_range('2026-01-04', periods=n_days)]
+    stocks = list(range(100001, 100001 + n_stocks))
+    context = {
+        'LoadData': {
+            'factor': pd.DataFrame(np.random.randn(n_days, n_stocks), index=dates, columns=stocks),
+            'price': pd.DataFrame(100 * np.exp(np.cumsum(np.random.randn(n_days, n_stocks) * 0.02, axis=0)), index=dates, columns=stocks),
+            'id_citic1': pd.DataFrame(np.random.randint(1, 31, (n_days, n_stocks)), index=dates, columns=stocks),
+            'mv_float': pd.DataFrame(np.random.lognormal(10, 1, (n_days, n_stocks)), index=dates, columns=stocks),
+            'st': pd.DataFrame(np.zeros((n_days, n_stocks), dtype=int), index=dates, columns=stocks),
+            'suspend': pd.DataFrame(np.zeros((n_days, n_stocks), dtype=int), index=dates, columns=stocks),
+            'ud_limit': pd.DataFrame(np.zeros((n_days, n_stocks), dtype=int), index=dates, columns=stocks),
+            'ipo_days': pd.DataFrame(np.ones((n_days, n_stocks), dtype=int) * 500, index=dates, columns=stocks),
+            'index_cp': pd.DataFrame({'000300.SH': np.arange(3500, 3560), '000905.SH': np.arange(6000, 6060)}, index=dates),
+            'stklist': pd.DataFrame(stocks, columns=[0]),
+            'trade_dt': pd.DataFrame(dates, columns=[0]),
+            '_loader': None,
+        }
+    }
+    with tempfile.TemporaryDirectory() as td:
+        snap = RunnerSnapshot(
+            {'preprocess': {'adj_date_beg': 20260101, 'adj_date_end': 20260630, 'adj_mode': ['M', 'end']},
+             'analysis': {'ic': {'min_group_size': 5}, 'group': {'groups': 5, 'factor_direction': 1, 'floor_mode': 'group', 'hedge': 'equal'}}},
+            context
+        )
+        snap_path = Path(td) / 'snap.pkl'
+        snap.save(snap_path)
+
+        cands = [FactorCandidate(factor_id=f'c{i}', name=f'factor_{i}', expression='close - open') for i in range(3)]
+        results = parallel_evaluate(cands, _mock_eval, max_workers=2, snapshot_path=str(snap_path))
+        assert len(results) == 3
+        for r in results:
+            assert r['passed'] is True

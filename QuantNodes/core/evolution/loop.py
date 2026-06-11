@@ -87,6 +87,7 @@ class EvolutionLoop:
         self.compressor = compressor
         self.rag_evaluator = rag_evaluator
         self.workers = workers
+        self.snapshot_path: str | None = None  # ProcessPool: 预序列化路径
         self.rag_metrics_history: list[dict] = []  # 每 round 评估结果
         self.hypothesizer = Hypothesizer(
             model=settings.hypothesizer.model,
@@ -391,8 +392,15 @@ class EvolutionLoop:
         if self.workers <= 1:
             # 串行: evaluate_fn 返回 tuple (passed, metrics, feedback) 或 dict
             raw_results = [self.evaluate_fn(c) for c in to_eval]
+        elif self.snapshot_path is not None:
+            # ProcessPool 模式 (真实并行, snapshot 预序列化)
+            from ..parallel import parallel_evaluate
+            raw_results = parallel_evaluate(
+                to_eval, self.evaluate_fn, max_workers=self.workers,
+                snapshot_path=self.snapshot_path,
+            )
         else:
-            # 并行: evaluate_fn 被包装为返回 dict
+            # ThreadPool 模式 (无需 pickle, I/O 密集场景)
             from ..parallel import parallel_evaluate, make_worker_evaluate
             worker_fn = make_worker_evaluate(self.evaluate_fn, sleep_ms=0)
             raw_results = parallel_evaluate(

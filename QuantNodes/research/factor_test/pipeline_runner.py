@@ -433,7 +433,7 @@ class PipelineRunner:
         Args:
             initial_directions: round 0 用的研究假设列表 (Hypothesizer 处理)
             initial_candidates: round 0 用的直接候选 (跳过 Hypothesizer)
-            workers: 并行数 (1=串行, >1=ThreadPool 并行)
+            workers: 并行数 (1=串行, >1=ThreadPool/ProcessPool 并行)
 
         Returns:
             EvolutionResult: best entries + 统计
@@ -448,6 +448,20 @@ class PipelineRunner:
         pool = self._build_trajectory_pool()
         quality_gate = self._build_quality_gate()
         loop = self._build_evolution_loop(pool, quality_gate, workers=workers)
+
+        # workers > 1 + 有 _loader → 预序列化供 ProcessPool
+        if workers > 1 and "_loader" in self._context.get("LoadData", {}):
+            from QuantNodes.core.parallel.worker_process import prepare_snapshot
+            snapshot = prepare_snapshot(
+                self.config, self._context,
+                factor_path=getattr(self.config.factor, "factor_dir", None),
+            )
+            from pathlib import Path as _P
+            snap_path = _P(pool.base_dir) / "_snapshot.pkl"
+            snapshot.save(snap_path)
+            loop.snapshot_path = str(snap_path)
+            print(f"  [ProcessPool] 预序列化快照: {snap_path}")
+
         return loop.run(
             initial_directions=initial_directions,
             initial_candidates=initial_candidates,

@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from typing import Callable, Optional
 
 
@@ -68,26 +68,47 @@ def parallel_evaluate(
     candidates: list,
     evaluate_fn: Callable,
     max_workers: int = 4,
+    snapshot_path: str | None = None,
 ) -> list[dict]:
     """并行评估多个 candidate, 返回 list。
 
-    优先 ThreadPoolExecutor (无需 pickle)。
-    evaluate_fn 返回 tuple (passed, metrics, feedback) 或 dict。
+    - max_workers=1: 串行
+    - snapshot_path 提供: ProcessPoolExecutor (真实并行, 适合大回测)
+    - 否则: ThreadPoolExecutor (无需 pickle, 适合 I/O 密集)
 
     Args:
         candidates: FactorCandidate 列表
-        evaluate_fn: 评估函数
-        max_workers: 线程数 (1=串行)
+        evaluate_fn: 评估函数 (ThreadPool 时用)
+        max_workers: 并行数 (1=串行)
+        snapshot_path: 预序列化的 config+context 路径 (ProcessPool 模式)
 
     Returns:
-        list[tuple|dict] 顺序与 candidates 对应
+        list[tuple|dict|result_dict] 顺序与 candidates 对应
     """
     if max_workers <= 1:
         return [evaluate_fn(c) for c in candidates]
 
+    if snapshot_path is not None:
+        # ProcessPool 模式 (真实并行)
+        from .worker_process import subprocess_evaluate
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(subprocess_evaluate, c.__dict__, snapshot_path): i
+                for i, c in enumerate(candidates)
+            }
+            results: list[Optional[dict]] = [None] * len(candidates)
+            for fut in as_completed(futures):
+                idx = futures[fut]
+                try:
+                    results[idx] = fut.result()
+                except Exception as e:
+                    results[idx] = {"passed": False, "metrics": {}, "feedback_dict": None, "error": str(e)}
+            return results  # type: ignore
+
+    # ThreadPool 模式 (无需 pickle)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(evaluate_fn, c): i for i, c in enumerate(candidates)}
-        results: list[Optional[object]] = [None] * len(candidates)
+        results = [None] * len(candidates)
         for fut in as_completed(futures):
             idx = futures[fut]
             try:
