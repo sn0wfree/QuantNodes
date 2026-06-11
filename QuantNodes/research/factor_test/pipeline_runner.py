@@ -100,7 +100,21 @@ class PipelineRunner:
                   当 config.feedback.enabled=True 时, 还包含 'Feedback' 键
         """
         cfg = self.config
-        ctx = {}
+        # 若 _context 已注入 LoadData, 复用, 否则调 LoadDataNode
+        if "LoadData" in self._context:
+            ctx = dict(self._context)
+            print(f"  [LoadData 跳过] 使用已注入数据 (factor shape: {ctx['LoadData'].get('factor', pd.DataFrame()).shape})")
+        else:
+            ctx = {}
+            print("\n[Phase 1] 数据加载...")
+            load_data_cfg = {
+                'factor': cfg.factor.model_dump(),
+                'data_path': cfg.data_path,
+                'load_keys': cfg.load_keys,
+            }
+            load_data = LoadDataNode(config=load_data_cfg)
+            ctx['LoadData'] = load_data.execute()
+            print(f"  因子形状: {ctx['LoadData'].get('factor', pd.DataFrame()).shape}")
         feedback_enabled = cfg.feedback.enabled
         factor_id = str(uuid.uuid4())
         factor_name = cfg.factor.name
@@ -112,19 +126,6 @@ class PipelineRunner:
         if feedback_enabled:
             print(f"FactorFeedback: ENABLED (factor_id={factor_id[:8]}...)")
         print("=" * 60)
-
-        # ============================================================
-        # Phase 1: 严格串联 — 数据层
-        # ============================================================
-        print("\n[Phase 1] 数据加载...")
-        load_data_cfg = {
-            'factor': cfg.factor.model_dump(),
-            'data_path': cfg.data_path,
-            'load_keys': cfg.load_keys,
-        }
-        load_data = LoadDataNode(config=load_data_cfg)
-        ctx['LoadData'] = load_data.execute()
-        print(f"  因子形状: {ctx['LoadData'].get('factor', pd.DataFrame()).shape}")
 
         print("\n[Phase 2] 样本池筛选...")
         sample_filter = SamplePoolFilterNode(config={
