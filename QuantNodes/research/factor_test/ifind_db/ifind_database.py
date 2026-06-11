@@ -13,6 +13,31 @@ from datetime import datetime, timedelta
 from .fetcher import IFindFetcher
 
 
+# ── Week 12: H5 兼容辅助 ─────────────────────────────────────
+
+def _df_to_hdf_safe(df: pd.DataFrame) -> pd.DataFrame:
+    """转 nullable/Int64 等 HDF5 不支持的 dtype 为兼容 dtype。
+
+    - Int64 → int64 (含 NaN 时会丢失 NaN, 但 HDF5 不支持 nullable int)
+    - int64 → int64
+    - 其余保持
+    """
+    df = df.copy()
+    for col in df.columns:
+        if df[col].dtype == 'Int64':
+            # 全部 NaN → float (否则 .astype(int) 报错)
+            if df[col].isna().all():
+                df[col] = df[col].astype(float)
+            else:
+                df[col] = df[col].fillna(0).astype(int)
+    if df.index.dtype == 'Int64':
+        if df.index.isna().all():
+            df.index = df.index.astype(float)
+        else:
+            df.index = df.index.fillna(0).astype(int)
+    return df
+
+
 # ── 行业代码映射 ──────────────────────────────────────────────
 _INDUSTRY_MAP = {
     '农林牧渔': 1, '基础化工': 2, '钢铁': 3, '有色金属': 4, '电子': 5,
@@ -463,3 +488,103 @@ class IFinDDatabase:
             raise RuntimeError(f"无法获取因子: {factor_name}")
         codes = self._get_stock_codes()
         return self._pivot_stock_info(df, codes)
+
+    # ── Week 12: 真实数据拉取 + H5 持久化 ────────────────────────
+
+    def fetch_to_h5(
+        self,
+        output_dir: str | Path,
+        factor_names: list[str] | None = None,
+        keys: list[str] | None = None,
+    ) -> dict:
+        """从 iFinD 拉取数据, 写为 HDF5 格式 (兼容 LoadDataNode)。
+
+        输出文件结构:
+            {output_dir}/
+            ├── stk_daily.h5         # 7 keys: cp, st, suspend, ud_limit,
+            │                          #        ipo_days, id_citic1, mv_float
+            ├── index_daily.h5       # 1 key: index_cp
+            ├── stklist.h5           # 股票代码列表
+            ├── trade_dt.h5          # 交易日历
+            └── {factor_name}.h5     # 因子数据 (单 key='data')
+
+        Args:
+            output_dir: 输出目录 (不存在自动创建)
+            factor_names: 因子名列表 (空=不拉因子)
+            keys: stk_daily.h5 要拉的 key 列表 (默认全 7 个)
+
+        Returns:
+            dict: {file: {key: shape}, ...} 拉取统计
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        all_keys = ['cp', 'st', 'suspend', 'ud_limit', 'ipo_days', 'id_citic1', 'mv_float']
+        if keys is None:
+            keys = all_keys
+        stats: dict = {}
+
+        # 1. 拉股票池 + 交易日历
+        print(f"[1/4] 拉股票池 ({self._universe})...")
+        stklist = self._get_stock_axis_raw()
+        trade_dt = self._get_trade_dt_raw()
+        stklist.to_hdf(output_dir / 'stklist.h5', key='data', mode='w')
+        trade_dt.to_hdf(output_dir / 'trade_dt.h5', key='data', mode='w')
+        stats['stklist.h5'] = {'data': stklist.shape}
+        stats['trade_dt.h5'] = {'data': trade_dt.shape}
+        print(f"  ✓ stklist.h5 (shape={stklist.shape}), trade_dt.h5 (shape={trade_dt.shape})")
+
+        # 2. 拉 stk_daily 7 keys
+        print(f"[2/4] 拉 stk_daily.h5 (keys={keys})...")
+        stk_daily_stats: dict = {}
+        with pd.HDFStore(output_dir / 'stk_daily.h5', mode='w') as store:
+            for key in keys:
+                if key not in all_keys:
+                    print(f"  ⚠ 跳过未知 key: {key}")
+                    continue
+                try:
+                    df = self.load_h5('stk_daily.h5', key)
+                    if df is None or df.empty:
+                        print(f"  ⚠ {key}: 空数据, 跳过")
+                        continue
+                    # 转换 Int64 (nullable) → int64, HDF5 不支持 nullable int
+                    df = _df_to_hdf_safe(df)
+                    store.put(key, df, format='table')
+                    stk_daily_stats[key] = df.shape
+                    print(f"  ✓ {key}: shape={df.shape}")
+                except Exception as e:
+                    print(f"  ✗ {key} 失败: {e}")
+        stats['stk_daily.h5'] = stk_daily_stats
+
+        # 3. 拉 index_daily (沪深300 + 中证500)
+        print("[3/4] 拉 index_daily.h5 (index_cp)...")
+        try:
+            index_cp = self._get_index_cp()
+            with pd.HDFStore(output_dir / 'index_daily.h5', mode='w') as store:
+                store.put('index_cp', _df_to_hdf_safe(index_cp), format='table')
+            stats['index_daily.h5'] = {'index_cp': index_cp.shape}
+            print(f"  ✓ index_cp: shape={index_cp.shape}")
+        except Exception as e:
+            print(f"  ✗ index_cp 失败: {e}")
+            stats['index_daily.h5'] = {'index_cp': None}
+
+        # 4. 拉因子 (可选)
+        if factor_names:
+            print(f"[4/4] 拉因子 ({factor_names})...")
+            for fname in factor_names:
+                try:
+                    factor = self._get_factor(fname, fname)
+                    factor = _df_to_hdf_safe(factor)
+                    factor.to_hdf(output_dir / f'{fname}.h5', key='data', mode='w')
+                    stats[f'{fname}.h5'] = {'data': factor.shape}
+                    print(f"  ✓ {fname}: shape={factor.shape}")
+                except Exception as e:
+                    print(f"  ✗ {fname} 失败: {e}")
+                    stats[f'{fname}.h5'] = {'data': None}
+        else:
+            print("[4/4] 跳过因子拉取 (factor_names 为空)")
+
+        return stats
+
+    def get_universe_stocks(self) -> list[str]:
+        """获取股票池代码列表 (公开 API, 缓存)。"""
+        return self._get_stock_codes()

@@ -600,6 +600,7 @@ QuantNodes CLI - 量化研究节点架构命令行工具
     factor-visual 生成可视化 HTML 报告 (Week 6)
     factor-rag-show RAG 检索演示 (Week 7)
     factor-rag-eval 批量评估 RAG 质量 (Week 10)
+    factor-data-fetch 从 iFinD 拉取数据 + 写 H5 (Week 12)
     version     显示版本
     help        显示帮助
 
@@ -646,6 +647,7 @@ run 选项:
     quantnodes factor-visual --pool-dir output/trajectory --output report.html
     quantnodes factor-rag-show --pool-dir output/trajectory --query "momentum effect" --top 5
     quantnodes factor-rag-eval --pool-dir output/trajectory --queries "momentum,reversal" --top 5
+    quantnodes factor-data-fetch --output-dir /tmp/real_data/ --date-beg 20260101 --factors momentum_20d,reversal_5d
     quantnodes version
 
 详细文档: docs/QuickStart.md
@@ -830,6 +832,64 @@ def cmd_factor_visual(args) -> int:
         return 1
     print(f"✓ HTML 报告已生成: {output}")
     print(f"  size: {pool.size}, metric: {args.metric}")
+    return 0
+
+
+def cmd_factor_data_fetch(args) -> int:
+    """从 iFinD 拉取数据 + 写为 HDF5 格式 (Week 12)。
+
+    用法:
+        quantnodes factor-data-fetch --output-dir /tmp/real_data/ \\
+                                    --universe 沪深300 \\
+                                    --date-beg 20260101 --date-end 20260630 \\
+                                    --factors momentum_20d,reversal_5d
+    """
+    try:
+        from QuantNodes.research.factor_test.ifind_db import IFinDDatabase
+    except (ImportError, FileNotFoundError) as e:
+        print(f"错误: 无法导入 IFinDDatabase: {e}")
+        return 1
+
+    output_dir = Path(args.output_dir)
+    try:
+        db = IFinDDatabase(
+            date_beg=args.date_beg,
+            date_end=args.date_end,
+            universe=args.universe,
+        )
+    except FileNotFoundError as e:
+        print(f"错误: iFinD 配置缺失: {e}")
+        return 1
+    except ValueError as e:
+        print(f"错误: iFinD auth_token 无效: {e}")
+        return 1
+
+    factor_names = [f.strip() for f in (args.factors or "").split(",") if f.strip()]
+
+    print("=" * 60)
+    print(f"iFinD 数据拉取")
+    print(f"  universe: {args.universe}")
+    print(f"  date range: {args.date_beg} ~ {args.date_end}")
+    print(f"  output_dir: {output_dir}")
+    print(f"  factors: {factor_names or '(none)'}")
+    print("=" * 60)
+
+    try:
+        stats = db.fetch_to_h5(output_dir, factor_names=factor_names)
+    except Exception as e:
+        print(f"错误: 拉取失败: {e}")
+        return 1
+
+    print()
+    print("=" * 60)
+    print(f"✓ 完成, 统计:")
+    for fname, file_stats in stats.items():
+        if isinstance(file_stats, dict):
+            keys_info = ", ".join(
+                f"{k}={v}" for k, v in file_stats.items() if v
+            )
+            print(f"  {fname}: {keys_info or '(empty)'}")
+    print("=" * 60)
     return 0
 
 
@@ -1053,6 +1113,13 @@ def main():
     rag_eval_parser.add_argument("--ancestor-depth", type=int, default=2, help="祖先深度")
     rag_eval_parser.add_argument("--descendant-depth", type=int, default=2, help="后裔深度")
     rag_eval_parser.add_argument("--output", default=None, help="EvalReport JSON 输出路径")
+
+    fetch_parser = subparsers.add_parser("factor-data-fetch", help="从 iFinD 拉取数据 + 写 H5 (Week 12)")
+    fetch_parser.add_argument("--output-dir", required=True, help="HDF5 输出目录")
+    fetch_parser.add_argument("--date-beg", required=True, help="起始日期 (YYYYMMDD)")
+    fetch_parser.add_argument("--date-end", default="", help="截止日期 (空=今天)")
+    fetch_parser.add_argument("--universe", default="沪深300", help="股票池 (默认 沪深300)")
+    fetch_parser.add_argument("--factors", default="", help="逗号分隔的因子列表")
     
     subparsers.add_parser("version", help="显示版本")
     subparsers.add_parser("help", help="显示帮助")
@@ -1077,6 +1144,8 @@ def main():
         return cmd_factor_rag_show(args)
     elif args.command == "factor-rag-eval":
         return cmd_factor_rag_eval(args)
+    elif args.command == "factor-data-fetch":
+        return cmd_factor_data_fetch(args)
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "help":

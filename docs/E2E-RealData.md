@@ -193,22 +193,42 @@ stklist.h5, trade_dt.h5: 单列 DataFrame
 {factor_name}.h5: 单 key='data', shape=(n_days, n_stocks)
 ```
 
-### 7.2 真实数据拉取 (TODO)
+### 7.2 真实数据拉取 (✅ Week 12 已实现)
 
-需要在 `IFinDDatabase` 增加 `fetch_to_h5(output_dir)` 方法:
+`IFinDDatabase.fetch_to_h5()` 已实现, 一键从 iFinD 拉 7 key + 因子 + 写 H5:
 
 ```python
-def fetch_to_h5(self, output_dir: str) -> None:
-    """从 iFinD 拉数据, 写到 output_dir (HDF5 格式)。
-    
-    实现思路:
-    1. cp = iFinD 查询 '收盘价'
-    2. st = iFinD 查询 'ST 标记'
-    3. ... (其他 key)
-    4. pd.HDFStore 写每 key
-    """
-    # TODO: Week 12+
+from QuantNodes.research.factor_test.ifind_db import IFinDDatabase
+db = IFinDDatabase(
+    date_beg='20260101', date_end='20260630',
+    universe='沪深300',
+)
+stats = db.fetch_to_h5(
+    '/tmp/real_data/',
+    factor_names=['momentum_20d', 'reversal_5d'],
+)
+# 输出:
+#   stk_daily.h5: 7 keys (cp / st / suspend / ud_limit / ipo_days / id_citic1 / mv_float)
+#   index_daily.h5: 1 key (index_cp)
+#   stklist.h5 / trade_dt.h5
+#   momentum_20d.h5 / reversal_5d.h5
 ```
+
+CLI 等价命令:
+
+```bash
+quantnodes factor-data-fetch \
+  --output-dir /tmp/real_data/ \
+  --date-beg 20260101 --date-end 20260630 \
+  --universe 沪深300 \
+  --factors momentum_20d,reversal_5d
+```
+
+实现细节:
+- `Int64` (nullable) → `int64` 自动转换 (HDF5 不支持 nullable int)
+- 7 key 拉取, 单 key 失败不阻塞其他
+- 因子拉取可选 (factor_names=[] 跳过)
+- `get_universe_stocks()` 公开 API: 返回股票代码列表
 
 未来可参考:
 - QuantaAlpha `quantaalpha/data/ifind_fetcher.py` 实现

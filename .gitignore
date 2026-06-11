@@ -132,6 +132,7 @@ dmypy.json
 
 # Generated outputs
 outputs/
+output/
 
 # Frontend
 frontend/node_modules/
