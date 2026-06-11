@@ -598,6 +598,7 @@ QuantNodes CLI - 量化研究节点架构命令行工具
     factor-info 显示 TrajectoryPool 统计 (Week 5)
     factor-best 显示 Top-N 最佳 entry (Week 5)
     factor-visual 生成可视化 HTML 报告 (Week 6)
+    factor-rag-show RAG 检索演示 (Week 7)
     version     显示版本
     help        显示帮助
 
@@ -608,12 +609,13 @@ evolve 选项:
     --max-rounds N         覆盖 config.evolution.max_rounds
     --early-stop N         覆盖 config.evolution.early_stop_patience
 
-factor-info / factor-best / factor-visual 选项:
+factor-info / factor-best / factor-visual / factor-rag-show 选项:
     --pool-dir PATH        TrajectoryPool 目录
-    --top N                Top-N (默认 5, 仅 factor-best)
+    --top N                Top-N (默认 5, 仅 factor-best/rag-show)
     --metric NAME          排序指标 (默认 sharpe, 仅 factor-best/visual)
     --output PATH          HTML 输出路径 (仅 factor-visual)
     --title TITLE          报告标题 (仅 factor-visual)
+    --query TEXT           查询文本 (仅 factor-rag-show)
 
 init 选项:
     --force           强制重新初始化 (覆盖现有配置)
@@ -637,6 +639,7 @@ run 选项:
     quantnodes factor-info --pool-dir output/trajectory
     quantnodes factor-best --pool-dir output/trajectory --top 10 --metric sharpe
     quantnodes factor-visual --pool-dir output/trajectory --output report.html
+    quantnodes factor-rag-show --pool-dir output/trajectory --query "momentum effect" --top 5
     quantnodes version
 
 详细文档: docs/QuickStart.md
@@ -824,6 +827,49 @@ def cmd_factor_visual(args) -> int:
     return 0
 
 
+def cmd_factor_rag_show(args) -> int:
+    """从 TrajectoryPool 检索相似因子 (RAG demo)。
+
+    用法:
+        quantnodes factor-rag-show --pool-dir output/trajectory/ \\
+                                   --query "momentum effect" --top 5
+    """
+    from QuantNodes.core.knowledge import IdentityRetriever, KnowledgeBase
+    from QuantNodes.core.trajectory import TrajectoryPool
+
+    pool_dir = args.pool_dir
+    if not Path(pool_dir).exists():
+        print(f"错误: pool 目录不存在: {pool_dir}")
+        return 1
+
+    pool = TrajectoryPool(pool_dir)
+    if pool.size == 0:
+        print("错误: pool 为空, 无可检索内容")
+        return 1
+
+    kb = KnowledgeBase(IdentityRetriever(), pool=pool)
+    n = kb.sync_from_pool()
+    print(f"索引了 {n} 个 entry")
+
+    results = kb.query(args.query, top_k=args.top)
+    if not results:
+        print(f"无匹配结果 (query: {args.query!r})")
+        return 0
+
+    print("=" * 60)
+    print(f"Top {len(results)} 检索结果 (query: {args.query!r}):")
+    for i, (entry, score) in enumerate(results, 1):
+        cfg = entry.config_snapshot or {}
+        factor_cfg = cfg.get("factor", {}) if isinstance(cfg, dict) else {}
+        name = factor_cfg.get("name", entry.entry_id[:8])
+        expr = factor_cfg.get("expression", "")[:50]
+        sharpe = (entry.metrics or {}).get("sharpe", 0)
+        print(f"  {i}. {name}  score={score:.3f}  sharpe={sharpe:.2f}")
+        print(f"     expression: {expr}")
+    print("=" * 60)
+    return 0
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -870,6 +916,11 @@ def main():
     visual_parser.add_argument("--output", default=None, help="HTML 输出路径 (默认 <pool-dir>_report.html)")
     visual_parser.add_argument("--metric", default="sharpe", help="用于可视化的指标 (默认 sharpe)")
     visual_parser.add_argument("--title", default=None, help="报告标题")
+
+    rag_parser = subparsers.add_parser("factor-rag-show", help="RAG 检索演示 (Week 7)")
+    rag_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+    rag_parser.add_argument("--query", required=True, help="查询文本")
+    rag_parser.add_argument("--top", type=int, default=5, help="Top-K (默认 5)")
     
     subparsers.add_parser("version", help="显示版本")
     subparsers.add_parser("help", help="显示帮助")
@@ -890,6 +941,8 @@ def main():
         return cmd_factor_best(args)
     elif args.command == "factor-visual":
         return cmd_factor_visual(args)
+    elif args.command == "factor-rag-show":
+        return cmd_factor_rag_show(args)
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "help":

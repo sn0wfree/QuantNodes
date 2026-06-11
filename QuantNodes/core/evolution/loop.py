@@ -25,6 +25,7 @@ from ..trajectory import (
     TrajectoryEntry,
     TrajectoryPool,
 )
+from ..knowledge import KnowledgeBase
 from .operators import Crosser, FactorCandidate, Hypothesizer, Mutator
 from .settings import EvolutionSetting
 
@@ -60,6 +61,8 @@ class EvolutionLoop:
         quality_gate: Optional[QualityGateNode] = None,
         evaluate_fn: Optional[EvaluateFn] = None,
         selector: Optional[ParentSelector] = None,
+        knowledge_base: Optional[KnowledgeBase] = None,
+        rag_top_k: int = 3,
     ):
         self.settings = settings
         self.pool = pool
@@ -70,10 +73,14 @@ class EvolutionLoop:
             metric=settings.metric,
             top_percent_threshold=settings.top_percent_threshold,
         )
+        self.knowledge_base = knowledge_base
+        self.rag_top_k = rag_top_k
         self.hypothesizer = Hypothesizer(
             model=settings.hypothesizer.model,
             max_correction_attempts=settings.hypothesizer.max_correction_attempts,
             seed=settings.hypothesizer.seed,
+            knowledge_base=knowledge_base,
+            rag_top_k=rag_top_k,
         )
         self.mutator = Mutator(
             model=settings.mutator.model,
@@ -85,6 +92,12 @@ class EvolutionLoop:
             max_correction_attempts=settings.crosser.max_correction_attempts,
             seed=settings.crosser.seed,
         )
+
+    def sync_knowledge_base(self) -> int:
+        """从 pool 同步未索引 entry 到 KB, 返回新加数。"""
+        if self.knowledge_base is None:
+            return 0
+        return self.knowledge_base.sync_from_pool()
 
     def run(
         self,
@@ -131,6 +144,9 @@ class EvolutionLoop:
         # Round 1..N: 演化
         # ------------------------------------------------------------------
         for round_idx in range(1, self.settings.max_rounds + 1):
+            # 同步 KB (round 0 新增的 entry 可被 round 1 检索到)
+            if self.knowledge_base is not None:
+                self.knowledge_base.sync_from_pool()
             n_parents = self.settings.parents_per_round
             # crossover 在奇数轮, mutation 在偶数轮 (与文档一致)
             operation = "crossover" if round_idx % 2 == 0 else "mutation"

@@ -77,15 +77,35 @@ class BaseOperator:
 class Hypothesizer(BaseOperator):
     """从研究假设生成初始因子 (round 0)。"""
 
+    def __init__(self, *args, knowledge_base=None, rag_top_k: int = 3, **kwargs):
+        super().__init__(*args, **kwargs)
+        from ..knowledge import KnowledgeBase
+        self.knowledge_base: KnowledgeBase | None = knowledge_base
+        self.rag_top_k = rag_top_k
+
+    def set_knowledge_base(self, kb) -> None:
+        """注入 KnowledgeBase (在 EvolutionLoop 中设置)。"""
+        self.knowledge_base = kb
+
     def hypothesize(
         self,
         direction: str,
         description: str = "",
     ) -> FactorCandidate:
-        prompt = _HYPOTHESIZE_PROMPT.format(
-            hypothesis=direction,
-            description=description,
-        )
+        # RAG: 若有 KB, 构造带历史示例的 prompt
+        if self.knowledge_base is not None and len(self.knowledge_base) > 0:
+            from ..knowledge import build_rag_prompt
+            prompt = build_rag_prompt(
+                direction=direction,
+                description=description,
+                kb=self.knowledge_base,
+                top_k=self.rag_top_k,
+            )
+        else:
+            prompt = _HYPOTHESIZE_PROMPT.format(
+                hypothesis=direction,
+                description=description,
+            )
         for attempt in range(self.max_correction_attempts + 1):
             try:
                 raw = self._call(prompt)

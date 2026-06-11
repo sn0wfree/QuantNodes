@@ -13,6 +13,7 @@ from QuantNodes.cli import (
     cmd_evolve,
     cmd_factor_best,
     cmd_factor_info,
+    cmd_factor_rag_show,
     cmd_factor_visual,
     cmd_help,
 )
@@ -34,6 +35,7 @@ def test_cmd_help_mentions_evolution():
     assert "factor-info" in out
     assert "factor-best" in out
     assert "factor-visual" in out
+    assert "factor-rag-show" in out
 
 
 # ============================================================================
@@ -326,3 +328,102 @@ def test_factor_visual_default_output_path(tmp_path):
     # 默认: <tmp_path>/mypool_report.html
     expected = tmp_path / "mypool_report.html"
     assert expected.exists()
+
+
+# ============================================================================
+# 6. cmd_factor_rag_show (Week 7)
+# ============================================================================
+
+def _populate_pool_with_factors(pool: TrajectoryPool) -> None:
+    """填充带 hypothesis/description 的 entry 用于 RAG 检索。"""
+    pool.add(TrajectoryEntry(
+        entry_id="e1", round_idx=0, operation="original",
+        config_snapshot={"factor": {
+            "name": "momentum_20d",
+            "expression": "(close-close.shift(20))/close.shift(20)",
+            "hypothesis": "momentum effect",
+            "description": "20-day price momentum factor",
+        }},
+        feedback=FactorFeedback(factor_name="momentum_20d", decision=True, summary="ok"),
+        metrics={"sharpe": 1.5},
+    ))
+    pool.add(TrajectoryEntry(
+        entry_id="e2", round_idx=0, operation="original",
+        config_snapshot={"factor": {
+            "name": "reversal_5d",
+            "expression": "close - close.shift(5)",
+            "hypothesis": "reversal effect",
+            "description": "5-day mean reversal factor",
+        }},
+        feedback=FactorFeedback(factor_name="reversal_5d", decision=True, summary="ok"),
+        metrics={"sharpe": 1.0},
+    ))
+
+
+def test_factor_rag_show_basic(tmp_path):
+    """factor-rag-show 检索并显示 Top-K。"""
+    pool = TrajectoryPool(tmp_path / "pool")
+    _populate_pool_with_factors(pool)
+
+    class Args:
+        pass
+    args = Args()
+    args.pool_dir = str(tmp_path / "pool")
+    args.query = "momentum effect"
+    args.top = 2
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_factor_rag_show(args)
+    assert rc == 0
+    out = buf.getvalue()
+    assert "Top 2" in out
+    assert "momentum_20d" in out
+    assert "score=" in out
+
+
+def test_factor_rag_show_missing_dir():
+    """pool 目录不存在 → exit 1。"""
+    class Args:
+        pass
+    args = Args()
+    args.pool_dir = "/nonexistent/path/xyz"
+    args.query = "anything"
+    args.top = 5
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_factor_rag_show(args)
+    assert rc == 1
+    assert "pool 目录不存在" in buf.getvalue()
+
+
+def test_factor_rag_show_empty_pool(tmp_path):
+    """空 pool → exit 1。"""
+    pool = TrajectoryPool(tmp_path / "pool")  # 空
+    class Args:
+        pass
+    args = Args()
+    args.pool_dir = str(tmp_path / "pool")
+    args.query = "momentum"
+    args.top = 5
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_factor_rag_show(args)
+    assert rc == 1
+    assert "pool 为空" in buf.getvalue()
+
+
+def test_factor_rag_show_no_match(tmp_path):
+    """query 不匹配时返回 0 (但仍 exit 0)。"""
+    pool = TrajectoryPool(tmp_path / "pool")
+    _populate_pool_with_factors(pool)
+    class Args:
+        pass
+    args = Args()
+    args.pool_dir = str(tmp_path / "pool")
+    args.query = "xyz_zzz_unrelated_quantum_xyzzy"
+    args.top = 5
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cmd_factor_rag_show(args)
+    assert rc == 0
+    assert "无匹配结果" in buf.getvalue()
