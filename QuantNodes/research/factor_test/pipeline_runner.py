@@ -337,6 +337,7 @@ class PipelineRunner:
         self,
         pool: "TrajectoryPool",
         quality_gate: Optional["QualityGateNode"],
+        workers: int = 1,
     ) -> "EvolutionLoop":
         """构造 EvolutionLoop, evaluate_fn 默认委托给 self._run_candidate。"""
         from QuantNodes.core.evolution import EvolutionLoop, EvolutionSetting
@@ -354,6 +355,7 @@ class PipelineRunner:
             pool=pool,
             quality_gate=quality_gate,
             evaluate_fn=self._evaluate_candidate,
+            workers=workers,
         )
 
     def _evaluate_candidate(
@@ -424,12 +426,14 @@ class PipelineRunner:
         self,
         initial_directions: list[str] | None = None,
         initial_candidates: list["FactorCandidate"] | None = None,
+        workers: int = 1,
     ) -> "EvolutionResult":
         """多轮演化主入口。
 
         Args:
             initial_directions: round 0 用的研究假设列表 (Hypothesizer 处理)
             initial_candidates: round 0 用的直接候选 (跳过 Hypothesizer)
+            workers: 并行数 (1=串行, >1=ThreadPool 并行)
 
         Returns:
             EvolutionResult: best entries + 统计
@@ -443,7 +447,7 @@ class PipelineRunner:
 
         pool = self._build_trajectory_pool()
         quality_gate = self._build_quality_gate()
-        loop = self._build_evolution_loop(pool, quality_gate)
+        loop = self._build_evolution_loop(pool, quality_gate, workers=workers)
         return loop.run(
             initial_directions=initial_directions,
             initial_candidates=initial_candidates,

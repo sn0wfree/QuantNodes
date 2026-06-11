@@ -642,7 +642,7 @@ run 选项:
     quantnodes run --port 18380 --api-port 9000  # 前端:18380, 后端:9000 (指定后端)
     quantnodes run --daemon
     quantnodes run --api-only
-    quantnodes evolve --config configs/evolve.yaml --directions momentum,reversal --max-rounds 3
+    quantnodes evolve --config configs/evolve.yaml --directions momentum,reversal --max-rounds 3 --workers 4
     quantnodes factor-info --pool-dir output/trajectory
     quantnodes factor-best --pool-dir output/trajectory --top 10 --metric sharpe
     quantnodes factor-visual --pool-dir output/trajectory --output report.html
@@ -727,6 +727,7 @@ def cmd_evolve(args) -> int:
         result = runner.run_evolution(
             initial_directions=directions or None,
             initial_candidates=initial,
+            workers=getattr(args, 'workers', 1),
         )
     except Exception as e:
         print(f"错误: 演化失败: {e}")
@@ -1181,6 +1182,7 @@ def main():
     evolve_parser.add_argument("--initial-json", default=None, help="初始 candidates JSON")
     evolve_parser.add_argument("--max-rounds", type=int, default=None, help="覆盖 config.max_rounds")
     evolve_parser.add_argument("--early-stop", type=int, default=None, help="覆盖 config.early_stop_patience")
+    evolve_parser.add_argument("--workers", type=int, default=1, help="并行评估数 (默认 1=串行, >1=ThreadPool)")
     
     info_parser = subparsers.add_parser("factor-info", help="显示 TrajectoryPool 统计")
     info_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")

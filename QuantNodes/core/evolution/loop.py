@@ -68,6 +68,7 @@ class EvolutionLoop:
         use_compress: bool = False,
         compressor=None,
         rag_evaluator: Optional[RAGEvaluator] = None,
+        workers: int = 1,
     ):
         self.settings = settings
         self.pool = pool
@@ -85,6 +86,7 @@ class EvolutionLoop:
         self.use_compress = use_compress
         self.compressor = compressor
         self.rag_evaluator = rag_evaluator
+        self.workers = workers
         self.rag_metrics_history: list[dict] = []  # 每 round 评估结果
         self.hypothesizer = Hypothesizer(
             model=settings.hypothesizer.model,
@@ -207,15 +209,17 @@ class EvolutionLoop:
         directions = list(initial_directions or [])
 
         # ------------------------------------------------------------------
-        # Round 0: 原始候选
+        # Round 0: 原始候选 (批量评估, 支持并行)
         # ------------------------------------------------------------------
         round0_candidates = self._build_round0(
             initial_directions or [], initial_candidates or [],
         )
-        for cand in round0_candidates:
-            entry = self._evaluate_and_record(
-                cand, operation="original", parent_ids=[],
-            )
+        round0_results = self._batch_evaluate_and_record(
+            round0_candidates, round_idx=0,
+            ops=["original"] * len(round0_candidates),
+            parent_ids_list=[[] for _ in round0_candidates],
+        )
+        for entry in round0_results:
             result.all_entries.append(entry)
             if entry.feedback and entry.feedback.decision:
                 result.total_count += 1
@@ -227,63 +231,69 @@ class EvolutionLoop:
         result.rounds_completed = 1
 
         # ------------------------------------------------------------------
-        # Round 1..N: 演化
+        # Round 1..N: 演化 (workers=1: 串行; workers>1: 并行多候选)
         # ------------------------------------------------------------------
         for round_idx in range(1, self.settings.max_rounds + 1):
-            # 同步 KB (round 0 新增的 entry 可被 round 1 检索到)
             if self.knowledge_base is not None:
                 self.knowledge_base.sync_from_pool()
-            # RAG 评估 (用 directions 当 query, ground truth = 当前所有 entry)
             if self.rag_evaluator is not None and self.knowledge_base is not None:
                 self._evaluate_rag(round_idx, directions or [])
-            n_parents = self.settings.parents_per_round
-            # crossover 在奇数轮, mutation 在偶数轮 (与文档一致)
-            operation = "crossover" if round_idx % 2 == 0 else "mutation"
 
-            if operation == "crossover" and n_parents < 2:
-                n_parents = 2
+            # 生成本轮候选
+            round_candidates: list[FactorCandidate] = []
+            round_parent_ids_list: list[list[str]] = []
+            round_ops: list[str] = []
 
-            parents = self.selector.select(self.pool, n=n_parents)
-            if not parents:
+            # mutation child
+            parents_m = self.selector.select(self.pool, n=1)
+            if parents_m:
+                pc = FactorCandidate(
+                    factor_id=parents_m[0].entry_id,
+                    name=parents_m[0].feedback.factor_name if parents_m[0].feedback else "",
+                    expression=str(parents_m[0].config_snapshot.get("factor", {}).get("expression", "")),
+                )
+                child_m = self.mutator.mutate(pc)
+                round_candidates.append(child_m)
+                round_parent_ids_list.append([parents_m[0].entry_id])
+                round_ops.append("mutation")
+
+            # crossover child (when workers>1, produce both; when workers=1, still produce both)
+            parents_x = self.selector.select(self.pool, n=2)
+            if len(parents_x) >= 2:
+                pcs = [
+                    FactorCandidate(
+                        factor_id=e.entry_id,
+                        name=e.feedback.factor_name if e.feedback else "",
+                        expression=str(e.config_snapshot.get("factor", {}).get("expression", "")),
+                    )
+                    for e in parents_x
+                ]
+                child_x = self.crossover(pcs[0], pcs[1])
+                round_candidates.append(child_x)
+                round_parent_ids_list.append([parents_x[0].entry_id, parents_x[1].entry_id])
+                round_ops.append("crossover")
+
+            if not round_candidates:
                 break
 
-            parent_candidates = [
-                FactorCandidate(
-                    factor_id=e.entry_id,
-                    name=e.feedback.factor_name if e.feedback else e.entry_id,
-                    expression=str(e.config_snapshot.get("factor", {}).get("expression", "")),
-                    hypothesis="",
-                    description="",
-                )
-                for e in parents
-            ]
-
-            if operation == "mutation" and len(parent_candidates) >= 1:
-                child = self.mutator.mutate(parent_candidates[0])
-                parent_ids = [parents[0].entry_id]
-            elif operation == "crossover" and len(parent_candidates) >= 2:
-                child = self.crossover(
-                    parent_candidates[0], parent_candidates[1],
-                )
-                parent_ids = [parents[0].entry_id, parents[1].entry_id]
-            else:
-                break
-
-            entry = self._evaluate_and_record(
-                child, operation=operation, parent_ids=parent_ids,
-                round_idx=round_idx,
+            # 批量评估
+            batch_entries = self._batch_evaluate_and_record(
+                round_candidates, round_idx,
+                ops=round_ops, parent_ids_list=round_parent_ids_list,
             )
-            result.all_entries.append(entry)
-            if entry.feedback and entry.feedback.decision:
-                result.total_count += 1
-            else:
-                result.rejected_count += 1
 
-            new_best, improved = _maybe_update_best(
-                best_metric_so_far, entry, self.settings.metric,
-            )
-            if improved:
-                best_metric_so_far = new_best
+            best_in_round = -1.0
+            for entry in batch_entries:
+                result.all_entries.append(entry)
+                if entry.feedback and entry.feedback.decision:
+                    result.total_count += 1
+                else:
+                    result.rejected_count += 1
+                m = float((entry.metrics or {}).get(self.settings.metric, 0) or 0)
+                if m > best_in_round:
+                    best_in_round = m
+            if best_in_round > best_metric_so_far:
+                best_metric_so_far = best_in_round
                 no_improve_counter = 0
             else:
                 no_improve_counter += 1
@@ -316,6 +326,171 @@ class EvolutionLoop:
             out.append(cand)
         return out
 
+    def _batch_evaluate_and_record(
+        self,
+        candidates: list[FactorCandidate],
+        round_idx: int = 0,
+        ops: list[str] | None = None,
+        parent_ids_list: list[list[str]] | None = None,
+    ) -> list[TrajectoryEntry]:
+        """批量评估 candidate, 写入 pool, 返回 entry 列表。
+
+        workers=1 → 串行; workers>1 → ProcessPoolExecutor 并行。
+        Quality gate 在主进程中对每个 candidate 串行检查 (避免跨进程 pickle 问题)。
+        """
+        n = len(candidates)
+        if ops is None:
+            ops = ["original"] * n
+        if parent_ids_list is None:
+            parent_ids_list = [[] for _ in range(n)]
+
+        # 1. Quality gate 短路 (串行, 避免跨进程 pickle)
+        valid: list[tuple[int, FactorCandidate, list[str], str]] = []
+        for i, (c, op, pids) in enumerate(zip(candidates, ops, parent_ids_list)):
+            if self.quality_gate is not None:
+                gate = self.quality_gate.check({
+                    "factor_id": c.factor_id,
+                    "name": c.name,
+                    "expression": c.expression,
+                    "hypothesis": c.hypothesis,
+                    "description": c.description,
+                })
+                if not gate["passed"]:
+                    from ..feedback import FactorFeedback
+                    entry = TrajectoryEntry(
+                        entry_id=c.factor_id,
+                        round_idx=round_idx,
+                        operation=op,
+                        parent_ids=pids,
+                        config_snapshot={"factor": {
+                            "name": c.name, "expression": c.expression,
+                            "hypothesis": c.hypothesis, "description": c.description,
+                        }},
+                        feedback=FactorFeedback(
+                            factor_id=c.factor_id, factor_name=c.name,
+                            decision=False, summary=gate["feedback"].summary,
+                        ),
+                        metrics={},
+                    )
+                    self.pool.add(entry)
+                    continue
+            valid.append((i, c, pids, op))
+
+        # 收集 rejected entries
+        rejected_entries: list[TrajectoryEntry] = []
+        for i in range(len(candidates)):
+            if i not in {v[0] for v in valid}:
+                rejected_entries.append(self.pool.get(candidates[i].factor_id))
+
+        # 2. 评估
+        entries_map: dict[int, TrajectoryEntry] = {}
+        to_eval = [c for _, c, _, _ in valid]
+        if not to_eval:
+            return rejected_entries
+
+        if self.workers <= 1:
+            # 串行: evaluate_fn 返回 tuple (passed, metrics, feedback) 或 dict
+            raw_results = [self.evaluate_fn(c) for c in to_eval]
+        else:
+            # 并行: evaluate_fn 被包装为返回 dict
+            from ..parallel import parallel_evaluate, make_worker_evaluate
+            worker_fn = make_worker_evaluate(self.evaluate_fn, sleep_ms=0)
+            raw_results = parallel_evaluate(
+                to_eval, worker_fn, max_workers=self.workers,
+            )
+
+        # 统一转为 dict (evaluate_fn 可能返回 tuple 或 dict)
+        results_list = []
+        for r in raw_results:
+            if isinstance(r, dict):
+                results_list.append(r)
+            elif isinstance(r, tuple) and len(r) >= 3:
+                passed, metrics, feedback = r[0], r[1], r[2]
+                results_list.append({
+                    "passed": bool(passed),
+                    "metrics": metrics or {},
+                    "feedback_dict": {
+                        "factor_id": getattr(feedback, "factor_id", ""),
+                        "factor_name": getattr(feedback, "factor_name", ""),
+                        "decision": getattr(feedback, "decision", passed),
+                        "summary": getattr(feedback, "summary", ""),
+                        "metadata": getattr(feedback, "metadata", {}),
+                        "channels": {
+                            k.value: {"passed": v.passed, "detail": v.detail, "score": v.score}
+                            for k, v in getattr(feedback, "channels", {}).items()
+                        },
+                    } if feedback is not None else None,
+                    "error": None,
+                })
+            else:
+                results_list.append({
+                    "passed": False, "metrics": {},
+                    "feedback_dict": None, "error": str(r),
+                })
+
+        for (i, c, pids, op), res in zip(valid, results_list):
+            entry = self._make_entry_from_result(
+                c, res, operation=op, parent_ids=pids, round_idx=round_idx,
+            )
+            self.pool.add(entry)
+            entries_map[i] = entry
+
+        # 3. 返回全部 entry (包括 quality_gate rejected 的)
+        all_entries: list[TrajectoryEntry] = []
+        for i in range(len(candidates)):
+            if i in entries_map:
+                all_entries.append(entries_map[i])
+            else:
+                # quality_gate rejected → 从 pool 获取
+                all_entries.append(self.pool.get(candidates[i].factor_id))
+        return all_entries
+
+    def _make_entry_from_result(
+        self,
+        candidate: FactorCandidate,
+        result: dict,
+        operation: str,
+        parent_ids: list[str],
+        round_idx: int = 0,
+    ) -> TrajectoryEntry:
+        """从 evaluate result dict 构造 TrajectoryEntry。"""
+        from ..feedback import FactorFeedback
+        passed = bool(result.get("passed", False))
+        metrics = result.get("metrics", {})
+        feedback_dict = result.get("feedback_dict")
+        if feedback_dict is None:
+            feedback = FactorFeedback(
+                factor_id=candidate.factor_id,
+                factor_name=candidate.name,
+                decision=passed,
+                summary=result.get("error") or "ok",
+                metadata=metrics,
+            )
+        else:
+            feedback = FactorFeedback(
+                factor_id=feedback_dict.get("factor_id") or candidate.factor_id,
+                factor_name=feedback_dict.get("factor_name") or candidate.name,
+                decision=feedback_dict.get("decision", passed),
+                summary=feedback_dict.get("summary", ""),
+                metadata=feedback_dict.get("metadata", {}),
+            )
+        return TrajectoryEntry(
+            entry_id=candidate.factor_id,
+            round_idx=round_idx,
+            operation=operation,
+            parent_ids=parent_ids,
+            config_snapshot={
+                "factor": {
+                    "name": candidate.name,
+                    "expression": candidate.expression,
+                    "hypothesis": candidate.hypothesis,
+                    "description": candidate.description,
+                },
+            },
+            feedback=feedback,
+            metrics=metrics,
+        )
+
     def crossover(
         self,
         parent1: FactorCandidate,
@@ -335,67 +510,26 @@ class EvolutionLoop:
         parent_ids: list[str],
         round_idx: int = 0,
     ) -> TrajectoryEntry:
-        """评估 candidate, 写入 TrajectoryPool。"""
-        from ..feedback import FactorFeedback
-
-        # Quality gate 短路
-        if self.quality_gate is not None:
-            gate = self.quality_gate.check({
-                "factor_id": candidate.factor_id,
-                "name": candidate.name,
-                "expression": candidate.expression,
-                "hypothesis": candidate.hypothesis,
-                "description": candidate.description,
-            })
-            if not gate["passed"]:
-                # REJECTED: 记录但不再 evaluate
-                entry = TrajectoryEntry(
-                    entry_id=candidate.factor_id,
-                    round_idx=round_idx,
-                    operation=operation,
-                    parent_ids=parent_ids,
-                    config_snapshot={
-                        "factor": {
-                            "name": candidate.name,
-                            "expression": candidate.expression,
-                            "hypothesis": candidate.hypothesis,
-                            "description": candidate.description,
-                        },
-                    },
-                    feedback=gate["feedback"],
-                    metrics={},
-                )
-                self.pool.add(entry)
-                return entry
-
-        # 完整评估
-        passed, metrics, feedback = self.evaluate_fn(candidate)
-        if feedback is None:
-            feedback = FactorFeedback(
-                factor_id=candidate.factor_id,
-                factor_name=candidate.name,
-                decision=passed,
-                summary="evaluate_fn returned no feedback",
-            )
-
-        entry = TrajectoryEntry(
-            entry_id=candidate.factor_id,
-            round_idx=round_idx,
-            operation=operation,
-            parent_ids=parent_ids,
-            config_snapshot={
-                "factor": {
-                    "name": candidate.name,
-                    "expression": candidate.expression,
-                    "hypothesis": candidate.hypothesis,
-                    "description": candidate.description,
-                },
-            },
-            feedback=feedback,
-            metrics=metrics,
+        """评估单个 candidate, 写入 TrajectoryPool (遗留方法, 建议迁移到 _batch_evaluate_and_record)。"""
+        results = self._batch_evaluate_and_record(
+            [candidate], round_idx=round_idx,
+            ops=[operation], parent_ids_list=[parent_ids],
         )
-        self.pool.add(entry)
-        return entry
+        return results[0]
+
+    def _evaluate_candidate(
+        self,
+        candidate: FactorCandidate,
+    ) -> tuple[bool, dict, FactorFeedback]:
+        """EvolutionLoop.evaluate_fn 回调 (PipelineRunner 用)。"""
+        from ..feedback import FactorFeedback
+        if self.evaluate_fn is not None and self.evaluate_fn is not self._evaluate_candidate:
+            return self.evaluate_fn(candidate)
+        return False, {}, FactorFeedback(
+            factor_id=candidate.factor_id,
+            factor_name=candidate.name,
+            decision=False, summary="evaluate_fn not set",
+        )
 
 
 def _update_best(

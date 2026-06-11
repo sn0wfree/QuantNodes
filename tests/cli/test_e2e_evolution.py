@@ -61,11 +61,11 @@ def _mock_evaluate(metric_value: float = 0.5, passed: bool = True) -> Callable:
 
 
 def test_e2e_three_rounds_full_chain(tmp_path):
-    """完整 3 轮演化: round 0 (3 originals) → mutation → crossover。"""
+    """完整 3 轮演化: round 0 (3 originals) → mutation + crossover per round。"""
     pool = TrajectoryPool(tmp_path / "pool")
     settings = EvolutionSetting(
         enabled=True,
-        max_rounds=2,  # round 1 (mutation) + round 2 (crossover)
+        max_rounds=2,  # 每轮产生 mutation + crossover
         parent_selection_strategy="top_percent_plus_random",
         top_percent_threshold=0.5,
         seed=42,
@@ -77,15 +77,14 @@ def test_e2e_three_rounds_full_chain(tmp_path):
     )
     result = loop.run(initial_directions=["momentum", "reversal", "volatility"])
 
-    # 3 round 0 entries + 1 mutation + 1 crossover = 5
+    # 3 round 0 + (1 mutation + 1 crossover) × 2 轮 = 7
     assert result.rounds_completed == 2
-    assert pool.size == 5
+    assert pool.size == 7
 
-    # 验证每种 operation 存在
     ops = [e.operation for e in pool.all()]
     assert ops.count("original") == 3
-    assert ops.count("mutation") == 1
-    assert ops.count("crossover") == 1
+    assert ops.count("mutation") == 2
+    assert ops.count("crossover") == 2
 
 
 def test_e2e_lineage_traceable(tmp_path):
@@ -254,9 +253,9 @@ def test_e2e_cli_factor_info_after_evolution(tmp_path):
         rc = cmd_factor_info(Args())
     assert rc == 0
     out = buf.getvalue()
-    assert "size: 4" in out  # 2 originals + 1 mutation + 1 crossover
+    assert "size: 6" in out  # 2 originals + 2 mutation + 2 crossover
     assert "by_round:" in out
-    assert "by_operation: {'original': 2, 'mutation': 1, 'crossover': 1}" in out
+    assert "by_operation: {'original': 2, 'mutation': 2, 'crossover': 2}" in out
 
 
 def test_e2e_cli_factor_best_after_evolution(tmp_path):
