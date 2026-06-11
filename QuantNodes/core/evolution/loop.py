@@ -25,7 +25,7 @@ from ..trajectory import (
     TrajectoryEntry,
     TrajectoryPool,
 )
-from ..knowledge import KnowledgeBase
+from ..knowledge import KnowledgeBase, RAGEvaluator
 from .operators import Crosser, FactorCandidate, Hypothesizer, Mutator
 from .settings import EvolutionSetting
 
@@ -67,6 +67,7 @@ class EvolutionLoop:
         max_descendant_depth: int = 2,
         use_compress: bool = False,
         compressor=None,
+        rag_evaluator: Optional[RAGEvaluator] = None,
     ):
         self.settings = settings
         self.pool = pool
@@ -83,6 +84,8 @@ class EvolutionLoop:
         self.max_descendant_depth = max_descendant_depth
         self.use_compress = use_compress
         self.compressor = compressor
+        self.rag_evaluator = rag_evaluator
+        self.rag_metrics_history: list[dict] = []  # 每 round 评估结果
         self.hypothesizer = Hypothesizer(
             model=settings.hypothesizer.model,
             max_correction_attempts=settings.hypothesizer.max_correction_attempts,
@@ -111,6 +114,76 @@ class EvolutionLoop:
             return 0
         return self.knowledge_base.sync_from_pool()
 
+    def _evaluate_rag(
+        self,
+        round_idx: int,
+        directions: list[str],
+    ) -> None:
+        """RAG 评估: 用 directions 作 query, 评估 Top-K 检索质量。
+
+        简化版 ground truth: 当前 pool 中所有 entry 都视为相关 (实际使用应提供 query→relevant 映射)。
+        结果写入 self.rag_metrics_history。
+        """
+        if not directions or self.rag_evaluator is None:
+            return
+        # 构造 token_lists: 每 query 取 Top-K 个 entry 的 token 化文本
+        retrieved: list[list[str]] = []
+        relevant: list[list[str]] = []
+        relevance_scores: list[dict[str, float]] = []
+        lineage_ids: list[list[str]] = []
+        token_lists: list[list[list[str]]] = []
+
+        all_entry_ids = {e.entry_id for e in self.pool.all()}
+        for d in directions:
+            results = self.knowledge_base.query(d, top_k=self.rag_top_k)
+            ids = [e.entry_id for e, _ in results]
+            retrieved.append(ids)
+            relevant.append(list(all_entry_ids))  # 简化: 全部视为相关
+            relevance_scores.append({eid: 1.0 for eid in ids})
+            # lineage = 检索结果的 ancestors + descendants
+            lin_set: set[str] = set()
+            from ..knowledge import expand_lineage
+            for eid in ids:
+                expanded = expand_lineage(
+                    self.pool, eid,
+                    max_ancestor_depth=self.max_ancestor_depth,
+                    max_descendant_depth=self.max_descendant_depth,
+                )
+                for _, e in expanded["ancestors"] + expanded["descendants"]:
+                    lin_set.add(e.entry_id)
+            lineage_ids.append(list(lin_set))
+            # tokens: 用 name + hypothesis 简单分词
+            tokens_per_entry: list[list[str]] = []
+            for e, _ in results:
+                cfg = (e.config_snapshot or {}).get("factor", {}) if e else {}
+                toks = []
+                if cfg.get("name"):
+                    toks += cfg["name"].lower().split("_")
+                if cfg.get("hypothesis"):
+                    toks += cfg["hypothesis"].lower().split()
+                tokens_per_entry.append(toks)
+            token_lists.append(tokens_per_entry)
+
+        report = self.rag_evaluator.evaluate(
+            queries=directions,
+            retrieved=retrieved,
+            relevant=relevant,
+            relevance_scores=relevance_scores,
+            lineage_ids=lineage_ids,
+            token_lists=token_lists,
+        )
+        self.rag_metrics_history.append({
+            "round": round_idx,
+            "n_queries": report.n_queries,
+            "hit_at_5": report.hit_at_5,
+            "hit_at_10": report.hit_at_10,
+            "ndcg_at_5": report.ndcg_at_5,
+            "ndcg_at_10": report.ndcg_at_10,
+            "mrr": report.mrr,
+            "lineage_coverage": report.lineage_coverage,
+            "diversity": report.diversity,
+        })
+
     def run(
         self,
         initial_directions: list[str] | None = None,
@@ -131,6 +204,7 @@ class EvolutionLoop:
         result = EvolutionResult()
         no_improve_counter = 0
         best_metric_so_far = float("-inf")
+        directions = list(initial_directions or [])
 
         # ------------------------------------------------------------------
         # Round 0: 原始候选
@@ -159,6 +233,9 @@ class EvolutionLoop:
             # 同步 KB (round 0 新增的 entry 可被 round 1 检索到)
             if self.knowledge_base is not None:
                 self.knowledge_base.sync_from_pool()
+            # RAG 评估 (用 directions 当 query, ground truth = 当前所有 entry)
+            if self.rag_evaluator is not None and self.knowledge_base is not None:
+                self._evaluate_rag(round_idx, directions or [])
             n_parents = self.settings.parents_per_round
             # crossover 在奇数轮, mutation 在偶数轮 (与文档一致)
             operation = "crossover" if round_idx % 2 == 0 else "mutation"

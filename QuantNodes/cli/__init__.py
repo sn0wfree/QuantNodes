@@ -599,6 +599,7 @@ QuantNodes CLI - 量化研究节点架构命令行工具
     factor-best 显示 Top-N 最佳 entry (Week 5)
     factor-visual 生成可视化 HTML 报告 (Week 6)
     factor-rag-show RAG 检索演示 (Week 7)
+    factor-rag-eval 批量评估 RAG 质量 (Week 10)
     version     显示版本
     help        显示帮助
 
@@ -644,6 +645,7 @@ run 选项:
     quantnodes factor-best --pool-dir output/trajectory --top 10 --metric sharpe
     quantnodes factor-visual --pool-dir output/trajectory --output report.html
     quantnodes factor-rag-show --pool-dir output/trajectory --query "momentum effect" --top 5
+    quantnodes factor-rag-eval --pool-dir output/trajectory --queries "momentum,reversal" --top 5
     quantnodes version
 
 详细文档: docs/QuickStart.md
@@ -831,6 +833,102 @@ def cmd_factor_visual(args) -> int:
     return 0
 
 
+def cmd_factor_rag_eval(args) -> int:
+    """批量评估 RAG 检索质量 (Week 10)。
+
+    用法:
+        quantnodes factor-rag-eval --pool-dir output/trajectory/ \\
+                                   --queries "momentum,reversal,volatility" \\
+                                   --top 5 \\
+                                   --output eval.json
+    """
+    from QuantNodes.core.knowledge import (
+        IdentityRetriever,
+        KnowledgeBase,
+        RAGEvaluator,
+        expand_lineage,
+    )
+    from QuantNodes.core.trajectory import TrajectoryPool
+
+    pool_dir = args.pool_dir
+    if not Path(pool_dir).exists():
+        print(f"错误: pool 目录不存在: {pool_dir}")
+        return 1
+
+    pool = TrajectoryPool(pool_dir)
+    if pool.size == 0:
+        print("错误: pool 为空, 无可评估内容")
+        return 1
+
+    queries = [q.strip() for q in (args.queries or "").split(",") if q.strip()]
+    if not queries:
+        print("错误: --queries 至少需要 1 个 query")
+        return 1
+
+    kb = KnowledgeBase(IdentityRetriever(), pool=pool)
+    n = kb.sync_from_pool()
+
+    # 构造评估输入
+    all_ids = {e.entry_id for e in pool.all()}
+    retrieved: list[list[str]] = []
+    relevant: list[list[str]] = []
+    relevance_scores: list[dict[str, float]] = []
+    lineage_ids: list[list[str]] = []
+    token_lists: list[list[list[str]]] = []
+
+    for q in queries:
+        results = kb.query(q, top_k=args.top)
+        ids = [e.entry_id for e, _ in results]
+        retrieved.append(ids)
+        relevant.append(list(all_ids))
+        relevance_scores.append({eid: 1.0 for eid in ids})
+        lin_set: set[str] = set()
+        tokens_per_entry: list[list[str]] = []
+        for e, _ in results:
+            expanded = expand_lineage(
+                pool, e.entry_id,
+                max_ancestor_depth=args.ancestor_depth,
+                max_descendant_depth=args.descendant_depth,
+            )
+            for _, ee in expanded["ancestors"] + expanded["descendants"]:
+                lin_set.add(ee.entry_id)
+            cfg = (e.config_snapshot or {}).get("factor", {}) if e else {}
+            toks = []
+            if cfg.get("name"):
+                toks += cfg["name"].lower().split("_")
+            if cfg.get("hypothesis"):
+                toks += cfg["hypothesis"].lower().split()
+            tokens_per_entry.append(toks)
+        lineage_ids.append(list(lin_set))
+        token_lists.append(tokens_per_entry)
+
+    ev = RAGEvaluator()
+    report = ev.evaluate(
+        queries=queries,
+        retrieved=retrieved,
+        relevant=relevant,
+        relevance_scores=relevance_scores,
+        lineage_ids=lineage_ids,
+        token_lists=token_lists,
+    )
+
+    if args.output:
+        ev.save(report, args.output)
+        print(f"✓ EvalReport 已保存: {args.output}")
+
+    print("=" * 60)
+    print(f"RAG 评估报告 ({report.n_queries} queries, indexed {n} entries)")
+    print(f"  HitRate@5:   {report.hit_at_5:.3f}")
+    print(f"  HitRate@10:  {report.hit_at_10:.3f}")
+    print(f"  NDCG@5:      {report.ndcg_at_5:.3f}")
+    print(f"  NDCG@10:     {report.ndcg_at_10:.3f}")
+    print(f"  MRR:         {report.mrr:.3f}")
+    print(f"  LineageCov:  {report.lineage_coverage:.3f}")
+    print(f"  Diversity:   {report.diversity:.3f}")
+    print("=" * 60)
+    return 0
+
+
 def cmd_factor_rag_show(args) -> int:
     """从 TrajectoryPool 检索相似因子 (RAG demo)。
 
@@ -947,6 +1045,14 @@ def main():
     rag_parser.add_argument("--ancestor-depth", type=int, default=2, help="祖先深度 (默认 2)")
     rag_parser.add_argument("--descendant-depth", type=int, default=2, help="后裔深度 (默认 2)")
     rag_parser.add_argument("--max-tokens", type=int, default=200, help="压缩最大字符数 (默认 200)")
+
+    rag_eval_parser = subparsers.add_parser("factor-rag-eval", help="批量评估 RAG 检索质量 (Week 10)")
+    rag_eval_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+    rag_eval_parser.add_argument("--queries", required=True, help="逗号分隔的 query 列表")
+    rag_eval_parser.add_argument("--top", type=int, default=5, help="Top-K (默认 5)")
+    rag_eval_parser.add_argument("--ancestor-depth", type=int, default=2, help="祖先深度")
+    rag_eval_parser.add_argument("--descendant-depth", type=int, default=2, help="后裔深度")
+    rag_eval_parser.add_argument("--output", default=None, help="EvalReport JSON 输出路径")
     
     subparsers.add_parser("version", help="显示版本")
     subparsers.add_parser("help", help="显示帮助")
@@ -969,6 +1075,8 @@ def main():
         return cmd_factor_visual(args)
     elif args.command == "factor-rag-show":
         return cmd_factor_rag_show(args)
+    elif args.command == "factor-rag-eval":
+        return cmd_factor_rag_eval(args)
     elif args.command == "version":
         return cmd_version(args)
     elif args.command == "help":
