@@ -229,3 +229,36 @@ class TestFactorScoreConfig:
         from QuantNodes.research.factor_test.nodes.factor_score_node import FactorScoreNode
         node = FactorScoreNode(config=cfg)
         assert (node._n_industries, node._n_size_groups, node._n_quantile_groups) == expected
+
+
+# ============================================================================
+# M5: FactorPreprocessNode winsorize 参数
+# ============================================================================
+
+class TestFactorPreprocessWinsorize:
+    def test_default_params(self):
+        from QuantNodes.research.factor_test.nodes.factor_preprocess_node import (
+            FactorPreprocessNode,
+        )
+        n = FactorPreprocessNode(config={"extreme": "median"})
+        assert n._mad_n == 5.0
+        assert n._pct_low == 0.025
+        assert n._pct_high == 0.975
+
+    @pytest.mark.parametrize("cfg,expected", [
+        ({"mad_n": 3.0}, 3.0),
+        ({"mad_n": 10.0}, 10.0),
+        ({"pct_low": 0.01, "pct_high": 0.99}, (0.01, 0.99)),
+        ({"pct_low": 0.05, "pct_high": 0.95}, (0.05, 0.95)),
+        ({"pct_low": 0.001, "pct_high": 0.999}, (0.001, 0.999)),
+    ])
+    def test_custom_params(self, cfg, expected):
+        from QuantNodes.research.factor_test.nodes.factor_preprocess_node import (
+            FactorPreprocessNode,
+        )
+        n = FactorPreprocessNode(config=cfg)
+        if isinstance(expected, tuple):
+            assert n._pct_low == expected[0]
+            assert n._pct_high == expected[1]
+        else:
+            assert n._mad_n == expected

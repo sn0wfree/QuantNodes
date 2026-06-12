@@ -32,6 +32,10 @@ class FactorPreprocessNode(BaseNode):
         self._missing = config.get('missing', '') if config else ''
         self._extreme = config.get('extreme', '') if config else ''
         self._norm = config.get('norm', '') if config else ''
+        # M5: winsorize 参数可调
+        self._mad_n = float(config.get('mad_n', 5.0)) if config else 5.0
+        self._pct_low = float(config.get('pct_low', 0.025)) if config else 0.025
+        self._pct_high = float(config.get('pct_high', 0.975)) if config else 0.975
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})
@@ -120,13 +124,13 @@ class FactorPreprocessNode(BaseNode):
 
         # 2. 去极值
         if method['extreme'] == 'median':
-            n = 5
+            n = self._mad_n  # M5: 可调
             d_m = df['factor_filled'].dropna().median()
             d_mad = (df['factor_filled'] - d_m).abs().dropna().median()
             df['factor_filled'] = df['factor_filled'].clip(d_m - n * d_mad, d_m + n * d_mad)
         elif method['extreme'] == 'pct_shrink':
-            q1 = df['factor_filled'].quantile(0.025)
-            q2 = df['factor_filled'].quantile(0.975)
+            q1 = df['factor_filled'].quantile(self._pct_low)   # M5: 可调
+            q2 = df['factor_filled'].quantile(self._pct_high)  # M5: 可调
             df['factor_filled'] = df['factor_filled'].clip(q1, q2)
 
         # 3. 标准化
