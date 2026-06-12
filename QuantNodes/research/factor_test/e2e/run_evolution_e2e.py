@@ -77,9 +77,8 @@ def _build_config(
     output_dir: str,
     max_rounds: int = 3,
     enable_quality_gate: bool = True,
-    enable_kb: bool = True,
 ) -> SingleFactorTestConfig:
-    """构造 SingleFactorTestConfig。"""
+    """构造 SingleFactorTestConfig (M6: 移除未用的 enable_kb 参数)。"""
     # H12: 不再硬编码 20260101/20260630, 默认 1 年前到 1 个月前 (滚动)
     one_year_ago = int((datetime.now() - timedelta(days=365)).strftime('%Y%m%d'))
     one_month_ago = int((datetime.now() - timedelta(days=30)).strftime('%Y%m%d'))
@@ -198,7 +197,6 @@ def main():
         output_dir=str(output_dir),
         max_rounds=args.max_rounds,
         enable_quality_gate=not args.disable_quality_gate,
-        enable_kb=not args.disable_kb,
     )
     runner = PipelineRunner(cfg)
     _inject_synthetic_data(runner, data_path)

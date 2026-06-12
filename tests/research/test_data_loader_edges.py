@@ -262,3 +262,18 @@ class TestFactorPreprocessWinsorize:
             assert n._pct_high == expected[1]
         else:
             assert n._mad_n == expected
+
+
+# ============================================================================
+# M6: e2e _build_config 移除 enable_kb 死参数
+# ============================================================================
+
+class TestBuildConfigSignature:
+    def test_no_enable_kb_param(self):
+        """M6: 移除 enable_kb 死参数。"""
+        import inspect
+        from QuantNodes.research.factor_test.e2e.run_evolution_e2e import _build_config
+        sig = inspect.signature(_build_config)
+        assert "enable_kb" not in sig.parameters
+        # enable_quality_gate 保留
+        assert "enable_quality_gate" in sig.parameters
