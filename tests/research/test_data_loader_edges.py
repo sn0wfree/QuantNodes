@@ -314,3 +314,22 @@ class TestLoadKeysDefault:
         ]})
         for key in ("st", "suspend", "ud_limit", "ipo_days"):
             assert key in node._load_keys
+
+
+# ============================================================================
+# M8: 文档中删除 SZ50 死引用
+# ============================================================================
+
+class TestNoSZ50DeadReference:
+    def test_no_sz50_in_config_docs(self):
+        """M8: config.py docstring 不再列 SZ50。"""
+        from QuantNodes.research.factor_test import config as cfg_mod
+        src = cfg_mod.__file__
+        text = open(src, encoding="utf-8").read()
+        # 应不含 SZ50 (INDEX_MAPPING 已删, 文档误导)
+        assert "SZ50" not in text, "SZ50 死引用应从文档移除"
+
+    def test_index_mapping_no_sz50(self):
+        """INDEX_MAPPING 不含 SZ50 (无路由)。"""
+        from QuantNodes.research.factor_test.utils.constants import INDEX_MAPPING
+        assert "SZ50" not in INDEX_MAPPING

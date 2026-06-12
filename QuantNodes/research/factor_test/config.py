@@ -30,7 +30,7 @@ class PreprocessSetting(BaseModel):
     adj_date_beg: int = Field(..., description="起始日期 yyyymmdd")
     adj_date_end: int = Field(..., description="截止日期 yyyymmdd")
     adj_mode: list = Field(default=['M', 'end'], description="调仓模式: [mode, position]")
-    sample_index: str = Field(default='all', description="样本池: all/HS300/ZZ500/ZZ800/SZ50/custom")
+    sample_index: str = Field(default='all', description="样本池: all/HS300/ZZ500/ZZ800/custom")
     sample_index_customdir: Optional[tuple] = Field(default=None, description="自定义样本池路径")
     sample_industry: str = Field(default='all', description="行业筛选: all/中信行业名")
     tradable: TradableSetting = Field(default_factory=TradableSetting)
@@ -52,7 +52,7 @@ class GroupSetting(BaseModel):
     groups: int = Field(default=5, description="分组数")
     factor_direction: int = Field(default=1, description="因子方向: 1=越大越好, -1=越小越好")
     floor_mode: str = Field(default='group', description="数据不足时策略: group=跳过, last=沿用上期")
-    hedge: str = Field(default='equal', description="对冲基准: HS300/ZZ500/SZ50/equal/custom")
+    hedge: str = Field(default='equal', description="对冲基准: HS300/ZZ500/equal/custom")
     hedge_path: Optional[str] = Field(default=None, description="自定义对冲基准路径")
 
 
