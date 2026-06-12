@@ -49,17 +49,32 @@ class FeedbackCollector:
         self,
         decision: Optional[bool] = None,
         summary: str = "",
+        agg_mode: str = "all",  # M3: "all" (AND) | "any" (OR) | "majority"
         **metadata,
     ) -> FactorFeedback:
         """聚合所有通道, 返回 FactorFeedback。
 
         Args:
-            decision: 显式决策 (None=全部通过时通过)
+            decision: 显式决策 (None=按 agg_mode 自动)
             summary: 一句话总结 (空=自动生成)
+            agg_mode: M3 聚合方式
+                - "all" (默认): 全部通过才算通过
+                - "any": 任一通过就算通过
+                - "majority": 多数通过才算通过
             **metadata: 附加到 FactorFeedback.metadata
         """
         if decision is None:
-            decision = all(fb.passed for fb in self._channels.values())
+            if not self._channels:
+                decision = True
+            elif agg_mode == "all":
+                decision = all(fb.passed for fb in self._channels.values())
+            elif agg_mode == "any":
+                decision = any(fb.passed for fb in self._channels.values())
+            elif agg_mode == "majority":
+                passed_count = sum(1 for fb in self._channels.values() if fb.passed)
+                decision = passed_count > len(self._channels) / 2
+            else:
+                raise ValueError(f"未知 agg_mode: {agg_mode}")
 
         if not summary:
             failed = [ch.value for ch, fb in self._channels.items() if not fb.passed]

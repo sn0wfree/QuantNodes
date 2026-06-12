@@ -359,3 +359,94 @@ def test_ensure_feedback_invalid_type():
     """非 dict / FactorFeedback 抛错。"""
     with pytest.raises(TypeError, match="不支持"):
         ensure_feedback(42, "id", "name")
+
+
+# ============================================================================
+# M3: FeedbackCollector 决策聚合 agg_mode
+# ============================================================================
+
+from QuantNodes.core.feedback import FeedbackCollector, FeedbackChannel
+
+
+class TestCollectorAggMode:
+    """3 通道 1 失败时, 不同 agg_mode 决策不同。"""
+
+    def _make_collector(self, n_pass, n_fail):
+        """注: 5 通道 EXECUTION/SHAPE/CODE/VALUE/LLM, n_pass+n_fail ≤ 5"""
+        c = FeedbackCollector("f1", "test")
+        all_channels = list(FeedbackChannel)
+        n_total = n_pass + n_fail
+        # 前 n_pass 用 True, 后 n_fail 用 False, 通道不重复
+        for i in range(n_total):
+            ch = all_channels[i]
+            passed = i < n_pass
+            c.add(ch, passed=passed, detail="ok" if passed else "fail")
+        return c
+
+    def test_all_mode_one_fail_rejects(self):
+        """all 模式 (AND): 1 失败 = reject。"""
+        c = self._make_collector(2, 1)
+        fb = c.finalize(agg_mode="all")
+        assert fb.decision is False
+
+    def test_any_mode_one_pass_accepts(self):
+        """any 模式 (OR): 1 通过 = accept。"""
+        c = self._make_collector(1, 2)
+        fb = c.finalize(agg_mode="any")
+        assert fb.decision is True
+
+    def test_majority_2_pass_1_fail(self):
+        """majority: 2/3 通过 = accept。"""
+        c = self._make_collector(2, 1)
+        fb = c.finalize(agg_mode="majority")
+        assert fb.decision is True
+
+    def test_majority_1_pass_2_fail(self):
+        """majority: 1/3 通过 = reject。"""
+        c = self._make_collector(1, 2)
+        fb = c.finalize(agg_mode="majority")
+        assert fb.decision is False
+
+    def test_default_is_all(self):
+        """不传 agg_mode 默认为 all (向后兼容)。"""
+        c = self._make_collector(2, 1)
+        fb = c.finalize()
+        assert fb.decision is False  # 同 all
+
+    @pytest.mark.parametrize("mode,passed,fail,expected", [
+        ("all", 3, 0, True),
+        ("all", 2, 1, False),
+        ("any", 1, 0, True),
+        ("any", 0, 3, False),
+        ("majority", 2, 1, True),
+        ("majority", 1, 2, False),
+    ])
+    def test_parametrize(self, mode, passed, fail, expected):
+        c = self._make_collector(passed, fail)
+        fb = c.finalize(agg_mode=mode)
+        assert fb.decision is expected
+
+    def test_invalid_agg_mode_raises(self):
+        c = self._make_collector(2, 1)
+        with pytest.raises(ValueError, match="未知 agg_mode"):
+            c.finalize(agg_mode="invalid_mode")
+
+    def test_explicit_decision_overrides_agg(self):
+        """显式 decision 永远优先于 agg_mode。"""
+        c = self._make_collector(2, 1)
+        # 默认 all → False, 但显式 True
+        fb = c.finalize(decision=True, agg_mode="all")
+        assert fb.decision is True
+        # 默认 any → True, 但显式 False
+        fb = c.finalize(decision=False, agg_mode="any")
+        assert fb.decision is False
+
+    def test_empty_channels_all_true(self):
+        """无通道 → decision=True。"""
+        c = FeedbackCollector("f1", "test")
+        fb = c.finalize(agg_mode="all")
+        assert fb.decision is True
+        fb = c.finalize(agg_mode="any")
+        assert fb.decision is True
+        fb = c.finalize(agg_mode="majority")
+        assert fb.decision is True
