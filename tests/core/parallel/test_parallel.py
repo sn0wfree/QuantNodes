@@ -198,3 +198,91 @@ def test_processpool_parallel_evaluate():
         assert len(results) == 3
         for r in results:
             assert r['passed'] is True
+
+
+# ============================================================================
+# C1+H3: 跨进程 hash / 种子确定性
+# ============================================================================
+
+class TestCrossProcessDeterminism:
+    """验证 hash / 种子在多次启动中稳定。"""
+
+    def test_zoo_hash_deterministic_across_calls(self):
+        """同一 expression 多次 ast_hash 必返回相同 int。"""
+        from QuantNodes.core.quality_gate.zoo import ast_hash
+        h1 = ast_hash("close - close.shift(5)")
+        h2 = ast_hash("close - close.shift(5)")
+        h3 = ast_hash("close - close.shift(10)")  # 不同
+        assert h1 == h2
+        assert h1 != h3
+        assert isinstance(h1, int)
+
+    def test_zoo_hash_collision_resistant(self):
+        """结构略不同的 expression 应 hash 不同。"""
+        from QuantNodes.core.quality_gate.zoo import ast_hash
+        h1 = ast_hash("close")
+        h2 = ast_hash("open")
+        h3 = ast_hash("high")
+        assert len({h1, h2, h3}) == 3
+
+    def test_heavy_evaluate_seed_deterministic(self):
+        """_heavy_evaluate 同 expression 同 seed → 同 sharpe。"""
+        from QuantNodes.core.parallel.worker import _heavy_evaluate
+        c1 = {"factor_id": "e1", "name": "a", "expression": "close"}
+        c2 = {"factor_id": "e1", "name": "a", "expression": "close"}
+        r1 = _heavy_evaluate(c1)
+        r2 = _heavy_evaluate(c2)
+        assert abs(r1["metrics"]["sharpe"] - r2["metrics"]["sharpe"]) < 1e-9
+
+    def test_heavy_evaluate_different_expr_different_metric(self):
+        from QuantNodes.core.parallel.worker import _heavy_evaluate
+        # 同 expression 跑 3 次, 必相同 (sha256 幂等)
+        samples_close = [_heavy_evaluate({"expression": "close"})["metrics"]["sharpe"] for _ in range(3)]
+        samples_open = [_heavy_evaluate({"expression": "open"})["metrics"]["sharpe"] for _ in range(3)]
+        assert len(set(samples_close)) == 1  # close 3 次相同
+        assert len(set(samples_open)) == 1   # open 3 次相同
+        assert samples_close[0] != samples_open[0]  # close vs open 不同
+
+    def test_heavy_evaluate_in_subprocess_deterministic(self):
+        """真子进程跑 _heavy_evaluate, 结果与主进程一致。"""
+        import subprocess
+        import sys
+        code = (
+            "from QuantNodes.core.parallel.worker import _heavy_evaluate;"
+            "r = _heavy_evaluate({'expression': 'close - close.shift(20)'});"
+            "print(r['metrics']['sharpe'])"
+        )
+        # 跑 3 次
+        results = []
+        for _ in range(3):
+            out = subprocess.check_output(
+                [sys.executable, "-c", code],
+                text=True, timeout=10,
+            )
+            results.append(float(out.strip()))
+        # 3 次应完全相同 (sha256 跨进程幂等)
+        assert results[0] == results[1] == results[2]
+
+    def test_zoo_contains_across_subprocesses(self):
+        """真子进程跑 contains, 与主进程一致。"""
+        import subprocess
+        import sys
+        from QuantNodes.core.quality_gate.zoo import FactorZoo
+        # 主进程 add
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            from pathlib import Path
+            zoo_path = Path(td) / "zoo.parquet"
+            zoo = FactorZoo(zoo_path)
+            zoo.add("close - close.shift(5)")
+            # 子进程: load + contains
+            code = (
+                "from QuantNodes.core.quality_gate.zoo import FactorZoo;"
+                f"z = FactorZoo('{zoo_path}');"
+                "print(z.contains('close - close.shift(5)'))"
+            )
+            out = subprocess.check_output(
+                [sys.executable, "-c", code],
+                text=True, timeout=10,
+            )
+            assert out.strip() == "True"

@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import random as _random_mod
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from typing import Callable, Optional
@@ -30,9 +32,12 @@ def _heavy_evaluate(
     """
     if sleep_ms > 0:
         time.sleep(sleep_ms / 1000.0)
-    import random
-    random.seed(hash(candidate_dict.get("expression", "")) & 0xFFFF)
-    sharpe = random.uniform(0.0, 2.0)
+    # H3: 改用 hashlib.sha256 (跨进程幂等) 替代 hash()
+    expression = candidate_dict.get("expression", "")
+    digest = hashlib.sha256(expression.encode("utf-8")).digest()
+    seed = int.from_bytes(digest[:4], "big")
+    rng = _random_mod.Random(seed)
+    sharpe = rng.uniform(0.0, 2.0)
     return {
         "passed": True,
         "metrics": {"sharpe": sharpe, "arr": sharpe * 0.1, "ic_mean": 0.04},
