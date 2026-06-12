@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -79,6 +80,9 @@ def _build_config(
     enable_kb: bool = True,
 ) -> SingleFactorTestConfig:
     """构造 SingleFactorTestConfig。"""
+    # H12: 不再硬编码 20260101/20260630, 默认 1 年前到 1 个月前 (滚动)
+    one_year_ago = int((datetime.now() - timedelta(days=365)).strftime('%Y%m%d'))
+    one_month_ago = int((datetime.now() - timedelta(days=30)).strftime('%Y%m%d'))
     return SingleFactorTestConfig(
         factor=FactorSetting(
             name=factor_name, factor_dir=factor_dir,
@@ -86,7 +90,7 @@ def _build_config(
             description=f"e2e test factor: {factor_name}",
         ),
         preprocess=PreprocessSetting(
-            adj_date_beg=20260101, adj_date_end=20260630,
+            adj_date_beg=one_year_ago, adj_date_end=one_month_ago,
             adj_mode=["M", "end"],
             sample_index="all", sample_industry="all",
             tradable={

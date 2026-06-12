@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -43,8 +44,10 @@ from QuantNodes.core.trajectory import TrajectoryEntry, TrajectoryPool
 
 def _make_h5_dataset(data_dir: Path, n_days: int = 60, n_stocks: int = 20) -> dict:
     """生成最小 H5 数据集。"""
+    # 与 data_prep.py 一致: 从 1 年前开始
+    start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
     dates = [int(d.strftime('%Y%m%d'))
-            for d in pd.bdate_range('2026-01-04', periods=n_days)]
+            for d in pd.bdate_range(start_date, periods=n_days)]
     stocks = list(range(100001, 100001 + n_stocks))
     rng = np.random.RandomState(42)
 
@@ -98,6 +101,9 @@ def _make_config_and_context(data_dir: Path):
         FactorSetting, PreprocessSetting, AnalysisSetting, OutputSetting,
         QualityGateConfig, EvolutionConfig, FeedbackSetting, SingleFactorTestConfig,
     )
+    # 与 _make_h5_dataset 起点对齐: 1 年前 ~ 1 个月前
+    one_year_ago = int((datetime.now() - timedelta(days=365)).strftime('%Y%m%d'))
+    one_month_ago = int((datetime.now() - timedelta(days=30)).strftime('%Y%m%d'))
 
     cfg = SingleFactorTestConfig(
         factor=FactorSetting(
@@ -105,7 +111,7 @@ def _make_config_and_context(data_dir: Path):
             hypothesis="momentum", description="20-day momentum",
         ),
         preprocess=PreprocessSetting(
-            adj_date_beg=20260101, adj_date_end=20260630,
+            adj_date_beg=one_year_ago, adj_date_end=one_month_ago,
             adj_mode=["M", "end"], sample_index="all", sample_industry="all",
             tradable={"no_st": True, "no_suspended": True, "min_ipo_days": 360},
             missing="", extreme="median", norm="zscore",
@@ -327,13 +333,16 @@ def test_pipeline_runner_processpool_evolution_e2e():
             FactorSetting, PreprocessSetting, AnalysisSetting, OutputSetting,
             QualityGateConfig, EvolutionConfig, FeedbackSetting, SingleFactorTestConfig,
         )
+        # 与 _make_h5_dataset 起点对齐: 1 年前 ~ 1 个月前
+        one_year_ago = int((datetime.now() - timedelta(days=365)).strftime('%Y%m%d'))
+        one_month_ago = int((datetime.now() - timedelta(days=30)).strftime('%Y%m%d'))
         cfg = SingleFactorTestConfig(
             factor=FactorSetting(
                 name="momentum_20d", factor_dir="momentum_20d.h5",
                 hypothesis="momentum", description="20-day momentum",
             ),
             preprocess=PreprocessSetting(
-                adj_date_beg=20260101, adj_date_end=20260630,
+                adj_date_beg=one_year_ago, adj_date_end=one_month_ago,
                 adj_mode=["M", "end"], sample_index="all", sample_industry="all",
                 tradable={"no_st": True, "no_suspended": True, "min_ipo_days": 360},
                 missing="", extreme="median", norm="zscore",

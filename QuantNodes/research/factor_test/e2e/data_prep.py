@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -56,8 +57,10 @@ def _gen_factor_data(rng: np.random.RandomState, n_days: int, n_stocks: int,
 
 
 def _gen_dates(n_days: int) -> list[int]:
+    # H11: 不再硬编码 '2026-01-04', 默认从 1 年前开始 (滚动)
+    start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
     return [int(d.strftime('%Y%m%d'))
-            for d in pd.bdate_range('2026-01-04', periods=n_days)]
+            for d in pd.bdate_range(start_date, periods=n_days)]
 
 
 def _gen_stocks(n_stocks: int) -> list[int]:

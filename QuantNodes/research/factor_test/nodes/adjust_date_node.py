@@ -26,8 +26,9 @@ class AdjustDateNode(BaseNode):
 
     def __init__(self, name: str = "AdjustDate", config: dict = None, **kwargs):
         super().__init__(name, config, **kwargs)
-        self._adj_date_beg = config.get('adj_date_beg', 20170801) if config else 20170801
-        self._adj_date_end = config.get('adj_date_end', 20171231) if config else 20171231
+        # H10: 不再硬编码 20170801/20171231, 默认 None → 启动校验时必填
+        self._adj_date_beg = config.get('adj_date_beg', None) if config else None
+        self._adj_date_end = config.get('adj_date_end', None) if config else None
         self._adj_mode = config.get('adj_mode', ['M', 'end']) if config else ['M', 'end']
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:

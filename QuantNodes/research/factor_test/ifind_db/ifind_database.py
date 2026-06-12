@@ -60,18 +60,23 @@ class IFinDDatabase:
         cp_labeled = db.add_index(cp)
     """
 
-    def __init__(self, api_path: str = '', date_beg: str = '20260101',
+    def __init__(self, api_path: str = '', date_beg: str = '',
                  date_end: str = '', universe: str = '沪深300',
                  fetcher: IFindFetcher = None):
         """
         Args:
             api_path: 兼容 DataLoader, 被忽略
-            date_beg: 查询起始日期 (YYYYMMDD)
+            date_beg: 查询起始日期 (YYYYMMDD, 空=1 年前)
             date_end: 查询截止日期 (空=今天)
             universe: 股票池 ('沪深300', '中证500', 'all')
             fetcher: 注入的 fetcher (测试用 IFindFetcherStub)
         """
-        self._date_beg = date_beg
+        # H9: 不再硬编码 '20260101', 默认 1 年前 (跨年/跨月可滚动)
+        if not date_beg:
+            one_year_ago = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+            self._date_beg = one_year_ago
+        else:
+            self._date_beg = date_beg
         self._date_end = date_end or datetime.now().strftime('%Y%m%d')
         self._universe = universe
         self._fetcher = fetcher or IFindFetcher()
