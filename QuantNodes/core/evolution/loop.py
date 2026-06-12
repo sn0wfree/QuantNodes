@@ -270,20 +270,21 @@ class EvolutionLoop:
             round_parent_ids_list: list[list[str]] = []
             round_ops: list[str] = []
 
-            # mutation child
-            parents_m = self.selector.select(self.pool, n=1)
-            if parents_m:
+            # parents_per_round 控制 mutation 父数 (默认 1)
+            n_mutation_parents = max(1, self.settings.parents_per_round)
+            parents_m = self.selector.select(self.pool, n=n_mutation_parents)
+            for pm in parents_m:
                 pc = FactorCandidate(
-                    factor_id=parents_m[0].entry_id,
-                    name=parents_m[0].feedback.factor_name if parents_m[0].feedback else "",
-                    expression=str(parents_m[0].config_snapshot.get("factor", {}).get("expression", "")),
+                    factor_id=pm.entry_id,
+                    name=pm.feedback.factor_name if pm.feedback else "",
+                    expression=str(pm.config_snapshot.get("factor", {}).get("expression", "")),
                 )
                 child_m = self.mutator.mutate(pc)
                 round_candidates.append(child_m)
-                round_parent_ids_list.append([parents_m[0].entry_id])
+                round_parent_ids_list.append([pm.entry_id])
                 round_ops.append("mutation")
 
-            # crossover child (when workers>1, produce both; when workers=1, still produce both)
+            # crossover 固定需要 2 parents
             parents_x = self.selector.select(self.pool, n=2)
             if len(parents_x) >= 2:
                 pcs = [
@@ -335,7 +336,7 @@ class EvolutionLoop:
                 break
 
         result.best_entries = self.pool.best(
-            top_n=10, metric=self.settings.metric,
+            top_n=self.settings.top_n, metric=self.settings.metric,
         )
         return result
 

@@ -77,6 +77,40 @@ class TestMaxRounds:
         # 无 directions/candidates → 只 round 0
         assert result.rounds_completed == 1
 
+    @pytest.mark.parametrize("parents_per_round,n_mutations", [
+        (1, 1),  # 默认
+        (2, 2),  # 双 parent → 双 mutation child
+        (3, 3),  # 三 parent → 三 mutation child
+    ])
+    def test_parents_per_round_produces_n_mutations(self, tmp_path, parents_per_round, n_mutations):
+        """settings.parents_per_round 控制 mutation child 数量。"""
+        s = ES(max_rounds=1, parents_per_round=parents_per_round)
+        # 提供足够多 round 0 entry 让 selector 有 n 选
+        loop = _make_loop(tmp_path, s, eval_fn=_make_evaluate_fn(sharpe=0.5))
+        cands = [
+            FactorCandidate(factor_id=f"c{i}", name=f"a{i}", expression="close")
+            for i in range(5)
+        ]
+        result = loop.run(initial_candidates=cands)
+        # round 0 5 entries + round 1 n mutation + 1 crossover
+        mutations = [e for e in result.all_entries if e.operation == "mutation"]
+        assert len(mutations) == n_mutations
+
+    @pytest.mark.parametrize("top_n,expected_n", [
+        (3, 3),
+        (5, 5),
+        (10, 10),
+    ])
+    def test_top_n_returns_n_best(self, tmp_path, top_n, expected_n):
+        s = ES(max_rounds=0, top_n=top_n)
+        loop = _make_loop(tmp_path, s)
+        cands = [
+            FactorCandidate(factor_id=f"c{i}", name=f"a{i}", expression="close")
+            for i in range(20)
+        ]
+        result = loop.run(initial_candidates=cands)
+        assert len(result.best_entries) == expected_n
+
     def test_max_rounds_quality_gate_rejects_all(self, tmp_path):
         """quality gate 全部 reject, round 1 立即 break。"""
         gate = QualityGateNode(QualityGateSetting(

@@ -181,6 +181,16 @@ class TestEvolutionSettingParams:
         s = EvolutionSetting(early_stop_patience=patience)
         assert s.early_stop_patience == patience
 
+    @pytest.mark.parametrize("top_n", [0, 1, 3, 5, 10, 50, 100])
+    def test_top_n(self, top_n):
+        s = EvolutionSetting(top_n=top_n)
+        assert s.top_n == top_n
+
+    @pytest.mark.parametrize("parents", [0, 1, 2, 3, 5, 10])
+    def test_parents_per_round(self, parents):
+        s = EvolutionSetting(parents_per_round=parents)
+        assert s.parents_per_round == parents
+
     @pytest.mark.parametrize("h,m,c,any_enabled", [
         (True, True, True, True),
         (False, False, False, False),

@@ -27,6 +27,7 @@ class EvolutionSetting(BaseModel):
     metric: str = Field(default="sharpe", description="用于排序/加权的指标")
     pool_dir: Optional[str] = Field(default=None, description="TrajectoryPool 目录 (None=output.dir/trajectory)")
     early_stop_patience: int = Field(default=0, description="连续 N 轮无改善则停 (0=不启用)")
+    top_n: int = Field(default=10, description="最终 best_entries 返回 Top-N (EvolutionResult)")
     hypothesizer: OperatorSetting = Field(default_factory=OperatorSetting)
     mutator: OperatorSetting = Field(default_factory=OperatorSetting)
     crosser: OperatorSetting = Field(default_factory=OperatorSetting)
