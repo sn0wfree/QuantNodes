@@ -34,7 +34,12 @@ from ..trajectory import TrajectoryEntry, TrajectoryPool
 
 @dataclass
 class RagMetrics:
-    """单轮 RAG 评估指标 (Week 10)。"""
+    """单轮 RAG 评估指标 (Week 10)。
+
+    字段命名包含 K (5/10) 是历史设计, 为保持序列化兼容保留。
+    自定义 K (如 K=3, K=20) 通过 `extra: dict[str, float]` 扩展,
+    避免 dataclass 字段爆炸。
+    """
     round: int
     n_queries: int
     hit_at_5: float = 0.0
@@ -44,11 +49,18 @@ class RagMetrics:
     mrr: float = 0.0
     lineage_coverage: float = 0.0
     diversity: float = 0.0
+    extra: dict[str, float] = field(default_factory=dict)
     timestamp: str = ""
 
     def __post_init__(self):
         if not self.timestamp:
             self.timestamp = datetime.now().isoformat()
+
+    def get(self, key: str, default: float = 0.0) -> float:
+        """统一访问入口: 优先 `extra`, 回退命名字段 (兼容 hit_at_5 形式)。"""
+        if key in self.extra:
+            return self.extra[key]
+        return getattr(self, key, default)
 
 
 @dataclass

@@ -40,6 +40,26 @@ class TestMetricsDataclass:
         # 验证 ISO format
         datetime.fromisoformat(m.timestamp)
 
+    @pytest.mark.parametrize("extra_kv,key,expected", [
+        ({"hit_at_3": 0.5, "ndcg_at_3": 0.4}, "hit_at_3", 0.5),
+        ({"hit_at_20": 0.9}, "hit_at_20", 0.9),
+        ({"custom_metric": 0.123}, "custom_metric", 0.123),
+        ({}, "hit_at_5", 0.0),  # fallback to named field (default 0.0)
+    ])
+    def test_extra_field(self, extra_kv, key, expected):
+        m = RagMetrics(round=0, n_queries=1, extra=extra_kv)
+        assert m.get(key) == expected
+
+    def test_get_unknown_returns_default(self):
+        m = RagMetrics(round=0, n_queries=1)
+        assert m.get("nonexistent", -1.0) == -1.0
+
+    def test_extra_preserved_through_asdict(self):
+        m = RagMetrics(round=0, n_queries=1, extra={"hit_at_3": 0.5})
+        from dataclasses import asdict
+        d = asdict(m)
+        assert d["extra"] == {"hit_at_3": 0.5}
+
     def test_evolution_metrics_default_timestamp(self):
         m = EvolutionMetrics(round=0)
         assert m.timestamp != ""
