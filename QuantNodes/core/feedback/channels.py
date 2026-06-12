@@ -14,10 +14,25 @@ from ..constants import BASE_FEATURE_NAMES as _BASE_FEATURE_NAMES
 from .dataclass import ChannelFeedback, FeedbackChannel
 
 
-def collect_execution(stdout: str, stderr: str, exit_code: int) -> ChannelFeedback:
-    """EXECUTION 通道: 沙箱执行结果。"""
+def collect_execution(
+    stdout: str,
+    stderr: str,
+    exit_code: int,
+    max_output_chars: int = 500,
+) -> ChannelFeedback:
+    """EXECUTION 通道: 沙箱执行结果。
+
+    Args:
+        stdout/stderr: 沙箱输出
+        exit_code: 进程退出码
+        max_output_chars: stdout/stderr 截断长度 (M2)
+    """
     passed = exit_code == 0
-    detail = f"exit={exit_code}\nstdout: {str(stdout)[:500]}\nstderr: {str(stderr)[:500]}"
+    detail = (
+        f"exit={exit_code}\n"
+        f"stdout: {str(stdout)[:max_output_chars]}\n"
+        f"stderr: {str(stderr)[:max_output_chars]}"
+    )
     score = 1.0 if passed else 0.0
     return ChannelFeedback(
         channel=FeedbackChannel.EXECUTION,

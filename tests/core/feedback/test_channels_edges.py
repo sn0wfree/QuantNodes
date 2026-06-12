@@ -227,3 +227,31 @@ class TestInternalHelpers:
         assert "returns" in _BASE_FEATURE_NAMES
         assert "close" in _BASE_FEATURE_NAMES
         assert "turnover" in _BASE_FEATURE_NAMES
+
+
+# ============================================================================
+# M2: collect_execution max_output_chars
+# ============================================================================
+
+class TestCollectExecutionMaxChars:
+    @pytest.mark.parametrize("max_chars,expected_in_detail", [
+        (100, "a" * 100),    # 截断到 100
+        (500, "a" * 500),    # 默认
+        (10, "a" * 10),      # 短截断
+        (0, ""),             # 0 → 空
+    ])
+    def test_max_output_chars(self, max_chars, expected_in_detail):
+        from QuantNodes.core.feedback import collect_execution
+        long = "a" * 1000
+        fb = collect_execution(stdout=long, stderr=long, exit_code=0,
+                               max_output_chars=max_chars)
+        assert expected_in_detail in fb.detail
+        # 长于 max_chars 的部分应被截断
+        if max_chars < 1000:
+            assert "a" * (max_chars + 1) not in fb.detail
+
+    def test_default_backward_compat(self):
+        from QuantNodes.core.feedback import collect_execution
+        fb = collect_execution(stdout="hi", stderr="err", exit_code=0)
+        assert "hi" in fb.detail
+        assert "err" in fb.detail
