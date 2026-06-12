@@ -5,6 +5,7 @@ import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Any
 
 import pandas as pd
@@ -13,13 +14,23 @@ from ..constants import METRIC_KEYS as _METRIC_KEYS
 from ..feedback import FactorFeedback
 
 
+class Operation(str, Enum):
+    """M1: 演化操作类型 — 替代硬编码字符串 'original'/'mutation'/'crossover'。
+
+    str Enum 同时兼容 dataclass.field(default="original") 旧用法。
+    """
+    ORIGINAL = "original"
+    MUTATION = "mutation"
+    CROSSOVER = "crossover"
+
+
 @dataclass
 class TrajectoryEntry:
     """单条演化轨迹 — QuantaAlpha `Trace.hist` 等价物。"""
 
     entry_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     round_idx: int = 0
-    operation: str = "original"  # 'original' | 'mutation' | 'crossover'
+    operation: str = Operation.ORIGINAL  # M1: enum 默认值, 仍兼容 str
     config_snapshot: dict = field(default_factory=dict)
     context_subset: dict = field(default_factory=dict)
     feedback: FactorFeedback | None = None

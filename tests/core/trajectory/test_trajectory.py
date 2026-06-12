@@ -451,3 +451,59 @@ def test_selector_filters_failed_feedback():
     ]
     result = sel.select(pool, n=1)
     assert [e.entry_id for e in result] == ["pass"]
+
+
+# ============================================================================
+# M1: Operation enum
+# ============================================================================
+
+from QuantNodes.core.trajectory import Operation
+
+
+class TestOperationEnum:
+    def test_three_values(self):
+        assert Operation.ORIGINAL.value == "original"
+        assert Operation.MUTATION.value == "mutation"
+        assert Operation.CROSSOVER.value == "crossover"
+
+    def test_str_enum(self):
+        """str Enum → 直接当字符串用。"""
+        assert Operation.ORIGINAL == "original"
+        assert isinstance(Operation.ORIGINAL, str)
+
+    def test_from_string(self):
+        assert Operation("original") is Operation.ORIGINAL
+        assert Operation("mutation") is Operation.MUTATION
+        assert Operation("crossover") is Operation.CROSSOVER
+
+    def test_invalid_raises(self):
+        with pytest.raises(ValueError):
+            Operation("unknown_op")
+
+    @pytest.mark.parametrize("op,expected_value", [
+        (Operation.ORIGINAL, "original"),
+        (Operation.MUTATION, "mutation"),
+        (Operation.CROSSOVER, "crossover"),
+    ])
+    def test_param(self, op, expected_value):
+        assert op.value == expected_value
+
+    def test_entry_default_uses_enum(self):
+        """TrajectoryEntry default 是 Operation.ORIGINAL。"""
+        from QuantNodes.core.trajectory import TrajectoryEntry
+        e = TrajectoryEntry()
+        # 兼容 str
+        assert e.operation.value == "original"
+        assert e.operation == Operation.ORIGINAL
+
+    def test_entry_accepts_enum(self):
+        from QuantNodes.core.trajectory import TrajectoryEntry
+        e = TrajectoryEntry(operation=Operation.MUTATION)
+        assert e.operation == Operation.MUTATION
+        assert e.operation == "mutation"  # str 比较
+
+    def test_lineage_dag_colors_use_enum(self):
+        """_OPERATION_COLORS 与 Operation enum 同步。"""
+        from QuantNodes.core.visualization.lineage_dag import _OPERATION_COLORS
+        for op in Operation:
+            assert op.value in _OPERATION_COLORS

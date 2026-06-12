@@ -9,14 +9,14 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from typing import Any, Mapping
 
-from ..trajectory import TrajectoryEntry
+from ..trajectory import TrajectoryEntry, Operation
 
 
-# 节点颜色 (按 operation)
+# 节点颜色 (按 operation) — M1: 改用 Operation enum 自动同步
 _OPERATION_COLORS = {
-    "original": "#4C78A8",
-    "mutation": "#F58518",
-    "crossover": "#E45756",
+    Operation.ORIGINAL.value: "#4C78A8",
+    Operation.MUTATION.value: "#F58518",
+    Operation.CROSSOVER.value: "#E45756",
 }
 
 
