@@ -39,7 +39,8 @@ def _df_to_hdf_safe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ── 行业代码映射 ──────────────────────────────────────────────
-_INDUSTRY_MAP = {
+# H13: 默认 30 申万一级, 可通过 constructor 的 industry_map 参数覆盖
+_DEFAULT_INDUSTRY_MAP = {
     '农林牧渔': 1, '基础化工': 2, '钢铁': 3, '有色金属': 4, '电子': 5,
     '汽车': 6, '家用电器': 7, '食品饮料': 8, '纺织服饰': 9, '轻工制造': 10,
     '医药生物': 11, '公用事业': 12, '交通运输': 13, '房地产': 14, '商贸零售': 15,
@@ -62,7 +63,8 @@ class IFinDDatabase:
 
     def __init__(self, api_path: str = '', date_beg: str = '',
                  date_end: str = '', universe: str = '沪深300',
-                 fetcher: IFindFetcher = None):
+                 fetcher: IFindFetcher = None,
+                 industry_map: dict | None = None):
         """
         Args:
             api_path: 兼容 DataLoader, 被忽略
@@ -70,6 +72,7 @@ class IFinDDatabase:
             date_end: 查询截止日期 (空=今天)
             universe: 股票池 ('沪深300', '中证500', 'all')
             fetcher: 注入的 fetcher (测试用 IFindFetcherStub)
+            industry_map: H13 行业代码映射 (None=30 申万一级)
         """
         # H9: 不再硬编码 '20260101', 默认 1 年前 (跨年/跨月可滚动)
         if not date_beg:
@@ -80,6 +83,8 @@ class IFinDDatabase:
         self._date_end = date_end or datetime.now().strftime('%Y%m%d')
         self._universe = universe
         self._fetcher = fetcher or IFindFetcher()
+        # H13: 行业代码映射可覆盖
+        self._industry_map = industry_map if industry_map is not None else _DEFAULT_INDUSTRY_MAP
 
         # 缓存
         self._stklist = None
@@ -389,7 +394,7 @@ class IFinDDatabase:
         return self._get_stock_info_panel(
             'id_citic1',
             '{codes}的行业分类(申万一级)'
-        ).applymap(lambda x: _INDUSTRY_MAP.get(str(x), 0) if pd.notna(x) else 0)
+        ).applymap(lambda x: self._industry_map.get(str(x), 0) if pd.notna(x) else 0)
 
     def _get_market_value(self) -> pd.DataFrame:
         """流通市值面板 (dates × stocks)"""

@@ -28,6 +28,10 @@ class FactorScoreNode(BaseNode):
     def __init__(self, name: str = "FactorScore", config: dict = None, **kwargs):
         super().__init__(name, config, **kwargs)
         self._enabled = config.get('enabled', True) if config else True
+        # H15: 行业数/市值组数/分位数从 config 读取, 仍保留默认 (中信 29 / 3 / 5)
+        self._n_industries = int(config.get('n_industries', 29)) if config else 29
+        self._n_size_groups = int(config.get('n_size_groups', 3)) if config else 3
+        self._n_quantile_groups = int(config.get('n_quantile_groups', 5)) if config else 5
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         if not self._enabled:
@@ -47,7 +51,10 @@ class FactorScoreNode(BaseNode):
 
     def _score_by_size_ind(self, factor_data, mv, industry, price, factor_ori):
         """市值行业分层打分"""
-        group = 5
+        # H15: 全部可配置 (config.get 已在 __init__)
+        group = self._n_quantile_groups
+        n_size = self._n_size_groups
+        n_ind = self._n_industries
         adj_dates = factor_data.index.tolist()
 
         # 对齐
@@ -67,12 +74,15 @@ class FactorScoreNode(BaseNode):
         for i in range(len(factor_data)):
             t_i = factor_data.index[i]
             nonan = factor_data.loc[t_i].notna().sum()
-            if nonan == 0 or nonan < 3 * 29 * group:
+            # H15: 最低有效股票数 = 市值组数 × 行业数 × 分位组数
+            if nonan == 0 or nonan < n_size * n_ind * group:
                 if i > 0:
                     fac_group.loc[t_i] = fac_group.iloc[i - 1]
                 continue
 
-            mv_group.loc[t_i] = pd.qcut(mv_adj.loc[t_i], 3, labels=range(1, 4))
+            mv_group.loc[t_i] = pd.qcut(
+                mv_adj.loc[t_i], n_size, labels=range(1, n_size + 1),
+            )
             fac_group.loc[t_i] = factor_data.loc[t_i].groupby(
                 [mv_group.loc[t_i], ind_adj.loc[t_i]]
             ).apply(lambda x: my_qcut(x, group))

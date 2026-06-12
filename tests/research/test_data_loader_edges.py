@@ -140,3 +140,92 @@ class TestLoadCustom:
         loader = DataLoader(str(data_dir) + "/")
         with pytest.raises(ValueError):
             loader.load_custom(("dir", "x.txt"))
+
+
+# ============================================================================
+# H13-H16: 行业/指数/天数/打分 配置可外部覆盖
+# ============================================================================
+
+from QuantNodes.research.factor_test.utils.constants import (
+    INDEX_MAPPING,
+    INDUSTRY_MAPPING,
+    ANNUAL_DAYS,
+    load_overrides,
+    resolve_industry_map,
+    resolve_index_mapping,
+    resolve_annual_days,
+)
+
+
+class TestIndustryConfigOverride:
+    """H13: 行业映射可外部覆盖。"""
+
+    def test_default_industry_map(self):
+        m = resolve_industry_map()
+        assert "id_citic1" in m
+        assert m["id_citic1"] == "ind_name_CITIC_1"
+
+    def test_override_merges(self, tmp_path):
+        p = tmp_path / "ov.json"
+        p.write_text('{"INDUSTRY_MAP": {"id_citic1": "custom_name", "new_key": "v"}}')
+        ov = load_overrides(p)
+        m = resolve_industry_map(ov)
+        assert m["id_citic1"] == "custom_name"  # overridden
+        assert m["id_citic1A"] == "ind_name_CITIC_1A"  # default kept
+        assert m["new_key"] == "v"  # new added
+
+    @pytest.mark.parametrize("missing", [None, "/nonexistent/ov.json"])
+    def test_load_overrides_returns_empty(self, missing):
+        assert load_overrides(missing) == {}
+
+
+class TestIndexConfigOverride:
+    """H14: 指数映射可外部覆盖 (含 SZ50 死引用清理)。"""
+
+    def test_default_index_mapping(self):
+        m = resolve_index_mapping()
+        assert "HS300" in m
+        assert m["HS300"] == ("stk_daily.h5", "id_300")
+        assert "SZ50" not in m  # H8 死引用清理
+
+    def test_override_merges(self, tmp_path):
+        p = tmp_path / "ov.json"
+        p.write_text('{"INDEX_MAPPING": {"HS300": ["new.h5", "new_key"]}}')
+        ov = load_overrides(p)
+        m = resolve_index_mapping(ov)
+        assert m["HS300"] == ("new.h5", "new_key")
+        assert m["ZZ500"] == ("stk_daily.h5", "id_500")
+
+
+class TestAnnualDays:
+    """H16: 年化天数可覆盖 (A 股 250 / 美股 252 / 24h 365)。"""
+
+    @pytest.mark.parametrize("days", [250, 252, 365, 240])
+    def test_override(self, tmp_path, days):
+        p = tmp_path / "ov.json"
+        p.write_text(f'{{"ANNUAL_DAYS": {days}}}')
+        assert resolve_annual_days(load_overrides(p)) == days
+
+    def test_default(self):
+        assert resolve_annual_days() == ANNUAL_DAYS == 250
+
+
+class TestFactorScoreConfig:
+    """H15: factor_score_node 三参数可调。"""
+
+    def test_default_29_industries(self):
+        from QuantNodes.research.factor_test.nodes.factor_score_node import FactorScoreNode
+        node = FactorScoreNode(config={})
+        assert node._n_industries == 29
+        assert node._n_size_groups == 3
+        assert node._n_quantile_groups == 5
+
+    @pytest.mark.parametrize("cfg,expected", [
+        ({"n_industries": 30, "n_size_groups": 2, "n_quantile_groups": 10}, (30, 2, 10)),
+        ({"n_industries": 10, "n_size_groups": 5, "n_quantile_groups": 3}, (10, 5, 3)),
+        ({"n_industries": 1, "n_size_groups": 1, "n_quantile_groups": 1}, (1, 1, 1)),
+    ])
+    def test_custom_config(self, cfg, expected):
+        from QuantNodes.research.factor_test.nodes.factor_score_node import FactorScoreNode
+        node = FactorScoreNode(config=cfg)
+        assert (node._n_industries, node._n_size_groups, node._n_quantile_groups) == expected
