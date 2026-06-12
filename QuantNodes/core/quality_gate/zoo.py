@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from pathlib import Path
 from typing import Iterator
 
@@ -9,13 +10,18 @@ import pandas as pd
 
 
 def ast_hash(expression: str) -> int:
-    """AST 规范化 hash (忽略变量名 / 字段注解, 只保留结构)。
+    """AST 规范化 hash (跨进程确定)。
+
+    使用 `hashlib.sha256` 替代 Python 内置 `hash()` (后者受 `PYTHONHASHSEED` 影响,
+    跨进程不幂等, 会导致 ProcessPool 模式下的 redundancy check 静默失效)。
 
     注: `ast.dump(annotate_fields=False)` 移除字段名 ('id', 'arg'),
     只保留节点类型和基本字面量, 实现"结构等价即同 hash"。
     """
     tree = ast.parse(expression)
-    return hash(ast.dump(tree, annotate_fields=False))
+    payload = ast.dump(tree, annotate_fields=False).encode("utf-8")
+    digest = hashlib.sha256(payload).digest()
+    return int.from_bytes(digest[:8], "big", signed=False)
 
 
 class FactorZoo:
