@@ -4,15 +4,9 @@ from __future__ import annotations
 import ast
 from typing import Set
 
+from ..constants import BASE_FEATURE_NAMES as _BASE_FEATURE_NAMES
 from ..feedback import ChannelFeedback, FeedbackChannel
 from .settings import ComplexitySetting
-
-
-_BASE_FEATURE_NAMES: Set[str] = frozenset({
-    "open", "high", "low", "close", "volume", "amount",
-    "vwap", "turnover", "mv_float", "total_mv", "circ_mv",
-    "returns", "vwap_adj", "industry", "cap",
-})
 
 
 class ComplexityChecker:

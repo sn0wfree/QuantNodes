@@ -9,10 +9,8 @@ from typing import Any
 
 import pandas as pd
 
+from ..constants import METRIC_KEYS as _METRIC_KEYS
 from ..feedback import FactorFeedback
-
-
-_METRIC_KEYS = ("ic_mean", "rank_ic_mean", "sharpe", "arr", "mdd", "calmar")
 
 
 @dataclass

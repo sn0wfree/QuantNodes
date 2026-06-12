@@ -15,6 +15,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ..constants import EXTENDED_METRIC_KEYS as KNOWN_METRICS
+
 
 class FeedbackChannel(str, Enum):
     """5 通道反馈信号。"""
@@ -201,9 +203,7 @@ def ensure_feedback(result: Any, factor_id: str, factor_name: str) -> FactorFeed
             result.factor_name = factor_name
         return result
     if isinstance(result, dict):
-        known_metrics = ("ic", "rank_ic", "sharpe", "arr", "mdd", "calmar",
-                         "turnover", "win_rate", "ic_ir")
-        metadata = {k: _safe_scalar(result[k]) for k in known_metrics if k in result}
+        metadata = {k: _safe_scalar(result[k]) for k in KNOWN_METRICS if k in result}
         return FactorFeedback(
             factor_id=factor_id,
             factor_name=factor_name,

@@ -10,14 +10,8 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
+from ..constants import BASE_FEATURE_NAMES as _BASE_FEATURE_NAMES
 from .dataclass import ChannelFeedback, FeedbackChannel
-
-
-_BASE_FEATURE_NAMES = frozenset({
-    "open", "high", "low", "close", "volume", "amount",
-    "vwap", "turnover", "mv_float", "total_mv", "circ_mv",
-    "returns", "vwap_adj",
-})
 
 
 def collect_execution(stdout: str, stderr: str, exit_code: int) -> ChannelFeedback:

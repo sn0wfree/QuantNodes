@@ -8,6 +8,7 @@ from typing import Iterator
 
 import pandas as pd
 
+from ..constants import PARQUET_COLUMNS as _PARQUET_COLUMNS
 from ..feedback import FactorFeedback
 from .entry import TrajectoryEntry
 from .lineage import children_of, descendants, lineage
@@ -15,11 +16,6 @@ from .lineage import children_of, descendants, lineage
 
 _PARQUET_NAME = "trajectories.parquet"
 _ENTRIES_SUBDIR = "entries"
-_PARQUET_COLUMNS = (
-    "entry_id", "round_idx", "operation", "parent_ids",
-    "decision", "duration_ms", "timestamp", "factor_name", "summary",
-    "ic_mean", "rank_ic_mean", "sharpe", "arr", "mdd", "calmar",
-)
 
 
 class TrajectoryPool:
