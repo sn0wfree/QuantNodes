@@ -5,13 +5,14 @@ from pathlib import Path
 from typing import Any, Optional
 
 import pandas as pd
+from pydantic import BaseModel, Field
 
 from ..trajectory import TrajectoryEntry, TrajectoryPool
 from .retriever import BaseRetriever, make_retriever
 
 
-# 文档字段权重 (用于构造检索文本)
-_FIELD_WEIGHTS = {
+# H19: 默认字段权重 (外部可覆盖)
+DEFAULT_FIELD_WEIGHTS: dict[str, float] = {
     "name": 3.0,
     "expression": 2.0,
     "hypothesis": 2.5,
@@ -20,22 +21,41 @@ _FIELD_WEIGHTS = {
 }
 
 
+class KnowledgeBaseSetting(BaseModel):
+    """H19: KnowledgeBase 字段权重配置 (Pydantic)。"""
+    field_weights: dict[str, float] = Field(
+        default_factory=lambda: dict(DEFAULT_FIELD_WEIGHTS),
+        description="字段权重: 控制检索文本构造时各字段的重复次数",
+    )
+
+
 class KnowledgeBase:
     """因子知识库。
 
     Args:
         retriever: BaseRetriever 实现 (默认 TFIDF)
         pool: 可选 TrajectoryPool 同步源
+        setting: H19 字段权重配置 (None=默认)
+        field_weights: H19 字段权重 dict (None=默认, 兼容旧 API)
     """
 
     def __init__(
         self,
         retriever: Optional[BaseRetriever] = None,
         pool: Optional[TrajectoryPool] = None,
+        setting: Optional[KnowledgeBaseSetting] = None,
+        field_weights: Optional[dict[str, float]] = None,
     ):
         self.retriever = retriever or make_retriever("tfidf")
         self.pool = pool
         self._entry_ids: set[str] = set()  # 已索引的 entry_id
+        # H19: 字段权重 — setting 优先, field_weights 其次, 默认最后
+        if setting is not None:
+            self._field_weights = dict(setting.field_weights)
+        elif field_weights is not None:
+            self._field_weights = dict(field_weights)
+        else:
+            self._field_weights = dict(DEFAULT_FIELD_WEIGHTS)
 
     # ------------------------------------------------------------------
     # CRUD
@@ -169,8 +189,7 @@ class KnowledgeBase:
     # 内部
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _entry_to_text(entry: TrajectoryEntry) -> str:
+    def _entry_to_text(self, entry: TrajectoryEntry) -> str:
         """把 entry 转为可检索文本 (按字段权重重复关键 token)。"""
         parts: list[str] = []
         cfg = entry.config_snapshot or {}
@@ -181,10 +200,13 @@ class KnowledgeBase:
             (factor_cfg.get("hypothesis", ""), "hypothesis"),
             (factor_cfg.get("description", ""), "description"),
         ):
-            weight = int(_FIELD_WEIGHTS[key])
+            weight = int(self._field_weights.get(key, 1))
             parts.extend([str(src)] * weight)
         if entry.feedback:
-            parts.extend([str(entry.feedback.summary or "")] * int(_FIELD_WEIGHTS["summary"]))
+            parts.extend(
+                [str(entry.feedback.summary or "")]
+                * int(self._field_weights.get("summary", 1))
+            )
         if entry.metrics:
             for k, v in entry.metrics.items():
                 parts.append(f"{k}={v}")

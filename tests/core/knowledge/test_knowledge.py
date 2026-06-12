@@ -303,3 +303,86 @@ def test_evolution_loop_sync_kb(tmp_path, small_pool):
     n = loop.sync_knowledge_base()
     assert n == 3
     assert len(loop.knowledge_base) == 3
+
+
+# ============================================================================
+# H19: KnowledgeBaseSetting 字段权重可配置
+# ============================================================================
+
+from QuantNodes.core.knowledge.knowledge_base import (
+    DEFAULT_FIELD_WEIGHTS,
+    KnowledgeBaseSetting,
+)
+
+
+class TestKnowledgeBaseSetting:
+    def test_default_field_weights(self):
+        s = KnowledgeBaseSetting()
+        assert s.field_weights == DEFAULT_FIELD_WEIGHTS
+        assert s.field_weights["name"] == 3.0
+        assert s.field_weights["hypothesis"] == 2.5
+
+    @pytest.mark.parametrize("override", [
+        {"name": 10.0},  # 提权 name
+        {"name": 1.0, "expression": 1.0},  # 全部降权
+        {},  # 空
+    ])
+    def test_custom_field_weights(self, override):
+        s = KnowledgeBaseSetting(field_weights=override)
+        assert s.field_weights == override
+
+    def test_setting_constructs_kb(self):
+        from QuantNodes.core.knowledge import KnowledgeBase
+        s = KnowledgeBaseSetting(field_weights={"name": 10.0})
+        kb = KnowledgeBase(setting=s)
+        assert kb._field_weights["name"] == 10.0
+
+    def test_kwarg_field_weights_compat(self):
+        """旧 API field_weights= 仍可用。"""
+        from QuantNodes.core.knowledge import KnowledgeBase
+        kb = KnowledgeBase(field_weights={"name": 5.0})
+        assert kb._field_weights["name"] == 5.0
+
+    def test_setting_overrides_kwarg(self):
+        """setting 优先于 field_weights。"""
+        from QuantNodes.core.knowledge import KnowledgeBase
+        s = KnowledgeBaseSetting(field_weights={"name": 10.0})
+        kb = KnowledgeBase(setting=s, field_weights={"name": 1.0})
+        assert kb._field_weights["name"] == 10.0  # setting 胜
+
+    def test_text_construction_uses_custom_weights(self, tmp_path):
+        """自定义权重影响 _entry_to_text 输出。"""
+        from QuantNodes.core.knowledge import KnowledgeBase
+        from QuantNodes.core.feedback import FactorFeedback
+        from QuantNodes.core.trajectory import TrajectoryEntry
+        from datetime import datetime
+
+        kb = KnowledgeBase(field_weights={"name": 5.0, "summary": 0})
+        entry = TrajectoryEntry(
+            entry_id="e1",
+            config_snapshot={"factor": {"name": "test_name", "expression": "close"}},
+            feedback=FactorFeedback(
+                factor_id="e1", factor_name="test_name",
+                decision=True, summary="ok",
+            ),
+        )
+        text = kb._entry_to_text(entry)
+        # name 重复 5 次
+        assert text.count("test_name") == 5
+        # summary 重复 0 次 (默认 1.0)
+        assert "ok" not in text
+
+
+class TestDefaultFieldWeights:
+    def test_default_has_5_keys(self):
+        assert len(DEFAULT_FIELD_WEIGHTS) == 5
+
+    @pytest.mark.parametrize("key", ["name", "expression", "hypothesis", "description", "summary"])
+    def test_required_keys(self, key):
+        assert key in DEFAULT_FIELD_WEIGHTS
+
+    @pytest.mark.parametrize("w", [0.0, 1.0, 2.5, 3.0, 10.0])
+    def test_custom_weight_value(self, w):
+        from QuantNodes.core.knowledge.knowledge_base import KnowledgeBase
+        kb = KnowledgeBase(field_weights={"name": w})
+        assert kb._field_weights["name"] == w
