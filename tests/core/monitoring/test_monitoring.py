@@ -209,3 +209,63 @@ def test_cli_factor_dashboard(pool_with_metrics, tmp_path):
     assert (tmp_path / "dash_metrics.json").exists()
     html = (tmp_path / "dash.html").read_text()
     assert len(html) > 5000
+
+
+# ============================================================================
+# M4: MetricCollector.update_evolution_from_pool metric 参数
+# ============================================================================
+
+class TestMonitorMetricParam:
+    @pytest.mark.parametrize("metric,expected_key", [
+        ("sharpe", "sharpe"),  # 默认
+        ("ic_mean", "ic_mean"),
+        ("arr", "arr"),
+        ("calmar", "calmar"),
+    ])
+    def test_update_evolution_metric(self, tmp_path, metric, expected_key):
+        from QuantNodes.core.monitoring import MetricCollector
+        from QuantNodes.core.trajectory import TrajectoryPool, TrajectoryEntry
+        from QuantNodes.core.feedback import FactorFeedback
+
+        pool = TrajectoryPool(tmp_path)
+        # 不同 entry 不同 sharpe / ic_mean
+        for i, (s, ic) in enumerate([(0.5, 0.01), (1.5, 0.05), (2.5, 0.08)]):
+            e = TrajectoryEntry(
+                entry_id=f"e{i}", round_idx=0,
+                feedback=FactorFeedback(
+                    factor_id=f"e{i}", factor_name=f"f{i}",
+                    decision=True, summary="ok",
+                ),
+                metrics={"sharpe": s, "ic_mean": ic},
+            )
+            pool.add(e)
+        c = MetricCollector()
+        c.update_evolution_from_pool(pool, round_idx=0, metric=metric)
+        em = c.evolution_history[-1]
+        if metric == "sharpe":
+            assert abs(em.best_metric - 2.5) < 1e-6
+        elif metric == "ic_mean":
+            assert abs(em.best_metric - 0.08) < 1e-6
+        elif metric == "arr":
+            assert em.best_metric == 0.0  # 不存在
+        elif metric == "calmar":
+            assert em.best_metric == 0.0  # 不存在
+
+    def test_default_metric_is_sharpe(self, tmp_path):
+        from QuantNodes.core.monitoring import MetricCollector
+        from QuantNodes.core.trajectory import TrajectoryPool, TrajectoryEntry
+        from QuantNodes.core.feedback import FactorFeedback
+
+        pool = TrajectoryPool(tmp_path)
+        e = TrajectoryEntry(
+            entry_id="e1", round_idx=0,
+            feedback=FactorFeedback(
+                factor_id="e1", factor_name="f1",
+                decision=True, summary="ok",
+            ),
+            metrics={"sharpe": 1.0, "ic_mean": 0.1},
+        )
+        pool.add(e)
+        c = MetricCollector()
+        c.update_evolution_from_pool(pool, round_idx=0)  # 不传 metric
+        assert c.evolution_history[-1].best_metric == 1.0  # 用 sharpe

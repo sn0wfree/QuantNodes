@@ -28,6 +28,8 @@ class ParentSelector:
         metric: 用于 best / weighted 的指标 (默认 'sharpe')
         top_percent_threshold: top_percent_plus_random 中 top 比例 (默认 0.3)
         seed: 随机种子 (None=不固定)
+        temperature: M4 weighted 策略的 softmax 温度 (默认 1.0,
+            > 1.0 更均匀采样, < 1.0 更集中于高分)
     """
 
     def __init__(
@@ -36,6 +38,7 @@ class ParentSelector:
         metric: str = "sharpe",
         top_percent_threshold: float = 0.3,
         seed: int | None = None,
+        temperature: float = 1.0,
     ):
         valid = {s.value for s in SelectionStrategy}
         if strategy not in valid:
@@ -45,6 +48,7 @@ class ParentSelector:
         self.strategy = strategy
         self.metric = metric
         self.top_percent_threshold = top_percent_threshold
+        self.temperature = temperature
         self._rng = np.random.default_rng(seed)
 
     def select(
@@ -104,7 +108,9 @@ class ParentSelector:
         if inverse:
             scores = -scores
         scores = scores - scores.max()
-        weights = np.exp(scores)
+        # M4: temperature 调节 softmax 锐度
+        #   T → 0: 趋近 argmax; T → ∞: 趋近均匀; T=1: 标准 softmax
+        weights = np.exp(scores / max(self.temperature, 1e-9))
         total = weights.sum()
         if total == 0 or not np.isfinite(total):
             return self._random(valid, n)

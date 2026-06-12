@@ -163,22 +163,23 @@ class MetricCollector:
 
     def update_evolution_from_pool(
         self, pool: TrajectoryPool, round_idx: int = 0,
+        metric: str = "sharpe",  # M4: 监控指标可调 (默认 sharpe)
     ) -> None:
         """从 TrajectoryPool 提取当前统计。"""
         passed = sum(1 for e in pool.all() if e.feedback and e.feedback.decision)
         rejected = pool.size - passed
-        best_sharpe = 0.0
+        best_val = 0.0
         best_name = ""
         for e in pool.all():
-            sharpe = (e.metrics or {}).get("sharpe", 0)
-            if sharpe > best_sharpe:
-                best_sharpe = sharpe
+            val = (e.metrics or {}).get(metric, 0)
+            if val > best_val:
+                best_val = val
                 if e.feedback:
                     best_name = e.feedback.factor_name
         self.add_evolution(EvolutionMetrics(
             round=round_idx, pool_size=pool.size,
             total_count=passed, rejected_count=rejected,
-            best_metric=best_sharpe, best_factor_name=best_name,
+            best_metric=best_val, best_factor_name=best_name,
         ))
 
     # ------------------------------------------------------------------
