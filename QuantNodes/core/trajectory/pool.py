@@ -14,6 +14,7 @@ from .lineage import children_of, descendants, lineage
 
 
 _PARQUET_NAME = "trajectories.parquet"
+_ENTRIES_SUBDIR = "entries"
 _PARQUET_COLUMNS = (
     "entry_id", "round_idx", "operation", "parent_ids",
     "decision", "duration_ms", "timestamp", "factor_name", "summary",
@@ -25,18 +26,27 @@ class TrajectoryPool:
     """演化轨迹池 — 持久化每轮实验的完整记录。
 
     双层存储:
-        - Layer 1: trajectories.parquet (元数据, append)
-        - Layer 2: {entry_id}.json (完整记录)
+        - Layer 1: {parquet_name}.parquet (元数据, append)
+        - Layer 2: entries/{entry_id}.json (完整记录, 独立子目录)
 
     Args:
         base_dir: 池根目录 (自动创建)
+        parquet_name: Parquet 文件名 (默认 "trajectories.parquet"),
+                       允许不同实验共用 base_dir 各自存盘。
     """
 
-    def __init__(self, base_dir: Path | str):
+    def __init__(
+        self,
+        base_dir: Path | str,
+        parquet_name: str = _PARQUET_NAME,
+    ):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self._entries_dir = self.base_dir / _ENTRIES_SUBDIR
+        self._entries_dir.mkdir(parents=True, exist_ok=True)
+        self._parquet_name = parquet_name
         self._entries: dict[str, TrajectoryEntry] = {}
-        self._parquet_path = self.base_dir / _PARQUET_NAME
+        self._parquet_path = self.base_dir / self._parquet_name
         self._lock = threading.Lock()
         self._load()
 
@@ -71,13 +81,14 @@ class TrajectoryPool:
         return len(self._entries)
 
     def reset(self) -> None:
-        """清空内存 + 删除所有持久化文件。"""
+        """清空内存 + 删除所有持久化文件 (entries/ 子目录 + Parquet)。"""
         with self._lock:
             self._entries.clear()
             if self._parquet_path.exists():
                 self._parquet_path.unlink()
-            for p in self.base_dir.glob("*.json"):
-                p.unlink()
+            if self._entries_dir.exists():
+                for p in self._entries_dir.glob("*.json"):
+                    p.unlink()
 
     # ------------------------------------------------------------------
     # 过滤
@@ -149,7 +160,7 @@ class TrajectoryPool:
             combined = new_row
         combined.to_parquet(self._parquet_path, index=False)
 
-        json_path = self.base_dir / f"{entry.entry_id}.json"
+        json_path = self._entries_dir / f"{entry.entry_id}.json"
         with json_path.open("w", encoding="utf-8") as f:
             json.dump(entry.to_json_dict(), f, ensure_ascii=False, indent=2)
 
@@ -163,7 +174,7 @@ class TrajectoryPool:
             return
         for _, row in df.iterrows():
             entry_id = str(row["entry_id"])
-            json_path = self.base_dir / f"{entry_id}.json"
+            json_path = self._entries_dir / f"{entry_id}.json"
             if not json_path.exists():
                 continue
             try:

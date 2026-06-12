@@ -163,8 +163,8 @@ class TestTrajectoryPool:
         pool.add(e)
         # parquet 写入
         assert (tmp_path / "trajectories.parquet").exists()
-        # JSON 写入
-        assert (tmp_path / "e1.json").exists()
+        # JSON 写入 (entries/ 子目录)
+        assert (tmp_path / "entries" / "e1.json").exists()
 
     def test_reload_from_disk(self, tmp_path: Path):
         pool1 = TrajectoryPool(tmp_path)

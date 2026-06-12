@@ -71,8 +71,43 @@ class TestAdd:
         fresh_pool.add(_entry("e1"))
         fresh_pool.add(_entry("e2"))
         assert (tmp_path / "trajectories.parquet").exists()
-        assert (tmp_path / "e1.json").exists()
-        assert (tmp_path / "e2.json").exists()
+        assert (tmp_path / "entries" / "e1.json").exists()
+        assert (tmp_path / "entries" / "e2.json").exists()
+
+    @pytest.mark.parametrize("custom_name", [
+        "exp_a.parquet", "my_pool.parquet", "run_2024.parquet",
+    ])
+    def test_custom_parquet_name(self, tmp_path, custom_name):
+        """H4: parquet 文件名可定制, 允许多实验共存。"""
+        pool = TrajectoryPool(tmp_path, parquet_name=custom_name)
+        pool.add(_entry("e1"))
+        assert (tmp_path / custom_name).exists()
+        # 默认名应不存在
+        assert not (tmp_path / "trajectories.parquet").exists()
+        # 重载: 用同 parquet_name 加载
+        pool2 = TrajectoryPool(tmp_path, parquet_name=custom_name)
+        assert pool2.size == 1
+
+    def test_custom_parquet_name_then_default_loads_empty(self, tmp_path):
+        """用默认 parquet_name 加载自定义 pool, 应得空。"""
+        pool = TrajectoryPool(tmp_path, parquet_name="custom.parquet")
+        pool.add(_entry("e1"))
+        # 默认名加载 → 空
+        pool2 = TrajectoryPool(tmp_path)
+        assert pool2.size == 0
+
+    def test_reset_creates_entries_dir(self, tmp_path):
+        """H5: reset() 用 entries/ 子目录, 不误删外部 JSON。"""
+        pool = TrajectoryPool(tmp_path)
+        pool.add(_entry("e1"))
+        # 外部 JSON 不应被误删
+        external = tmp_path / "user_data.json"
+        external.write_text("{}")
+        pool.reset()
+        assert external.exists()  # 不被误删
+        assert (tmp_path / "entries").exists()  # 目录保留
+        assert (tmp_path / "trajectories.parquet").exists() is False
+        assert len(list((tmp_path / "entries").glob("*.json"))) == 0
 
 
 # ============================================================================

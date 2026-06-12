@@ -96,8 +96,9 @@ class TestParquetCompat:
             },
         ])
         df.to_parquet(path)
-        # JSON 文件也要存在
-        (tmp_path / "e1.json").write_text(json.dumps({
+        # JSON 文件也要存在 (entries/ 子目录)
+        (tmp_path / "entries").mkdir()
+        (tmp_path / "entries" / "e1.json").write_text(json.dumps({
             "entry_id": "e1", "round_idx": 0, "operation": "original",
             "config_snapshot": {}, "context_subset": {},
             "feedback": None, "parent_ids": [], "metrics": {},

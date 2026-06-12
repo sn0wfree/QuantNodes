@@ -211,8 +211,8 @@ def test_e2e_persist_and_reload(tmp_path):
 
     # Parquet 文件存在
     assert (base / "trajectories.parquet").exists()
-    # JSON 文件存在 (每条 entry 一个)
-    json_files = list(base.glob("*.json"))
+    # JSON 文件存在 (每条 entry 一个, 在 entries/ 子目录)
+    json_files = list((base / "entries").glob("*.json"))
     assert len(json_files) == original_size
 
 
