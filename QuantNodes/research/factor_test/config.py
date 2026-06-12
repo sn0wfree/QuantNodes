@@ -143,6 +143,8 @@ class SingleFactorTestConfig(BaseModel):
     evolution: EvolutionConfig = Field(default_factory=EvolutionConfig)
     data_path: str = Field(default='./testdata/test_h5_new/', description="数据根目录")
     load_keys: list = Field(
-        default=['stklist', 'trade_dt', 'cp', 'id_citic1', 'mv_float'],
+        # M7: 默认含 tradability filter 必需键 (st/suspend/ud_limit/ipo_days)
+        default=['stklist', 'trade_dt', 'cp', 'id_citic1', 'mv_float',
+                 'st', 'suspend', 'ud_limit', 'ipo_days'],
         description="需要加载的数据 key 列表"
     )

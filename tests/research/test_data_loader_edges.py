@@ -277,3 +277,40 @@ class TestBuildConfigSignature:
         assert "enable_kb" not in sig.parameters
         # enable_quality_gate 保留
         assert "enable_quality_gate" in sig.parameters
+
+
+# ============================================================================
+# M7: load_keys 默认含 tradability 必需键
+# ============================================================================
+
+class TestLoadKeysDefault:
+    def test_config_default_has_tradability_keys(self):
+        from QuantNodes.research.factor_test.config import (
+            SingleFactorTestConfig, FactorSetting, PreprocessSetting,
+        )
+        cfg = SingleFactorTestConfig(
+            factor=FactorSetting(name="x", factor_dir="x.h5"),
+            preprocess=PreprocessSetting(adj_date_beg=20240101, adj_date_end=20241231),
+        )
+        for key in ("st", "suspend", "ud_limit", "ipo_days"):
+            assert key in cfg.load_keys, f"Missing tradability key: {key}"
+
+    def test_config_default_has_base_keys(self):
+        from QuantNodes.research.factor_test.config import (
+            SingleFactorTestConfig, FactorSetting, PreprocessSetting,
+        )
+        cfg = SingleFactorTestConfig(
+            factor=FactorSetting(name="x", factor_dir="x.h5"),
+            preprocess=PreprocessSetting(adj_date_beg=20240101, adj_date_end=20241231),
+        )
+        for key in ("stklist", "trade_dt", "cp", "id_citic1", "mv_float"):
+            assert key in cfg.load_keys
+
+    def test_node_default_has_tradability_keys(self):
+        from QuantNodes.research.factor_test.nodes.load_data_node import LoadDataNode
+        node = LoadDataNode(config={"load_keys": [
+            "stklist", "trade_dt", "cp", "id_citic1", "mv_float",
+            "st", "suspend", "ud_limit", "ipo_days",
+        ]})
+        for key in ("st", "suspend", "ud_limit", "ipo_days"):
+            assert key in node._load_keys

@@ -28,7 +28,12 @@ class LoadDataNode(BaseNode):
         super().__init__(name, config, **kwargs)
         self._factor_config = None
         self._data_path = config.get('data_path', './testdata/test_h5_new/') if config else './testdata/test_h5_new/'
-        self._load_keys = config.get('load_keys', ['stklist', 'trade_dt', 'cp', 'id_citic1', 'mv_float']) if config else []
+        # M7: 默认含 tradability filter 必需键
+        self._load_keys = config.get(
+            'load_keys',
+            ['stklist', 'trade_dt', 'cp', 'id_citic1', 'mv_float',
+             'st', 'suspend', 'ud_limit', 'ipo_days'],
+        ) if config else []
         if config and 'factor' in config:
             self._factor_config = FactorSetting(**config['factor'])
 
