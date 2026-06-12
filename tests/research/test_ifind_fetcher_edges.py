@@ -159,3 +159,97 @@ def test_load_auth_token_empty(monkeypatch, tmp_path):
     monkeypatch.setattr(fetcher_mod, "IFIND_CONFIG", p)
     with pytest.raises(ValueError):
         fetcher_mod._load_auth_token()
+
+# ============================================================================
+# H17+H18: rate_limit_s / cache_ttl_s 构造参数 + CLI 对齐
+# ============================================================================
+
+from unittest.mock import patch
+
+
+class TestRateLimitParametrize:
+    """H17: rate_limit_s 构造参数。"""
+
+    @pytest.mark.parametrize("rl,expected", [
+        (None, 0.5),
+        (0.0, 0.0),
+        (0.1, 0.1),
+        (1.0, 1.0),
+        (5.0, 5.0),
+    ])
+    def test_rate_limit_s_parametrize(self, tmp_path, rl, expected):
+        from QuantNodes.research.factor_test.ifind_db.fetcher import IFindFetcher
+        with patch("QuantNodes.research.factor_test.ifind_db.fetcher._load_auth_token", return_value="mock"):
+            f = IFindFetcher(cache_dir=tmp_path, rate_limit_s=rl)
+        assert f.rate_limit_s == expected
+
+
+class TestCacheTtlParametrize:
+    """H17: cache_ttl_s 构造参数。"""
+
+    @pytest.mark.parametrize("ttl,expected", [
+        (None, 7 * 86400),
+        (0, 0),
+        (60, 60),
+        (3600, 3600),
+        (86400, 86400),
+        (30 * 86400, 30 * 86400),
+    ])
+    def test_cache_ttl_s_parametrize(self, tmp_path, ttl, expected):
+        from QuantNodes.research.factor_test.ifind_db.fetcher import IFindFetcher
+        with patch("QuantNodes.research.factor_test.ifind_db.fetcher._load_auth_token", return_value="mock"):
+            f = IFindFetcher(cache_dir=tmp_path, cache_ttl_s=ttl)
+        assert f.cache_ttl_s == expected
+
+    def test_cache_respects_custom_ttl(self, tmp_path):
+        from QuantNodes.research.factor_test.ifind_db.fetcher import IFindFetcher
+        with patch("QuantNodes.research.factor_test.ifind_db.fetcher._load_auth_token", return_value="mock"):
+            f = IFindFetcher(cache_dir=tmp_path, cache_ttl_s=0)
+        key = "test_key"
+        path = tmp_path / f"{key}.parquet"
+        pd.DataFrame({"a": [1]}).to_parquet(path, index=False)
+        assert f._load_cache(key) is None
+
+
+class TestRateLimitRespectsParam:
+    """验证 _rate_limit 真的用了 self.rate_limit_s。"""
+
+    def test_rate_limit_zero_never_sleeps(self, tmp_path):
+        from QuantNodes.research.factor_test.ifind_db.fetcher import IFindFetcher
+        with patch("QuantNodes.research.factor_test.ifind_db.fetcher._load_auth_token", return_value="mock"):
+            f = IFindFetcher(cache_dir=tmp_path, rate_limit_s=0.0)
+        t0 = time.time()
+        f._rate_limit()
+        f._rate_limit()
+        assert (time.time() - t0) < 0.05
+
+    def test_rate_limit_higher_actually_sleeps(self, tmp_path):
+        from QuantNodes.research.factor_test.ifind_db.fetcher import IFindFetcher
+        with patch("QuantNodes.research.factor_test.ifind_db.fetcher._load_auth_token", return_value="mock"):
+            f = IFindFetcher(cache_dir=tmp_path, rate_limit_s=0.1)
+        t0 = time.time()
+        f._rate_limit()
+        f._rate_limit()
+        assert (time.time() - t0) >= 0.1
+
+
+class TestDefaultConstants:
+    """H18: 默认常量值。"""
+
+    def test_default_rate_limit(self):
+        from QuantNodes.research.factor_test.ifind_db.fetcher import IFindFetcher
+        assert IFindFetcher.DEFAULT_RATE_LIMIT_S == 0.5
+
+    def test_default_cache_ttl_7_days(self):
+        from QuantNodes.research.factor_test.ifind_db.fetcher import IFindFetcher
+        assert IFindFetcher.DEFAULT_CACHE_TTL_S == 7 * 86400
+
+    def test_cli_cache_ttl_aligned_with_fetcher(self):
+        import re
+        cli_path = Path("/home/ll/Public/QuantNodes/QuantNodes/cli/__init__.py")
+        text = cli_path.read_text(encoding="utf-8")
+        m = re.search(r"QUANTNODES__CACHE_TTL=(\d+)", text)
+        assert m is not None
+        cli_ttl = int(m.group(1))
+        from QuantNodes.research.factor_test.ifind_db.fetcher import IFindFetcher
+        assert cli_ttl == IFindFetcher.DEFAULT_CACHE_TTL_S

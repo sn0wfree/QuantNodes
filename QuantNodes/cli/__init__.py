@@ -195,9 +195,9 @@ QUANTNODES__MYSQL__DATABASE={mysql_config['db']}
 
 """
     
-    env_content += """# 缓存配置
+    env_content += """# 缓存配置 (H18: 与 IFindFetcher.DEFAULT_CACHE_TTL_S=604800 对齐)
 QUANTNODES__CACHE_ENABLED=true
-QUANTNODES__CACHE_TTL=3600
+QUANTNODES__CACHE_TTL=604800
 """
     
     with open(".env", "w", encoding="utf-8") as f:

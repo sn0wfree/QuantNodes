@@ -36,14 +36,29 @@ def _load_auth_token() -> str:
 class IFindFetcher:
     """iFinD API 调用 + Markdown 解析 + 限流 + 缓存"""
 
-    RATE_LIMIT_SECONDS = 0.5  # 免费版 2 QPS
+    # H17: 限流默认 0.5s (免费版 2 QPS), 付费版可设小
+    DEFAULT_RATE_LIMIT_S = 0.5
+    # H17: 缓存默认 7 天 (604800 秒)
+    DEFAULT_CACHE_TTL_S = 7 * 86400
 
-    def __init__(self, cache_dir: str | Path = None):
+    def __init__(
+        self,
+        cache_dir: str | Path = None,
+        rate_limit_s: float | None = None,
+        cache_ttl_s: int | None = None,
+    ):
         if cache_dir is None:
             cache_dir = Path(__file__).parent / 'cache'
         self._cache_dir = Path(cache_dir)
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._last_call_time = 0.0
+        # H17: 限流 / 缓存 TTL 全部可覆盖
+        self.rate_limit_s = (
+            rate_limit_s if rate_limit_s is not None else self.DEFAULT_RATE_LIMIT_S
+        )
+        self.cache_ttl_s = (
+            cache_ttl_s if cache_ttl_s is not None else self.DEFAULT_CACHE_TTL_S
+        )
 
         # 延迟加载 call 函数 (避免导入时阻塞)
         self._call_fn = None
@@ -57,10 +72,10 @@ class IFindFetcher:
         return self._call_fn
 
     def _rate_limit(self):
-        """限流: 每次调用间隔至少 RATE_LIMIT_SECONDS"""
+        """限流: 每次调用间隔至少 self.rate_limit_s。"""
         elapsed = time.time() - self._last_call_time
-        if elapsed < self.RATE_LIMIT_SECONDS:
-            time.sleep(self.RATE_LIMIT_SECONDS - elapsed)
+        if elapsed < self.rate_limit_s:
+            time.sleep(self.rate_limit_s - elapsed)
         self._last_call_time = time.time()
 
     def _cache_key(self, server_type: str, tool_name: str, params: dict) -> str:
@@ -69,11 +84,10 @@ class IFindFetcher:
         return hashlib.md5(raw.encode()).hexdigest()
 
     def _load_cache(self, key: str) -> pd.DataFrame | None:
-        """从本地缓存加载"""
+        """从本地缓存加载 (TTL 由 self.cache_ttl_s 决定)。"""
         path = self._cache_dir / f"{key}.parquet"
         if path.exists():
-            # 缓存 7 天过期
-            if (time.time() - path.stat().st_mtime) < 7 * 86400:
+            if (time.time() - path.stat().st_mtime) < self.cache_ttl_s:
                 return pd.read_parquet(path)
         return None
 
