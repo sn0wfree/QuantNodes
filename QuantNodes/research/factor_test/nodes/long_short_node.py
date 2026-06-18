@@ -6,6 +6,7 @@ Migrated from factor_performance.py:562-617 cal_longshort_ret()
 
 import sys
 from pathlib import Path
+from typing import Union
 
 import pandas as pd
 
@@ -14,6 +15,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes.configs import LongShortNodeConfig
 from QuantNodes.research.factor_test.utils.performance_metrics import evaluation
 
 
@@ -24,9 +26,20 @@ class LongShortNode(BaseNode):
     输出: {net, eva_total, eva_yearly, period_ret}
     """
 
-    def __init__(self, name: str = "LongShort", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._factor_direction = config.get('factor_direction', 1) if config else 1
+    def __init__(self, name: str = "LongShort",
+                 config: Union[dict, LongShortNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化
+        if isinstance(config, LongShortNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = LongShortNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/LongShortNodeConfig, got {type(config).__name__}"
+            )
+        self._factor_direction = cfg.factor_direction
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

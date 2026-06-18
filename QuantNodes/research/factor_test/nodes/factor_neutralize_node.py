@@ -6,6 +6,7 @@ Migrated from factor_utils.py:534-625 neutralize()
 
 import sys
 from pathlib import Path
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes.configs import NeutralizeNodeConfig
 
 
 class FactorNeutralizeNode(BaseNode):
@@ -25,11 +27,22 @@ class FactorNeutralizeNode(BaseNode):
     输出: factor_neutral
     """
 
-    def __init__(self, name: str = "FactorNeutralize", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._if_industry = config.get('industry_neutral', False) if config else False
-        self._if_risk = config.get('risk_neutral', False) if config else False
-        self._risk_factor_specs = config.get('risk_factors', []) if config else []
+    def __init__(self, name: str = "FactorNeutralize",
+                 config: Union[dict, NeutralizeNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化
+        if isinstance(config, NeutralizeNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = NeutralizeNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/NeutralizeNodeConfig, got {type(config).__name__}"
+            )
+        self._if_industry = cfg.industry_neutral
+        self._if_risk = cfg.risk_neutral
+        self._risk_factor_specs = list(cfg.risk_factors)
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

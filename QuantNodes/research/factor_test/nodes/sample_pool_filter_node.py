@@ -6,7 +6,7 @@ Migrated from factor_utils.py:155-234 select_range()
 
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Union
 
 import numpy as np
 import pandas as pd
@@ -16,6 +16,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes.configs import SamplePoolNodeConfig
 from QuantNodes.research.factor_test.utils.constants import INDEX_MAPPING
 
 
@@ -26,11 +27,22 @@ class SamplePoolFilterNode(BaseNode):
     输出: stock_sample (1=选中, nan=剔除)
     """
 
-    def __init__(self, name: str = "SamplePoolFilter", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._sample_index = config.get('sample_index', 'all') if config else 'all'
-        self._sample_industry = config.get('sample_industry', 'all') if config else 'all'
-        self._sample_customdir = config.get('sample_index_customdir') if config else None
+    def __init__(self, name: str = "SamplePoolFilter",
+                 config: Union[dict, SamplePoolNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化, 避免 BaseNode.__init__ 在 Config 实例上 dict-spread 失败
+        if isinstance(config, SamplePoolNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = SamplePoolNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/SamplePoolNodeConfig, got {type(config).__name__}"
+            )
+        self._sample_index = cfg.sample_index
+        self._sample_industry = cfg.sample_industry
+        self._sample_customdir = cfg.sample_index_customdir
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

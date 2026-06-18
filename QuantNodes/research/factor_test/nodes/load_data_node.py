@@ -3,7 +3,7 @@
 
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 
 import pandas as pd
 
@@ -14,28 +14,33 @@ if _PROJECT_ROOT not in sys.path:
 
 from QuantNodes.core.node import BaseNode
 from QuantNodes.research.factor_test.utils.data_loader import DataLoader
-from QuantNodes.research.factor_test.config import FactorSetting
+from QuantNodes.research.factor_test.nodes.configs import LoadDataNodeConfig
 
 
 class LoadDataNode(BaseNode):
     """加载因子数据、价格、行业、市值等
 
-    输入: config (FactorSetting + data_path + load_keys)
+    输入: config (LoadDataNodeConfig: data_path + load_keys + factor)
     输出: Dict[str, pd.DataFrame]
     """
 
-    def __init__(self, name: str = "LoadData", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._factor_config = None
-        self._data_path = config.get('data_path', './testdata/test_h5_new/') if config else './testdata/test_h5_new/'
-        # M7: 默认含 tradability filter 必需键
-        self._load_keys = config.get(
-            'load_keys',
-            ['stklist', 'trade_dt', 'cp', 'id_citic1', 'mv_float',
-             'st', 'suspend', 'ud_limit', 'ipo_days'],
-        ) if config else []
-        if config and 'factor' in config:
-            self._factor_config = FactorSetting(**config['factor'])
+    def __init__(self, name: str = "LoadData",
+                 config: Union[dict, LoadDataNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化
+        if isinstance(config, LoadDataNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = LoadDataNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/LoadDataNodeConfig, got {type(config).__name__}"
+            )
+        # T0-4: Pydantic 化 (向后兼容 self._data_path / self._load_keys / self._factor_config)
+        self._data_path = cfg.data_path
+        self._load_keys = list(cfg.load_keys)
+        self._factor_config = cfg.factor
 
     def _execute(self, input_data=None, **kwargs) -> Dict[str, pd.DataFrame]:
         loader = DataLoader(self._data_path)

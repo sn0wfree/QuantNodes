@@ -6,6 +6,7 @@ Migrated from factor_performance.py:361-560 cal_group_ret()
 
 import sys
 from pathlib import Path
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes.configs import GroupAnalyzerNodeConfig
 from QuantNodes.research.factor_test.utils.performance_metrics import (
     evaluation, cal_net_simple
 )
@@ -29,14 +31,24 @@ class GroupAnalyzerNode(BaseNode):
             group_eva_abs, group_eva_exc, turnover, ...}
     """
 
-    def __init__(self, name: str = "GroupAnalyzer", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        c = config or {}
-        self._groups = c.get('groups', 5)
-        self._factor_direction = c.get('factor_direction', 1)
-        self._floor_mode = c.get('floor_mode', 'group')
-        self._hedge = c.get('hedge', 'equal')
-        self._hedge_path = c.get('hedge_path')
+    def __init__(self, name: str = "GroupAnalyzer",
+                 config: Union[dict, GroupAnalyzerNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化
+        if isinstance(config, GroupAnalyzerNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = GroupAnalyzerNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/GroupAnalyzerNodeConfig, got {type(config).__name__}"
+            )
+        self._groups = cfg.groups
+        self._factor_direction = cfg.factor_direction
+        self._floor_mode = cfg.floor_mode
+        self._hedge = cfg.hedge
+        self._hedge_path = cfg.hedge_path
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

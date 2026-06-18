@@ -7,7 +7,7 @@ Security: exec() replaced with dict lookup.
 
 import sys
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
-from QuantNodes.research.factor_test.config import TradableSetting
+from QuantNodes.research.factor_test.nodes.configs import TradabilityNodeConfig
 
 
 class TradabilityFilterNode(BaseNode):
@@ -27,10 +27,20 @@ class TradabilityFilterNode(BaseNode):
     输出: tradable (1=可交易, nan=不可)
     """
 
-    def __init__(self, name: str = "TradabilityFilter", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        tradable_config = config.get('tradable', {}) if config else {}
-        self._tradable_setting = TradableSetting(**tradable_config) if tradable_config else TradableSetting()
+    def __init__(self, name: str = "TradabilityFilter",
+                 config: Union[dict, TradabilityNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化
+        if isinstance(config, TradabilityNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = TradabilityNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/TradabilityNodeConfig, got {type(config).__name__}"
+            )
+        self._tradable_setting = cfg.tradable
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

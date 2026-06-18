@@ -8,6 +8,7 @@ Phase 2: 逐步替换为 QuantNodes section_ops 算子
 
 import sys
 from pathlib import Path
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes.configs import PreprocessNodeConfig
 
 
 class FactorPreprocessNode(BaseNode):
@@ -27,15 +29,26 @@ class FactorPreprocessNode(BaseNode):
     输出: factor_std (预处理后的因子, 仅调仓日)
     """
 
-    def __init__(self, name: str = "FactorPreprocess", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._missing = config.get('missing', '') if config else ''
-        self._extreme = config.get('extreme', '') if config else ''
-        self._norm = config.get('norm', '') if config else ''
-        # M5: winsorize 参数可调
-        self._mad_n = float(config.get('mad_n', 5.0)) if config else 5.0
-        self._pct_low = float(config.get('pct_low', 0.025)) if config else 0.025
-        self._pct_high = float(config.get('pct_high', 0.975)) if config else 0.975
+    def __init__(self, name: str = "FactorPreprocess",
+                 config: Union[dict, PreprocessNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化
+        if isinstance(config, PreprocessNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = PreprocessNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/PreprocessNodeConfig, got {type(config).__name__}"
+            )
+        # T0-2: 3 隐式默认从 Pydantic 字段读取 (mad_n=5.0, pct_low=0.025, pct_high=0.975)
+        self._missing = cfg.missing
+        self._extreme = cfg.extreme
+        self._norm = cfg.norm
+        self._mad_n = cfg.mad_n
+        self._pct_low = cfg.pct_low
+        self._pct_high = cfg.pct_high
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

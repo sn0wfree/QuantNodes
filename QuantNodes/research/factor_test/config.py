@@ -26,9 +26,14 @@ class TradableSetting(BaseModel):
 
 
 class PreprocessSetting(BaseModel):
-    """预处理配置"""
-    adj_date_beg: int = Field(..., description="起始日期 yyyymmdd")
-    adj_date_end: int = Field(..., description="截止日期 yyyymmdd")
+    """预处理配置
+
+    T0-2/T0-3 (Phase 3.1):
+    - adj_date_beg/end 改 Optional[int]=None (H10 兼容, 启动校验抛错)
+    - 新增 3 隐式默认 Pydantic 字段 (mad_n=5.0, pct_low=0.025, pct_high=0.975)
+    """
+    adj_date_beg: Optional[int] = Field(default=None, description="起始日期 yyyymmdd (H10: None → 启动报错)")
+    adj_date_end: Optional[int] = Field(default=None, description="截止日期 yyyymmdd (H10: None → 启动报错)")
     adj_mode: list = Field(default=['M', 'end'], description="调仓模式: [mode, position]")
     sample_index: str = Field(default='all', description="样本池: all/HS300/ZZ500/ZZ800/custom")
     sample_index_customdir: Optional[tuple] = Field(default=None, description="自定义样本池路径")
@@ -40,6 +45,10 @@ class PreprocessSetting(BaseModel):
     industry_neutral: bool = Field(default=False, description="行业中性化")
     risk_neutral: bool = Field(default=False, description="风险因子中性化")
     risk_factors: list = Field(default_factory=list, description="风险因子: [(file, key), ...]")
+    # T0-2: 隐式默认从节点 __init__ 提升到 Pydantic 字段
+    mad_n: float = Field(default=5.0, description="median winsorize 倍数 (M5)")
+    pct_low: float = Field(default=0.025, description="pct_shrink 下分位 (M5)")
+    pct_high: float = Field(default=0.975, description="pct_shrink 上分位 (M5)")
 
 
 class ICSetting(BaseModel):
@@ -62,8 +71,15 @@ class LongShortSetting(BaseModel):
 
 
 class ScoreSetting(BaseModel):
-    """市值行业分层打分配置"""
+    """市值行业分层打分配置
+
+    T0-2 (Phase 3.1): 新增 3 隐式默认 Pydantic 字段
+    (n_industries=29, n_size_groups=3, n_quantile_groups=5, H15).
+    """
     enabled: bool = Field(default=True, description="是否运行")
+    n_industries: int = Field(default=29, description="行业数 (中信 29 / 申万 30, H15)")
+    n_size_groups: int = Field(default=3, description="市值分组数 (H15)")
+    n_quantile_groups: int = Field(default=5, description="因子分位数 (H15)")
 
 
 class RiskCorrelationSetting(BaseModel):

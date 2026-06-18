@@ -6,6 +6,7 @@ Migrated from factor_performance.py:111-158 cal_ic()
 
 import sys
 from pathlib import Path
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes.configs import ICAnalyzerNodeConfig
 
 
 class ICAnalyzerNode(BaseNode):
@@ -24,9 +26,20 @@ class ICAnalyzerNode(BaseNode):
     输出: {ic, rank_ic, ic_result, rank_ic_result, factor_rank_autocorr}
     """
 
-    def __init__(self, name: str = "ICAnalyzer", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._min_group_size = config.get('min_group_size', 5) if config else 5
+    def __init__(self, name: str = "ICAnalyzer",
+                 config: Union[dict, ICAnalyzerNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化
+        if isinstance(config, ICAnalyzerNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = ICAnalyzerNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/ICAnalyzerNodeConfig, got {type(config).__name__}"
+            )
+        self._min_group_size = cfg.min_group_size
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

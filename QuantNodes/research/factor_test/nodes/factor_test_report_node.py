@@ -5,9 +5,11 @@ Migrated from factor_output.py:539-616 save_testresult()
 Output: Parquet/JSON instead of xlwings Excel
 """
 
+import os
 import sys
 from pathlib import Path
 from datetime import datetime
+from typing import Union
 
 import pandas as pd
 import numpy as np
@@ -17,6 +19,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes.configs import ReportNodeConfig
 
 
 class FactorTestReportNode(BaseNode):
@@ -26,11 +29,30 @@ class FactorTestReportNode(BaseNode):
     输出: FactorTestReport (dict)
     """
 
-    def __init__(self, name: str = "FactorTestReport", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        c = config or {}
-        self._output_dir = c.get('dir', './output/') if c else './output/'
-        self._output_format = c.get('format', ['parquet', 'json']) if c else ['parquet', 'json']
+    def __init__(self, name: str = "FactorTestReport",
+                 config: Union[dict, ReportNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化
+        if isinstance(config, ReportNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = ReportNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/ReportNodeConfig, got {type(config).__name__}"
+            )
+        # P-1: 路径优先级 env QUANTNODES_OUTPUT_DIR > expanduser > default
+        self._output_dir = self._resolve_output_dir(cfg.dir)
+        self._output_format = list(cfg.format)
+
+    @staticmethod
+    def _resolve_output_dir(default: str) -> Path:
+        """P-1: env 变量优先, 然后 expanduser, 最后 default"""
+        env = os.environ.get("QUANTNODES_OUTPUT_DIR")
+        if env:
+            return Path(env).expanduser()
+        return Path(default).expanduser()
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

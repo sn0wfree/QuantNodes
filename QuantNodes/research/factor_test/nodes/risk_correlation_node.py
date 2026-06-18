@@ -7,6 +7,7 @@ Security: exec()/eval() eliminated.
 
 import sys
 from pathlib import Path
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes.configs import RiskCorrelationNodeConfig
 
 
 class RiskCorrelationNode(BaseNode):
@@ -25,9 +27,20 @@ class RiskCorrelationNode(BaseNode):
     输出: {mean: DataFrame, stability: DataFrame}
     """
 
-    def __init__(self, name: str = "RiskCorrelation", config: dict = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._factors = config.get('factors', 'all') if config else 'all'
+    def __init__(self, name: str = "RiskCorrelation",
+                 config: Union[dict, RiskCorrelationNodeConfig, None] = None, **kwargs):
+        # T0-4: 预先 Union 化
+        if isinstance(config, RiskCorrelationNodeConfig):
+            cfg = config
+            super().__init__(name, cfg.model_dump(), **kwargs)
+        elif isinstance(config, dict) or config is None:
+            cfg = RiskCorrelationNodeConfig.model_validate(config or {})
+            super().__init__(name, config, **kwargs)
+        else:
+            raise TypeError(
+                f"config must be dict/None/RiskCorrelationNodeConfig, got {type(config).__name__}"
+            )
+        self._factors = cfg.factors
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})
