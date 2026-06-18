@@ -64,7 +64,8 @@ class IFinDDatabase:
     def __init__(self, api_path: str = '', date_beg: str = '',
                  date_end: str = '', universe: str = '沪深300',
                  fetcher: IFindFetcher = None,
-                 industry_map: dict | None = None):
+                 industry_map: dict | None = None,
+                 risk_registry: list[str] | None = None):
         """
         Args:
             api_path: 兼容 DataLoader, 被忽略
@@ -73,6 +74,7 @@ class IFinDDatabase:
             universe: 股票池 ('沪深300', '中证500', 'all')
             fetcher: 注入的 fetcher (测试用 IFindFetcherStub)
             industry_map: H13 行业代码映射 (None=30 申万一级)
+            risk_registry: P-4 风险因子注册表 (None=10 默认 Barra 风格因子)
         """
         # H9: 不再硬编码 '20260101', 默认 1 年前 (跨年/跨月可滚动)
         if not date_beg:
@@ -85,6 +87,12 @@ class IFinDDatabase:
         self._fetcher = fetcher or IFindFetcher()
         # H13: 行业代码映射可覆盖
         self._industry_map = industry_map if industry_map is not None else _DEFAULT_INDUSTRY_MAP
+        # P-4: 风险因子注册表可外部注入, None=10 默认 Barra 风格
+        self._risk_registry = list(risk_registry) if risk_registry is not None else [
+            '/beta', '/momentum', '/size', '/volatility',
+            '/value', '/quality', '/growth', '/leverage',
+            '/liquidity', '/non_linear_size',
+        ]
 
         # 缓存
         self._stklist = None
@@ -181,13 +189,8 @@ class IFinDDatabase:
         return factor.shape == (len(trade_dt), len(assetlist))
 
     def get_apikeys(self, filename: str) -> list:
-        """风险因子注册表 (替代 H5 文件中的 key 列表)"""
-        risk_registry = [
-            '/beta', '/momentum', '/size', '/volatility',
-            '/value', '/quality', '/growth', '/leverage',
-            '/liquidity', '/non_linear_size',
-        ]
-        return risk_registry
+        """风险因子注册表 (P-4: 改为读 self._risk_registry, 可外部注入)"""
+        return list(self._risk_registry)
 
     # ── 内部数据获取方法 ─────────────────────────────────────
 
