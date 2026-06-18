@@ -971,7 +971,7 @@ def cmd_factor_data_fetch(args) -> int:
 
     用法:
         quantnodes factor-data-fetch --output-dir /tmp/real_data/ \\
-                                    --universe 沪深300 \\
+                                    --universe all \\
                                     --date-beg 20260101 --date-end 20260630 \\
                                     --factors momentum_20d,reversal_5d
     """
@@ -1250,7 +1250,7 @@ def main():
     fetch_parser.add_argument("--output-dir", required=True, help="HDF5 输出目录")
     fetch_parser.add_argument("--date-beg", required=True, help="起始日期 (YYYYMMDD)")
     fetch_parser.add_argument("--date-end", default="", help="截止日期 (空=今天)")
-    fetch_parser.add_argument("--universe", default="沪深300", help="股票池 (默认 沪深300)")
+    fetch_parser.add_argument("--universe", default="all", help="股票池 (默认 all, 与 iFinD API 兼容)")
     fetch_parser.add_argument("--factors", default="", help="逗号分隔的因子列表")
 
     dash_parser = subparsers.add_parser("factor-dashboard", help="生成 3 类指标 dashboard (Week 13/16)")
