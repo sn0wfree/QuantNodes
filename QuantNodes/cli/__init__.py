@@ -715,12 +715,25 @@ def cmd_evolve(args) -> int:
         runner.config.evolution.max_rounds = args.max_rounds
     if args.early_stop is not None:
         runner.config.evolution.early_stop_patience = args.early_stop
+    # M13-M15: CLI overrides for common defaults
+    if args.min_ipo_days is not None:
+        runner.config.preprocess.tradable.min_ipo_days = args.min_ipo_days
+    if args.min_group_size is not None:
+        runner.config.ic.min_group_size = args.min_group_size
+    if args.groups is not None:
+        runner.config.group.groups = args.groups
 
     print("=" * 60)
     print(f"演化实验: {config_path}")
     print(f"  方向: {directions or '(无, 走 initial_candidates)'}")
     print(f"  max_rounds: {runner.config.evolution.max_rounds}")
     print(f"  early_stop: {runner.config.evolution.early_stop_patience}")
+    if args.min_ipo_days is not None:
+        print(f"  min_ipo_days: {runner.config.preprocess.tradable.min_ipo_days} (CLI override)")
+    if args.min_group_size is not None:
+        print(f"  min_group_size: {runner.config.ic.min_group_size} (CLI override)")
+    if args.groups is not None:
+        print(f"  groups: {runner.config.group.groups} (CLI override)")
     print("=" * 60)
 
     try:
@@ -1214,6 +1227,10 @@ def main():
     evolve_parser.add_argument("--max-rounds", type=int, default=None, help="覆盖 config.max_rounds")
     evolve_parser.add_argument("--early-stop", type=int, default=None, help="覆盖 config.early_stop_patience")
     evolve_parser.add_argument("--workers", type=int, default=1, help="并行评估数 (默认 1=串行, >1=ThreadPool)")
+    # M13-M15: 增加 CLI 覆盖配置默认值
+    evolve_parser.add_argument("--min-ipo-days", type=int, default=None, help="剔除上市不足 N 日新股 (覆盖 config 默认值 360)")
+    evolve_parser.add_argument("--min-group-size", type=int, default=None, help="计算 IC 最少样本数 (覆盖 config 默认值 5)")
+    evolve_parser.add_argument("--groups", type=int, default=None, help="分组分析分组数 (覆盖 config 默认值 5)")
     
     info_parser = subparsers.add_parser("factor-info", help="显示 TrajectoryPool 统计")
     info_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
@@ -1252,6 +1269,10 @@ def main():
     fetch_parser.add_argument("--date-end", default="", help="截止日期 (空=今天)")
     fetch_parser.add_argument("--universe", default="all", help="股票池 (默认 all, 与 iFinD API 兼容)")
     fetch_parser.add_argument("--factors", default="", help="逗号分隔的因子列表")
+    # M13-M15: 增加 CLI 覆盖配置默认值
+    fetch_parser.add_argument("--min-ipo-days", type=int, default=None, help="剔除上市不足 N 日新股 (默认 360)")
+    fetch_parser.add_argument("--min-group-size", type=int, default=None, help="计算 IC 最少样本数 (默认 5)")
+    fetch_parser.add_argument("--groups", type=int, default=None, help="分组分析分组数 (默认 5)")
 
     dash_parser = subparsers.add_parser("factor-dashboard", help="生成 3 类指标 dashboard (Week 13/16)")
     dash_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
