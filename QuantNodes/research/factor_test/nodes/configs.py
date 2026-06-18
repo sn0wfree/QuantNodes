@@ -25,11 +25,11 @@ class _NodeBase(BaseModel):
 class LoadDataNodeConfig(_NodeBase):
     """Node 1: LoadDataNode 配置
 
-    P-2: data_path 当前默认 '', P-2 阶段将改 Field(...) 必填.
+    P-2: data_path 改 Field(...) 必填, 启动时报 ValidationError (None/缺字段).
+    现有 test_data_loader_edges.py:309-316 已显式提供 load_keys 但缺 data_path,
+    需更新为提供 data_path (load_keys 测试不变).
     """
-    data_path: str = Field(
-        default="", description="数据根目录 (P-2: 将改必填, 当前默认 '' 兼容现有测试)",
-    )
+    data_path: str = Field(..., description="数据根目录 (P-2 必填, 启动校验)")
     load_keys: list = Field(
         default_factory=lambda: [
             "stklist", "trade_dt", "cp", "id_citic1", "mv_float",

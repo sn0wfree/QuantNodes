@@ -308,7 +308,7 @@ class TestLoadKeysDefault:
 
     def test_node_default_has_tradability_keys(self):
         from QuantNodes.research.factor_test.nodes.load_data_node import LoadDataNode
-        node = LoadDataNode(config={"load_keys": [
+        node = LoadDataNode(config={"data_path": "/tmp/test/", "load_keys": [
             "stklist", "trade_dt", "cp", "id_citic1", "mv_float",
             "st", "suspend", "ud_limit", "ipo_days",
         ]})

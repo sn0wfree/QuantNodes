@@ -43,6 +43,10 @@ class LoadDataNode(BaseNode):
         self._factor_config = cfg.factor
 
     def _execute(self, input_data=None, **kwargs) -> Dict[str, pd.DataFrame]:
+        # P-2: 空字符串校验 (Pydantic Field(...) 不挡空串, 需显式检查)
+        if not self._data_path:
+            raise ValueError("data_path required (P-2: 启动报错, 防止 None 数据目录导致下游谜之失败)")
+
         loader = DataLoader(self._data_path)
         result = {}
 

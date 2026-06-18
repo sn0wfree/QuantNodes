@@ -153,8 +153,11 @@ class TestUnionAcceptance:
         (FactorTestReportNode, ReportNodeConfig),
     ])
     def test_dict_input_accepted(self, node_cls, config_cls):
-        """(a) dict 输入"""
-        node = node_cls(config={})
+        """(a) dict 输入 (LoadDataNode P-2 后需提供 data_path)"""
+        if node_cls is LoadDataNode:
+            node = node_cls(config={"data_path": "/tmp/test/"})
+        else:
+            node = node_cls(config={})
         assert node is not None
 
     @pytest.mark.parametrize("node_cls,config_cls", [
@@ -172,8 +175,11 @@ class TestUnionAcceptance:
         (FactorTestReportNode, ReportNodeConfig),
     ])
     def test_config_instance_input_accepted(self, node_cls, config_cls):
-        """(b) Config 实例输入"""
-        cfg = config_cls()
+        """(b) Config 实例输入 (LoadDataNode P-2 后需 data_path)"""
+        if node_cls is LoadDataNode:
+            cfg = config_cls(data_path="/tmp/test/")
+        else:
+            cfg = config_cls()
         node = node_cls(config=cfg)
         assert node is not None
 
@@ -184,9 +190,14 @@ class TestUnionAcceptance:
         FactorScoreNode, RiskCorrelationNode, FactorTestReportNode,
     ])
     def test_none_input_accepted(self, node_cls):
-        """(c) None 输入"""
-        node = node_cls(config=None)
-        assert node is not None
+        """(c) None 输入 (LoadDataNode P-2 后 None 抛 ValidationError)"""
+        if node_cls is LoadDataNode:
+            # P-2: data_path 必填, None config 抛错
+            with pytest.raises(ValidationError, match="data_path"):
+                node_cls(config=None)
+        else:
+            node = node_cls(config=None)
+            assert node is not None
 
     @pytest.mark.parametrize("node_cls", [
         LoadDataNode, SamplePoolFilterNode, TradabilityFilterNode,
@@ -319,7 +330,9 @@ class TestSelfXxxBackwardsCompat:
         assert (node._pct_low, node._pct_high) == (0.01, 0.99)
 
     def test_load_data_self_attrs(self):
+        # P-2: data_path 必填
         node = LoadDataNode(config={
+            "data_path": "/tmp/test/",
             "load_keys": [
                 "stklist", "trade_dt", "cp", "id_citic1", "mv_float",
                 "st", "suspend", "ud_limit", "ipo_days",
@@ -420,3 +433,47 @@ class TestReportNodePath:
         monkeypatch.setenv("QUANTNODES_OUTPUT_DIR", str(env_dir))
         node = FactorTestReportNode(config={"dir": str(config_dir)})
         assert node._output_dir == env_dir
+
+
+# ============================================================================
+# P-2: LoadDataNode data_path 必填校验
+# ============================================================================
+
+class TestLoadDataPathRequired:
+    """P-2: data_path 必填, 启动时报错 (None/缺字段/空串)"""
+
+    def test_missing_data_path_raises_validation_error(self):
+        """缺字段 → __init__ 抛 ValidationError"""
+        with pytest.raises(ValidationError, match="data_path"):
+            LoadDataNode(config={})
+
+    def test_none_data_path_raises_validation_error(self):
+        """None 显式 → __init__ 抛 ValidationError"""
+        with pytest.raises(ValidationError, match="data_path"):
+            LoadDataNode(config={"data_path": None})
+
+    def test_empty_data_path_raises_value_error_on_execute(self, tmp_path):
+        """空字符串 → __init__ 不挡 (Pydantic 限制), _execute 抛 ValueError"""
+        node = LoadDataNode(config={"data_path": ""})
+        with pytest.raises(ValueError, match="data_path required"):
+            node._execute()
+
+    def test_valid_data_path_executes(self, tmp_path):
+        """有效路径 → _execute 进入加载流程 (允许失败但不应 data_path 校验错)"""
+        d = tmp_path
+        # 构造最小 H5
+        import pandas as pd
+        import numpy as np
+        n_days, n_stks = 5, 2
+        dates = [20250101 + i for i in range(n_days)]
+        stks = [f"00000{i}.SZ" for i in range(n_stks)]
+        with pd.HDFStore(d / "stk_daily.h5", mode="w") as store:
+            store.put("stklist", pd.DataFrame({0: stks}), format="table")
+            store.put("trade_dt", pd.DataFrame({0: dates}), format="table")
+            store.put("cp", pd.DataFrame(np.ones((n_days, n_stks)), index=dates, columns=stks), format="table")
+        node = LoadDataNode(config={"data_path": str(d) + "/"})
+        # _execute 应通过 data_path 校验, 进入加载流程
+        out = node._execute()
+        assert out is not None
+        assert "stklist" in out
+        assert "trade_dt" in out

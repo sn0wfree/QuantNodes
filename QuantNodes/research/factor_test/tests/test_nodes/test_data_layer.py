@@ -27,7 +27,8 @@ class TestLoadDataNode:
         ctx = dict(synthetic_context)
         # LoadData 已存在, 节点应直接返回
         ctx['LoadData'] = {'factor': ctx['factor'], 'price': ctx['price']}
-        n = LoadDataNode(config={})
+        # P-2: data_path 必填, 测试中无需执行, 仅构造节点
+        n = LoadDataNode(config={"data_path": "/tmp/synthetic/"})
         # LoadDataNode 需要从 H5 加载, 但已有 LoadData 时应跳过
         # 实际上 LoadDataNode._execute 会尝试加载 H5
         # 所以这里测试的是: 当 context 中已有 LoadData 时的行为
