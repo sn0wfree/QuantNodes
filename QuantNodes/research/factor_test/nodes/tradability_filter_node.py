@@ -5,16 +5,10 @@ Migrated from factor_utils.py:250-308 valid_tradable()
 Security: exec() replaced with dict lookup.
 """
 
-import sys
-from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Union
 
 import numpy as np
 import pandas as pd
-
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[4])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
 from QuantNodes.research.factor_test.nodes.configs import TradabilityNodeConfig

@@ -4,16 +4,10 @@
 Migrated from factor_performance.py:111-158 cal_ic()
 """
 
-import sys
-from pathlib import Path
 from typing import Union
 
 import numpy as np
 import pandas as pd
-
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[4])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
 from QuantNodes.research.factor_test.nodes.configs import ICAnalyzerNodeConfig

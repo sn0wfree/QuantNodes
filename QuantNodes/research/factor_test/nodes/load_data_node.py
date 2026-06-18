@@ -1,16 +1,9 @@
 # coding: utf-8
 """Node 1: 加载数据 / Load Data Node"""
 
-import sys
-from pathlib import Path
 from typing import Dict, Any, Optional, Union
 
 import pandas as pd
-
-# 将项目根目录加入 sys.path 以支持直接导入
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[4])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
 from QuantNodes.research.factor_test.utils.data_loader import DataLoader

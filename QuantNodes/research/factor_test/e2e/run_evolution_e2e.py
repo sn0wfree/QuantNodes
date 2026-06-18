@@ -171,8 +171,6 @@ def main():
     parser.add_argument("--max-rounds", type=int, default=3)
     parser.add_argument("--disable-quality-gate", action="store_true",
                         help="禁用 QualityGate (默认启用)")
-    parser.add_argument("--disable-kb", action="store_true",
-                        help="禁用 KnowledgeBase (默认启用)")
     args = parser.parse_args()
 
     data_path = Path(args.data_path)
@@ -220,14 +218,11 @@ def main():
     pool = runner._build_trajectory_pool()
     quality_gate = runner._build_quality_gate()
 
-    kb = None
-    evaluator = None
-    if not args.disable_kb:
-        kb = KnowledgeBase(IdentityRetriever(), pool=pool)
-        evaluator = RAGEvaluator()
-        print(f"  ✓ TrajectoryPool: {pool.base_dir}")
-        print(f"  ✓ QualityGateNode: {'enabled' if quality_gate else 'disabled'}")
-        print(f"  ✓ KnowledgeBase + RAGEvaluator")
+    kb = KnowledgeBase(IdentityRetriever(), pool=pool)
+    evaluator = RAGEvaluator()
+    print(f"  ✓ TrajectoryPool: {pool.base_dir}")
+    print(f"  ✓ QualityGateNode: {'enabled' if quality_gate else 'disabled'}")
+    print(f"  ✓ KnowledgeBase + RAGEvaluator (TF-IDF always enabled)")
 
     # 4. 演化循环
     print(f"\n[4/5] 演化循环 ({args.max_rounds} 轮)...")

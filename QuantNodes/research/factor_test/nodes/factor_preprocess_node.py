@@ -6,17 +6,11 @@ Phase 1: 原样迁移保持行为一致性
 Phase 2: 逐步替换为 QuantNodes section_ops 算子
 """
 
-import sys
-from pathlib import Path
 from typing import Union
 
 import numpy as np
 import pandas as pd
 from scipy.stats import norm as scipy_norm
-
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[4])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.node import BaseNode
 from QuantNodes.research.factor_test.nodes.configs import PreprocessNodeConfig

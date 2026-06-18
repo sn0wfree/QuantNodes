@@ -5,18 +5,15 @@ Migrated from factor_performance.py:879-937 corr_riskfactor()
 Security: exec()/eval() eliminated.
 """
 
-import sys
-from pathlib import Path
+import logging
 from typing import Union
 
 import numpy as np
 import pandas as pd
 
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[4])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-
 from QuantNodes.core.node import BaseNode
+
+logger = logging.getLogger(__name__)
 from QuantNodes.research.factor_test.nodes.configs import RiskCorrelationNodeConfig
 
 
@@ -84,7 +81,7 @@ class RiskCorrelationNode(BaseNode):
                     rf = loader.add_index(rf)
                 risk_data_dict[factor_key] = rf
             except Exception as e:
-                print(f"警告: 加载风险因子 {factor_key} 失败: {e}")
+                logger.warning(f"加载风险因子 {factor_key} 失败: {e}")
 
         if not risk_data_dict:
             return {'mean': pd.DataFrame(), 'stability': pd.DataFrame()}

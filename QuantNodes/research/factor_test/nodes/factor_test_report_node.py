@@ -6,7 +6,7 @@ Output: Parquet/JSON instead of xlwings Excel
 """
 
 import os
-import sys
+import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Union
@@ -14,11 +14,9 @@ from typing import Union
 import pandas as pd
 import numpy as np
 
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[4])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-
 from QuantNodes.core.node import BaseNode
+
+logger = logging.getLogger(__name__)
 from QuantNodes.research.factor_test.nodes.configs import ReportNodeConfig
 
 
@@ -135,7 +133,7 @@ class FactorTestReportNode(BaseNode):
                 path = output_dir / f"factor_test_{factor_name}_{timestamp}.json"
                 with open(path, 'w', encoding='utf-8') as f:
                     json.dump(report, f, ensure_ascii=False, indent=2, default=default_serializer)
-                print(f"报告已保存: {path}")
+                logger.info(f"报告已保存: {path}")
 
             elif fmt == 'parquet':
                 # 保存各分析结果为 parquet
@@ -150,4 +148,4 @@ class FactorTestReportNode(BaseNode):
                     elif isinstance(value, pd.DataFrame) and not value.empty:
                         path = output_dir / f"{factor_name}_{key}.parquet"
                         value.to_parquet(path)
-                print(f"Parquet 文件已保存至: {output_dir}")
+                logger.info(f"Parquet 文件已保存至: {output_dir}")

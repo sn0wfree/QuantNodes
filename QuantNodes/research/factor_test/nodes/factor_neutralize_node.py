@@ -4,19 +4,16 @@
 Migrated from factor_utils.py:534-625 neutralize()
 """
 
-import sys
-from pathlib import Path
+import logging
 from typing import Union
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[4])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-
 from QuantNodes.core.node import BaseNode
+
+logger = logging.getLogger(__name__)
 from QuantNodes.research.factor_test.nodes.configs import NeutralizeNodeConfig
 
 
@@ -71,7 +68,7 @@ class FactorNeutralizeNode(BaseNode):
                         rf = loader.add_index(rf)
                     risk_data.append(rf)
                 except Exception as e:
-                    print(f"警告: 加载风险因子 {factor_key} 失败: {e}")
+                    logger.warning(f"加载风险因子 {factor_key} 失败: {e}")
 
         return self._neutralize(factor_std, self._if_industry, industry,
                                 self._if_risk, risk_data)
