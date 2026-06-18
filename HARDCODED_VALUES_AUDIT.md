@@ -5,6 +5,47 @@
 
 ---
 
+## ✅ Phase 3 修复状态 (as of 2026-06-19)
+
+| Category | Total | Fixed | Remaining |
+|----------|-------|-------|-----------|
+| HIGH (22 total) | 22 | **22** | 0 |
+| MEDIUM — Key | ~18 | **18** | 0 (剩余 ~17 非关键) |
+| Infrastructure | - | 全部 | - |
+
+### 已完成的 HIGH (全部 22 项)
+
+- ✅ **默认日期**: ifind_database / adjust_date / data_prep / e2e → 动态计算 / None 必填校验
+- ✅ **行业映射**: `_INDUSTRY_MAP` (30 申万) → `industry_map` 构造参数可覆盖
+- ✅ **指数映射**: `INDEX_MAPPING` / `INDEX_CP_MAPPING` → JSON override + `resolve_index_mapping()`
+- ✅ **iFinD 限速/缓存**: `RATE_LIMIT_SECONDS=0.5` / `cache_ttl=7d` → `IFindFetcher` 构造参数
+- ✅ **打分节点魔数**: `3 * 29 * group` → `n_size * n_ind * n_quantile` (ScoreSetting 可配置)
+- ✅ **Output 路径**: `./output/`, `/tmp/e2e_output/` → env `QUANTNODES_OUTPUT_DIR` + 构造参数
+- ✅ **CLI 覆盖**: `--universe/--min-ipo-days/--min-group-size/--groups` 等新增 flag
+- ✅ **Data path 必填**: `data_path` Pydantic `Field(...)` 必填 + 启动校验
+
+### 已完成的关键 MEDIUM (18 项)
+
+- ✅ **M9** SamplePool `index_mapping` 自定义
+- ✅ **M10** IFinDDatabase `batch_size` 参数化
+- ✅ **M11** `evaluation()` `annual_days` 可注入
+- ✅ **M12** SamplePool `i18n_name_map` 自定义
+- ✅ **M13-15** `min_ipo_days` / `min_group_size` / `groups` → CLI flag
+- ✅ **M16** `get_adjust_date` `adj_mode` 可配置
+- ✅ **M17-18** MAD `n=5` / pct 2.5%/97.5% → `PreprocessSetting`
+- ✅ **M19** E2E dead `enable_kb` param → 已删除
+- ✅ **M21** `load_keys` 默认补充 tradability keys
+- ✅ **M22-23** E2E `rag_top_k` / depths / compress → CLI 参数
+- 等等...
+
+### 代码质量改进
+
+- ✅ 12 节点 `sys.path.insert` 样板清理
+- ✅ 4 处 `print()` → `logging` 规范化
+- ✅ `--disable-kb` flag 移除 (TF-IDF 本地 RAG always on)
+
+---
+
 ## Executive Summary
 
 | Severity | Count | Notes |

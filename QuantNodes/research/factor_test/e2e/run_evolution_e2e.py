@@ -160,7 +160,8 @@ def _build_loader(data_path: str):
     return DataLoader(data_path)
 
 
-def main():
+def _build_parser() -> argparse.ArgumentParser:
+    """构造 E2E 演化 CLI 参数解析器。"""
     parser = argparse.ArgumentParser(description="E2E 演化运行")
     parser.add_argument("--data-path", required=True, help="data_prep 输出目录")
     parser.add_argument("--factor-name", default="momentum_20d", help="起始因子名")
@@ -171,6 +172,20 @@ def main():
     parser.add_argument("--max-rounds", type=int, default=3)
     parser.add_argument("--disable-quality-gate", action="store_true",
                         help="禁用 QualityGate (默认启用)")
+    # M22-M23: 演化参数可配置 (默认保持原有值不变)
+    parser.add_argument("--rag-top-k", type=int, default=3,
+                        help="RAG 检索 Top-K (默认 3)")
+    parser.add_argument("--ancestor-depth", type=int, default=2,
+                        help="知识谱系祖先深度 (默认 2)")
+    parser.add_argument("--descendant-depth", type=int, default=2,
+                        help="知识谱系列脉深度 (默认 2)")
+    parser.add_argument("--no-compress", action="store_true",
+                        help="禁用谱系压缩 (默认启用)")
+    return parser
+
+
+def main():
+    parser = _build_parser()
     args = parser.parse_args()
 
     data_path = Path(args.data_path)
@@ -239,9 +254,10 @@ def main():
         evaluate_fn=runner._evaluate_candidate,
         knowledge_base=kb,
         rag_evaluator=evaluator,
-        rag_top_k=3,
-        max_ancestor_depth=2, max_descendant_depth=2,
-        use_compress=True,
+        rag_top_k=args.rag_top_k,
+        max_ancestor_depth=args.ancestor_depth,
+        max_descendant_depth=args.descendant_depth,
+        use_compress=not args.no_compress,
     )
     result = loop.run(initial_directions=directions)
     print(f"  ✓ 演化完成: {result.rounds_completed} 轮, 总数 {result.total_count}, 拒绝 {result.rejected_count}")
