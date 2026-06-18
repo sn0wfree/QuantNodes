@@ -50,12 +50,13 @@ def calc_max_drawdown(net_day: pd.Series) -> dict:
     }
 
 
-def evaluation(account_net: pd.Series, adj_dates: list) -> pd.DataFrame:
+def evaluation(account_net: pd.Series, adj_dates: list, annual_days: int = ANNUAL_DAYS) -> pd.DataFrame:
     """输入净值曲线返回评价结果 (全期 + 分年)
 
     Args:
         account_net: 单利净值曲线
         adj_dates: 调仓日列表
+        annual_days: M11 年化天数 (默认全局 ANNUAL_DAYS=250, 美股 252, 24h 365)
 
     Returns:
         DataFrame: Year, AnnualRt, AccumRt, SR, MDD, WinRatio, WinLossRatio, Calmar, ...
@@ -90,8 +91,8 @@ def evaluation(account_net: pd.Series, adj_dates: list) -> pd.DataFrame:
 
     # 全期指标
     accum_rt = account_net.iloc[-1] / account_net.iloc[0] - 1
-    annual_rt = every_return.mean().iloc[0] / adj_cycle * ANNUAL_DAYS
-    annu_std = daily_ret.std(ddof=1) * np.sqrt(ANNUAL_DAYS)
+    annual_rt = every_return.mean().iloc[0] / adj_cycle * annual_days
+    annu_std = daily_ret.std(ddof=1) * np.sqrt(annual_days)
     SR = np.nan if annu_std == 0 else annual_rt / annu_std
     mdd = calc_max_drawdown(account_net)
     winRatio = (every_return.dropna() > 0).mean().iloc[0]
@@ -123,8 +124,8 @@ def evaluation(account_net: pd.Series, adj_dates: list) -> pd.DataFrame:
         every_return_i = every_return[every_return_cp['year'] == year_i]
 
         accum_rt_i = every_return_i.sum().iloc[0]
-        annual_rt_i = every_return_i.mean().iloc[0] / adj_cycle * ANNUAL_DAYS
-        annu_std_i = daily_ret[account_net_df['year'] == year_i].std(ddof=1) * np.sqrt(ANNUAL_DAYS)
+        annual_rt_i = every_return_i.mean().iloc[0] / adj_cycle * annual_days
+        annu_std_i = daily_ret[account_net_df['year'] == year_i].std(ddof=1) * np.sqrt(annual_days)
         SR_i = np.nan if annu_std_i == 0 else annual_rt_i / annu_std_i
 
         year_dates = every_return_cp.index[every_return_cp['year'] == year_i].tolist()

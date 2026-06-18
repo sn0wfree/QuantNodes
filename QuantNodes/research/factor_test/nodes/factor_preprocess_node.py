@@ -49,6 +49,8 @@ class FactorPreprocessNode(BaseNode):
         self._mad_n = cfg.mad_n
         self._pct_low = cfg.pct_low
         self._pct_high = cfg.pct_high
+        # M12: 自定义行业名称映射 (覆盖全局默认)
+        self._i18n_name_map = cfg.i18n_name_map if cfg.i18n_name_map is not None else None
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

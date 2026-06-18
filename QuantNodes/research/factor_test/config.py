@@ -30,13 +30,14 @@ class PreprocessSetting(BaseModel):
 
     T0-2/T0-3 (Phase 3.1):
     - adj_date_beg/end 改 Optional[int]=None (H10 兼容, 启动校验抛错)
-    - 新增 3 隐式默认 Pydantic 字段 (mad_n=5.0, pct_low=0.025, pct_high=0.975)
+    - 新增 3 隐式默认 Pydantic 字段 (mad_n=5.0, pct_low=0.025, pct_high=0.975, M5)
+    M12: 新增 i18n_name_map 自定义行业名称映射 (覆盖全局默认 INDUSTRY_MAPPING)
     """
     adj_date_beg: Optional[int] = Field(default=None, description="起始日期 yyyymmdd (H10: None → 启动报错)")
     adj_date_end: Optional[int] = Field(default=None, description="截止日期 yyyymmdd (H10: None → 启动报错)")
     adj_mode: list = Field(default=['M', 'end'], description="调仓模式: [mode, position]")
     sample_index: str = Field(default='all', description="样本池: all/HS300/ZZ500/ZZ800/custom")
-    sample_index_customdir: Optional[tuple] = Field(default=None, description="自定义样本池路径")
+    sample_index_customdir: Optional[tuple] = Field(default=None, description="自定义样本池路径 (sample_index=custom 时必填)")
     sample_industry: str = Field(default='all', description="行业筛选: all/中信行业名")
     tradable: TradableSetting = Field(default_factory=TradableSetting)
     missing: str = Field(default='', description="缺失值处理: ''/ind_avg")
@@ -49,6 +50,11 @@ class PreprocessSetting(BaseModel):
     mad_n: float = Field(default=5.0, description="median winsorize 倍数 (M5)")
     pct_low: float = Field(default=0.025, description="pct_shrink 下分位 (M5)")
     pct_high: float = Field(default=0.975, description="pct_shrink 上分位 (M5)")
+    # M12: 自定义行业名称映射 (中文→英文, key=code 列名, value=行业名) → 覆盖全局 INDUSTRY_MAPPING
+    i18n_name_map: Optional[dict[str, str]] = Field(
+        default=None,
+        description="自定义行业名称映射 (key: 列名, value: 显示名) → 覆盖全局 INDUSTRY_MAPPING",
+    )
 
 
 class ICSetting(BaseModel):

@@ -17,7 +17,8 @@ if _PROJECT_ROOT not in sys.path:
 
 from QuantNodes.core.node import BaseNode
 from QuantNodes.research.factor_test.nodes.configs import SamplePoolNodeConfig
-from QuantNodes.research.factor_test.utils.constants import INDEX_MAPPING
+from QuantNodes.research.factor_test.utils.constants import INDEX_MAPPING, INDUSTRY_MAPPING
+from QuantNodes.research.factor_test.utils.constants import resolve_index_mapping, resolve_industry_map
 
 
 class SamplePoolFilterNode(BaseNode):
@@ -25,11 +26,14 @@ class SamplePoolFilterNode(BaseNode):
 
     输入: context["LoadData"] 的输出
     输出: stock_sample (1=选中, nan=剔除)
+
+    M9: index_mapping 可自定义，合并全局默认 + 节点自定义覆盖
+    M12: i18n_name_map 可自定义行业代码→名称映射，合并全局默认 + 节点自定义覆盖
     """
 
     def __init__(self, name: str = "SamplePoolFilter",
                  config: Union[dict, SamplePoolNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化, 避免 BaseNode.__init__ 在 Config 实例上 dict-spread 失败
+        # T0-4: 预先 Union 化，避免 BaseNode.__init__ 在 Config 实例上 dict-spread 失败
         if isinstance(config, SamplePoolNodeConfig):
             cfg = config
             super().__init__(name, cfg.model_dump(), **kwargs)
@@ -43,6 +47,14 @@ class SamplePoolFilterNode(BaseNode):
         self._sample_index = cfg.sample_index
         self._sample_industry = cfg.sample_industry
         self._sample_customdir = cfg.sample_index_customdir
+        # M9: 合并全局默认 INDEX_MAPPING + 节点自定义覆盖
+        self._index_mapping = resolve_index_mapping({
+            "INDEX_MAPPING": cfg.index_mapping
+        } if cfg.index_mapping else None)
+        # M12: 合并全局默认 INDUSTRY_MAPPING + 节点自定义覆盖
+        self._i18n_name_map = resolve_industry_map({
+            "INDUSTRY_MAP": cfg.i18n_name_map
+        } if cfg.i18n_name_map else None)
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})
@@ -58,8 +70,8 @@ class SamplePoolFilterNode(BaseNode):
         # 指数筛选
         index_filt = np.ones((n_dt, n_stk))
         if self._sample_index != 'all':
-            if self._sample_index in INDEX_MAPPING:
-                h5_file, key = INDEX_MAPPING[self._sample_index]
+            if self._sample_index in self._index_mapping:
+                h5_file, key = self._index_mapping[self._sample_index]
                 if_index = loader.load_h5(h5_file, key)
                 if_index = if_index.replace(np.nan, 0)
                 index_filt = index_filt * if_index.values
@@ -74,7 +86,7 @@ class SamplePoolFilterNode(BaseNode):
             else:
                 raise ValueError(f"不支持的指数: {self._sample_index}")
 
-        # 行业筛选
+         # 行业筛选
         industry_filt = np.ones((n_dt, n_stk))
         if self._sample_industry != 'all':
             if isinstance(self._sample_industry, tuple):
@@ -84,10 +96,13 @@ class SamplePoolFilterNode(BaseNode):
                 ind_name = self._sample_industry
 
             id_industry = loader.load_h5('stk_daily.h5', ind_key)
-            ind_name_data = loader.load_h5('stk_daily.h5', f'ind_name_{ind_key.replace("id_", "").upper()}')
+            # M12: i18n 映射: self._i18n_name_map
+            if self._i18n_name_map and ind_key in self._i18n_name_map:
+                ind_name = self._i18n_name_map[ind_key]
+            id_name_data = loader.load_h5('stk_daily.h5', f'ind_name_{ind_key.replace("id_", "").upper()}')
 
             # 找到行业名称对应的编号
-            ind_idx = np.where(ind_name_data.values == ind_name)[0]
+            ind_idx = np.where(id_name_data.values == ind_name)[0]
             if len(ind_idx) > 0:
                 ind_num = ind_idx[0] + 1  # 行业编号从 1 开始
                 industry_filt[id_industry.values != ind_num] = 0

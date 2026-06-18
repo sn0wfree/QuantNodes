@@ -65,7 +65,8 @@ class IFinDDatabase:
                  date_end: str = '', universe: str = '沪深300',
                  fetcher: IFindFetcher = None,
                  industry_map: dict | None = None,
-                 risk_registry: list[str] | None = None):
+                 risk_registry: list[str] | None = None,
+                 batch_size: int | None = None):
         """
         Args:
             api_path: 兼容 DataLoader, 被忽略
@@ -75,6 +76,7 @@ class IFinDDatabase:
             fetcher: 注入的 fetcher (测试用 IFindFetcherStub)
             industry_map: H13 行业代码映射 (None=30 申万一级)
             risk_registry: P-4 风险因子注册表 (None=10 默认 Barra 风格因子)
+            batch_size: M10 分批查询大小 (None=默认 50, 推荐 50-100 避免限流)
         """
         # H9: 不再硬编码 '20260101', 默认 1 年前 (跨年/跨月可滚动)
         if not date_beg:
@@ -87,12 +89,14 @@ class IFinDDatabase:
         self._fetcher = fetcher or IFindFetcher()
         # H13: 行业代码映射可覆盖
         self._industry_map = industry_map if industry_map is not None else _DEFAULT_INDUSTRY_MAP
-        # P-4: 风险因子注册表可外部注入, None=10 默认 Barra 风格
+        # P-4: 风险因子注册表可外部注入, None=10 默认 Barra 风格因子
         self._risk_registry = list(risk_registry) if risk_registry is not None else [
             '/beta', '/momentum', '/size', '/volatility',
             '/value', '/quality', '/growth', '/leverage',
             '/liquidity', '/non_linear_size',
         ]
+        # M10: 分批查询大小 (默认 50, 可自定义)
+        self._batch_size = batch_size if batch_size is not None else 50
 
         # 缓存
         self._stklist = None
@@ -288,11 +292,10 @@ class IFinDDatabase:
             return self._stock_prices
 
         codes = self._get_stock_codes()
-        # 分批查询 (每批最多 50 个代码)
-        batch_size = 50
+        # 分批查询 (每批最多 self._batch_size 个代码, M10 参数化)
         all_dfs = []
-        for i in range(0, len(codes), batch_size):
-            batch = codes[i:i + batch_size]
+        for i in range(0, len(codes), self._batch_size):
+            batch = codes[i:i + self._batch_size]
             code_str = '、'.join(batch)
             query = f'{code_str}{self._date_beg[:4]}年{self._date_beg[4:6]}月至{self._date_end[4:6]}月的日收盘价'
             df = self._query_stock_info(query)
@@ -343,10 +346,10 @@ class IFinDDatabase:
             return self._stock_info_cache[key]
 
         codes = self._get_stock_codes()
-        batch_size = 50
+        # M10: 分批查询用 self._batch_size
         all_dfs = []
-        for i in range(0, len(codes), batch_size):
-            batch = codes[i:i + batch_size]
+        for i in range(0, len(codes), self._batch_size):
+            batch = codes[i:i + self._batch_size]
             code_str = '、'.join(batch)
             query = query_template.format(codes=code_str, beg=self._date_beg, end=self._date_end)
             df = self._query_stock_info(query)

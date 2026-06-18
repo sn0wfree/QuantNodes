@@ -43,7 +43,11 @@ class LoadDataNodeConfig(_NodeBase):
 
 
 class SamplePoolNodeConfig(_NodeBase):
-    """Node 2: SamplePoolFilterNode 配置"""
+    """Node 2: SamplePoolFilterNode 配置
+
+    M9: index_mapping 可自定义，合并全局默认 INDEX_MAPPING。
+    M12: i18n_name_map 可自定义行业代码→名称映射，覆盖全局默认 INDUSTRY_MAPPING。
+    """
     sample_index: str = Field(
         default="all", description="样本池: all/HS300/ZZ500/ZZ800/custom",
     )
@@ -52,6 +56,12 @@ class SamplePoolNodeConfig(_NodeBase):
     )
     sample_index_customdir: Optional[tuple] = Field(
         default=None, description="自定义样本池路径 (sample_index=custom 时必填)",
+    )
+    index_mapping: Optional[dict[str, tuple[str, str]]] = Field(
+        default=None, description="自定义指数映射 (覆盖全局默认 INDEX_MAPPING)",
+    )
+    i18n_name_map: Optional[dict[str, str]] = Field(
+        default=None, description="自定义行业代码→名称映射 (覆盖全局默认 INDUSTRY_MAPPING)",
     )
 
 
@@ -93,6 +103,10 @@ class PreprocessNodeConfig(_NodeBase):
     mad_n: float = Field(default=5.0, description="median winsorize 倍数 (M5)")
     pct_low: float = Field(default=0.025, description="pct_shrink 下分位 (M5)")
     pct_high: float = Field(default=0.975, description="pct_shrink 上分位 (M5)")
+    i18n_name_map: Optional[dict[str, str]] = Field(
+        default=None,
+        description="自定义行业代码→名称映射 (覆盖全局 INDUSTRY_MAPPING)",
+    )
 
 
 class NeutralizeNodeConfig(_NodeBase):

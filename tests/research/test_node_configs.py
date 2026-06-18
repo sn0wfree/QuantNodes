@@ -353,7 +353,7 @@ class TestSelfXxxBackwardsCompat:
 # ============================================================================
 
 class TestCrossProcessDictStability:
-    """跨进程: Pydantic model_dump() → dict, 子进程 dict.get 链稳定"""
+    """跨进程: model_dump() → dict → 子进程路径稳定"""
 
     @pytest.mark.parametrize("config_cls,kwargs", [
         (LoadDataNodeConfig, {"data_path": "/tmp/"}),
@@ -382,6 +382,82 @@ class TestCrossProcessDictStability:
         """P-1: self._output_dir 是 Path 对象 (expanduser 已应用)"""
         node = FactorTestReportNode(config={})
         assert isinstance(node._output_dir, Path)
+
+
+# ============================================================================
+# M9: SamplePoolFilterNode 自定义 index_mapping
+# ============================================================================
+
+class TestSamplePoolIndexMapping:
+    """M9: 自定义指数映射 (覆盖全局默认)"""
+
+    def test_default_index_mapping(self):
+        """默认使用全局 INDEX_MAPPING"""
+        node = SamplePoolFilterNode(config={"sample_index": "HS300"})
+        # 全局默认存在 HS300
+        assert ("HS300" in node._index_mapping)
+        assert node._index_mapping["HS300"] == ("stk_daily.h5", "id_300")
+        assert ("ZZ500" in node._index_mapping)
+
+    def test_custom_index_mapping_merge(self):
+        """自定义覆盖单个指数"""
+        node = SamplePoolFilterNode(config={
+            "sample_index": "MY_INDEX",
+            "index_mapping": {"MY_INDEX": ("my.h5", "id_my")},
+        })
+        # 自定义存在
+        assert node._index_mapping["MY_INDEX"] == ("my.h5", "id_my")
+        # 全局默认仍存在
+        assert ("HS300" in node._index_mapping)
+
+    def test_custom_overwrite_default(self):
+        """自定义覆盖默认 HS300 路径"""
+        node = SamplePoolFilterNode(config={
+            "sample_index": "HS300",
+            "index_mapping": {"HS300": ("custom.h5", "custom_id")},
+        })
+        assert node._index_mapping["HS300"] == ("custom.h5", "custom_id")
+        # ZZ500 仍默认
+        assert node._index_mapping["ZZ500"] == ("stk_daily.h5", "id_500")
+
+    def test_empty_custom_nothing(self):
+        """index_mapping=None 不改变默认"""
+        node = SamplePoolFilterNode(config={"sample_index": "HS300", "index_mapping": None})
+        assert node._index_mapping["HS300"] == ("stk_daily.h5", "id_300")
+
+
+# ============================================================================
+# M12: SamplePoolFilterNode 自定义 i18n_name_map
+# ============================================================================
+
+class TestSamplePoolI18nMapping:
+    """M12: 自定义行业名称映射 (合并全局默认 + 自定义覆盖)"""
+
+    def test_default_i18n_name_map(self):
+        """默认 None, 使用全局 INDUSTRY_MAPPING"""
+        node = SamplePoolFilterNode(config={"sample_index": "HS300"})
+        # 全局默认存在，合并后默认保留
+        assert node._i18n_name_map is not None
+        # 至少包含 citic 行业键，默认 key 存在
+        assert "id_citic1" in node._i18n_name_map
+
+    def test_custom_i18n_name_map_merge(self):
+        """自定义覆盖单个行业代码名称"""
+        node = SamplePoolFilterNode(config={
+            "sample_index": "HS300",
+            "i18n_name_map": {"id_citic1": "银行(自定义)", "id_my": "自定义行业"},
+        })
+        # 自定义覆盖生效
+        assert node._i18n_name_map["id_citic1"] == "银行(自定义)"
+        # 原有行业代码仍保留
+        assert len(node._i18n_name_map) > 1
+        # 新增代码保留
+        assert node._i18n_name_map["id_my"] == "自定义行业"
+
+    def test_empty_custom_nothing(self):
+        """i18n_name_map=None 不改变默认"""
+        node = SamplePoolFilterNode(config={"sample_index": "HS300", "i18n_name_map": None})
+        assert "id_citic1" in node._i18n_name_map
 
 
 # ============================================================================
