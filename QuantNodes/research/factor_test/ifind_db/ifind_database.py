@@ -9,8 +9,55 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from datetime import datetime, timedelta
+from typing import ClassVar, Callable
 
 from .fetcher import IFindFetcher
+
+
+# ── Route Decorator (B5 refactor, 2026-06-19) ──────────────────
+
+def register_route(filename: str, key: str) -> Callable:
+    """装饰器: 把方法注册到 IFinDDatabase._ROUTE_TABLE[(filename, key)] = method 名.
+
+    使用::
+
+        @register_route("stk_daily.h5", "cp")
+        def _get_prices(self) -> pd.DataFrame:
+            ...
+
+        # 一个方法可注册到多个 (filename, key):
+        @register_route("stk_daily.h5", "trade_dt")
+        @register_route("index_daily.h5", "trade_dt")
+        def _get_trade_dt_raw(self) -> pd.DataFrame:
+            ...
+
+    装饰器给方法打 ``_routes`` (列表) 标记; 实际表填充在类定义后由
+    ``_collect_routes(IFinDDatabase)`` 一次性扫描完成, 保证
+    ``load_h5`` 路由查找零开销.
+    """
+    def deco(method: Callable) -> Callable:
+        existing = getattr(method, "_routes", None)  # type: ignore[attr-defined]
+        if existing is None:
+            method._routes = [(filename, key)]  # type: ignore[attr-defined]
+        else:
+            method._routes = existing + [(filename, key)]  # type: ignore[attr-defined]
+        return method
+    return deco
+
+
+def _collect_routes(cls: type) -> dict[tuple[str, str], str]:
+    """扫描类及所有父类, 收集 ``_routes`` 标记的方法.
+
+    Returns:
+        ``{(filename, key): method_name}`` 字典.
+    """
+    routes: dict[tuple[str, str], str] = {}
+    for klass in reversed(cls.__mro__):
+        for name, val in klass.__dict__.items():
+            if callable(val) and hasattr(val, "_routes"):
+                for route_key in val._routes:  # type: ignore[attr-defined]
+                    routes[route_key] = name
+    return routes
 
 
 # ── Week 12: H5 兼容辅助 ─────────────────────────────────────
@@ -106,24 +153,12 @@ class IFinDDatabase:
         self._index_prices = None
         self._stock_info_cache = {}  # key -> DataFrame
 
-    # ── 路由表 ──────────────────────────────────────────────
-
-    _ROUTE_TABLE = {
-        ('stk_daily.h5', 'cp'): '_get_prices',
-        ('stk_daily.h5', 'stklist'): '_get_stock_axis_raw',
-        ('stk_daily.h5', 'trade_dt'): '_get_trade_dt_raw',
-        ('stk_daily.h5', 'id_citic1'): '_get_industry',
-        ('stk_daily.h5', 'mv_float'): '_get_market_value',
-        ('stk_daily.h5', 'st'): '_get_st_status',
-        ('stk_daily.h5', 'suspend'): '_get_suspension',
-        ('stk_daily.h5', 'ud_limit'): '_get_limit',
-        ('stk_daily.h5', 'ipo_days'): '_get_ipo_days',
-        ('stk_daily.h5', 'id_300'): '_get_hs300_member',
-        ('stk_daily.h5', 'id_500'): '_get_zz500_member',
-        ('index_daily.h5', 'index_cp'): '_get_index_cp',
-        ('index_daily.h5', 'indexlist'): '_get_index_axis_raw',
-        ('index_daily.h5', 'trade_dt'): '_get_trade_dt_raw',
-    }
+    # ── 路由表 (B5: 由 @register_route 装饰器收集, 类定义后一次性填充) ──
+    #
+    # 原 _ROUTE_TABLE 字面量已迁移到各 _get_* 方法上的 @register_route 装饰器,
+    # 见类下方 _collect_routes(IFinDDatabase) 调用.
+    # 旧 _ROUTE_TABLE 访问完全兼容 (dict 接口不变).
+    _ROUTE_TABLE: ClassVar[dict[tuple[str, str], str]] = {}
 
     # ── DataLoader 兼容接口 ─────────────────────────────────
 
@@ -261,12 +296,14 @@ class IFinDDatabase:
         self._trade_dt = pd.DataFrame(dates)
         return dates
 
+    @register_route("stk_daily.h5", "stklist")
     def _get_stock_axis_raw(self) -> pd.DataFrame:
         """stklist DataFrame: (N_stocks, 1)"""
         if self._stklist is None:
             self._get_stock_codes()
         return self._stklist
 
+    @register_route("index_daily.h5", "indexlist")
     def _get_index_axis_raw(self) -> pd.DataFrame:
         """indexlist DataFrame: (N_indices, 1)"""
         if self._indexlist is None:
@@ -280,12 +317,15 @@ class IFinDDatabase:
                 self._indexlist = pd.DataFrame(codes)
         return self._indexlist
 
+    @register_route("stk_daily.h5", "trade_dt")
+    @register_route("index_daily.h5", "trade_dt")
     def _get_trade_dt_raw(self) -> pd.DataFrame:
         """trade_dt DataFrame: (M_dates, 1)"""
         if self._trade_dt is None:
             self._get_trade_dates()
         return self._trade_dt
 
+    @register_route("stk_daily.h5", "cp")
     def _get_prices(self) -> pd.DataFrame:
         """获取股票收盘价面板 (dates × stocks)"""
         if self._stock_prices is not None:
@@ -395,6 +435,7 @@ class IFinDDatabase:
         dates = self._get_trade_dates()
         return pd.DataFrame(0, index=dates, columns=codes)
 
+    @register_route("stk_daily.h5", "id_citic1")
     def _get_industry(self) -> pd.DataFrame:
         """行业分类面板 (dates × stocks), 值为申万一级代码 (1-30)"""
         return self._get_stock_info_panel(
@@ -402,6 +443,7 @@ class IFinDDatabase:
             '{codes}的行业分类(申万一级)'
         ).applymap(lambda x: self._industry_map.get(str(x), 0) if pd.notna(x) else 0)
 
+    @register_route("stk_daily.h5", "mv_float")
     def _get_market_value(self) -> pd.DataFrame:
         """流通市值面板 (dates × stocks)"""
         return self._get_stock_info_panel(
@@ -409,6 +451,7 @@ class IFinDDatabase:
             '{codes}的流通市值'
         )
 
+    @register_route("stk_daily.h5", "st")
     def _get_st_status(self) -> pd.DataFrame:
         """ST 状态面板 (dates × stocks), 值为 0/1"""
         return self._get_stock_info_panel(
@@ -416,6 +459,7 @@ class IFinDDatabase:
             '{codes}是否被ST处理'
         ).applymap(lambda x: 1 if str(x).strip() in ('是', 'True', '1', 'ST') else 0)
 
+    @register_route("stk_daily.h5", "suspend")
     def _get_suspension(self) -> pd.DataFrame:
         """停牌状态面板 (dates × stocks), 值为 0/1"""
         return self._get_stock_info_panel(
@@ -423,6 +467,7 @@ class IFinDDatabase:
             '{codes}是否停牌'
         ).applymap(lambda x: 1 if str(x).strip() in ('是', 'True', '1', '停牌') else 0)
 
+    @register_route("stk_daily.h5", "ud_limit")
     def _get_limit(self) -> pd.DataFrame:
         """涨跌停面板 (dates × stocks), 值为 0/1/-1"""
         return self._get_stock_info_panel(
@@ -430,6 +475,7 @@ class IFinDDatabase:
             '{codes}是否涨跌停'
         ).applymap(lambda x: 1 if '涨停' in str(x) else (-1 if '跌停' in str(x) else 0))
 
+    @register_route("stk_daily.h5", "ipo_days")
     def _get_ipo_days(self) -> pd.DataFrame:
         """上市天数面板 (dates × stocks)"""
         panel = self._get_stock_info_panel(
@@ -448,6 +494,7 @@ class IFinDDatabase:
                 panel[col] = 500
         return panel
 
+    @register_route("index_daily.h5", "index_cp")
     def _get_index_cp(self) -> pd.DataFrame:
         """指数收盘价面板 (dates × indices)"""
         if self._index_prices is not None:
@@ -466,10 +513,12 @@ class IFinDDatabase:
             self._index_prices = self._pivot_prices(df)
         return self._index_prices
 
+    @register_route("stk_daily.h5", "id_300")
     def _get_hs300_member(self) -> pd.DataFrame:
         """沪深300成分股面板 (dates × stocks), 值为 0/1"""
         return self._get_index_member_panel('000300.SH', '沪深300')
 
+    @register_route("stk_daily.h5", "id_500")
     def _get_zz500_member(self) -> pd.DataFrame:
         """中证500成分股面板 (dates × stocks), 值为 0/1"""
         return self._get_index_member_panel('000905.SH', '中证500')
@@ -604,3 +653,7 @@ class IFinDDatabase:
     def get_universe_stocks(self) -> list[str]:
         """获取股票池代码列表 (公开 API, 缓存)。"""
         return self._get_stock_codes()
+
+
+# ── B5: 类定义后扫描所有 @register_route 标记, 一次性填充 _ROUTE_TABLE ──
+IFinDDatabase._ROUTE_TABLE = _collect_routes(IFinDDatabase)
