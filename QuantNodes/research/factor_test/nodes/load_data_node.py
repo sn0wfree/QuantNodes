@@ -49,13 +49,12 @@ class LoadDataNode(PydanticConfigNode):
                 factor = factor.reindex(index=trade_dt.iloc[:, 0], columns=stklist.iloc[:, 0])
             result['factor'] = factor
 
-        # 加载价格
-        if 'cp' in self._load_keys or 'cp' not in self._load_keys:
-            try:
-                cp = loader.load_h5('stk_daily.h5', 'cp')
-                result['price'] = loader.add_index(cp)
-            except Exception:
-                pass
+        # 加载价格 (price 几乎所有下游节点都需要, 强制加载)
+        try:
+            cp = loader.load_h5('stk_daily.h5', 'cp')
+            result['price'] = loader.add_index(cp)
+        except Exception:
+            pass
 
         # 加载其他数据
         for key in self._load_keys:

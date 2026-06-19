@@ -121,8 +121,12 @@ def _build_config(
     )
 
 
-def _inject_synthetic_data(runner: PipelineRunner, data_path: Path) -> None:
-    """预填 _context['LoadData'], 跳过 LoadDataNode 真实 H5 读取。"""
+def _inject_prepared_data(runner: PipelineRunner, data_path: Path) -> None:
+    """预填 _context['LoadData'], 跳过 LoadDataNode 真实 H5 读取。
+
+    名称: 从已 prepare 好的 H5 数据 (data_prep.py 输出) 注入到 ctx,
+    与"合成"无关 (R4 重命名: ``_inject_synthetic_data`` → ``_inject_prepared_data``).
+    """
     import numpy as np
     rng = np.random.RandomState(42)
     # 读 H5 实际数据
@@ -152,6 +156,10 @@ def _inject_synthetic_data(runner: PipelineRunner, data_path: Path) -> None:
         "trade_dt": trade_dt,
         "_loader": _build_loader(str(data_path)),
     }
+
+
+# 向后兼容: R4 重命名前的旧名称
+_inject_synthetic_data = _inject_prepared_data
 
 
 def _build_loader(data_path: str):
@@ -212,7 +220,7 @@ def main():
         enable_quality_gate=not args.disable_quality_gate,
     )
     runner = PipelineRunner(cfg)
-    _inject_synthetic_data(runner, data_path)
+    _inject_prepared_data(runner, data_path)
     print(f"\n[1/5] 注入 LoadData: factor={runner._context['LoadData']['factor'].shape}")
 
     # 2. 先单次回测 (验证 12 节点)

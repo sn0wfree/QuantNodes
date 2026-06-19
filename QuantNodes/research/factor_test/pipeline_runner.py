@@ -22,17 +22,12 @@ Phase R2 重构 (2026-06-19):
 
 from __future__ import annotations
 
-import sys
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import pandas as pd
 import yaml
-
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[3])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
 
 from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.research.factor_test.config import SingleFactorTestConfig
