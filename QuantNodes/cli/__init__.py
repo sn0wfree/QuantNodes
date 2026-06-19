@@ -710,30 +710,29 @@ def cmd_evolve(args) -> int:
         print(f"错误: 加载配置失败: {e}")
         return 1
 
-    # CLI 参数覆盖 config (如指定)
-    if args.max_rounds is not None:
-        runner.config.evolution.max_rounds = args.max_rounds
-    if args.early_stop is not None:
-        runner.config.evolution.early_stop_patience = args.early_stop
-    # M13-M15: CLI overrides for common defaults
-    if args.min_ipo_days is not None:
-        runner.config.preprocess.tradable.min_ipo_days = args.min_ipo_days
-    if args.min_group_size is not None:
-        runner.config.ic.min_group_size = args.min_group_size
-    if args.groups is not None:
-        runner.config.group.groups = args.groups
+    # CLI 参数覆盖 config (如指定) — M13-M15
+    # 用 getattr 防御性取值 (Args 子类可能未定义这些属性)
+    _min_ipo_days = getattr(args, "min_ipo_days", None)
+    _min_group_size = getattr(args, "min_group_size", None)
+    _groups = getattr(args, "groups", None)
+    if _min_ipo_days is not None:
+        runner.config.preprocess.tradable.min_ipo_days = _min_ipo_days
+    if _min_group_size is not None:
+        runner.config.analysis.ic.min_group_size = _min_group_size
+    if _groups is not None:
+        runner.config.analysis.group.groups = _groups
 
     print("=" * 60)
     print(f"演化实验: {config_path}")
     print(f"  方向: {directions or '(无, 走 initial_candidates)'}")
     print(f"  max_rounds: {runner.config.evolution.max_rounds}")
     print(f"  early_stop: {runner.config.evolution.early_stop_patience}")
-    if args.min_ipo_days is not None:
+    if _min_ipo_days is not None:
         print(f"  min_ipo_days: {runner.config.preprocess.tradable.min_ipo_days} (CLI override)")
-    if args.min_group_size is not None:
-        print(f"  min_group_size: {runner.config.ic.min_group_size} (CLI override)")
-    if args.groups is not None:
-        print(f"  groups: {runner.config.group.groups} (CLI override)")
+    if _min_group_size is not None:
+        print(f"  min_group_size: {runner.config.analysis.ic.min_group_size} (CLI override)")
+    if _groups is not None:
+        print(f"  groups: {runner.config.analysis.group.groups} (CLI override)")
     print("=" * 60)
 
     try:
