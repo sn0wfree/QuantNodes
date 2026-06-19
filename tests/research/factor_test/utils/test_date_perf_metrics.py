@@ -1,26 +1,27 @@
 # coding: utf-8
-"""单元测试: date_utils + performance_metrics"""
+"""Unit tests: date_utils + performance_metrics.
 
-import sys
-from pathlib import Path
-import pytest
-import numpy as np
+历史来源: 迁移自 ``QuantNodes/research/factor_test/tests/test_utils.py`` (C2 收敛).
+"""
+
 import pandas as pd
 
-_PROJECT_ROOT = str(Path(__file__).resolve().parents[5])
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
-
 from QuantNodes.research.factor_test.utils.date_utils import (
-    valid_date, resample_trade_date, get_adjust_date,
-    datenum_to_datetime, datetime_to_datenum,
+    valid_date,
+    resample_trade_date,
+    get_adjust_date,
+    datenum_to_datetime,
+    datetime_to_datenum,
 )
 from QuantNodes.research.factor_test.utils.performance_metrics import (
-    calc_max_drawdown, evaluation, cal_net_simple,
+    calc_max_drawdown,
+    evaluation,
+    cal_net_simple,
 )
 
 
 class TestDateUtils:
+
     def test_valid_date_int(self):
         df = pd.DataFrame([20170101, 20170102])
         assert valid_date(df) is True
@@ -56,6 +57,7 @@ class TestDateUtils:
 
 
 class TestPerformanceMetrics:
+
     def test_calc_max_drawdown_simple(self):
         net = pd.Series([1.0, 1.1, 1.05, 1.2, 1.15, 1.3])
         result = calc_max_drawdown(net)
@@ -68,7 +70,6 @@ class TestPerformanceMetrics:
         assert result['MDD'] == 0
 
     def test_evaluation_basic(self):
-        # 简单净值曲线
         dates = [20170101, 20170201, 20170301]
         net = pd.Series([1.0, 1.05, 1.1], index=dates)
         result = evaluation(net, dates)
