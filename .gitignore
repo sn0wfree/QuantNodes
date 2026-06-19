@@ -144,3 +144,8 @@ frontend/.env.development
 
 # Test screenshots
 tests/screenshots/
+
+# Graphify cache (regeneratable, large)
+graphify-out/cache/
+graphify-out/.graphify_labels.json
+graphify-out/converted/

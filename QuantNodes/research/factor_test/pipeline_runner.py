@@ -23,7 +23,6 @@ Phase R2 重构 (2026-06-19):
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 import pandas as pd

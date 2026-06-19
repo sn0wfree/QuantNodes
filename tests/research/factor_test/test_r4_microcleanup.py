@@ -2,7 +2,6 @@
 """R4 微清理回归: load_data 永真表达式修复 + e2e rename alias."""
 
 import pandas as pd
-import pytest
 
 
 def test_load_data_loads_price_regardless_of_load_keys(tmp_path, monkeypatch):
