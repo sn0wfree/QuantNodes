@@ -1,39 +1,31 @@
 # coding: utf-8
 """Node 1: 加载数据 / Load Data Node"""
 
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Optional, Union
 
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.utils.data_loader import DataLoader
 from QuantNodes.research.factor_test.nodes.configs import LoadDataNodeConfig
 
 
-class LoadDataNode(BaseNode):
+class LoadDataNode(PydanticConfigNode):
     """加载因子数据、价格、行业、市值等
 
     输入: config (LoadDataNodeConfig: data_path + load_keys + factor)
     输出: Dict[str, pd.DataFrame]
     """
 
+    ConfigSchema = LoadDataNodeConfig
+
     def __init__(self, name: str = "LoadData",
                  config: Union[dict, LoadDataNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, LoadDataNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = LoadDataNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/LoadDataNodeConfig, got {type(config).__name__}"
-            )
-        # T0-4: Pydantic 化 (向后兼容 self._data_path / self._load_keys / self._factor_config)
-        self._data_path = cfg.data_path
-        self._load_keys = list(cfg.load_keys)
-        self._factor_config = cfg.factor
+        super().__init__(name, config, **kwargs)
+        # 向后兼容: 保留 self._xxx 实例属性
+        self._data_path = self.cfg.data_path
+        self._load_keys = list(self.cfg.load_keys)
+        self._factor_config = self.cfg.factor
 
     def _execute(self, input_data=None, **kwargs) -> Dict[str, pd.DataFrame]:
         # P-2: 空字符串校验 (Pydantic Field(...) 不挡空串, 需显式检查)

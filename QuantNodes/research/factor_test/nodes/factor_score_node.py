@@ -9,36 +9,28 @@ from typing import Union
 import numpy as np
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import ScoreNodeConfig
 from QuantNodes.research.factor_test.utils.performance_metrics import evaluation, cal_net_simple
 
 
-class FactorScoreNode(BaseNode):
+class FactorScoreNode(PydanticConfigNode):
     """市值行业分层打分 (3 市值组 × 29 中信行业 × N 分位)
 
     输入: factor_neutral, mv, industry, price
     输出: {fac_group, daily_net, eva, ...}
     """
 
+    ConfigSchema = ScoreNodeConfig
+
     def __init__(self, name: str = "FactorScore",
                  config: Union[dict, ScoreNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, ScoreNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = ScoreNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/ScoreNodeConfig, got {type(config).__name__}"
-            )
+        super().__init__(name, config, **kwargs)
         # T0-2: 3 隐式默认从 Pydantic 字段读取 (n_industries=29, n_size_groups=3, n_quantile_groups=5)
-        self._enabled = cfg.enabled
-        self._n_industries = cfg.n_industries
-        self._n_size_groups = cfg.n_size_groups
-        self._n_quantile_groups = cfg.n_quantile_groups
+        self._enabled = self.cfg.enabled
+        self._n_industries = self.cfg.n_industries
+        self._n_size_groups = self.cfg.n_size_groups
+        self._n_quantile_groups = self.cfg.n_quantile_groups
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         if not self._enabled:

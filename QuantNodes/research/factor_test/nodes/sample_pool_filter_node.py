@@ -9,13 +9,13 @@ from typing import Dict, Union
 import numpy as np
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import SamplePoolNodeConfig
 from QuantNodes.research.factor_test.utils.constants import INDEX_MAPPING, INDUSTRY_MAPPING
 from QuantNodes.research.factor_test.utils.constants import resolve_index_mapping, resolve_industry_map
 
 
-class SamplePoolFilterNode(BaseNode):
+class SamplePoolFilterNode(PydanticConfigNode):
     """根据指数范围和行业筛选样本池
 
     输入: context["LoadData"] 的输出
@@ -25,30 +25,22 @@ class SamplePoolFilterNode(BaseNode):
     M12: i18n_name_map 可自定义行业代码→名称映射，合并全局默认 + 节点自定义覆盖
     """
 
+    ConfigSchema = SamplePoolNodeConfig
+
     def __init__(self, name: str = "SamplePoolFilter",
                  config: Union[dict, SamplePoolNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化，避免 BaseNode.__init__ 在 Config 实例上 dict-spread 失败
-        if isinstance(config, SamplePoolNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = SamplePoolNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/SamplePoolNodeConfig, got {type(config).__name__}"
-            )
-        self._sample_index = cfg.sample_index
-        self._sample_industry = cfg.sample_industry
-        self._sample_customdir = cfg.sample_index_customdir
+        super().__init__(name, config, **kwargs)
+        self._sample_index = self.cfg.sample_index
+        self._sample_industry = self.cfg.sample_industry
+        self._sample_customdir = self.cfg.sample_index_customdir
         # M9: 合并全局默认 INDEX_MAPPING + 节点自定义覆盖
         self._index_mapping = resolve_index_mapping({
-            "INDEX_MAPPING": cfg.index_mapping
-        } if cfg.index_mapping else None)
+            "INDEX_MAPPING": self.cfg.index_mapping
+        } if self.cfg.index_mapping else None)
         # M12: 合并全局默认 INDUSTRY_MAPPING + 节点自定义覆盖
         self._i18n_name_map = resolve_industry_map({
-            "INDUSTRY_MAP": cfg.i18n_name_map
-        } if cfg.i18n_name_map else None)
+            "INDUSTRY_MAP": self.cfg.i18n_name_map
+        } if self.cfg.i18n_name_map else None)
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

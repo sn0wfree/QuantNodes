@@ -8,35 +8,27 @@ from typing import Union
 
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import AdjustDateNodeConfig
 from QuantNodes.research.factor_test.utils.date_utils import get_adjust_date
 
 
-class AdjustDateNode(BaseNode):
+class AdjustDateNode(PydanticConfigNode):
     """根据起始日、截止日、调仓模式生成调仓日序列
 
     输入: context["LoadData"] 的输出
     输出: adj_dates (yyyymmdd int DataFrame)
     """
 
+    ConfigSchema = AdjustDateNodeConfig
+
     def __init__(self, name: str = "AdjustDate",
                  config: Union[dict, AdjustDateNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, AdjustDateNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = AdjustDateNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/AdjustDateNodeConfig, got {type(config).__name__}"
-            )
+        super().__init__(name, config, **kwargs)
         # T0-3: H10 兼容, 默认 None → _execute 启动校验抛错
-        self._adj_date_beg = cfg.adj_date_beg
-        self._adj_date_end = cfg.adj_date_end
-        self._adj_mode = list(cfg.adj_mode)
+        self._adj_date_beg = self.cfg.adj_date_beg
+        self._adj_date_end = self.cfg.adj_date_end
+        self._adj_mode = list(self.cfg.adj_mode)
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         # T0-3: H10 启动校验 (避免静默跑废日期)

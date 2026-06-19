@@ -8,32 +8,24 @@ from typing import Union
 
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import LongShortNodeConfig
 from QuantNodes.research.factor_test.utils.performance_metrics import evaluation
 
 
-class LongShortNode(BaseNode):
+class LongShortNode(PydanticConfigNode):
     """多空组合构建 + 净值 + 评价
 
     输入: GroupAnalyzerNode 的输出
     输出: {net, eva_total, eva_yearly, period_ret}
     """
 
+    ConfigSchema = LongShortNodeConfig
+
     def __init__(self, name: str = "LongShort",
                  config: Union[dict, LongShortNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, LongShortNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = LongShortNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/LongShortNodeConfig, got {type(config).__name__}"
-            )
-        self._factor_direction = cfg.factor_direction
+        super().__init__(name, config, **kwargs)
+        self._factor_direction = self.cfg.factor_direction
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

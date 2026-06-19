@@ -12,39 +12,31 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm as scipy_norm
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import PreprocessNodeConfig
 
 
-class FactorPreprocessNode(BaseNode):
+class FactorPreprocessNode(PydanticConfigNode):
     """因子预处理: 缺失值填充 + 去极值 + 标准化
 
     输入: factor, tradable, adj_dates, industry
     输出: factor_std (预处理后的因子, 仅调仓日)
     """
 
+    ConfigSchema = PreprocessNodeConfig
+
     def __init__(self, name: str = "FactorPreprocess",
                  config: Union[dict, PreprocessNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, PreprocessNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = PreprocessNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/PreprocessNodeConfig, got {type(config).__name__}"
-            )
+        super().__init__(name, config, **kwargs)
         # T0-2: 3 隐式默认从 Pydantic 字段读取 (mad_n=5.0, pct_low=0.025, pct_high=0.975)
-        self._missing = cfg.missing
-        self._extreme = cfg.extreme
-        self._norm = cfg.norm
-        self._mad_n = cfg.mad_n
-        self._pct_low = cfg.pct_low
-        self._pct_high = cfg.pct_high
+        self._missing = self.cfg.missing
+        self._extreme = self.cfg.extreme
+        self._norm = self.cfg.norm
+        self._mad_n = self.cfg.mad_n
+        self._pct_low = self.cfg.pct_low
+        self._pct_high = self.cfg.pct_high
         # M12: 自定义行业名称映射 (覆盖全局默认)
-        self._i18n_name_map = cfg.i18n_name_map if cfg.i18n_name_map is not None else None
+        self._i18n_name_map = self.cfg.i18n_name_map if self.cfg.i18n_name_map is not None else None
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

@@ -14,35 +14,27 @@ from typing import Union
 import pandas as pd
 import numpy as np
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 
 logger = logging.getLogger(__name__)
 from QuantNodes.research.factor_test.nodes.configs import ReportNodeConfig
 
 
-class FactorTestReportNode(BaseNode):
+class FactorTestReportNode(PydanticConfigNode):
     """汇总所有分析结果, 输出到文件
 
     输入: context 中所有分析结果
     输出: FactorTestReport (dict)
     """
 
+    ConfigSchema = ReportNodeConfig
+
     def __init__(self, name: str = "FactorTestReport",
                  config: Union[dict, ReportNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, ReportNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = ReportNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/ReportNodeConfig, got {type(config).__name__}"
-            )
+        super().__init__(name, config, **kwargs)
         # P-1: 路径优先级 env QUANTNODES_OUTPUT_DIR > expanduser > default
-        self._output_dir = self._resolve_output_dir(cfg.dir)
-        self._output_format = list(cfg.format)
+        self._output_dir = self._resolve_output_dir(self.cfg.dir)
+        self._output_format = list(self.cfg.format)
 
     @staticmethod
     def _resolve_output_dir(default: str) -> Path:

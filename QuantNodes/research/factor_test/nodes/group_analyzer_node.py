@@ -9,7 +9,7 @@ from typing import Union
 import numpy as np
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import GroupAnalyzerNodeConfig
 from QuantNodes.research.factor_test.utils.performance_metrics import (
     evaluation, cal_net_simple
@@ -17,7 +17,7 @@ from QuantNodes.research.factor_test.utils.performance_metrics import (
 from QuantNodes.research.factor_test.utils.constants import INDEX_CP_MAPPING
 
 
-class GroupAnalyzerNode(BaseNode):
+class GroupAnalyzerNode(PydanticConfigNode):
     """N 分位分组 + 各组收益/净值/评价
 
     输入: factor_neutral, price, index_cp
@@ -25,24 +25,16 @@ class GroupAnalyzerNode(BaseNode):
             group_eva_abs, group_eva_exc, turnover, ...}
     """
 
+    ConfigSchema = GroupAnalyzerNodeConfig
+
     def __init__(self, name: str = "GroupAnalyzer",
                  config: Union[dict, GroupAnalyzerNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, GroupAnalyzerNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = GroupAnalyzerNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/GroupAnalyzerNodeConfig, got {type(config).__name__}"
-            )
-        self._groups = cfg.groups
-        self._factor_direction = cfg.factor_direction
-        self._floor_mode = cfg.floor_mode
-        self._hedge = cfg.hedge
-        self._hedge_path = cfg.hedge_path
+        super().__init__(name, config, **kwargs)
+        self._groups = self.cfg.groups
+        self._factor_direction = self.cfg.factor_direction
+        self._floor_mode = self.cfg.floor_mode
+        self._hedge = self.cfg.hedge
+        self._hedge_path = self.cfg.hedge_path
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

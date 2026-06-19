@@ -10,31 +10,23 @@ from typing import Union
 import numpy as np
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import TradabilityNodeConfig
 
 
-class TradabilityFilterNode(BaseNode):
+class TradabilityFilterNode(PydanticConfigNode):
     """验证股票可交易性 (ST/停牌/涨跌停/新股/自定义追踪)
 
     输入: context["LoadData"] 的输出 + context["SamplePoolFilter"] 的输出
     输出: tradable (1=可交易, nan=不可)
     """
 
+    ConfigSchema = TradabilityNodeConfig
+
     def __init__(self, name: str = "TradabilityFilter",
                  config: Union[dict, TradabilityNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, TradabilityNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = TradabilityNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/TradabilityNodeConfig, got {type(config).__name__}"
-            )
-        self._tradable_setting = cfg.tradable
+        super().__init__(name, config, **kwargs)
+        self._tradable_setting = self.cfg.tradable
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

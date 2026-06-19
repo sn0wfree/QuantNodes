@@ -11,33 +11,25 @@ from typing import Union
 import numpy as np
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 
 logger = logging.getLogger(__name__)
 from QuantNodes.research.factor_test.nodes.configs import RiskCorrelationNodeConfig
 
 
-class RiskCorrelationNode(BaseNode):
+class RiskCorrelationNode(PydanticConfigNode):
     """与风险因子的 Spearman 秩相关 + 稳定系数
 
     输入: factor_neutral, risk_factors
     输出: {mean: DataFrame, stability: DataFrame}
     """
 
+    ConfigSchema = RiskCorrelationNodeConfig
+
     def __init__(self, name: str = "RiskCorrelation",
                  config: Union[dict, RiskCorrelationNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, RiskCorrelationNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = RiskCorrelationNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/RiskCorrelationNodeConfig, got {type(config).__name__}"
-            )
-        self._factors = cfg.factors
+        super().__init__(name, config, **kwargs)
+        self._factors = self.cfg.factors
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

@@ -9,31 +9,23 @@ from typing import Union
 import numpy as np
 import pandas as pd
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import ICAnalyzerNodeConfig
 
 
-class ICAnalyzerNode(BaseNode):
+class ICAnalyzerNode(PydanticConfigNode):
     """计算 IC / Rank IC / ICIR / 因子 rank 自相关性
 
     输入: factor_neutral, price
     输出: {ic, rank_ic, ic_result, rank_ic_result, factor_rank_autocorr}
     """
 
+    ConfigSchema = ICAnalyzerNodeConfig
+
     def __init__(self, name: str = "ICAnalyzer",
                  config: Union[dict, ICAnalyzerNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, ICAnalyzerNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = ICAnalyzerNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/ICAnalyzerNodeConfig, got {type(config).__name__}"
-            )
-        self._min_group_size = cfg.min_group_size
+        super().__init__(name, config, **kwargs)
+        self._min_group_size = self.cfg.min_group_size
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

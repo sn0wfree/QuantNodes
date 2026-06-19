@@ -11,35 +11,27 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-from QuantNodes.core.node import BaseNode
+from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 
 logger = logging.getLogger(__name__)
 from QuantNodes.research.factor_test.nodes.configs import NeutralizeNodeConfig
 
 
-class FactorNeutralizeNode(BaseNode):
+class FactorNeutralizeNode(PydanticConfigNode):
     """行业/风险因子中性化 (OLS 残差)
 
     输入: factor_std, industry, risk_factors
     输出: factor_neutral
     """
 
+    ConfigSchema = NeutralizeNodeConfig
+
     def __init__(self, name: str = "FactorNeutralize",
                  config: Union[dict, NeutralizeNodeConfig, None] = None, **kwargs):
-        # T0-4: 预先 Union 化
-        if isinstance(config, NeutralizeNodeConfig):
-            cfg = config
-            super().__init__(name, cfg.model_dump(), **kwargs)
-        elif isinstance(config, dict) or config is None:
-            cfg = NeutralizeNodeConfig.model_validate(config or {})
-            super().__init__(name, config, **kwargs)
-        else:
-            raise TypeError(
-                f"config must be dict/None/NeutralizeNodeConfig, got {type(config).__name__}"
-            )
-        self._if_industry = cfg.industry_neutral
-        self._if_risk = cfg.risk_neutral
-        self._risk_factor_specs = list(cfg.risk_factors)
+        super().__init__(name, config, **kwargs)
+        self._if_industry = self.cfg.industry_neutral
+        self._if_risk = self.cfg.risk_neutral
+        self._risk_factor_specs = list(self.cfg.risk_factors)
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})
