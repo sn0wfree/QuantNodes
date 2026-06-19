@@ -1,0 +1,2506 @@
+# coding=utf-8
+"""
+因子函数 - Polars 版本
+
+重构说明:
+- 内部使用 QuantNodes.operators 中的 Polars 算子
+- 装饰器注册表系统，支持动态发现、文档生成
+- 纯 Polars 向量化，无 multiprocessing
+- 工厂函数消除重复代码
+
+Usage:
+    from QuantNodes.factor_node import factor_functions as ff
+
+    result = ff.rolling_mean("close", 20)
+    result = ff.ts_corr("close", "volume", 20)
+    result = ff.rank("factor")
+
+    # 注册表 API
+    ff.list_operators()
+    ff.get_operator("rolling_mean")
+    ff.operator_info("rolling_mean")
+"""
+
+from __future__ import annotations
+
+import inspect
+import functools
+from typing import Any, Dict, List, Optional, Union, Callable
+
+import numpy as np
+import polars as pl
+from polars import Expr
+
+from QuantNodes.operators.time_series import TimeSeriesOperators
+from QuantNodes.operators.section import SectionOperators
+from QuantNodes.operators.math import MathOperators
+from QuantNodes.operators.composite import CompositeOperators
+
+
+# ==============================================================================
+# 算子分类常量
+# ==============================================================================
+
+class OperatorCategory:
+    """算子分类常量"""
+    POINT = "point"
+    TIME = "time"
+    SECTION = "section"
+    MULTI_SECTION = "multi_section"
+    TALIB = "talib"
+
+
+# ==============================================================================
+# 装饰器注册表
+# ==============================================================================
+
+_OPERATOR_REGISTRY: Dict[str, Dict[str, Dict[str, Any]]] = {
+    OperatorCategory.POINT: {},
+    OperatorCategory.TIME: {},
+    OperatorCategory.SECTION: {},
+    OperatorCategory.MULTI_SECTION: {},
+    OperatorCategory.TALIB: {},
+}
+
+
+def register_operator(category: str, name: Optional[str] = None):
+    """装饰器：自动注册算子到注册表
+
+    Args:
+        category: 算子分类 (point/time/section/multi_section)
+        name: 算子名称，默认使用函数名
+    """
+    def decorator(func: Callable):
+        op_name = name or func.__name__
+        sig = inspect.signature(func)
+
+        _OPERATOR_REGISTRY[category][op_name] = {
+            "name": op_name,
+            "category": category,
+            "func": func,
+            "doc": inspect.getdoc(func) or "",
+            "signature": str(sig),
+            "parameters": list(sig.parameters.keys()),
+        }
+        return func
+    return decorator
+
+
+# ==============================================================================
+# 注册表查询 API
+# ==============================================================================
+
+def list_operators(category: Optional[str] = None) -> List[str]:
+    """列出所有算子名称
+
+    Args:
+        category: 算子分类，可选值: point, time, section, multi_section
+    """
+    if category:
+        return list(_OPERATOR_REGISTRY.get(category, {}).keys())
+    return [name for cat in _OPERATOR_REGISTRY for name in _OPERATOR_REGISTRY[cat]]
+
+
+def get_operator(name: str, category: Optional[str] = None) -> Optional[Callable]:
+    """根据名称获取算子函数
+
+    Args:
+        name: 算子名称
+        category: 算子分类，可选
+    """
+    if category:
+        op = _OPERATOR_REGISTRY.get(category, {}).get(name)
+        return op["func"] if op else None
+
+    for cat in _OPERATOR_REGISTRY:
+        if name in _OPERATOR_REGISTRY[cat]:
+            return _OPERATOR_REGISTRY[cat][name]["func"]
+    return None
+
+
+def operator_info(name: str, category: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """获取算子详细信息"""
+    if category:
+        op = _OPERATOR_REGISTRY.get(category, {}).get(name)
+        return op if op else None
+
+    for cat in _OPERATOR_REGISTRY:
+        if name in _OPERATOR_REGISTRY[cat]:
+            return _OPERATOR_REGISTRY[cat][name]
+    return None
+
+
+def generate_documentation(output_format: str = "markdown", category: Optional[str] = None) -> str:
+    """生成算子文档"""
+    if category:
+        ops = {category: _OPERATOR_REGISTRY.get(category, {})}
+    else:
+        ops = _OPERATOR_REGISTRY
+
+    if output_format == "json":
+        import json
+        serializable = {}
+        for cat, cat_ops in ops.items():
+            serializable[cat] = {}
+            for name, info in cat_ops.items():
+                serializable[cat][name] = {k: v for k, v in info.items() if k != "func"}
+        return json.dumps(serializable, indent=2, ensure_ascii=False)
+
+    lines = []
+    for cat, cat_ops in ops.items():
+        if not cat_ops:
+            continue
+        lines.append(f"\n## {cat.upper()}")
+        lines.append(f"共 {len(cat_ops)} 个算子\n")
+        for name, info in sorted(cat_ops.items()):
+            lines.append(f"### {name}")
+            if info.get("doc"):
+                lines.append(f"{info['doc']}")
+            lines.append(f"- 参数: {info.get('parameters', [])}")
+            lines.append(f"- 签名: {info.get('signature', '')}")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+# ==============================================================================
+# 辅助函数
+# ==============================================================================
+
+def _ensure_expr(f: Any) -> Expr:
+    """确保是表达式"""
+    if isinstance(f, pl.Expr):
+        return f
+    if isinstance(f, str):
+        return pl.col(f)
+    return pl.lit(f)
+
+
+def _combo_add(a: Expr, b: Expr) -> Expr:
+    return a + b
+
+
+def _combo_mul(a: Expr, b: Expr) -> Expr:
+    return a * b
+
+
+def _combo_max(a: Expr, b: Expr) -> Expr:
+    return pl.max_horizontal(a, b)
+
+
+def _combo_min(a: Expr, b: Expr) -> Expr:
+    return pl.min_horizontal(a, b)
+
+
+_COMBO_METHODS = {
+    "add": _combo_add,
+    "sum": _combo_add,
+    "mul": _combo_mul,
+    "max": _combo_max,
+    "min": _combo_min,
+}
+
+
+# ==============================================================================
+# 工厂函数 - 消除重复代码
+# ==============================================================================
+
+def _inject(name: str, func: Callable):
+    """将函数注入模块全局作用域"""
+    globals()[name] = func
+
+
+def _make_rolling_ts_wrapper(name: str, ts_method: str, doc: str):
+    """创建委托 TimeSeriesOperators 的滚动窗口包装器"""
+    _ts_method = getattr(TimeSeriesOperators, ts_method)
+
+    def _wrapper(f: Union[Expr, str], window: int = 20,
+                 min_periods: Optional[int] = None, **kwargs) -> Expr:
+        return _ts_method(f, window, min_periods)
+
+    _wrapper.__name__ = name
+    _wrapper.__doc__ = doc
+    _wrapper.__qualname__ = name
+    register_operator(OperatorCategory.TIME, name)(_wrapper)
+    _inject(name, _wrapper)
+    return _wrapper
+
+
+def _make_expanding_wrapper(name: str, polars_method: str, doc: str):
+    """创建使用 polars expanding 方法的包装器"""
+    def _wrapper(f: Union[Expr, str], min_periods: Optional[int] = None, **kwargs) -> Expr:
+        return _ensure_expr(f).__getattribute__(polars_method)()
+
+    _wrapper.__name__ = name
+    _wrapper.__doc__ = doc
+    _wrapper.__qualname__ = name
+    register_operator(OperatorCategory.TIME, name)(_wrapper)
+    _inject(name, _wrapper)
+    return _wrapper
+
+
+def _make_nan_wrapper(name: str, polars_method: str, doc: str, extra_params: Optional[Dict[str, Any]] = None):
+    """创建 NaN 跨截面聚合包装器"""
+    def _wrapper(f: Union[Expr, str], **kwargs) -> Expr:
+        return getattr(_ensure_expr(f), polars_method)(**(extra_params or {}))
+
+    _wrapper.__name__ = name
+    _wrapper.__doc__ = doc
+    _wrapper.__qualname__ = name
+    register_operator(OperatorCategory.POINT, name)(_wrapper)
+    _inject(name, _wrapper)
+    return _wrapper
+
+
+def _make_aggr_wrapper(method: str, doc: str):
+    """创建聚合算子包装器"""
+    def _wrapper(f: Union[Expr, str], group_by: str, **kwargs) -> Expr:
+        return aggregate(f, group_by, method)
+
+    _wrapper.__name__ = f"aggr_{method}"
+    _wrapper.__doc__ = doc
+    _wrapper.__qualname__ = f"aggr_{method}"
+    register_operator(OperatorCategory.MULTI_SECTION, f"aggr_{method}")(_wrapper)
+    _inject(f"aggr_{method}", _wrapper)
+    return _wrapper
+
+
+def _expanding_var_expr(f: Union[Expr, str]) -> Expr:
+    """扩展窗口方差核心公式（expanding_var 和 expanding_std 共用）"""
+    e = _ensure_expr(f)
+    n = pl.int_range(0, pl.len()) + 1
+    mean = e.cum_sum() / n
+    mean_sq = (e ** 2).cum_sum() / n
+    return mean_sq - mean ** 2
+
+
+def _apply_weights(f: Union[Expr, str], weights) -> Expr:
+    """通用加权移动算子（decay_linear / decay_exp 共用）"""
+    expr = _ensure_expr(f)
+    result = expr * weights[0]
+    for i in range(1, len(weights)):
+        result = result + expr.shift(i) * weights[i]
+    return result
+
+
+def _cumulative_map_batches_single(e: Expr, func_name: str, return_dtype=pl.Float64) -> Expr:
+    """单因子扩展窗口 map_batches 通用包装"""
+    def _cum_stat(s: pl.Series) -> pl.Series:
+        vals = s.to_list()
+        result = []
+        for i in range(len(vals)):
+            window = [v for v in vals[:i + 1] if v is not None]
+            if len(window) == 0:
+                result.append(None)
+            else:
+                result.append(_CUM_SINGLE_FUNCS[func_name](window))
+        return pl.Series(values=result)
+    return e.map_batches(_cum_stat, return_dtype=return_dtype)
+
+
+def _cum_single_median(window):
+    window.sort()
+    n = len(window)
+    mid = n // 2
+    if n % 2 == 1:
+        return window[mid]
+    return (window[mid - 1] + window[mid]) / 2
+
+
+def _cum_single_kurt(window):
+    if len(window) < 4:
+        return None
+    arr = np.array(window, dtype=np.float64)
+    m = arr.mean()
+    s2 = arr.std(ddof=1)
+    if s2 < 1e-15:
+        return None
+    return float(np.mean(((arr - m) / s2) ** 4) - 3)
+
+
+def _cum_single_skew(window):
+    if len(window) < 3:
+        return None
+    arr = np.array(window, dtype=np.float64)
+    m = arr.mean()
+    s2 = arr.std(ddof=1)
+    if s2 < 1e-15:
+        return None
+    n = len(arr)
+    return float(n / ((n - 1) * (n - 2)) * np.sum(((arr - m) / s2) ** 3))
+
+
+def _cum_single_quantile(window, quantile=0.5):
+    window.sort()
+    n = len(window)
+    idx = quantile * (n - 1)
+    lo = int(idx)
+    hi = min(lo + 1, n - 1)
+    frac = idx - lo
+    return window[lo] * (1 - frac) + window[hi] * frac
+
+
+_CUM_SINGLE_FUNCS = {
+    "median": _cum_single_median,
+    "kurt": _cum_single_kurt,
+    "skew": _cum_single_skew,
+}
+
+
+def _cumulative_map_batches_dual(e1: Expr, e2: Expr, func_name: str,
+                                 return_dtype=pl.Float64) -> Expr:
+    """双因子扩展窗口 map_batches 通用包装"""
+    def _cum_stat(args: list) -> pl.Series:
+        s1, s2 = args[0], args[1]
+        v1 = s1.to_list()
+        v2 = s2.to_list()
+        result = []
+        for i in range(len(v1)):
+            pairs = [(a, b) for a, b in zip(v1[:i + 1], v2[:i + 1])
+                     if a is not None and b is not None]
+            if len(pairs) < 2:
+                result.append(None)
+            else:
+                arr1, arr2 = zip(*pairs)
+                result.append(_CUM_DUAL_FUNCS[func_name](arr1, arr2))
+        return pl.Series(values=result)
+    return pl.map_batches([e1, e2], _cum_stat, return_dtype=return_dtype)
+
+
+def _cum_dual_corr(arr1, arr2):
+    c = np.corrcoef(arr1, arr2)[0, 1]
+    return float(c) if np.isfinite(c) else None
+
+
+def _cum_dual_cov(arr1, arr2):
+    c = np.cov(arr1, arr2)[0, 1]
+    return float(c) if np.isfinite(c) else None
+
+
+_CUM_DUAL_FUNCS = {
+    "corr": _cum_dual_corr,
+    "cov": _cum_dual_cov,
+}
+
+
+# ==============================================================================
+# 时间序列算子 - 滚动窗口 (工厂生成)
+# ==============================================================================
+
+_ROLLING_TS_DOCS = {
+    "rolling_mean": "滚动窗口均值\n\n    Args:\n        f: 表达式或列名\n        window: 窗口大小\n        min_periods: 最小观测数",
+    "rolling_max": "滚动窗口最大值",
+    "rolling_min": "滚动窗口最小值",
+    "rolling_sum": "滚动窗口求和",
+    "rolling_median": "滚动窗口中位数",
+}
+
+_ROLLING_TS_METHODS = {
+    "rolling_mean": "ts_mean",
+    "rolling_max": "ts_max",
+    "rolling_min": "ts_min",
+    "rolling_sum": "ts_sum",
+    "rolling_median": "ts_median",
+}
+
+for _name, _method in _ROLLING_TS_METHODS.items():
+    _make_rolling_ts_wrapper(_name, _method, _ROLLING_TS_DOCS[_name])
+
+del _name, _method, _ROLLING_TS_METHODS, _ROLLING_TS_DOCS
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_std(
+    f: Union[Expr, str],
+    window: int = 20,
+    min_periods: Optional[int] = None,
+    ddof: int = 1,
+    **kwargs
+) -> Expr:
+    """滚动窗口标准差"""
+    return TimeSeriesOperators.ts_std(f, window, min_periods, ddof)
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_var(
+    f: Union[Expr, str],
+    window: int = 20,
+    min_periods: Optional[int] = None,
+    **kwargs
+) -> Expr:
+    """滚动窗口方差"""
+    e = _ensure_expr(f)
+    mp = min_periods or max(1, window // 2)
+    return e.rolling_var(window, min_samples=mp)
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_prod(
+    f: Union[Expr, str],
+    window: int = 20,
+    min_periods: Optional[int] = None,
+    **kwargs
+) -> Expr:
+    """滚动窗口求积"""
+    return TimeSeriesOperators.ts_prod(f, window, min_periods)
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_skew(
+    f: Union[Expr, str],
+    window: int = 20,
+    min_periods: Optional[int] = None,
+    **kwargs
+) -> Expr:
+    """滚动窗口偏度"""
+    e = _ensure_expr(f)
+    mp = min_periods or max(1, window // 2)
+    mean = e.rolling_mean(window, min_samples=mp)
+    std = e.rolling_std(window, min_samples=mp)
+    m3 = ((e - mean) ** 3).rolling_mean(window, min_samples=mp)
+    return m3 / (std ** 3 + 1e-10)
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_kurt(
+    f: Union[Expr, str],
+    window: int = 20,
+    min_periods: Optional[int] = None,
+    **kwargs
+) -> Expr:
+    """滚动窗口峰度"""
+    e = _ensure_expr(f)
+    mp = min_periods or max(1, window // 2)
+    mean = e.rolling_mean(window, min_samples=mp)
+    std = e.rolling_std(window, min_samples=mp)
+    m4 = ((e - mean) ** 4).rolling_mean(window, min_samples=mp)
+    return m4 / (std ** 4 + 1e-10) - 3
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_count(
+    f: Union[Expr, str],
+    window: int = 20,
+    min_periods: Optional[int] = None,
+    **kwargs
+) -> Expr:
+    """滚动窗口计数"""
+    e = _ensure_expr(f)
+    mp = min_periods or max(1, window // 2)
+    return e.is_not_null().cast(pl.Int64).rolling_sum(window, min_samples=mp)
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_quantile(
+    f: Union[Expr, str],
+    window: int = 20,
+    quantile: float = 0.5,
+    min_periods: Optional[int] = None,
+    **kwargs
+) -> Expr:
+    """滚动窗口分位数"""
+    e = _ensure_expr(f)
+    mp = min_periods or window
+    return e.rolling_quantile(quantile, window_size=window, interpolation="nearest", min_samples=mp)
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_rank(
+    f: Union[Expr, str],
+    window: int = 20,
+    min_periods: Optional[int] = None,
+    **kwargs
+) -> Expr:
+    """滚动窗口排名（归一化到 0-1）"""
+    e = _ensure_expr(f)
+    mp = min_periods or window
+    return e.rolling_rank(window, min_samples=mp)
+
+
+# ==============================================================================
+# 时间序列算子 - 双因子滚动 (工厂生成)
+# ==============================================================================
+
+def _rolling_arg_op(f: Union[Expr, str], window: int, op: str,
+                    min_periods: Optional[int] = None) -> Expr:
+    """用 shift 比较链实现 rolling argmax/argmin"""
+    e = _ensure_expr(f)
+    max_window = min(window, 30)
+    is_max = op == "max"
+
+    best_val = e.shift(0)
+    best_idx = pl.lit(0, dtype=pl.Int32)
+
+    for i in range(1, max_window):
+        shifted = e.shift(i)
+        is_better = (shifted >= best_val) if is_max else (shifted <= best_val)
+        best_val = pl.when(is_better).then(shifted).otherwise(best_val)
+        best_idx = pl.when(is_better).then(pl.lit(i, dtype=pl.Int32)).otherwise(best_idx)
+
+    return best_idx
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_argmax(f: Union[Expr, str], window: int = 20,
+                   min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """滚动窗口最大值索引（0=当前行，1=前一行...）"""
+    return _rolling_arg_op(f, window, "max", min_periods)
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_argmin(f: Union[Expr, str], window: int = 20,
+                   min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """滚动窗口最小值索引（0=当前行，1=前一行...）"""
+    return _rolling_arg_op(f, window, "min", min_periods)
+
+
+# ==============================================================================
+# 时间序列算子 - 相关系数/协方差 (工厂生成)
+# ==============================================================================
+
+def _make_dual_rolling_wrapper(name: str, ts_method: str, doc: str):
+    """创建双因子滚动相关/协方差包装器"""
+    _ts_func = getattr(TimeSeriesOperators, ts_method)
+
+    def _wrapper(f1: Union[Expr, str], f2: Union[Expr, str],
+                 window: int = 20, min_periods: Optional[int] = None, **kwargs) -> Expr:
+        min_periods = min_periods or max(1, window // 2)
+        return _ts_func(f1, f2, window, min_periods)
+
+    _wrapper.__name__ = name
+    _wrapper.__doc__ = doc
+    _wrapper.__qualname__ = name
+    register_operator(OperatorCategory.TIME, name)(_wrapper)
+    _inject(name, _wrapper)
+    return _wrapper
+
+
+_make_dual_rolling_wrapper(
+    "rolling_corr", "ts_corr",
+    "滚动窗口相关系数（双因子）\n\n    Args:\n        f1: 第一个表达式\n        f2: 第二个表达式\n        window: 窗口大小\n        min_periods: 最小观测数"
+)
+_make_dual_rolling_wrapper(
+    "rolling_cov", "ts_cov",
+    "滚动窗口协方差（双因子）\n\n    Args:\n        f1: 第一个表达式\n        f2: 第二个表达式\n        window: 窗口大小\n        min_periods: 最小观测数"
+)
+
+
+# ==============================================================================
+# 时间序列算子 - 别名
+# ==============================================================================
+
+def _make_alias(name: str, target_func: Callable, doc: str,
+                 category: str = OperatorCategory.TIME):
+    """创建算子别名"""
+    @functools.wraps(target_func)
+    def _alias(*args, **kwargs):
+        return target_func(*args, **kwargs)
+
+    _alias.__name__ = name
+    _alias.__doc__ = doc
+    _alias.__qualname__ = name
+    register_operator(category, name)(_alias)
+    _inject(name, _alias)
+    return _alias
+
+
+_make_alias("ts_corr", get_operator("rolling_corr"),
+            "滚动相关系数 (rolling_corr 别名)")
+_make_alias("ts_cov", get_operator("rolling_cov"),
+            "滚动协方差 (rolling_cov 别名)")
+
+_make_alias("correlation", get_operator("ts_corr"),
+            "相关系数 (ts_corr 别名)")
+_make_alias("covariance", get_operator("ts_cov"),
+            "协方差 (ts_cov 别名)")
+
+# ts_* 别名
+_make_alias("ts_mean", get_operator("rolling_mean"),
+            "时间序列均值 (滚动均值别名)")
+_make_alias("ts_std", get_operator("rolling_std"),
+            "时间序列标准差")
+_make_alias("ts_max", get_operator("rolling_max"),
+            "时间序列最大值")
+_make_alias("ts_min", get_operator("rolling_min"),
+            "时间序列最小值")
+_make_alias("ts_sum", get_operator("rolling_sum"),
+            "时间序列求和")
+_make_alias("ts_median", get_operator("rolling_median"),
+            "时间序列中位数")
+
+
+@register_operator(OperatorCategory.TIME)
+def ts_rank(f: Union[Expr, str], window: int = 20,
+            min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """滚动排名 (0-1 归一化)"""
+    return TimeSeriesOperators.ts_rank(f, window, min_periods)
+
+
+_make_alias("ts_argmax", get_operator("rolling_argmax"),
+            "滚动最大值的位置（相对于当前行的偏移量）")
+_make_alias("ts_argmin", get_operator("rolling_argmin"),
+            "滚动最小值的位置（相对于当前行的偏移量）")
+
+
+# ==============================================================================
+# 时间序列算子 - 差分与变化
+# ==============================================================================
+
+def _make_diff_wrapper(name: str, ts_method: str, doc: str):
+    """创建差分/变化包装器"""
+    _ts_func = getattr(TimeSeriesOperators, ts_method)
+
+    def _wrapper(f: Union[Expr, str], periods: int = 1, **kwargs) -> Expr:
+        return _ts_func(f, periods)
+
+    _wrapper.__name__ = name
+    _wrapper.__doc__ = doc
+    _wrapper.__qualname__ = name
+    register_operator(OperatorCategory.TIME, name)(_wrapper)
+    _inject(name, _wrapper)
+    return _wrapper
+
+
+_make_diff_wrapper("ts_delta", "ts_delta", "差分")
+_make_diff_wrapper("ts_pct_change", "ts_pct_change", "百分比变化")
+_make_diff_wrapper("diff", "ts_delta", "差分")
+_make_diff_wrapper("lag", "ts_lag", "滞后算子")
+
+_make_alias("delta", get_operator("ts_delta"), "差分 (ts_delta 别名)")
+_make_alias("pct_change", get_operator("ts_pct_change"), "百分比变化 (ts_pct_change 别名)")
+
+
+@register_operator(OperatorCategory.TIME)
+def ts_lag(f: Union[Expr, str], periods: int = 1, **kwargs) -> Expr:
+    """滞后 (向后移动)"""
+    return TimeSeriesOperators.ts_lag(f, periods)
+
+
+@register_operator(OperatorCategory.TIME)
+def ts_lead(f: Union[Expr, str], periods: int = 1, **kwargs) -> Expr:
+    """前向移动 (向前移动)"""
+    return TimeSeriesOperators.ts_lead(f, periods)
+
+
+_make_alias("delay", get_operator("ts_lag"), "滞后 (ts_lag 别名)")
+_make_alias("ref", get_operator("delay"), "引用历史值 (delay 别名)")
+_make_alias("shift", get_operator("ts_lag"), "移动 (shift 别名)")
+
+
+# ==============================================================================
+# 时间序列算子 - 扩展窗口
+# ==============================================================================
+
+_make_expanding_wrapper("expanding_sum", "cum_sum",
+                        "扩展窗口求和")
+_make_expanding_wrapper("expanding_max", "cum_max",
+                        "扩展窗口最大值")
+_make_expanding_wrapper("expanding_min", "cum_min",
+                        "扩展窗口最小值")
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_mean(f: Union[Expr, str], min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口均值 (累计至当前)"""
+    e = _ensure_expr(f)
+    return e.cum_sum() / (pl.int_range(0, pl.len()) + 1)
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_var(f: Union[Expr, str], min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口方差"""
+    return _expanding_var_expr(f)
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_std(f: Union[Expr, str], min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口标准差"""
+    return (_expanding_var_expr(f) + 1e-10).sqrt()
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_count(f: Union[Expr, str], min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口计数（非空值累计数量）"""
+    return _ensure_expr(f).is_not_null().cast(pl.Int64).cum_sum()
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_median(f: Union[Expr, str], min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口中位数"""
+    return _cumulative_map_batches_single(_ensure_expr(f), "median")
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_kurt(f: Union[Expr, str], min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口峰度"""
+    return _cumulative_map_batches_single(_ensure_expr(f), "kurt")
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_skew(f: Union[Expr, str], min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口偏度"""
+    return _cumulative_map_batches_single(_ensure_expr(f), "skew")
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_quantile(f: Union[Expr, str], quantile: float = 0.5,
+                       min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口分位数"""
+
+    def _cum_quantile(s: pl.Series) -> pl.Series:
+        vals = s.to_list()
+        result = []
+        for i in range(len(vals)):
+            window = [v for v in vals[:i + 1] if v is not None]
+            if len(window) == 0:
+                result.append(None)
+            else:
+                result.append(_cum_single_quantile(window, quantile))
+        return pl.Series(values=result)
+
+    return _ensure_expr(f).map_batches(_cum_quantile, return_dtype=pl.Float64)
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_corr(f1: Union[Expr, str], f2: Union[Expr, str],
+                   min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口相关系数（双因子）"""
+    return _cumulative_map_batches_dual(_ensure_expr(f1), _ensure_expr(f2), "corr")
+
+
+@register_operator(OperatorCategory.TIME)
+def expanding_cov(f1: Union[Expr, str], f2: Union[Expr, str],
+                  min_periods: Optional[int] = None, **kwargs) -> Expr:
+    """扩展窗口协方差（双因子）"""
+    return _cumulative_map_batches_dual(_ensure_expr(f1), _ensure_expr(f2), "cov")
+
+
+# ==============================================================================
+# 时间序列算子 - 指数加权
+# ==============================================================================
+
+@register_operator(OperatorCategory.TIME)
+def ewm_mean(f: Union[Expr, str], alpha: float = 0.5,
+             adjust: bool = True, **kwargs) -> Expr:
+    """指数加权移动平均"""
+    return TimeSeriesOperators.ewm_mean(f, alpha, adjust=adjust)
+
+
+@register_operator(OperatorCategory.TIME)
+def ewm_std(f: Union[Expr, str], alpha: float = 0.5,
+            adjust: bool = True, **kwargs) -> Expr:
+    """指数加权移动标准差"""
+    return TimeSeriesOperators.ewm_std(f, alpha, adjust=adjust)
+
+
+@register_operator(OperatorCategory.TIME)
+def ewm_corr(f1: Union[Expr, str], f2: Union[Expr, str],
+             alpha: float = 0.5, **kwargs) -> Expr:
+    """指数加权相关系数"""
+    return TimeSeriesOperators.ewm_corr(f1, f2, alpha=alpha)
+
+
+@register_operator(OperatorCategory.TIME)
+def ewm_var(f: Union[Expr, str], alpha: float = 0.5,
+            adjust: bool = True, **kwargs) -> Expr:
+    """指数加权移动方差"""
+    e = _ensure_expr(f)
+    mean = e.ewm_mean(alpha=alpha, adjust=adjust)
+    mean_sq = (e ** 2).ewm_mean(alpha=alpha, adjust=adjust)
+    return mean_sq - mean ** 2
+
+
+@register_operator(OperatorCategory.TIME)
+def ewm_cov(f1: Union[Expr, str], f2: Union[Expr, str],
+            alpha: float = 0.5, adjust: bool = True, **kwargs) -> Expr:
+    """指数加权移动协方差（双因子）"""
+    e1, e2 = _ensure_expr(f1), _ensure_expr(f2)
+    mean1 = e1.ewm_mean(alpha=alpha, adjust=adjust)
+    mean2 = e2.ewm_mean(alpha=alpha, adjust=adjust)
+    mean12 = (e1 * e2).ewm_mean(alpha=alpha, adjust=adjust)
+    return mean12 - mean1 * mean2
+
+
+# ==============================================================================
+# 截面算子
+# ==============================================================================
+
+@register_operator(OperatorCategory.SECTION)
+def standardizeZScore(f: Union[Expr, str], eps: float = 1e-8, **kwargs) -> Expr:
+    """Z-score 标准化"""
+    return SectionOperators.zscore(f, eps)
+
+
+_make_alias("zscore", standardizeZScore, "Z-score 标准化 (standardizeZScore 别名)",
+            category=OperatorCategory.SECTION)
+
+
+@register_operator(OperatorCategory.SECTION)
+def rank(f: Union[Expr, str], method: str = "dense", **kwargs) -> Expr:
+    """截面排名 (归一化到 0-1)"""
+    return SectionOperators.rank(f, method)
+
+
+@register_operator(OperatorCategory.SECTION)
+def winsorize(f: Union[Expr, str], lower: float = 0.01,
+              upper: float = 0.01, method: str = "quantile", **kwargs) -> Expr:
+    """去极值"""
+    return SectionOperators.winsorize(f, lower, upper, method)
+
+
+@register_operator(OperatorCategory.SECTION)
+def neutralize(f: Union[Expr, str],
+               group: Optional[Union[Expr, str]] = None, **kwargs) -> Expr:
+    """行业中性的 (减去行业均值)"""
+    if group:
+        return SectionOperators.neutralize(f, group)
+    return SectionOperators.neutralize_market(f)
+
+
+@register_operator(OperatorCategory.SECTION)
+def neutralize_market(f: Union[Expr, str], **kwargs) -> Expr:
+    """市场中性 (减去市场均值)"""
+    return SectionOperators.neutralize_market(f)
+
+
+@register_operator(OperatorCategory.SECTION)
+def scale(f: Union[Expr, str], method: str = "zscore", **kwargs) -> Expr:
+    """归一化"""
+    return SectionOperators.scale(f, method)
+
+
+
+@register_operator(OperatorCategory.SECTION)
+def ic(f: Union[Expr, str], target: Union[Expr, str], **kwargs) -> Expr:
+    """IC (Pearson 相关系数)"""
+    return SectionOperators.ic(f, target)
+
+
+@register_operator(OperatorCategory.SECTION)
+def rank_ic(f: Union[Expr, str], target: Union[Expr, str], **kwargs) -> Expr:
+    """Rank IC (Spearman 相关系数)"""
+    return SectionOperators.rank_ic(f, target)
+
+
+@register_operator(OperatorCategory.SECTION)
+def group_norm(f: Union[Expr, str], group: Union[Expr, str],
+               method: str = "zscore", **kwargs) -> Expr:
+    """分组标准化"""
+    return SectionOperators.group_norm(f, group, method)
+
+
+@register_operator(OperatorCategory.SECTION)
+def group_winsorize(f: Union[Expr, str], group: Union[Expr, str],
+                    lower: float = 0.01, upper: float = 0.01, **kwargs) -> Expr:
+    """分组去极值"""
+    return SectionOperators.group_winsorize(f, group, lower, upper)
+
+
+@register_operator(OperatorCategory.SECTION)
+def orthogonalize(f: Union[Expr, str], reference: Union[Expr, str], **kwargs) -> Expr:
+    """正交化：从因子 f 中剔除 reference 的影响"""
+    f = _ensure_expr(f)
+    reference = _ensure_expr(reference)
+    cov = (f * reference).mean() - f.mean() * reference.mean()
+    var_ref = (reference ** 2).mean() - reference.mean() ** 2
+    beta = cov / (var_ref + 1e-10)
+    return f - beta * reference
+
+
+@register_operator(OperatorCategory.SECTION)
+def fillNaNByFun(f: Union[Expr, str], value: Any = 0, **kwargs) -> Expr:
+    """按值填充 NaN"""
+    f = _ensure_expr(f)
+    if callable(value):
+        return f.map_elements(value)
+    return f.fill_null(value)
+
+
+@register_operator(OperatorCategory.SECTION)
+def fillNaNByRegress(f: Union[Expr, str], reference: Union[Expr, str], **kwargs) -> Expr:
+    """按回归值填充 NaN"""
+    f = _ensure_expr(f)
+    reference = _ensure_expr(reference)
+    cov = (f * reference).mean() - f.mean() * reference.mean()
+    var_ref = (reference ** 2).mean() - reference.mean() ** 2
+    beta = cov / (var_ref + 1e-10)
+    alpha = f.mean() - beta * reference.mean()
+    predicted = alpha + beta * reference
+    return f.fill_null(predicted)
+
+
+# ==============================================================================
+# NaN 跨截面聚合算子 (工厂生成)
+# ==============================================================================
+
+_NAN_DOCS = {
+    "nanmax": "跨截面忽略空值求最大值",
+    "nanmin": "跨截面忽略空值求最小值",
+    "nanmean": "跨截面忽略空值求均值",
+    "nansum": "跨截面忽略空值求和",
+    "nanstd": "跨截面忽略空值求标准差",
+    "nanvar": "跨截面忽略空值求方差",
+}
+
+for _name, _method in [("nanmax", "max"), ("nanmin", "min"), ("nanmean", "mean"),
+                        ("nansum", "sum"), ("nanstd", "std"), ("nanvar", "var")]:
+    _make_nan_wrapper(_name, _method, _NAN_DOCS[_name])
+
+del _name, _method, _NAN_DOCS
+
+
+# ==============================================================================
+# Point 算子 - 数学运算
+# ==============================================================================
+
+@register_operator(OperatorCategory.POINT)
+def abs(f: Union[Expr, str], **kwargs) -> Expr:
+    """绝对值"""
+    return MathOperators.abs(f)
+
+
+@register_operator(OperatorCategory.POINT)
+def log(f: Union[Expr, str], **kwargs) -> Expr:
+    """对数"""
+    return MathOperators.log(f)
+
+
+@register_operator(OperatorCategory.POINT)
+def sign(f: Union[Expr, str], **kwargs) -> Expr:
+    """符号"""
+    return MathOperators.sign(f)
+
+
+@register_operator(OperatorCategory.POINT)
+def sqrt(f: Union[Expr, str], **kwargs) -> Expr:
+    """平方根"""
+    return MathOperators.sqrt(f)
+
+
+@register_operator(OperatorCategory.POINT)
+def square(f: Union[Expr, str], **kwargs) -> Expr:
+    """平方"""
+    return _ensure_expr(f) ** 2
+
+
+@register_operator(OperatorCategory.POINT)
+def pow(f: Union[Expr, str], exponent: float = 2.0, **kwargs) -> Expr:
+    """幂运算"""
+    return MathOperators.pow(f, exponent)
+
+
+@register_operator(OperatorCategory.POINT)
+def clip(f: Union[Expr, str], lower: Optional[float] = None,
+         upper: Optional[float] = None, **kwargs) -> Expr:
+    """裁剪"""
+    return MathOperators.clip(f, lower, upper)
+
+
+@register_operator(OperatorCategory.POINT)
+def fill_null(f: Union[Expr, str], value: float = 0.0, **kwargs) -> Expr:
+    """填充 null"""
+    return MathOperators.fill_null(f, value)
+
+
+@register_operator(OperatorCategory.POINT)
+def fill_null_by_strategy(f: Union[Expr, str], strategy: str = "mean", **kwargs) -> Expr:
+    """按策略填充 null
+    
+    strategy: mean / median / max / min / zero / one
+    """
+    f = _ensure_expr(f)
+    strategy_map = {
+        "mean": f.fill_null(f.mean()),
+        "median": f.fill_null(f.median()),
+        "max": f.fill_null(f.max()),
+        "min": f.fill_null(f.min()),
+        "zero": f.fill_null(0),
+        "one": f.fill_null(1),
+    }
+    return strategy_map.get(strategy, f.fill_null(0))
+
+
+@register_operator(OperatorCategory.POINT)
+def fill_zero(f: Union[Expr, str], **kwargs) -> Expr:
+    """填充 0"""
+    return MathOperators.fill_zero(f)
+
+
+@register_operator(OperatorCategory.POINT)
+def nan_to_null(f: Union[Expr, str], **kwargs) -> Expr:
+    """NaN 转 null"""
+    return MathOperators.nan_to_null(f)
+
+
+@register_operator(OperatorCategory.POINT)
+def isnull(f: Union[Expr, str], **kwargs) -> Expr:
+    """判断空值"""
+    return _ensure_expr(f).is_null()
+
+
+@register_operator(OperatorCategory.POINT)
+def notnull(f: Union[Expr, str], **kwargs) -> Expr:
+    """判断非空"""
+    return _ensure_expr(f).is_not_null()
+
+
+# ==============================================================================
+# Point 算子 (补充)
+# ==============================================================================
+
+@register_operator(OperatorCategory.POINT)
+def ceil(f: Union[Expr, str], **kwargs) -> Expr:
+    """向上取整"""
+    return _ensure_expr(f).ceil()
+
+
+@register_operator(OperatorCategory.POINT)
+def floor(f: Union[Expr, str], **kwargs) -> Expr:
+    """向下取整"""
+    return _ensure_expr(f).floor()
+
+
+@register_operator(OperatorCategory.POINT)
+def fix(f: Union[Expr, str], **kwargs) -> Expr:
+    """向零取整"""
+    e = _ensure_expr(f)
+    return pl.when(e < 0).then(e.ceil()).otherwise(e.floor())
+
+
+@register_operator(OperatorCategory.POINT)
+def applymap(f: Union[Expr, str], func: Callable, **kwargs) -> Expr:
+    """应用自定义函数"""
+    return _ensure_expr(f).map_elements(func)
+
+
+@register_operator(OperatorCategory.POINT)
+def nanargmax(f: Union[Expr, str], **kwargs) -> Expr:
+    """忽略空值求最大值索引"""
+    return _ensure_expr(f).arg_max()
+
+
+@register_operator(OperatorCategory.POINT)
+def nanargmin(f: Union[Expr, str], **kwargs) -> Expr:
+    """忽略空值求最小值索引"""
+    return _ensure_expr(f).arg_min()
+
+
+@register_operator(OperatorCategory.POINT)
+def nanmedian(f: Union[Expr, str], **kwargs) -> Expr:
+    """忽略空值求中位数"""
+    return _ensure_expr(f).median()
+
+
+@register_operator(OperatorCategory.POINT)
+def nanquantile(f: Union[Expr, str], quantile: float = 0.5,
+                interpolation: str = "nearest", **kwargs) -> Expr:
+    """忽略空值求分位数"""
+    return _ensure_expr(f).quantile(quantile, interpolation=interpolation)
+
+
+@register_operator(OperatorCategory.POINT)
+def nancount(f: Union[Expr, str], **kwargs) -> Expr:
+    """统计非空值数量"""
+    return _ensure_expr(f).count()
+
+
+@register_operator(OperatorCategory.POINT)
+def nanprod(f: Union[Expr, str], **kwargs) -> Expr:
+    """忽略空值求积"""
+    return _ensure_expr(f).product()
+
+
+@register_operator(OperatorCategory.POINT)
+def astype(f: Union[Expr, str], dtype: str = "float64", **kwargs) -> Expr:
+    """类型转换"""
+    type_map = {
+        "float64": pl.Float64, "float32": pl.Float32,
+        "int64": pl.Int64, "int32": pl.Int32, "int8": pl.Int8,
+        "utf8": pl.Utf8, "bool": pl.Boolean,
+    }
+    return _ensure_expr(f).cast(type_map.get(dtype, pl.Float64))
+
+
+@register_operator(OperatorCategory.POINT)
+def replace(f: Union[Expr, str], old: Any, new: Any, **kwargs) -> Expr:
+    """值替换"""
+    return _ensure_expr(f).replace(old, new)
+
+
+@register_operator(OperatorCategory.POINT)
+def fetch(f: Union[Expr, str], index: int = 0, **kwargs) -> Expr:
+    """获取指定位置数据"""
+    return _ensure_expr(f).list.get(index)
+
+
+@register_operator(OperatorCategory.POINT)
+def where(condition: Union[Expr, str], true_val: Union[Expr, str, Any],
+          false_val: Union[Expr, str, Any] = None, **kwargs) -> Expr:
+    """条件选择"""
+    cond = _ensure_expr(condition)
+    t = pl.lit(true_val) if isinstance(true_val, (int, float, str)) else _ensure_expr(true_val)
+    if false_val is None:
+        fv = pl.lit(None)
+    elif isinstance(false_val, (int, float, str)):
+        fv = pl.lit(false_val)
+    else:
+        fv = _ensure_expr(false_val)
+    return pl.when(cond).then(t).otherwise(fv)
+
+
+@register_operator(OperatorCategory.POINT)
+def fillna(f: Union[Expr, str], value: Any = None, method: str = "ffill",
+           limit: int = 0, **kwargs) -> Expr:
+    """填充空值"""
+    e = _ensure_expr(f)
+    if value is not None:
+        return e.fill_null(value)
+    if method == "ffill":
+        return e.forward_fill(limit) if limit > 0 else e.forward_fill()
+    elif method == "bfill":
+        return e.backward_fill(limit) if limit > 0 else e.backward_fill()
+    return e
+
+
+# ==============================================================================
+# 组合算子
+# ==============================================================================
+
+@register_operator(OperatorCategory.POINT)
+def add(f1: Union[Expr, str], f2: Union[Expr, str], **kwargs) -> Expr:
+    """加法"""
+    return _ensure_expr(f1) + _ensure_expr(f2)
+
+
+@register_operator(OperatorCategory.POINT)
+def sub(f1: Union[Expr, str], f2: Union[Expr, str], **kwargs) -> Expr:
+    """减法"""
+    return _ensure_expr(f1) - _ensure_expr(f2)
+
+
+@register_operator(OperatorCategory.POINT)
+def mul(f1: Union[Expr, str], f2: Union[Expr, str], **kwargs) -> Expr:
+    """乘法"""
+    return _ensure_expr(f1) * _ensure_expr(f2)
+
+
+@register_operator(OperatorCategory.POINT)
+def div(f1: Union[Expr, str], f2: Union[Expr, str], **kwargs) -> Expr:
+    """除法"""
+    return _ensure_expr(f1) / _ensure_expr(f2)
+
+
+@register_operator(OperatorCategory.POINT)
+def weighted_sum(factors: List[Union[Expr, str]],
+                 weights: Optional[List[float]] = None, **kwargs) -> Expr:
+    """加权求和"""
+    return CompositeOperators.weighted_sum(factors, weights)
+
+
+@register_operator(OperatorCategory.POINT)
+def combine(f1: Union[Expr, str], f2: Union[Expr, str],
+            method: str = "add", **kwargs) -> Expr:
+    """组合因子"""
+    a, b = _ensure_expr(f1), _ensure_expr(f2)
+    return _COMBO_METHODS.get(method, _COMBO_METHODS["add"])(a, b)
+
+
+@register_operator(OperatorCategory.POINT)
+def if_then_else(condition: Union[Expr, str], then: Union[Expr, str],
+                 else_: Union[Expr, str], **kwargs) -> Expr:
+    """条件表达式"""
+    return pl.when(_ensure_expr(condition)).then(_ensure_expr(then)).otherwise(_ensure_expr(else_))
+
+
+# ==============================================================================
+# 高级算子
+# ==============================================================================
+
+@register_operator(OperatorCategory.TIME)
+def regress(y: Union[Expr, str], x: Union[Expr, str],
+            window: int = 20, **kwargs) -> Expr:
+    """滑动窗口线性回归的残差"""
+    ey, ex = _ensure_expr(y), _ensure_expr(x)
+    y_mean = ey.rolling_mean(window)
+    x_mean = ex.rolling_mean(window)
+    x_var = ex.rolling_var(window)
+    xy_cov = (ey * ex).rolling_mean(window) - y_mean * x_mean
+    beta = xy_cov / (x_var + 1e-8)
+    return ey - y_mean - beta * (ex - x_mean)
+
+
+@register_operator(OperatorCategory.TIME)
+def zscored(f: Union[Expr, str], window: int = 20, **kwargs) -> Expr:
+    """滚动 Z-score"""
+    e = _ensure_expr(f)
+    return (e - e.rolling_mean(window)) / (e.rolling_std(window) + 1e-8)
+
+
+@register_operator(OperatorCategory.TIME)
+def decay_linear(f: Union[Expr, str], window: int = 20, **kwargs) -> Expr:
+    """线性衰减加权"""
+    weights = np.arange(1, window + 1)
+    weights = weights / weights.sum()
+    return _apply_weights(f, weights)
+
+
+@register_operator(OperatorCategory.TIME)
+def decay_exp(f: Union[Expr, str], halflife: int = 10, **kwargs) -> Expr:
+    """指数衰减加权"""
+    alpha = 0.5 ** (1 / halflife)
+    weights = alpha ** np.arange(halflife)
+    weights = weights / weights.sum()
+    return _apply_weights(f, weights)
+
+
+@register_operator(OperatorCategory.TIME)
+def vwap(price: Union[Expr, str], volume: Union[Expr, str],
+         window: int = 20, **kwargs) -> Expr:
+    """成交量加权平均价"""
+    ep, ev = _ensure_expr(price), _ensure_expr(volume)
+    return (ep * ev).rolling_sum(window) / (ev.rolling_sum(window) + 1e-8)
+
+
+@register_operator(OperatorCategory.TIME)
+def rolling_change_rate(f: Union[Expr, str], window: int = 20, **kwargs) -> Expr:
+    """滚动变化率（符号保持）
+    
+    当分子分母异号时保持符号：正/负→1，负/正→-1，零→0
+    """
+    f = _ensure_expr(f)
+    numerator = f - f.shift(window)
+    denominator = f.shift(window)
+    rate = numerator / (denominator.abs() + 1e-8)
+    # 符号保持：异号时置为 ±1
+    same_sign = (numerator * denominator) >= 0
+    return pl.when(same_sign).then(rate).when(numerator > 0).then(pl.lit(1.0)).when(numerator < 0).then(pl.lit(-1.0)).otherwise(pl.lit(0.0))
+
+
+@register_operator(OperatorCategory.POINT)
+def market_cap(price: Union[Expr, str], shares: Union[Expr, str], **kwargs) -> Expr:
+    """市值"""
+    return _ensure_expr(price) * _ensure_expr(shares)
+
+
+@register_operator(OperatorCategory.POINT)
+def book_to_market(book_value: Union[Expr, str], market_cap: Union[Expr, str], **kwargs) -> Expr:
+    """市净率"""
+    return _ensure_expr(book_value) / _ensure_expr(market_cap)
+
+
+@register_operator(OperatorCategory.POINT)
+def earnings_to_market(earnings: Union[Expr, str], market_cap: Union[Expr, str], **kwargs) -> Expr:
+    """盈利市率"""
+    return _ensure_expr(earnings) / _ensure_expr(market_cap)
+
+
+@register_operator(OperatorCategory.POINT)
+def nav(price: Union[Expr, str], **kwargs) -> Expr:
+    """净值 (Net Asset Value)
+    
+    基于价格序列计算累积净值：NAV = price[0] * cumprod(1 + returns)
+    其中 returns = price / price.shift(1) - 1
+    """
+    p = _ensure_expr(price)
+    returns = p / p.shift(1) - 1
+    return p.shift(1) * (1 + returns).cum_prod()
+
+
+@register_operator(OperatorCategory.POINT)
+def single_quarter(earnings: Union[Expr, str], report_period: Union[Expr, str], **kwargs) -> Expr:
+    """单季报调整
+    
+    Q1 报告期（以 0331 结尾）直接使用当期值，其他季度使用差值。
+    用于将累积财报转换为单季度财报。
+    """
+    e = _ensure_expr(earnings)
+    rp = _ensure_expr(report_period)
+    prev = e.shift(1)
+    is_q1 = rp.str.ends_with("0331")
+    return pl.when(is_q1).then(e).otherwise(e - prev)
+
+
+# ==============================================================================
+# Multi-Section 算子
+# ==============================================================================
+
+@register_operator(OperatorCategory.MULTI_SECTION)
+def aggregate(f: Union[Expr, str], group_by: str, method: str = "mean", **kwargs) -> Expr:
+    """按组聚合"""
+    f = _ensure_expr(f)
+    method_map = {
+        "mean": f.mean().over(group_by),
+        "sum": f.sum().over(group_by),
+        "std": f.std().over(group_by),
+        "var": f.var().over(group_by),
+        "median": f.median().over(group_by),
+        "min": f.min().over(group_by),
+        "max": f.max().over(group_by),
+        "first": f.first().over(group_by),
+        "last": f.last().over(group_by),
+        "count": f.count().over(group_by),
+    }
+    return method_map.get(method, f.mean().over(group_by))
+
+
+@register_operator(OperatorCategory.MULTI_SECTION)
+def disaggregate(f: Union[Expr, str], group_by: str, **kwargs) -> Expr:
+    """解聚合 (将聚合值展开到组内每个成员)"""
+    return _ensure_expr(f).over(group_by)
+
+
+# Aggr 系列工厂
+_MAKE_AGGR_DOCS = {
+    "sum": "聚合求和",
+    "mean": "聚合均值",
+    "max": "聚合最大值",
+    "min": "聚合最小值",
+    "std": "聚合标准差",
+    "var": "聚合方差",
+    "median": "聚合中位数",
+    "count": "聚合计数",
+}
+
+for _method, _doc in _MAKE_AGGR_DOCS.items():
+    _make_aggr_wrapper(_method, _doc)
+
+del _method, _doc, _MAKE_AGGR_DOCS
+
+
+@register_operator(OperatorCategory.MULTI_SECTION)
+def aggr_prod(f: Union[Expr, str], group_by: str, **kwargs) -> Expr:
+    """聚合求积"""
+    return _ensure_expr(f).log().sum().over(group_by).exp()
+
+
+@register_operator(OperatorCategory.MULTI_SECTION)
+def aggr_quantile(f: Union[Expr, str], group_by: str,
+                  quantile: float = 0.5, **kwargs) -> Expr:
+    """聚合分位数"""
+    return _ensure_expr(f).quantile(quantile).over(group_by)
+
+
+@register_operator(OperatorCategory.MULTI_SECTION)
+def merge(factors: List[Union[Expr, str]], weights: Optional[List[float]] = None,
+          method: str = "add", **kwargs) -> Expr:
+    """合并多个因子"""
+    if weights is None:
+        weights = [1.0 / len(factors)] * len(factors)
+    factors = [_ensure_expr(f) for f in factors]
+    weights = list(weights)
+
+    if method == "add":
+        result = factors[0] * weights[0]
+        for i in range(1, len(factors)):
+            result = result + factors[i] * weights[i]
+        return result
+    elif method == "wavg":
+        weighted = sum(f * w for f, w in zip(factors, weights))
+        return weighted / sum(weights)
+    elif method == "rank":
+        ranked = [f.rank() for f in factors]
+        result = ranked[0] * weights[0]
+        for i in range(1, len(ranked)):
+            result = result + ranked[i] * weights[i]
+        return result
+    elif method == "mul":
+        result = factors[0] ** weights[0]
+        for i in range(1, len(factors)):
+            result = result * factors[i] ** weights[i]
+        return result
+    return factors[0]
+
+
+@register_operator(OperatorCategory.MULTI_SECTION)
+def chg_ids(f: Union[Expr, str], id_map: Dict[str, str], **kwargs) -> Expr:
+    """ID转换"""
+    f = _ensure_expr(f)
+    return f.replace(list(id_map.keys()), list(id_map.values()))
+
+
+@register_operator(OperatorCategory.MULTI_SECTION)
+def weighted_aggr_mean(f: Union[Expr, str], group_by: str,
+                       weight: Union[Expr, str, None] = None, **kwargs) -> Expr:
+    """带权重的分组均值"""
+    f = _ensure_expr(f)
+    if weight is not None:
+        w = _ensure_expr(weight)
+        return (f * w).sum().over(group_by) / (w.sum().over(group_by) + 1e-8)
+    return f.mean().over(group_by)
+
+
+# ==============================================================================
+# 别名: standardizeRank, weightStandardize 需要用 SectionOperators.rank
+# ==============================================================================
+
+@register_operator(OperatorCategory.SECTION)
+def standardizeRank(f: Union[Expr, str], **kwargs) -> Expr:
+    """标准化排名"""
+    return SectionOperators.rank(f, method="average")
+
+
+@register_operator(OperatorCategory.SECTION)
+def weightStandardize(f: Union[Expr, str], **kwargs) -> Expr:
+    """加权标准化"""
+    return standardizeZScore(f, **kwargs)
+
+
+@register_operator(OperatorCategory.SECTION)
+def mad(f: Union[Expr, str], **kwargs) -> Expr:
+    """Median Absolute Deviation (中位绝对偏差)"""
+    f = _ensure_expr(f)
+    median = f.median()
+    return (f - median).abs().median() * 1.4826
+
+
+# ==============================================================================
+# TA-Lib 算子 (技术分析指标)
+# ==============================================================================
+
+try:
+    from QuantNodes.operators.talib import TaLibOperators as _talib
+
+    # -- Overlap Studies --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_sma(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 简单移动平均 (Simple Moving Average)"""
+        return _talib.sma(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ema(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 指数移动平均 (Exponential Moving Average)"""
+        return _talib.ema(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_wma(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 加权移动平均 (Weighted Moving Average)"""
+        return _talib.wma(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_dema(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 双重指数移动平均 (Double EMA)"""
+        return _talib.dema(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_tema(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 三重指数移动平均 (Triple EMA)"""
+        return _talib.tema(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_trima(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 三角移动平均 (Triangular MA)"""
+        return _talib.trima(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_kama(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 考夫曼自适应移动平均 (KAMA)"""
+        return _talib.kama(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_t3(f: Union[Expr, str], timeperiod: int = 5, vfactor: float = 0.7, **kwargs) -> Expr:
+        """TA-Lib T3 移动平均"""
+        return _talib.t3(f, timeperiod, vfactor)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ht_trendline(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 希尔伯特变换趋势线"""
+        return _talib.ht_trendline(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_bbands_upper(f: Union[Expr, str], timeperiod: int = 5, nbdevup: float = 2.0,
+                           nbdevdn: float = 2.0, matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 布林带上轨"""
+        return _talib.bbands_upper(f, timeperiod, nbdevup, nbdevdn, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_bbands_middle(f: Union[Expr, str], timeperiod: int = 5, nbdevup: float = 2.0,
+                            nbdevdn: float = 2.0, matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 布林带中轨"""
+        return _talib.bbands_middle(f, timeperiod, nbdevup, nbdevdn, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_bbands_lower(f: Union[Expr, str], timeperiod: int = 5, nbdevup: float = 2.0,
+                           nbdevdn: float = 2.0, matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 布林带下轨"""
+        return _talib.bbands_lower(f, timeperiod, nbdevup, nbdevdn, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ma(f: Union[Expr, str], timeperiod: int = 30, matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 通用移动平均 (0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA)"""
+        return _talib.ma(f, timeperiod, matype)
+
+    # -- Momentum Indicators --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_rsi(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 相对强弱指标 (RSI)"""
+        return _talib.rsi(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_macd_line(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                        signalperiod: int = 9, **kwargs) -> Expr:
+        """TA-Lib MACD 线"""
+        return _talib.macd_line(f, fastperiod, slowperiod, signalperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_macd_signal(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                          signalperiod: int = 9, **kwargs) -> Expr:
+        """TA-Lib MACD 信号线"""
+        return _talib.macd_signal(f, fastperiod, slowperiod, signalperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_macd_hist(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                        signalperiod: int = 9, **kwargs) -> Expr:
+        """TA-Lib MACD 柱状图"""
+        return _talib.macd_hist(f, fastperiod, slowperiod, signalperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cci(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 商品通道指标 (CCI)"""
+        return _talib.cci(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_willr(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 威廉指标 (Williams %R)"""
+        return _talib.willr(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_roc(f: Union[Expr, str], timeperiod: int = 10, **kwargs) -> Expr:
+        """TA-Lib 变动率 (Rate of Change)"""
+        return _talib.roc(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_mom(f: Union[Expr, str], timeperiod: int = 10, **kwargs) -> Expr:
+        """TA-Lib 动量 (Momentum)"""
+        return _talib.mom(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_adx(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 平均趋向指标 (ADX)"""
+        return _talib.adx(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_adxr(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 平均趋向指标评估 (ADXR)"""
+        return _talib.adxr(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_apo(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                  matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 绝对价格震荡 (APO)"""
+        return _talib.apo(f, fastperiod, slowperiod, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ppo(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                  matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 百分比价格震荡 (PPO)"""
+        return _talib.ppo(f, fastperiod, slowperiod, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cmo(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 钱德动量摆动指标 (CMO)"""
+        return _talib.cmo(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_trix(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 三重指数平滑变动率 (TRIX)"""
+        return _talib.trix(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stochrsi_k(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 随机 RSI %K"""
+        return _talib.stochrsi_k(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stochrsi_d(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 随机 RSI %D"""
+        return _talib.stochrsi_d(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ultosc(f: Union[Expr, str], timeperiod1: int = 7, timeperiod2: int = 14,
+                     timeperiod3: int = 28, **kwargs) -> Expr:
+        """TA-Lib 终极振荡指标 (Ultimate Oscillator)"""
+        return _talib.ultosc(f, timeperiod1=timeperiod1, timeperiod2=timeperiod2, timeperiod3=timeperiod3)
+
+    # -- Volatility --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_atr(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 平均真实范围 (ATR)"""
+        return _talib.atr(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_natr(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 归一化平均真实范围 (NATR)"""
+        return _talib.natr(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_trange(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 真实范围 (True Range)"""
+        return _talib.trange(f)
+
+    # -- Volume --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_obv(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 能量潮 (On Balance Volume)"""
+        return _talib.obv(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ad(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 累积/派发线 (Accumulation/Distribution Line)"""
+        return _talib.ad(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_adosc(f: Union[Expr, str], fastperiod: int = 3, slowperiod: int = 10, **kwargs) -> Expr:
+        """TA-Lib 累积/派发震荡 (Chaikin A/D Oscillator)"""
+        return _talib.adosc(f, fastperiod=fastperiod, slowperiod=slowperiod)
+
+    # -- Pattern Recognition --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_doji(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 十字星 (Doji)"""
+        return _talib.cdl_doji(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_hammer(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 锤子线 (Hammer)"""
+        return _talib.cdl_hammer(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_engulfing(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 吞没形态 (Engulfing)"""
+        return _talib.cdl_engulfing(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_morningstar(f: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """TA-Lib 晨星 (Morning Star)"""
+        return _talib.cdl_morningstar(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_eveningstar(f: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """TA-Lib 暮星 (Evening Star)"""
+        return _talib.cdl_eveningstar(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_hangingman(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 上吊线 (Hanging Man)"""
+        return _talib.cdl_hangingman(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_shootingstar(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 射击之星 (Shooting Star)"""
+        return _talib.cdl_shootingstar(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_harami(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 孕线形态 (Harami)"""
+        return _talib.cdl_harami(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_piercing(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 刺透形态 (Piercing)"""
+        return _talib.cdl_piercing(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_darkcloudcover(f: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """TA-Lib 乌云盖顶 (Dark Cloud Cover)"""
+        return _talib.cdl_darkcloudcover(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_spinningtop(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 纺锤顶 (Spinning Top)"""
+        return _talib.cdl_spinningtop(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_3whitesoldiers(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 三只白兵 (Three White Soldiers)"""
+        return _talib.cdl_3whitesoldiers(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_3blackcrows(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 三只乌鸦 (Three Black Crows)"""
+        return _talib.cdl_3blackcrows(f)
+
+    # -- Statistic Functions --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stddev(f: Union[Expr, str], timeperiod: int = 5, nbdev: int = 1, **kwargs) -> Expr:
+        """TA-Lib 标准差 (Standard Deviation)"""
+        return _talib.stddev(f, timeperiod, nbdev)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_var(f: Union[Expr, str], timeperiod: int = 5, nbdev: int = 1, **kwargs) -> Expr:
+        """TA-Lib 方差 (Variance)"""
+        return _talib.var(f, timeperiod, nbdev)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_linearreg(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 线性回归值"""
+        return _talib.linearreg(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_linearreg_slope(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 线性回归斜率"""
+        return _talib.linearreg_slope(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_linearreg_angle(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 线性回归角度"""
+        return _talib.linearreg_angle(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_linearreg_intercept(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 线性回归截距"""
+        return _talib.linearreg_intercept(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_tsf(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 时间序列预测 (Time Series Forecast)"""
+        return _talib.tsf(f, timeperiod)
+
+    # -- Math Operators --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_acos(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 反余弦 (Inverse Cosine)"""
+        return _talib.acos(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_asin(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 反正弦 (Inverse Sine)"""
+        return _talib.asin(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_atan(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 反正切 (Inverse Tangent)"""
+        return _talib.atan(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cos(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 余弦 (Cosine)"""
+        return _talib.cos(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cosh(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 双曲余弦 (Hyperbolic Cosine)"""
+        return _talib.cosh(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_sin(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 正弦 (Sine)"""
+        return _talib.sin(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_sinh(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 双曲正弦 (Hyperbolic Sine)"""
+        return _talib.sinh(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_sqrt(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 平方根 (Square Root)"""
+        return _talib.sqrt(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_tan(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 正切 (Tangent)"""
+        return _talib.tan(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_tanh(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 双曲正切 (Hyperbolic Tangent)"""
+        return _talib.tanh(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_exp(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 指数函数 (Exponential)"""
+        return _talib.exp(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ln(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 自然对数 (Natural Logarithm)"""
+        return _talib.ln(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_log10(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 常用对数 (Base-10 Logarithm)"""
+        return _talib.log10(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ceil(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 向上取整 (Ceiling)"""
+        return _talib.ceil(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_floor(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 向下取整 (Floor)"""
+        return _talib.floor(f)
+
+    # -- Aggregation / Min / Max --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_max(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 滚动最大值 (Rolling Maximum)"""
+        return _talib.max(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_min(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 滚动最小值 (Rolling Minimum)"""
+        return _talib.min(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_sum(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 滚动求和 (Rolling Sum)"""
+        return _talib.sum(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_avgdev(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 平均绝对偏差 (Average Deviation)"""
+        return _talib.avgdev(f, timeperiod)
+
+    # -- Other Indicators --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_sarext(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 扩展抛物线 SAR (Parabolic SAR - Extended)"""
+        return _talib.sarext(f, **kwargs)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_accbands(f: Union[Expr, str], timeperiod: int = 20, **kwargs) -> Expr:
+        """TA-Lib 加速带上轨"""
+        return _talib.accbands_upper(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_accbands_upper(f: Union[Expr, str], timeperiod: int = 20, **kwargs) -> Expr:
+        """TA-Lib 加速带上轨"""
+        return _talib.accbands_upper(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_imi(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 日本蜡烛图: 身体指标"""
+        return _talib.imi(f)
+
+    # -- Remaining Candlestick Patterns --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_2crows(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 两只乌鸦 (Two Crows)"""
+        return _talib.cdl_2crows(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_3inside(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 三内部上涨/下跌 (Three Inside Up/Down)"""
+        return _talib.cdl_3inside(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_3linestrike(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 三线打击 (Three Line Strike)"""
+        return _talib.cdl_3linestrike(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_3outside(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 三外部上涨/下跌 (Three Outside Up/Down)"""
+        return _talib.cdl_3outside(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_3starsinsouth(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 南方三星 (Three Stars In The South)"""
+        return _talib.cdl_3starsinsouth(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_abandonedbaby(f: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """TA-Lib 弃婴 (Abandoned Baby)"""
+        return _talib.cdl_abandonedbaby(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_advanceblock(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 大敌当前 (Advance Block)"""
+        return _talib.cdl_advanceblock(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_belthold(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 腰带线 (Belt-hold)"""
+        return _talib.cdl_belthold(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_breakaway(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 脱离 (Breakaway)"""
+        return _talib.cdl_breakaway(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_closingmarubozu(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 收盘光头光脚阴线 (Closing Marubozu)"""
+        return _talib.cdl_closingmarubozu(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_concealbabyswall(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 藏婴吞没 (Concealing Baby Swallow)"""
+        return _talib.cdl_concealbabyswall(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_counterattack(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 反击线 (Counterattack)"""
+        return _talib.cdl_counterattack(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_dojistar(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 十字孕线 (Doji Star)"""
+        return _talib.cdl_dojistar(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_dragonflydoji(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 蜻蜓十字 (Dragonfly Doji)"""
+        return _talib.cdl_dragonflydoji(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_eveningdojistar(f: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """TA-Lib 十字暮星 (Evening Doji Star)"""
+        return _talib.cdl_eveningdojistar(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_gapsidesidewhite(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 向上跳空并列阳线 (Side-by-Side White Lines)"""
+        return _talib.cdl_gapsidesidewhite(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_gravestonedoji(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 墓碑十字 (Gravestone Doji)"""
+        return _talib.cdl_gravestonedoji(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_haramicross(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 十字孕线形态 (Harami Cross)"""
+        return _talib.cdl_haramicross(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_highwave(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 长影线 (High Wave)"""
+        return _talib.cdl_highwave(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_hikkake(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 伪装 (Hikkake Pattern)"""
+        return _talib.cdl_hikkake(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_hikkakemod(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 修正伪装 (Modified Hikkake Pattern)"""
+        return _talib.cdl_hikkakemod(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_homingpigeon(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 归巢鸽 (Homing Pigeon)"""
+        return _talib.cdl_homingpigeon(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_identical3crows(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 相同三乌鸦 (Identical Three Crows)"""
+        return _talib.cdl_identical3crows(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_inneck(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 颈部线 (In-Neck Pattern)"""
+        return _talib.cdl_inneck(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_invertedhammer(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 倒锤子线 (Inverted Hammer)"""
+        return _talib.cdl_invertedhammer(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_kicking(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 踢出 (Kicking)"""
+        return _talib.cdl_kicking(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_kickingbylength(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 踢出按长度 (Kicking - long leg)"""
+        return _talib.cdl_kickingbylength(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_ladderbottom(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 梯底 (Ladder Bottom)"""
+        return _talib.cdl_ladderbottom(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_longleggeddoji(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 长腿十字 (Long Legged Doji)"""
+        return _talib.cdl_longleggeddoji(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_longline(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 长线 (Long Line)"""
+        return _talib.cdl_longline(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_marubozu(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 光头光脚阳线/阴线 (Marubozu)"""
+        return _talib.cdl_marubozu(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_matchinglow(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 相同低价 (Matching Low)"""
+        return _talib.cdl_matchinglow(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_mathold(f: Union[Expr, str], penetration: float = 0.5, **kwargs) -> Expr:
+        """TA-Lib 持有一线 (Mat Hold)"""
+        return _talib.cdl_mathold(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_morningdojistar(f: Union[Expr, str], penetration: float = 0.0, **kwargs) -> Expr:
+        """TA-Lib 十字晨星 (Morning Doji Star)"""
+        return _talib.cdl_morningdojistar(f, penetration=penetration)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_onneck(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 颈部线 (On-Neck Pattern)"""
+        return _talib.cdl_onneck(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_rickshawman(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 黄包车夫 (Rickshaw Man)"""
+        return _talib.cdl_rickshawman(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_risefall3methods(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 上升/下降三法 (Rising/Falling Three Methods)"""
+        return _talib.cdl_risefall3methods(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_separatinglines(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 分离线 (Separating Lines)"""
+        return _talib.cdl_separatinglines(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_shortline(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 短线 (Short Line)"""
+        return _talib.cdl_shortline(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_stalledpattern(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 受阻形态 (Stalled Pattern)"""
+        return _talib.cdl_stalledpattern(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_sticksandwich(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 三明治形态 (Stick Sandwich)"""
+        return _talib.cdl_sticksandwich(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_takuri(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 探水竿 (Takuri Line)"""
+        return _talib.cdl_takuri(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_tasukigap(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 跳空并列阴阳线 (Tasuki Gap)"""
+        return _talib.cdl_tasukigap(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_thrusting(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 插入线 (Thrusting Pattern)"""
+        return _talib.cdl_thrusting(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_tristar(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 三星 (Tristar Pattern)"""
+        return _talib.cdl_tristar(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_uniqueriver(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 独特三河底 (Unique 3 River)"""
+        return _talib.cdl_uniqueriver(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_upsidegap2crows(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 向上跳空两只乌鸦 (Upside Gap Two Crows)"""
+        return _talib.cdl_upsidegap2crows(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_cdl_xsidegap3methods(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 向上/向下跳空三法 (Upside/Downside Gap Three Methods)"""
+        return _talib.cdl_xsidegap3methods(f)
+
+    # -- Overlap Studies (composite/tuple return) --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_bbands(f: Union[Expr, str], timeperiod: int = 5, nbdevup: float = 2.0,
+                     nbdevdn: float = 2.0, matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 布林带上轨 (BBANDS upper)"""
+        return _talib.bbands_upper(f, timeperiod, nbdevup, nbdevdn, matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_sar(f: Union[Expr, str], acceleration: float = 0.02, maximum: float = 0.2, **kwargs) -> Expr:
+        """TA-Lib 抛物线 SAR"""
+        return _talib.sar(f, acceleration=acceleration, maximum=maximum)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_midpoint(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 价格中点"""
+        return _talib.midpoint(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_midprice(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 中间价格"""
+        return _talib.midprice(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_mavp(f: Union[Expr, str], minperiod: int = 2, maxperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 移动平均变动周期"""
+        return _talib.mavp(f, f, minperiod=minperiod, maxperiod=maxperiod)
+
+    # -- Momentum (composite/tuple return) --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_macd(f: Union[Expr, str], fastperiod: int = 12, slowperiod: int = 26,
+                   signalperiod: int = 9, **kwargs) -> Expr:
+        """TA-Lib MACD 线"""
+        return _talib.macd_line(f, fastperiod, slowperiod, signalperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_macdext(f: Union[Expr, str], fastperiod: int = 12, fastmatype: int = 0,
+                      slowperiod: int = 26, slowmatype: int = 0, signalperiod: int = 9,
+                      signalmatype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 扩展 MACD 线"""
+        return _talib.macdext(f, fastperiod, fastmatype, slowperiod, slowmatype, signalperiod, signalmatype)[0]
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_macdfix(f: Union[Expr, str], signalperiod: int = 9, **kwargs) -> Expr:
+        """TA-Lib 固定周期 MACD 线"""
+        return _talib.macdfix(f, signalperiod)[0]
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_mama(f: Union[Expr, str], fastlimit: float = 0.5, slowlimit: float = 0.05, **kwargs) -> Expr:
+        """TA-Lib MAMA 移动平均"""
+        return _talib.mama(f, fastlimit, slowlimit)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stoch(f: Union[Expr, str], fastk_period: int = 5, slowk_period: int = 3,
+                    slowk_matype: int = 0, slowd_period: int = 3, slowd_matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 随机指标 %K"""
+        return _talib.stoch_k(f, fastk_period=fastk_period, slowk_period=slowk_period,
+                              slowk_matype=slowk_matype, slowd_period=slowd_period, slowd_matype=slowd_matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stochf(f: Union[Expr, str], fastk_period: int = 5, fastd_period: int = 3,
+                     fastd_matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 快速随机指标 %K"""
+        return _talib.stochf(f, fastk_period=fastk_period, fastd_period=fastd_period, fastd_matype=fastd_matype)[0]
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stochrsi(f: Union[Expr, str], timeperiod: int = 14,
+                       fastk_period: int = 5, fastd_period: int = 3, fastd_matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 随机 RSI %K"""
+        return _talib.stochrsi_k(f, timeperiod, fastk_period, fastd_period, fastd_matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_rocp(f: Union[Expr, str], timeperiod: int = 10, **kwargs) -> Expr:
+        """TA-Lib 变动率百分比"""
+        return _talib.rocp(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_rocr(f: Union[Expr, str], timeperiod: int = 10, **kwargs) -> Expr:
+        """TA-Lib 变动率比率"""
+        return _talib.rocr(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_rocr100(f: Union[Expr, str], timeperiod: int = 10, **kwargs) -> Expr:
+        """TA-Lib 变动率比率*100"""
+        return _talib.rocr100(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_aroon(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 阿隆上升线"""
+        return _talib.aroonup(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_aroonosc(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 阿隆振荡指标"""
+        return _talib.aroonosc(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_bop(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 力量指标"""
+        return _talib.bop(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_dx(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 趋向指标"""
+        return _talib.dx(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_minus_di(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 负向指标"""
+        return _talib.minus_di(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_plus_di(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 正向指标"""
+        return _talib.plus_di(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_minus_dm(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 负向动量"""
+        return _talib.minus_dm(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_plus_dm(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 正向动量"""
+        return _talib.plus_dm(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_mfi(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 资金流量指标"""
+        return _talib.mfi(f, timeperiod=timeperiod)
+
+    # -- Price Transform --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_avgprice(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 平均价格"""
+        return _talib.avgprice(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_medprice(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 中间价格"""
+        return _talib.medprice(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_typprice(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 典型价格"""
+        return _talib.typprice(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_wclprice(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 加权收盘价"""
+        return _talib.wclprice(f)
+
+    # -- Statistic Functions --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_beta(f: Union[Expr, str], timeperiod: int = 5, **kwargs) -> Expr:
+        """TA-Lib Beta 系数"""
+        return _talib.beta(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_correl(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 相关系数"""
+        return _talib.correl(f, timeperiod)
+
+    # -- Cycle Indicators --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ht_dcperiod(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 希尔伯特变换主导周期"""
+        return _talib.ht_dcperiod(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ht_dcphase(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 希尔伯特变换主导周期相位"""
+        return _talib.ht_dcphase(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ht_phasor(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 希尔伯特变换相位"""
+        return _talib.ht_phasor(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ht_sine(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 希尔伯特变换正弦"""
+        return _talib.ht_sine(f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_ht_trendmode(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 希尔伯特变换趋势模式"""
+        return _talib.ht_trendmode(f)
+
+    # -- Individual components --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_aroonup(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 阿隆上升线"""
+        return _talib.aroonup(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_aroondown(f: Union[Expr, str], timeperiod: int = 14, **kwargs) -> Expr:
+        """TA-Lib 阿隆下降线"""
+        return _talib.aroondown(f, timeperiod=timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stoch_k(f: Union[Expr, str], fastk_period: int = 5, slowk_period: int = 3,
+                      slowk_matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 随机指标 %K"""
+        return _talib.stoch_k(f, fastk_period=fastk_period, slowk_period=slowk_period, slowk_matype=slowk_matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_stoch_d(f: Union[Expr, str], fastk_period: int = 5, slowk_period: int = 3,
+                      slowk_matype: int = 0, slowd_period: int = 3, slowd_matype: int = 0, **kwargs) -> Expr:
+        """TA-Lib 随机指标 %D"""
+        return _talib.stoch_d(f, fastk_period=fastk_period, slowk_period=slowk_period,
+                              slowk_matype=slowk_matype, slowd_period=slowd_period, slowd_matype=slowd_matype)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_maxindex(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 滚动最大值位置"""
+        return _talib.maxindex(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_minindex(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 滚动最小值位置"""
+        return _talib.minindex(f, timeperiod)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_minmax(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 滚动最小值"""
+        return _talib.minmax(f, timeperiod)[0]
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_minmaxindex(f: Union[Expr, str], timeperiod: int = 30, **kwargs) -> Expr:
+        """TA-Lib 滚动最小值位置"""
+        return _talib.minmaxindex(f, timeperiod)[0]
+
+    # -- Arithmetic (two-operand, using f as both) --
+    @register_operator(OperatorCategory.TALIB)
+    def talib_add(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 加法 (self + self = 2*self)"""
+        return _talib.add(f, f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_sub(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 减法 (self - self = 0)"""
+        return _talib.sub(f, f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_mult(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 乘法 (self * self = self^2)"""
+        return _talib.mult(f, f)
+
+    @register_operator(OperatorCategory.TALIB)
+    def talib_div(f: Union[Expr, str], **kwargs) -> Expr:
+        """TA-Lib 除法 (self / self = 1)"""
+        return _talib.div(f, f)
+
+except ImportError:
+    pass  # TA-Lib 未安装时跳过注册
+
+
+# ==============================================================================
+# 导出
+# ==============================================================================
+
+__all__ = [
+    # 注册表 API
+    "OperatorCategory", "register_operator",
+    "list_operators", "get_operator", "operator_info", "generate_documentation",
+
+    # Point 算子
+    "abs", "log", "sign", "sqrt", "square", "pow", "clip",
+    "ceil", "floor", "fix", "applymap",
+    "nanargmax", "nanargmin", "nanmedian", "nanquantile", "nancount", "nanprod",
+    "astype", "replace", "fetch",
+    "fill_null", "fill_zero", "nan_to_null", "isnull", "notnull",
+    "nanmax", "nanmin", "nanmean", "nansum", "nanstd", "nanvar",
+    "where", "fillna",
+
+    # Time 算子 - 滚动窗口
+    "rolling_mean", "rolling_std", "rolling_max", "rolling_min",
+    "rolling_sum", "rolling_median", "rolling_var",
+    "rolling_prod", "rolling_skew", "rolling_kurt", "rolling_count",
+    "rolling_corr", "rolling_cov", "rolling_quantile", "rolling_rank",
+    "rolling_argmax", "rolling_argmin",
+
+    # Time 算子 - 时间序列
+    "ts_mean", "ts_std", "ts_max", "ts_min", "ts_sum", "ts_median",
+    "ts_corr", "ts_cov", "ts_rank", "ts_argmax", "ts_argmin",
+    "ts_delta", "ts_pct_change", "ts_lag", "ts_lead",
+
+    # Time 算子 - 扩展窗口
+    "expanding_mean", "expanding_std", "expanding_sum",
+    "expanding_max", "expanding_min", "expanding_median", "expanding_count",
+    "expanding_var", "expanding_kurt", "expanding_skew", "expanding_quantile",
+    "expanding_corr", "expanding_cov",
+
+    # Time 算子 - 指数加权
+    "ewm_mean", "ewm_std", "ewm_var", "ewm_corr", "ewm_cov",
+
+    # Section 算子
+    "standardizeZScore", "zscore", "rank", "winsorize",
+    "neutralize", "neutralize_market", "scale",
+    "standardizeRank", "weightStandardize", "mad",
+    "ic", "rank_ic", "group_norm", "group_winsorize",
+    "orthogonalize", "fillNaNByFun", "fillNaNByRegress",
+
+    # Multi-Section 算子
+    "aggregate", "disaggregate",
+    "aggr_sum", "aggr_prod", "aggr_max", "aggr_min", "aggr_mean",
+    "aggr_std", "aggr_var", "aggr_median", "aggr_quantile", "aggr_count",
+    "merge", "chg_ids", "weighted_aggr_mean",
+
+    # 组合算子
+    "add", "sub", "mul", "div",
+    "weighted_sum", "combine", "if_then_else",
+
+    # 高级算子
+    "regress", "zscored", "decay_linear", "decay_exp",
+    "vwap", "rolling_change_rate",
+    "market_cap", "book_to_market", "earnings_to_market",
+    "nav", "single_quarter",
+    "fill_null_by_strategy",
+
+    # 别名
+    "correlation", "covariance", "delta", "pct_change",
+    "delay", "ref", "shift", "diff", "lag",
+
+    # TA-Lib 算子
+    "talib_sma", "talib_ema", "talib_wma", "talib_dema", "talib_tema",
+    "talib_trima", "talib_kama", "talib_t3", "talib_ht_trendline",
+    "talib_bbands_upper", "talib_bbands_middle", "talib_bbands_lower", "talib_ma",
+    "talib_rsi", "talib_macd_line", "talib_macd_signal", "talib_macd_hist",
+    "talib_cci", "talib_willr", "talib_roc", "talib_mom",
+    "talib_adx", "talib_adxr", "talib_apo", "talib_ppo",
+    "talib_cmo", "talib_trix", "talib_stochrsi_k", "talib_stochrsi_d",
+    "talib_ultosc",
+    "talib_atr", "talib_natr", "talib_trange",
+    "talib_obv", "talib_ad", "talib_adosc",
+    "talib_cdl_doji", "talib_cdl_hammer", "talib_cdl_engulfing",
+    "talib_cdl_morningstar", "talib_cdl_eveningstar", "talib_cdl_hangingman",
+    "talib_cdl_shootingstar", "talib_cdl_harami", "talib_cdl_piercing",
+    "talib_cdl_darkcloudcover", "talib_cdl_spinningtop",
+    "talib_cdl_3whitesoldiers", "talib_cdl_3blackcrows",
+    "talib_stddev", "talib_var", "talib_linearreg", "talib_linearreg_slope",
+    "talib_linearreg_angle", "talib_linearreg_intercept", "talib_tsf",
+    # Math Operators
+    "talib_acos", "talib_asin", "talib_atan", "talib_cos", "talib_cosh",
+    "talib_sin", "talib_sinh", "talib_sqrt", "talib_tan", "talib_tanh",
+    "talib_exp", "talib_ln", "talib_log10", "talib_ceil", "talib_floor",
+    # Aggregation
+    "talib_max", "talib_min", "talib_sum", "talib_avgdev",
+    # Other Indicators
+    "talib_sarext", "talib_accbands", "talib_accbands_upper",
+    "talib_imi",
+    # Overlap (composite)
+    "talib_bbands", "talib_sar", "talib_midpoint", "talib_midprice", "talib_mavp",
+    # Momentum (composite)
+    "talib_macd", "talib_macdext", "talib_macdfix", "talib_mama",
+    "talib_stoch", "talib_stochf", "talib_stochrsi",
+    "talib_rocp", "talib_rocr", "talib_rocr100",
+    "talib_aroon", "talib_aroonosc", "talib_bop", "talib_dx",
+    "talib_minus_di", "talib_plus_di", "talib_minus_dm", "talib_plus_dm", "talib_mfi",
+    # Volume
+    "talib_ad", "talib_adosc",
+    # Price Transform
+    "talib_avgprice", "talib_medprice", "talib_typprice", "talib_wclprice",
+    # Statistic
+    "talib_beta", "talib_correl",
+    # Cycle
+    "talib_ht_dcperiod", "talib_ht_dcphase", "talib_ht_phasor", "talib_ht_sine", "talib_ht_trendmode",
+    # Arithmetic
+    "talib_add", "talib_sub", "talib_mult", "talib_div",
+    # Individual components
+    "talib_aroonup", "talib_aroondown", "talib_stoch_k", "talib_stoch_d",
+    "talib_maxindex", "talib_minindex", "talib_minmax", "talib_minmaxindex",
+    # Candlestick Patterns
+    "talib_cdl_2crows", "talib_cdl_3inside", "talib_cdl_3linestrike",
+    "talib_cdl_3outside", "talib_cdl_3starsinsouth", "talib_cdl_abandonedbaby",
+    "talib_cdl_advanceblock", "talib_cdl_belthold", "talib_cdl_breakaway",
+    "talib_cdl_closingmarubozu", "talib_cdl_concealbabyswall", "talib_cdl_counterattack",
+    "talib_cdl_dojistar", "talib_cdl_dragonflydoji", "talib_cdl_eveningdojistar",
+    "talib_cdl_gapsidesidewhite", "talib_cdl_gravestonedoji", "talib_cdl_haramicross",
+    "talib_cdl_highwave", "talib_cdl_hikkake", "talib_cdl_hikkakemod",
+    "talib_cdl_homingpigeon", "talib_cdl_identical3crows", "talib_cdl_inneck",
+    "talib_cdl_invertedhammer", "talib_cdl_kicking", "talib_cdl_kickingbylength",
+    "talib_cdl_ladderbottom", "talib_cdl_longleggeddoji", "talib_cdl_longline",
+    "talib_cdl_marubozu", "talib_cdl_matchinglow", "talib_cdl_mathold",
+    "talib_cdl_morningdojistar", "talib_cdl_onneck", "talib_cdl_rickshawman",
+    "talib_cdl_risefall3methods", "talib_cdl_separatinglines", "talib_cdl_shortline",
+    "talib_cdl_stalledpattern", "talib_cdl_sticksandwich", "talib_cdl_takuri",
+    "talib_cdl_tasukigap", "talib_cdl_thrusting", "talib_cdl_tristar",
+    "talib_cdl_uniqueriver", "talib_cdl_upsidegap2crows", "talib_cdl_xsidegap3methods",
+]
