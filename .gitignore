@@ -149,3 +149,6 @@ tests/screenshots/
 graphify-out/cache/
 graphify-out/.graphify_labels.json
 graphify-out/converted/
+
+# Local DB connection config (use conn.ini.template as starting point)
+conn.ini
