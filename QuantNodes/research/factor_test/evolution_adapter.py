@@ -14,8 +14,11 @@ Phase R2 (2026-06-19): 从 pipeline_runner.py 抽出, 单一职责.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+
+logger = logging.getLogger(__name__)
 
 from QuantNodes.core.evolution import (
     EvolutionLoop,
@@ -185,7 +188,7 @@ def run_evolution(
         snap_path = Path(pool.base_dir) / "_snapshot.pkl"
         snapshot.save(snap_path)
         loop.snapshot_path = str(snap_path)
-        print(f"  [ProcessPool] 预序列化快照: {snap_path}")
+        logger.info("  [ProcessPool] 预序列化快照: %s", snap_path)
 
     # 连接 MetricCollector (streaming)
     collector = MetricCollector()
@@ -200,7 +203,7 @@ def run_evolution(
     if pool.size > 0:
         metrics_json = pool.base_dir / "metrics.json"
         collector.append_json(metrics_json)
-        print(f"  [Streaming] 指标追加: {metrics_json}")
+        logger.info("  [Streaming] 指标追加: %s", metrics_json)
         dashboard_html = pool.base_dir.parent / "dashboard_streaming.html"
         generate_dashboard_html(
             collector,
@@ -208,6 +211,6 @@ def run_evolution(
             output_path=str(dashboard_html),
             streaming=True,
         )
-        print(f"  [Streaming] Dashboard: {dashboard_html}")
+        logger.info("  [Streaming] Dashboard: %s", dashboard_html)
 
     return result

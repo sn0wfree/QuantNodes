@@ -23,11 +23,14 @@ Phase R2 重构 (2026-06-19):
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import TYPE_CHECKING, Optional
 
 import pandas as pd
 import yaml
+
+logger = logging.getLogger(__name__)
 
 from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.research.factor_test.config import SingleFactorTestConfig
@@ -110,12 +113,16 @@ class PipelineRunner:
         factor_name = cfg.factor.name
         judge = maybe_build_judge(cfg) if feedback_enabled else None
 
-        print("=" * 60)
-        print(f"单因子回测: {cfg.factor.name}")
-        print(f"时间范围: {cfg.preprocess.adj_date_beg} ~ {cfg.preprocess.adj_date_end}")
+        logger.info("=" * 60)
+        logger.info("单因子回测: %s", cfg.factor.name)
+        logger.info(
+            "时间范围: %s ~ %s",
+            cfg.preprocess.adj_date_beg,
+            cfg.preprocess.adj_date_end,
+        )
         if feedback_enabled:
-            print(f"FactorFeedback: ENABLED (factor_id={factor_id[:8]}...)")
-        print("=" * 60)
+            logger.info("FactorFeedback: ENABLED (factor_id=%s...)", factor_id[:8])
+        logger.info("=" * 60)
 
         for spec in PIPELINE_SPEC:
             self._run_phase(spec, ctx, pre_seeded)
@@ -125,11 +132,15 @@ class PipelineRunner:
             ctx["Feedback"] = build_feedback(ctx, factor_id, factor_name, cfg, judge)
             maybe_persist_feedback(ctx["Feedback"], cfg)
             n_passed = sum(1 for fb in ctx["Feedback"].values() if fb.decision)
-            print(f"\n[Feedback] 包装完成: {len(ctx['Feedback'])} 节点, {n_passed} 通过")
+            logger.info(
+                "\n[Feedback] 包装完成: %d 节点, %d 通过",
+                len(ctx["Feedback"]),
+                n_passed,
+            )
 
-        print("\n" + "=" * 60)
-        print("单因子回测完成!")
-        print("=" * 60)
+        logger.info("\n" + "=" * 60)
+        logger.info("单因子回测完成!")
+        logger.info("=" * 60)
         return ctx
 
     def _seed_ctx(self) -> tuple[dict, bool]:
@@ -141,7 +152,7 @@ class PipelineRunner:
         if "LoadData" in self._context:
             ctx = dict(self._context)
             shape = ctx["LoadData"].get("factor", pd.DataFrame()).shape
-            print(f"  [LoadData 跳过] 使用已注入数据 (factor shape: {shape})")
+            logger.info("  [LoadData 跳过] 使用已注入数据 (factor shape: %s)", shape)
             return ctx, True
         return {}, False
 
@@ -149,13 +160,13 @@ class PipelineRunner:
         """执行单个阶段 (含 skip / log)."""
         if spec.skip_if_in_ctx and spec.name in ctx:
             return
-        print(f"\n[Phase {spec.phase_no}] {spec.title}...")
+        logger.info("\n[Phase %d] %s...", spec.phase_no, spec.title)
         node = spec.node_cls(config=spec.build_cfg(self.config))
         ctx[spec.name] = node.execute(context=ctx)
         if spec.log_summary is not None:
             line = spec.log_summary(self.config, ctx[spec.name])
             if line:
-                print(line)
+                logger.info(line)
 
     # ============================================================
     # 兼容旧 API: 私有方法 facade re-export
