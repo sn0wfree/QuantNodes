@@ -90,17 +90,13 @@ class FileOpsTool(WorkspaceTool, Tool):
         return WorkspaceTool._safe_path(self, rel_path)
 
     async def execute(self, action: str, **kwargs: Any) -> Any:
-        dispatch = {
+        return await self._dispatch(action, {
             "read_file": self._read_file,
             "write_file": self._write_file,
             "edit_file": self._edit_file,
             "list_files": self._list_files,
             "glob_files": self._glob_files,
-        }
-        fn = dispatch.get(action)
-        if not fn:
-            raise ValueError(f"Unknown action: {action}")
-        return await fn(**kwargs)
+        }, **kwargs)
 
     async def _read_file(
         self, path: str = "", offset: int = 1, limit: int = 2000, **kw,

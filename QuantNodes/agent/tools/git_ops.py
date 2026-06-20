@@ -92,16 +92,12 @@ class GitOpsTool(WorkspaceTool, Tool):
             return {"error": "Git is not installed or not in PATH"}
 
     async def execute(self, action: str, **kwargs: Any) -> Any:
-        dispatch = {
+        return await self._dispatch(action, {
             "git_status": self._git_status,
             "git_diff": self._git_diff,
             "git_log": self._git_log,
             "git_commit": self._git_commit,
-        }
-        fn = dispatch.get(action)
-        if not fn:
-            raise ValueError(f"Unknown action: {action}")
-        return await fn(**kwargs)
+        }, **kwargs)
 
     async def _git_status(self, **kw) -> Dict[str, Any]:
         result = await self._run_git("status", "--porcelain")

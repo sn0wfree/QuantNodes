@@ -98,16 +98,19 @@ class TaskTool(WorkspaceTool, Tool):
             encoding="utf-8",
         )
 
-    async def execute(self, action: str, **kwargs: Any) -> Any:
-        dispatch = {
-            "create_task": self._create_task,
-            "update_task": self._update_task,
-            "list_tasks": self._list_tasks,
-        }
-        fn = dispatch.get(action)
+    async def _dispatch(self, action: str, registry: Dict[str, Any], **kwargs: Any) -> Any:
+        """Override: return error dict on unknown action (matches legacy)."""
+        fn = registry.get(action)
         if not fn:
             return {"error": f"Unknown action: {action}"}
         return await fn(**kwargs)
+
+    async def execute(self, action: str, **kwargs: Any) -> Any:
+        return await self._dispatch(action, {
+            "create_task": self._create_task,
+            "update_task": self._update_task,
+            "list_tasks": self._list_tasks,
+        }, **kwargs)
 
     async def _create_task(
         self,

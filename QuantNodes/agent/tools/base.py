@@ -76,6 +76,21 @@ class Tool(ABC):
             }
         }
 
+    async def _dispatch(self, action: str, registry: Dict[str, Any], **kwargs: Any) -> Any:
+        """Look up `action` in `registry` and call it with kwargs (Phase J2).
+
+        Replaces the 4-times-repeated:
+            fn = dispatch.get(action)
+            if not fn: raise ValueError(...)
+            return await fn(**kwargs)
+
+        Subclasses call `return await self._dispatch(action, {...})` from execute().
+        """
+        fn = registry.get(action)
+        if not fn:
+            raise ValueError(f"Unknown action: {action}")
+        return await fn(**kwargs)
+
     @abstractmethod
     async def execute(self, **kwargs: Any) -> Any:
         """执行工具，返回字符串或内容块列表"""

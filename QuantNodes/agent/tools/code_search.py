@@ -86,15 +86,11 @@ class CodeSearchTool(WorkspaceTool, Tool):
         return filename.endswith(ext)
 
     async def execute(self, action: str, **kwargs: Any) -> Any:
-        dispatch = {
+        return await self._dispatch(action, {
             "grep": self._grep,
             "find_files": self._find_files,
             "search_code": self._search_code,
-        }
-        fn = dispatch.get(action)
-        if not fn:
-            raise ValueError(f"Unknown action: {action}")
-        return await fn(**kwargs)
+        }, **kwargs)
 
     async def _grep(
         self, pattern: str = "", path: str = "", include: str = "", **kw
