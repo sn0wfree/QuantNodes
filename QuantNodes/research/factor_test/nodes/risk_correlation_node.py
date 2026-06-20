@@ -6,7 +6,6 @@ Security: exec()/eval() eliminated.
 """
 
 import logging
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -25,11 +24,7 @@ class RiskCorrelationNode(PydanticConfigNode):
     """
 
     ConfigSchema = RiskCorrelationNodeConfig
-
-    def __init__(self, name: str = "RiskCorrelation",
-                 config: Union[dict, RiskCorrelationNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._factors = self.cfg.factors
+    _ALIASES = {"_factors": "factors"}
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

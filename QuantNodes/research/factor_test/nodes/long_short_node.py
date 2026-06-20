@@ -4,7 +4,6 @@
 Migrated from factor_performance.py:562-617 cal_longshort_ret()
 """
 
-from typing import Union
 
 import pandas as pd
 
@@ -21,11 +20,7 @@ class LongShortNode(PydanticConfigNode):
     """
 
     ConfigSchema = LongShortNodeConfig
-
-    def __init__(self, name: str = "LongShort",
-                 config: Union[dict, LongShortNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._factor_direction = self.cfg.factor_direction
+    _ALIASES = {"_factor_direction": "factor_direction"}
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

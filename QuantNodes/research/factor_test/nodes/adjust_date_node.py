@@ -4,8 +4,6 @@
 Migrated from date_utils.py:134-191 get_adjust_date()
 """
 
-from typing import Union
-
 import pandas as pd
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
@@ -21,14 +19,11 @@ class AdjustDateNode(PydanticConfigNode):
     """
 
     ConfigSchema = AdjustDateNodeConfig
-
-    def __init__(self, name: str = "AdjustDate",
-                 config: Union[dict, AdjustDateNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        # T0-3: H10 兼容, 默认 None → _execute 启动校验抛错
-        self._adj_date_beg = self.cfg.adj_date_beg
-        self._adj_date_end = self.cfg.adj_date_end
-        self._adj_mode = list(self.cfg.adj_mode)
+    _ALIASES = {
+        "_adj_date_beg": "adj_date_beg",
+        "_adj_date_end": "adj_date_end",
+        "_adj_mode": "adj_mode",
+    }
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         # T0-3: H10 启动校验 (避免静默跑废日期)

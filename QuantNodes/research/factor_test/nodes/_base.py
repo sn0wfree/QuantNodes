@@ -28,11 +28,16 @@ class PydanticConfigNode(BaseNode):
 
     - ``self.cfg`` : ``ConfigSchema`` 实例 (推荐访问入口)
     - ``self.config``: ``dict`` (BaseNode 协议要求)
+    - ``self._xxx`` : 由 ``_ALIASES`` 声明的 cfg 字段别名 (向后兼容)
 
-    保留 ``self._xxx`` 实例属性的工作仍由子类完成 (向后兼容已有测试).
+    自动 alias 规则 (Phase G3):
+    声明 ``_ALIASES = {"_data_path": "data_path", ...}`` 后, 基类
+    ``__init__`` 自动 copy cfg 字段到 self._xxx。list/tuple 字段会被浅拷贝
+    以避免下游误改 cfg。
     """
 
     ConfigSchema: ClassVar[type[BaseModel]]
+    _ALIASES: ClassVar[dict[str, str]] = {}
 
     def __init__(
         self,
@@ -53,3 +58,11 @@ class PydanticConfigNode(BaseNode):
                 f"got {type(config).__name__}"
             )
         self.cfg: BaseModel = cfg
+        # Auto-apply aliases
+        for alias, field in self._ALIASES.items():
+            value = getattr(self.cfg, field)
+            if isinstance(value, list):
+                value = list(value)  # shallow copy
+            elif isinstance(value, tuple):
+                value = list(value)
+            setattr(self, alias, value)

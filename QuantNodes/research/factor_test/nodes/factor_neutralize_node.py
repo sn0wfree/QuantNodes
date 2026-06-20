@@ -5,7 +5,6 @@ Migrated from factor_utils.py:534-625 neutralize()
 """
 
 import logging
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -25,13 +24,11 @@ class FactorNeutralizeNode(PydanticConfigNode):
     """
 
     ConfigSchema = NeutralizeNodeConfig
-
-    def __init__(self, name: str = "FactorNeutralize",
-                 config: Union[dict, NeutralizeNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._if_industry = self.cfg.industry_neutral
-        self._if_risk = self.cfg.risk_neutral
-        self._risk_factor_specs = list(self.cfg.risk_factors)
+    _ALIASES = {
+        "_if_industry": "industry_neutral",
+        "_if_risk": "risk_neutral",
+        "_risk_factor_specs": "risk_factors",
+    }
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

@@ -6,8 +6,6 @@ Phase 1: 原样迁移保持行为一致性
 Phase 2: 逐步替换为 QuantNodes section_ops 算子
 """
 
-from typing import Union
-
 import numpy as np
 import pandas as pd
 from scipy.stats import norm as scipy_norm
@@ -24,19 +22,15 @@ class FactorPreprocessNode(PydanticConfigNode):
     """
 
     ConfigSchema = PreprocessNodeConfig
-
-    def __init__(self, name: str = "FactorPreprocess",
-                 config: Union[dict, PreprocessNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        # T0-2: 3 隐式默认从 Pydantic 字段读取 (mad_n=5.0, pct_low=0.025, pct_high=0.975)
-        self._missing = self.cfg.missing
-        self._extreme = self.cfg.extreme
-        self._norm = self.cfg.norm
-        self._mad_n = self.cfg.mad_n
-        self._pct_low = self.cfg.pct_low
-        self._pct_high = self.cfg.pct_high
-        # M12: 自定义行业名称映射 (覆盖全局默认)
-        self._i18n_name_map = self.cfg.i18n_name_map if self.cfg.i18n_name_map is not None else None
+    _ALIASES = {
+        "_missing": "missing",
+        "_extreme": "extreme",
+        "_norm": "norm",
+        "_mad_n": "mad_n",
+        "_pct_low": "pct_low",
+        "_pct_high": "pct_high",
+        "_i18n_name_map": "i18n_name_map",
+    }
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

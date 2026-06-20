@@ -4,7 +4,6 @@
 Migrated from factor_performance.py:361-560 cal_group_ret()
 """
 
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -26,15 +25,13 @@ class GroupAnalyzerNode(PydanticConfigNode):
     """
 
     ConfigSchema = GroupAnalyzerNodeConfig
-
-    def __init__(self, name: str = "GroupAnalyzer",
-                 config: Union[dict, GroupAnalyzerNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._groups = self.cfg.groups
-        self._factor_direction = self.cfg.factor_direction
-        self._floor_mode = self.cfg.floor_mode
-        self._hedge = self.cfg.hedge
-        self._hedge_path = self.cfg.hedge_path
+    _ALIASES = {
+        "_groups": "groups",
+        "_factor_direction": "factor_direction",
+        "_floor_mode": "floor_mode",
+        "_hedge": "hedge",
+        "_hedge_path": "hedge_path",
+    }
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

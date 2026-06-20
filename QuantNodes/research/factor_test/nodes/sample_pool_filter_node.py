@@ -4,8 +4,6 @@
 Migrated from factor_utils.py:155-234 select_range()
 """
 
-from typing import Union
-
 import numpy as np
 import pandas as pd
 
@@ -27,13 +25,14 @@ class SamplePoolFilterNode(PydanticConfigNode):
     """
 
     ConfigSchema = SamplePoolNodeConfig
+    _ALIASES = {
+        "_sample_index": "sample_index",
+        "_sample_industry": "sample_industry",
+        "_sample_customdir": "sample_index_customdir",
+    }
 
-    def __init__(self, name: str = "SamplePoolFilter",
-                 config: Union[dict, SamplePoolNodeConfig, None] = None, **kwargs):
+    def __init__(self, name="SamplePoolFilter", config=None, **kwargs):
         super().__init__(name, config, **kwargs)
-        self._sample_index = self.cfg.sample_index
-        self._sample_industry = self.cfg.sample_industry
-        self._sample_customdir = self.cfg.sample_index_customdir
         # M9: 合并全局默认 INDEX_MAPPING + 节点自定义覆盖
         self._index_mapping = resolve_index_mapping({
             "INDEX_MAPPING": self.cfg.index_mapping

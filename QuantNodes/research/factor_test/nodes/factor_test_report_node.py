@@ -5,18 +5,17 @@ Migrated from factor_output.py:539-616 save_testresult()
 Output: Parquet/JSON instead of xlwings Excel
 """
 
-import os
 import logging
-from pathlib import Path
 from datetime import datetime
-from typing import Union
 
 import pandas as pd
 import numpy as np
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import ReportNodeConfig
-from QuantNodes.core.path_utils import ensure_dir
+from QuantNodes.core.path_utils import ensure_dir, resolve_path
+from pathlib import Path
+from typing import Union
 
 logger = logging.getLogger(__name__)
 
@@ -29,21 +28,13 @@ class FactorTestReportNode(PydanticConfigNode):
     """
 
     ConfigSchema = ReportNodeConfig
+    _ALIASES = {"_output_format": "format"}
 
     def __init__(self, name: str = "FactorTestReport",
                  config: Union[dict, ReportNodeConfig, None] = None, **kwargs):
         super().__init__(name, config, **kwargs)
         # P-1: 路径优先级 env QUANTNODES_OUTPUT_DIR > expanduser > default
-        self._output_dir = self._resolve_output_dir(self.cfg.dir)
-        self._output_format = list(self.cfg.format)
-
-    @staticmethod
-    def _resolve_output_dir(default: str) -> Path:
-        """P-1: env 变量优先, 然后 expanduser, 最后 default"""
-        env = os.environ.get("QUANTNODES_OUTPUT_DIR")
-        if env:
-            return Path(env).expanduser()
-        return Path(default).expanduser()
+        self._output_dir = resolve_path(self.cfg.dir, "QUANTNODES_OUTPUT_DIR")
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

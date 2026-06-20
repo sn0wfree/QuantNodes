@@ -5,8 +5,6 @@ Migrated from factor_utils.py:250-308 valid_tradable()
 Security: exec() replaced with dict lookup.
 """
 
-from typing import Union
-
 import numpy as np
 import pandas as pd
 
@@ -22,11 +20,7 @@ class TradabilityFilterNode(PydanticConfigNode):
     """
 
     ConfigSchema = TradabilityNodeConfig
-
-    def __init__(self, name: str = "TradabilityFilter",
-                 config: Union[dict, TradabilityNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._tradable_setting = self.cfg.tradable
+    _ALIASES = {"_tradable_setting": "tradable"}
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})

@@ -4,7 +4,6 @@
 Migrated from factor_performance.py:730-877 score_by_size_ind()
 """
 
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -22,16 +21,12 @@ class FactorScoreNode(PydanticConfigNode):
     """
 
     ConfigSchema = ScoreNodeConfig
-
-    def __init__(self, name: str = "FactorScore",
-                 config: Union[dict, ScoreNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        # T0-2: 3 隐式默认从 Pydantic 字段读取
-        # (n_industries=29, n_size_groups=3, n_quantile_groups=5)
-        self._enabled = self.cfg.enabled
-        self._n_industries = self.cfg.n_industries
-        self._n_size_groups = self.cfg.n_size_groups
-        self._n_quantile_groups = self.cfg.n_quantile_groups
+    _ALIASES = {
+        "_enabled": "enabled",
+        "_n_industries": "n_industries",
+        "_n_size_groups": "n_size_groups",
+        "_n_quantile_groups": "n_quantile_groups",
+    }
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         if not self._enabled:

@@ -4,7 +4,6 @@
 Migrated from factor_performance.py:111-158 cal_ic()
 """
 
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -21,11 +20,7 @@ class ICAnalyzerNode(PydanticConfigNode):
     """
 
     ConfigSchema = ICAnalyzerNodeConfig
-
-    def __init__(self, name: str = "ICAnalyzer",
-                 config: Union[dict, ICAnalyzerNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        self._min_group_size = self.cfg.min_group_size
+    _ALIASES = {"_min_group_size": "min_group_size"}
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})

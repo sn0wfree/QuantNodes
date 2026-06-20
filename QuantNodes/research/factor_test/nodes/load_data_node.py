@@ -1,7 +1,7 @@
 # coding: utf-8
 """Node 1: 加载数据 / Load Data Node"""
 
-from typing import Dict, Union
+from typing import Dict
 
 import pandas as pd
 
@@ -18,14 +18,11 @@ class LoadDataNode(PydanticConfigNode):
     """
 
     ConfigSchema = LoadDataNodeConfig
-
-    def __init__(self, name: str = "LoadData",
-                 config: Union[dict, LoadDataNodeConfig, None] = None, **kwargs):
-        super().__init__(name, config, **kwargs)
-        # 向后兼容: 保留 self._xxx 实例属性
-        self._data_path = self.cfg.data_path
-        self._load_keys = list(self.cfg.load_keys)
-        self._factor_config = self.cfg.factor
+    _ALIASES = {
+        "_data_path": "data_path",
+        "_load_keys": "load_keys",
+        "_factor_config": "factor",
+    }
 
     def _execute(self, input_data=None, **kwargs) -> Dict[str, pd.DataFrame]:
         # P-2: 空字符串校验 (Pydantic Field(...) 不挡空串, 需显式检查)
