@@ -7,7 +7,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-__version__ = '2.5.0'
+try:
+    from importlib.metadata import PackageNotFoundError, version as _pkg_version
+    try:
+        __version__ = _pkg_version("quantnodes")
+    except PackageNotFoundError:
+        __version__ = "0.0.0+local"
+except ImportError:
+    __version__ = "0.0.0+local"
+
 __author__ = 'sn0wfree'
 
 _frontend_installed = False

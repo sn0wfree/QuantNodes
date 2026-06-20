@@ -4,15 +4,33 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantnodes"
-version = "0.4.1"
+version = "2.6.0"
 description = "AI-native quantitative research framework with symbolic computation and SQL pushdown"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{name = "sn0wfree", email = "snowfreedom0815@gmail.com"}]
 license = {text = "MIT"}
+keywords = ["Node", "Databases", "Quantitative"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/sn0wfree/QuantNodes"
 
 [project.scripts]
 quantnodes = "QuantNodes.cli:main"
+
+[tool.setuptools]
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["."]
