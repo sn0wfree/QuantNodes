@@ -18,8 +18,6 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
-logger = logging.getLogger(__name__)
-
 from QuantNodes.core.evolution import (
     EvolutionLoop,
     EvolutionResult,
@@ -38,6 +36,8 @@ from QuantNodes.core.trajectory import TrajectoryPool
 from QuantNodes.research.factor_test.utils.metrics_extractor import (
     extract_metrics_from_ctx,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from QuantNodes.research.factor_test.pipeline_runner import PipelineRunner

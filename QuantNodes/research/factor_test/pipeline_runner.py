@@ -30,8 +30,6 @@ from typing import TYPE_CHECKING, Optional
 import pandas as pd
 import yaml
 
-logger = logging.getLogger(__name__)
-
 from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.research.factor_test.config import SingleFactorTestConfig
 from QuantNodes.research.factor_test.evolution_adapter import (
@@ -58,6 +56,9 @@ if TYPE_CHECKING:
     from QuantNodes.core.feedback import LLMJudge
     from QuantNodes.core.quality_gate import QualityGateNode
     from QuantNodes.core.trajectory import TrajectoryPool
+
+
+logger = logging.getLogger(__name__)
 
 
 class PipelineRunner:

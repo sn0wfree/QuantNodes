@@ -1,0 +1,212 @@
+# coding=utf-8
+"""``quantnodes run`` command + server start helpers."""
+
+import os
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Tuple, Any, List
+
+from .._helpers import (
+    DEFAULT_API_PORT,
+    DEFAULT_FRONTEND_PORT,
+    DEFAULT_HOST,
+    get_project_root,
+    is_initialized,
+)
+
+
+def start_api_server(
+    host: str,
+    port: int,
+    log_file: Optional[Path] = None,
+) -> Tuple[subprocess.Popen, Optional[Any]]:
+    """Start the API server. Returns (process, log_file_handle)."""
+    cmd = [
+        sys.executable, "-m", "uvicorn",
+        "api.main:app",
+        "--host", host,
+        "--port", str(port),
+        "--reload"
+    ]
+
+    if log_file:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_fd = open(log_file, "w", encoding="utf-8")
+        proc = subprocess.Popen(
+            cmd,
+            stdout=log_fd,
+            stderr=subprocess.STDOUT,
+            cwd=get_project_root()
+        )
+        return proc, log_fd
+    else:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=get_project_root()
+        )
+        return proc, None
+
+
+def start_frontend_server(
+    host: str,
+    port: int,
+    api_port: int = 8000,
+    log_file: Optional[Path] = None,
+) -> Tuple[subprocess.Popen, Optional[Any]]:
+    """Start the frontend server. Returns (process, log_file_handle)."""
+    cmd = ["npm", "run", "dev"]
+
+    env = os.environ.copy()
+    env["HOST"] = host
+    env["PORT"] = str(port)
+    env["API_PORT"] = str(api_port)
+
+    if log_file:
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        log_fd = open(log_file, "w", encoding="utf-8")
+        proc = subprocess.Popen(
+            cmd,
+            stdout=log_fd,
+            stderr=subprocess.STDOUT,
+            cwd=str(get_project_root() / "frontend"),
+            env=env
+        )
+        return proc, log_fd
+    else:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(get_project_root() / "frontend"),
+            env=env
+        )
+        return proc, None
+
+
+def cmd_run(args) -> int:
+    """Start QuantNodes services."""
+    if not is_initialized():
+        print("错误: 当前目录未初始化")
+        print("请先运行: quantnodes init")
+        return 1
+
+    host = args.host or DEFAULT_HOST
+    frontend_port = args.port or DEFAULT_FRONTEND_PORT
+    # 联动：如果只设置 --port，则 api_port = port + 1000
+    if args.port and not args.api_port:
+        api_port = args.port + 1000
+    else:
+        api_port = args.api_port or DEFAULT_API_PORT
+
+    if args.daemon:
+        if sys.platform != "linux":
+            print("错误: daemon 模式仅支持 Linux")
+            return 1
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_dir = Path("logs")
+        log_dir.mkdir(exist_ok=True)
+
+        api_log = log_dir / f"quantnodes_api_{timestamp}.log"
+        frontend_log = log_dir / f"quantnodes_frontend_{timestamp}.log"
+
+        print("=" * 50)
+        print("QuantNodes 服务 (后台运行)")
+        print("=" * 50)
+        print(f"  后端: http://{host}:{api_port}")
+        print(f"  前端: http://{host}:{frontend_port}")
+        print(f"  API 日志: {api_log}")
+        print(f"  前端日志: {frontend_log}")
+        print()
+
+        api_proc, api_fd = start_api_server(host, api_port, api_log)
+        frontend_proc, frontend_fd = start_frontend_server(
+            host, frontend_port, api_port, frontend_log,
+        )
+
+        print("✓ 服务已后台启动")
+        print(f"  API 进程: {api_proc.pid}")
+        print(f"  前端进程: {frontend_proc.pid}")
+        print()
+        print("查看日志:")
+        print(f"  tail -f {api_log}")
+        print(f"  tail -f {frontend_log}")
+        print()
+        print("停止服务:")
+        print(f"  kill {api_proc.pid} {frontend_proc.pid}")
+
+        return 0
+
+    print("=" * 50)
+    print("QuantNodes 服务")
+    print("=" * 50)
+
+    processes: List[Tuple[str, subprocess.Popen]] = []
+    log_fds: List[Any] = []
+
+    try:
+        if not args.frontend_only:
+            print(f"\n启动后端: http://{host}:{api_port}")
+            api_proc, api_fd = start_api_server(host, api_port)
+            processes.append(("API", api_proc))
+            log_fds.append(api_fd)
+            print(f"  进程 PID: {api_proc.pid}")
+
+        if not args.api_only:
+            print(f"\n启动前端: http://{host}:{frontend_port}")
+            # Wait for backend to be ready before starting frontend
+            import time
+            import urllib.request
+            import urllib.error
+            print("  等待后端就绪...")
+            for i in range(30):
+                try:
+                    urllib.request.urlopen(f"http://localhost:{api_port}/docs", timeout=2)
+                    print("  ✓ 后端已就绪")
+                    break
+                except (urllib.error.URLError, OSError):
+                    time.sleep(1)
+            else:
+                print("  ⚠ 后端未就绪，继续启动前端")
+            frontend_proc, frontend_fd = start_frontend_server(host, frontend_port, api_port)
+            processes.append(("Frontend", frontend_proc))
+            log_fds.append(frontend_fd)
+            print(f"  进程 PID: {frontend_proc.pid}")
+
+        print()
+        print("=" * 50)
+        print("✓ 服务已启动")
+        print("=" * 50)
+        print()
+        print("访问:")
+        if not args.frontend_only:
+            print(f"  后端: http://localhost:{api_port}/docs")
+        if not args.api_only:
+            print(f"  前端: http://localhost:{frontend_port}")
+        print()
+        print("按 Ctrl+C 停止服务")
+        print()
+
+        try:
+            for name, proc in processes:
+                proc.wait()
+        except KeyboardInterrupt:
+            print("\n\n正在停止服务...")
+            for name, proc in processes:
+                proc.terminate()
+                proc.wait()
+            for fd in log_fds:
+                if fd:
+                    fd.close()
+            print("✓ 服务已停止")
+
+    except Exception as e:
+        print(f"错误: {e}")
+        for name, proc in processes:
+            proc.terminate()
+        for fd in log_fds:
+            if fd:
+                fd.close()
+        return 1
+
+    return 0
