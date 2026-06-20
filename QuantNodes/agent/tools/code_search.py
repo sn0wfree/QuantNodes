@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import Any, Dict
 
 from .base import Tool
+from ._workspace import WorkspaceTool
 
 
-class CodeSearchTool(Tool):
+class CodeSearchTool(WorkspaceTool, Tool):
     """代码搜索工具
 
     在工作目录中搜索代码内容和文件名。
@@ -24,7 +25,7 @@ class CodeSearchTool(Tool):
     MAX_CONTEXT_LINES = 3
 
     def __init__(self, workspace: str | Path):
-        self.workspace = Path(workspace).resolve()
+        super().__init__(workspace)
 
     @property
     def name(self) -> str:
@@ -70,14 +71,8 @@ class CodeSearchTool(Tool):
         return True
 
     def _safe_path(self, rel_path: str) -> Path:
-        """将相对路径解析为安全的绝对路径"""
-        if not rel_path:
-            return self.workspace
-        rel_path = rel_path.lstrip("/")
-        target = (self.workspace / rel_path).resolve()
-        if not str(target).startswith(str(self.workspace)):
-            raise ValueError(f"Path traversal not allowed: {rel_path}")
-        return target
+        """Resolve workspace-relative path (Phase J1: now inherited)."""
+        return WorkspaceTool._safe_path(self, rel_path)
 
     def _match_include(self, filename: str, include: str | None) -> bool:
         """检查文件名是否匹配 include 模式"""

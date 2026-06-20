@@ -11,16 +11,17 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .base import Tool
+from ._workspace import WorkspaceTool
 
 
-class GitOpsTool(Tool):
+class GitOpsTool(WorkspaceTool, Tool):
     """Git 操作工具
 
     安全地执行 git 命令：status、diff、log、commit。
     """
 
     def __init__(self, workspace: str | Path):
-        self.workspace = Path(workspace).resolve()
+        super().__init__(workspace)
 
     @property
     def name(self) -> str:

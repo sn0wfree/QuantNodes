@@ -10,10 +10,11 @@ from pathlib import Path
 from typing import Any, Dict
 
 from .base import Tool
+from ._workspace import WorkspaceTool
 from QuantNodes.core.path_utils import ensure_parent
 
 
-class FileOpsTool(Tool):
+class FileOpsTool(WorkspaceTool, Tool):
     """文件操作工具
 
     安全地读取、写入、编辑文件，列出目录内容，glob 模式匹配。
@@ -23,7 +24,7 @@ class FileOpsTool(Tool):
     MAX_FILE_SIZE = 1 * 1024 * 1024  # 1MB
 
     def __init__(self, workspace: str | Path):
-        self.workspace = Path(workspace).resolve()
+        super().__init__(workspace)
 
     @property
     def name(self) -> str:
@@ -85,12 +86,8 @@ class FileOpsTool(Tool):
         return False
 
     def _safe_path(self, rel_path: str) -> Path:
-        """将相对路径解析为安全的绝对路径"""
-        rel_path = rel_path.lstrip("/")
-        target = (self.workspace / rel_path).resolve()
-        if not str(target).startswith(str(self.workspace)):
-            raise ValueError(f"Path traversal not allowed: {rel_path}")
-        return target
+        """Resolve workspace-relative path (Phase J1: now inherited)."""
+        return WorkspaceTool._safe_path(self, rel_path)
 
     async def execute(self, action: str, **kwargs: Any) -> Any:
         dispatch = {

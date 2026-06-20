@@ -13,10 +13,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .base import Tool
+from ._workspace import WorkspaceTool
 from QuantNodes.core.path_utils import ensure_parent
 
 
-class TaskTool(Tool):
+class TaskTool(WorkspaceTool, Tool):
     """任务管理工具
 
     创建、更新、列表任务。数据持久化到 JSON 文件。
@@ -25,7 +26,7 @@ class TaskTool(Tool):
     MAX_TASKS = 100
 
     def __init__(self, workspace: str | Path):
-        self.workspace = Path(workspace).resolve()
+        super().__init__(workspace)
         self._tasks_file = self.workspace / ".quant_agent" / "tasks.json"
 
     @property
