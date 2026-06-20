@@ -6,6 +6,7 @@ import functools
 import sys
 import subprocess
 from pathlib import Path
+from typing import Sequence
 
 from QuantNodes.research.wiki import init_factor_wiki
 from QuantNodes.core.path_utils import ensure_dir
@@ -181,6 +182,35 @@ def cli_safe_run(func):
             print(f"错误: {e}")
             return 1
     return wrapper
+
+
+# ============================================================================
+# Phase I3: confirm_section helper (2026-06-20)
+# ============================================================================
+
+def confirm_section(
+    name: str,
+    fields: Sequence[tuple[str, str]],
+    default: bool = False,
+) -> dict | None:
+    """Prompt "是否配置 {name}" → on Yes, ask each (label, default) tuple.
+
+    Used by init.py for ClickHouse / MySQL config blocks. Each block
+    was 7 lines of boilerplate (print header + 5 get_input_with_default calls);
+    confirm_section collapses to a single call with a field list.
+
+    Args:
+        name: section name (e.g. "ClickHouse").
+        fields: sequence of (label, default) pairs to prompt for.
+        default: default for the yes/no confirm.
+
+    Returns:
+        Dict of {label: value} on confirmation, or None if declined.
+    """
+    if not get_yes_no(f"是否配置 {name}", default=default):
+        return None
+    print(f"\n  {name} 配置:")
+    return {label: get_input_with_default(f"    {label}", default) for label, default in fields}
 
 
 def get_yes_no(prompt: str, default: bool = True) -> bool:

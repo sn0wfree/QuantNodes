@@ -4,6 +4,7 @@
 from pathlib import Path
 
 from .._helpers import (
+    confirm_section,
     create_directory_structure,
     get_input_with_default,
     get_model_choice,
@@ -88,20 +89,28 @@ def cmd_init(args) -> int:
     mysql_config = {}
 
     if configure_clickhouse:
-        print("\n  ClickHouse 配置:")
-        clickhouse_config["host"] = get_input_with_default("    Host", "localhost")
-        clickhouse_config["port"] = get_input_with_default("    Port", "8123")
-        clickhouse_config["user"] = get_input_with_default("    User", "default")
-        clickhouse_config["passwd"] = get_input_with_default("    Password", "")
-        clickhouse_config["db"] = get_input_with_default("    Database", "default")
+        clickhouse_config = confirm_section(
+            "ClickHouse",
+            [
+                ("Host", "localhost"),
+                ("Port", "8123"),
+                ("User", "default"),
+                ("Password", ""),
+                ("Database", "default"),
+            ],
+        ) or {}
 
     if configure_mysql:
-        print("\n  MySQL 配置:")
-        mysql_config["host"] = get_input_with_default("    Host", "localhost")
-        mysql_config["port"] = get_input_with_default("    Port", "3306")
-        mysql_config["user"] = get_input_with_default("    User", "root")
-        mysql_config["passwd"] = get_input_with_default("    Password", "")
-        mysql_config["db"] = get_input_with_default("    Database", "quant")
+        mysql_config = confirm_section(
+            "MySQL",
+            [
+                ("Host", "localhost"),
+                ("Port", "3306"),
+                ("User", "root"),
+                ("Password", ""),
+                ("Database", "quant"),
+            ],
+        ) or {}
 
     print()
 
