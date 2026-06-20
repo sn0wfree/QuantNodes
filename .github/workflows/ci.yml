@@ -21,8 +21,8 @@ jobs:
       - name: Install ruff
         run: pip install ruff
 
-      - name: Run ruff
-        run: ruff check QuantNodes/ --select=E,F
+      - name: Run ruff (strict: must pass with 0 errors)
+        run: ruff check QuantNodes/ tests/
 
   typecheck:
     name: Type Check
