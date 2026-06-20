@@ -10,7 +10,8 @@ from QuantNodes.monitor.version.diff import ConfigDiffer
 
 @pytest.fixture
 def version_manager():
-    import tempfile, os
+    import tempfile
+    import os
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
     with tempfile.TemporaryDirectory() as strategies_dir:

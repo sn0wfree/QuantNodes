@@ -4,7 +4,7 @@
 """
 
 import asyncio
-from typing import Dict, Optional, Callable, Awaitable
+from typing import Dict, Callable, Awaitable
 from dataclasses import dataclass
 
 from .models import (

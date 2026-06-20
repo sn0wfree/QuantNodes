@@ -1,6 +1,5 @@
 # coding: utf-8
 """Test that default dates are dynamically generated (H1-H4 HIGH fixes)"""
-import pytest
 from datetime import datetime, timedelta
 from QuantNodes.research.factor_test.ifind_db.ifind_database import IFinDDatabase
 from QuantNodes.research.factor_test.e2e.data_prep import _gen_dates

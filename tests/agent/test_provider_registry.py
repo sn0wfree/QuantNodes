@@ -5,8 +5,7 @@
 覆盖：配置加载、model路由、优先级排序、fallback、向后兼容。
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock
 
 from QuantNodes.agent.providers.registry import ProviderConfig, ProviderRegistry
 

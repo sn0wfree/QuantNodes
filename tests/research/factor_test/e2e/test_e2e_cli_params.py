@@ -1,7 +1,6 @@
 # coding: utf-8
 """Test E2E evolution CLI parameters (M22-M23)"""
 import pytest
-import argparse
 from QuantNodes.research.factor_test.e2e.run_evolution_e2e import _build_parser
 
 

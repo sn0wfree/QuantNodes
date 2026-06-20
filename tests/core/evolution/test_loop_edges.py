@@ -18,12 +18,8 @@ import pytest
 
 from QuantNodes.core.evolution import (
     EvolutionLoop,
-    EvolutionResult,
     EvolutionSetting,
     FactorCandidate,
-    Hypothesizer,
-    Mutator,
-    Crosser,
 )
 from QuantNodes.core.evolution.settings import EvolutionSetting as ES
 from QuantNodes.core.feedback import FactorFeedback
@@ -31,7 +27,6 @@ from QuantNodes.core.quality_gate import (
     QualityGateNode,
     QualityGateSetting,
     ComplexitySetting,
-    ComplexityChecker,
 )
 from QuantNodes.core.trajectory import TrajectoryPool
 

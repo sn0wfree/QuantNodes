@@ -6,7 +6,6 @@ Mock 模式: 简单启发式检查 (hypothesis + expression 长度相关)
 from __future__ import annotations
 
 import json
-import re
 from typing import Optional
 
 from .dataclass import ChannelFeedback, FeedbackChannel
@@ -77,7 +76,7 @@ class LLMJudge:
         if self.model == "mock":
             return self._mock_call(prompt)
         raise NotImplementedError(
-            f"真实 LLM 调用未实现, 请提供 llm_callable 或使用 model='mock'"
+            "真实 LLM 调用未实现, 请提供 llm_callable 或使用 model='mock'"
         )
 
     @staticmethod
@@ -105,7 +104,7 @@ class LLMJudge:
         if matched > 0 and ("returns" in e or "close" in e or "open" in e):
             return json.dumps({
                 "consistent": True,
-                "reason": f"关键词匹配, 假设与表达式使用相关字段",
+                "reason": "关键词匹配, 假设与表达式使用相关字段",
                 "score": 0.85,
             })
         return json.dumps({

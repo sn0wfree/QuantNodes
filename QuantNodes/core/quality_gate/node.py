@@ -5,9 +5,6 @@ import uuid
 from typing import Any
 
 from ..feedback import (
-    ChannelFeedback,
-    FactorFeedback,
-    FeedbackChannel,
     FeedbackCollector,
 )
 from .complexity import ComplexityChecker

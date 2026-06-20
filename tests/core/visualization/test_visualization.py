@@ -8,8 +8,6 @@
 """
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -27,7 +25,6 @@ from QuantNodes.core.visualization import (
     lineage_dag_figure,
     metric_distribution_figure,
     metric_per_round_figure,
-    operation_breakdown_figure,
 )
 
 
@@ -239,8 +236,6 @@ def test_generate_html_contains_overview_table(small_pool):
 
 def test_cli_visual_subcommand(tmp_path, small_pool):
     """CLI factor-visual 生成 HTML 文件。"""
-    import io
-    from contextlib import redirect_stdout
     # 先把 entries 写入 pool
     pool = TrajectoryPool(tmp_path / "pool")
     for e in small_pool:

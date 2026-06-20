@@ -9,8 +9,6 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -22,8 +20,8 @@ from QuantNodes.agent.core.memory import (
     MemoryManager,
 )
 from QuantNodes.agent.core.dream import DreamEngine
-from QuantNodes.agent.core.autocompact import truncate_history, microcompact
-from QuantNodes.agent.session.manager import SessionManager, Session
+from QuantNodes.agent.core.autocompact import truncate_history
+from QuantNodes.agent.session.manager import SessionManager
 
 
 # ============================================================

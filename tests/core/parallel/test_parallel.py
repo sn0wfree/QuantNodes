@@ -10,12 +10,10 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from QuantNodes.core.evolution import EvolutionLoop, EvolutionSetting, FactorCandidate
 from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.core.parallel import (
-    detect_max_workers,
     make_worker_evaluate,
     parallel_evaluate,
 )
@@ -123,7 +121,8 @@ def test_workers2_metrics_correct(tmp_path):
 
 def test_processpool_subprocess_evaluate():
     """ProcessPool subprocess_evaluate 运行 12 节点并返回结果。"""
-    import pandas as pd, numpy as np
+    import pandas as pd
+    import numpy as np
     from QuantNodes.core.parallel.worker_process import RunnerSnapshot, subprocess_evaluate
 
     n_days, n_stocks = 60, 20
@@ -161,7 +160,8 @@ def test_processpool_subprocess_evaluate():
 
 def test_processpool_parallel_evaluate():
     """parallel_evaluate ProcessPool 模式并行评估。"""
-    import pandas as pd, numpy as np
+    import pandas as pd
+    import numpy as np
     from QuantNodes.core.parallel.worker_process import RunnerSnapshot
     from QuantNodes.core.parallel import parallel_evaluate
 

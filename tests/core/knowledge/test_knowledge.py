@@ -9,9 +9,6 @@
 """
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
-from typing import Callable
 
 import pytest
 
@@ -26,7 +23,6 @@ from QuantNodes.core.knowledge import (
     KnowledgeBase,
     TFIDFRetriever,
     build_rag_prompt,
-    make_retriever,
 )
 from QuantNodes.core.trajectory import TrajectoryEntry, TrajectoryPool
 
@@ -355,7 +351,6 @@ class TestKnowledgeBaseSetting:
         from QuantNodes.core.knowledge import KnowledgeBase
         from QuantNodes.core.feedback import FactorFeedback
         from QuantNodes.core.trajectory import TrajectoryEntry
-        from datetime import datetime
 
         kb = KnowledgeBase(field_weights={"name": 5.0, "summary": 0})
         entry = TrajectoryEntry(

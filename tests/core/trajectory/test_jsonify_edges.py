@@ -14,9 +14,7 @@ from datetime import datetime
 
 import numpy as np
 import pandas as pd
-import pytest
 
-from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.core.trajectory import TrajectoryEntry
 from QuantNodes.core.trajectory.entry import _jsonify
 

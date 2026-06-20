@@ -10,10 +10,10 @@ H9: LoadDataNode fallback data path → data_path required Pydantic validation
 import pytest
 from pydantic import ValidationError
 
-from QuantNodes.research.factor_test.ifind_db.ifind_database import IFinDDatabase, _DEFAULT_INDUSTRY_MAP
+from QuantNodes.research.factor_test.ifind_db.ifind_database import IFinDDatabase
 from QuantNodes.research.factor_test.utils.constants import (
     INDEX_MAPPING, INDEX_CP_MAPPING,
-    resolve_index_mapping, load_overrides,
+    resolve_index_mapping,
 )
 from QuantNodes.research.factor_test.config import ScoreSetting
 from QuantNodes.research.factor_test.nodes.configs import LoadDataNodeConfig

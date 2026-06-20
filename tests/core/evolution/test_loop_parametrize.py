@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -19,7 +18,6 @@ from QuantNodes.core.quality_gate import (
     QualityGateNode,
     QualityGateSetting,
     ComplexitySetting,
-    RedundancySetting,
 )
 from QuantNodes.core.trajectory import TrajectoryPool
 

@@ -62,7 +62,8 @@ class TestDatabaseManager:
         assert "strategy_versions" in table_names
 
     def test_context_manager(self):
-        import tempfile, os
+        import tempfile
+        import os
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             path = f.name
         try:

@@ -1,8 +1,7 @@
 # coding: utf-8
 """Test CLI overrides for default values (M13-M15)"""
 import pytest
-import argparse
-from QuantNodes.cli import cmd_evolve, main
+from QuantNodes.cli import main
 
 
 def test_cli_accepts_new_flags():

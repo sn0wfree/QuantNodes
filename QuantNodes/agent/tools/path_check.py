@@ -6,7 +6,6 @@
 """
 
 from pathlib import Path
-from typing import Optional
 
 
 def is_within_project(filepath: str, project_root: str) -> bool:

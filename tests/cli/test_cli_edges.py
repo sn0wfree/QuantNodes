@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -29,8 +28,7 @@ def _parse(args_list: list[str]) -> argparse.Namespace:
         with patch("QuantNodes.cli.main") as mock_main:
             # 让 main() 内部 parser.parse_args() 解析我们的 argv
             # 简化: 直接构造 Namespace
-            from QuantNodes.cli import main as real_main
-            from QuantNodes.cli import _build_parser  # 如果存在
+            pass  # 如果存在
     return None
 
 
@@ -40,8 +38,6 @@ def _parse(args_list: list[str]) -> argparse.Namespace:
 
 class TestParserConstruction:
     def test_prog_name(self):
-        from QuantNodes.cli import main
-        import argparse
         # 重新构造 parser 验证
         # main() 内部构造, 难直接测试, 改为用 subprocess
         assert PROG_NAME == "quantnodes"
@@ -98,7 +94,6 @@ class TestArgparseInternals:
 
     def _build_parser_and_parse(self, args_list):
         """构造与 main 相同的 parser, 解析 args。"""
-        from QuantNodes.cli.__init__ import main as real_main
         # 通过捕获 main 内部的 parser 构造
         captured = {}
 

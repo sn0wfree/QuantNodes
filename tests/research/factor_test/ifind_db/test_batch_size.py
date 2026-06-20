@@ -2,7 +2,6 @@
 """Phase 3.2 M10: IFinDDatabase batch_size 参数化"""
 from __future__ import annotations
 
-import pytest
 
 from QuantNodes.research.factor_test.ifind_db import IFinDDatabase, IFindFetcherStub
 

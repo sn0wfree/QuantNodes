@@ -13,15 +13,12 @@
 """
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
-from ..quality_gate import FactorZoo, QualityGateNode, QualityGateSetting
+from ..quality_gate import QualityGateNode
 from ..trajectory import (
     ParentSelector,
-    SelectionStrategy,
     TrajectoryEntry,
     TrajectoryPool,
 )
@@ -120,7 +117,7 @@ class EvolutionLoop:
         if self.metric_collector is None:
             return
         from ..monitoring import (
-            EvolutionMetrics, QualityMetrics, RagMetrics,
+            RagMetrics,
         )
         # RAG: 从 rag_metrics_history 提取最新
         for m in self.rag_metrics_history:

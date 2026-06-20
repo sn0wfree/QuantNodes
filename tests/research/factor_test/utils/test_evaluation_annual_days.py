@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from QuantNodes.research.factor_test.utils.performance_metrics import evaluation
 

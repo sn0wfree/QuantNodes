@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -140,7 +139,7 @@ def test_html_report_generated(e2e_artifacts):
 def test_pipeline_runner_skip_load_data(tmp_path):
     """PipelineRunner._context 注入 LoadData 后, run() 跳过 LoadDataNode。"""
     from QuantNodes.research.factor_test.config import (
-        SingleFactorTestConfig, PreprocessSetting,
+        SingleFactorTestConfig,
     )
     from QuantNodes.research.factor_test.pipeline_runner import PipelineRunner
     from QuantNodes.research.factor_test.utils.data_loader import DataLoader

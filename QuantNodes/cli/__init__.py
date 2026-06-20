@@ -488,7 +488,7 @@ def cmd_run(args) -> int:
         api_proc, api_fd = start_api_server(host, api_port, api_log)
         frontend_proc, frontend_fd = start_frontend_server(host, frontend_port, api_port, frontend_log)
         
-        print(f"✓ 服务已后台启动")
+        print("✓ 服务已后台启动")
         print(f"  API 进程: {api_proc.pid}")
         print(f"  前端进程: {frontend_proc.pid}")
         print()
@@ -860,12 +860,11 @@ def cmd_factor_dashboard(args) -> int:
         quantnodes factor-dashboard --pool-dir output/trajectory/ \\
                                      --output dashboard.html
     """
-    from QuantNodes.core.feedback import FactorFeedback, FeedbackChannel, ChannelFeedback
     from QuantNodes.core.monitoring import (
         MetricCollector,
         generate_dashboard_html,
     )
-    from QuantNodes.core.trajectory import TrajectoryEntry, TrajectoryPool
+    from QuantNodes.core.trajectory import TrajectoryPool
 
     pool_dir = args.pool_dir
     if not Path(pool_dir).exists():
@@ -902,7 +901,7 @@ def cmd_factor_dashboard(args) -> int:
             ))
 
     # Evolution: 累积统计
-    from QuantNodes.core.monitoring import EvolutionMetrics, QualityMetrics
+    from QuantNodes.core.monitoring import EvolutionMetrics
     for r in rounds:
         round_entries = [e for e in pool.all() if e.round_idx <= r]
         n_passed = sum(1 for e in round_entries if e.feedback and e.feedback.decision)
@@ -1010,7 +1009,7 @@ def cmd_factor_data_fetch(args) -> int:
     factor_names = [f.strip() for f in (args.factors or "").split(",") if f.strip()]
 
     print("=" * 60)
-    print(f"iFinD 数据拉取")
+    print("iFinD 数据拉取")
     print(f"  universe: {args.universe}")
     print(f"  date range: {args.date_beg} ~ {args.date_end}")
     print(f"  output_dir: {output_dir}")
@@ -1025,7 +1024,7 @@ def cmd_factor_data_fetch(args) -> int:
 
     print()
     print("=" * 60)
-    print(f"✓ 完成, 统计:")
+    print("✓ 完成, 统计:")
     for fname, file_stats in stats.items():
         if isinstance(file_stats, dict):
             keys_info = ", ".join(

@@ -6,8 +6,6 @@ Enhanced CLI - Rich Agent 交互终端
 """
 
 import asyncio
-import sys
-from pathlib import Path
 
 from rich.console import Console
 from rich.markdown import Markdown

@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import json
 import threading
-from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -26,10 +24,8 @@ from QuantNodes.core.feedback import (
 )
 from QuantNodes.core.trajectory import (
     ParentSelector,
-    SelectionStrategy,
     TrajectoryEntry,
     TrajectoryPool,
-    children_of,
     descendants,
     lineage,
 )

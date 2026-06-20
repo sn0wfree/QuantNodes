@@ -13,7 +13,8 @@ from QuantNodes.monitor.monitor.collector import MetricsCollector
 
 @pytest.fixture
 def db():
-    import tempfile, os
+    import tempfile
+    import os
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         path = f.name
     try:

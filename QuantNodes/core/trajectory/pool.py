@@ -9,7 +9,6 @@ from typing import Iterator
 import pandas as pd
 
 from ..constants import PARQUET_COLUMNS as _PARQUET_COLUMNS
-from ..feedback import FactorFeedback
 from .entry import TrajectoryEntry
 from .lineage import children_of, descendants, lineage
 

@@ -8,12 +8,12 @@ Week 9 升级: 谱系压缩 — use_compress=True 时, 祖先/后裔段先用 LL
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 from ..trajectory import TrajectoryEntry, TrajectoryPool
 from .knowledge_base import KnowledgeBase
-from .lineage_compress import Compressor, compress_lineage
-from .lineage_expand import expand_lineage, expand_lineage_batch
+from .lineage_compress import Compressor
+from .lineage_expand import expand_lineage
 
 
 _RAG_HEADER = """你是一个量化研究员, 负责基于历史经验和当前研究假设生成新 alpha 因子。

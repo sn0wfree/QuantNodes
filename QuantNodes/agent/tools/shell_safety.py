@@ -6,7 +6,6 @@ Shell 安全模块
 """
 
 import asyncio
-import signal
 from dataclasses import dataclass
 from typing import Optional
 

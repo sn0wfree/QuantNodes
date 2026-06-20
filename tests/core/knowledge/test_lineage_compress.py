@@ -14,7 +14,6 @@ import io
 import json
 import tempfile
 from contextlib import redirect_stdout
-from pathlib import Path
 
 import pytest
 
@@ -27,7 +26,6 @@ from QuantNodes.core.knowledge import (
     IdentityRetriever,
     KnowledgeBase,
     build_rag_prompt,
-    compress_lineage,
 )
 from QuantNodes.core.trajectory import TrajectoryEntry, TrajectoryPool
 

@@ -70,7 +70,7 @@ class BaseOperator:
         if self.model == "mock":
             return json.dumps(_mock_variant(prompt))
         raise NotImplementedError(
-            f"真实 LLM 未实现, 请提供 llm_callable 或使用 model='mock'"
+            "真实 LLM 未实现, 请提供 llm_callable 或使用 model='mock'"
         )
 
 

@@ -3,7 +3,6 @@
 权限规则评估引擎
 """
 
-from typing import List
 from .models import PermissionRule, Action, Ruleset
 
 

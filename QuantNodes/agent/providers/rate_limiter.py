@@ -9,7 +9,6 @@
 import time
 import asyncio
 import threading
-from typing import Optional
 
 
 class TokenBucket:

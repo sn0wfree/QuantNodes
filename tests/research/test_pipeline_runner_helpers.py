@@ -1,7 +1,6 @@
 """pipeline_runner.py helper 边界测试 (10 tests)。"""
 from __future__ import annotations
 
-import pytest
 
 from QuantNodes.research.factor_test.pipeline_runner import _extract_metrics_from_ctx
 

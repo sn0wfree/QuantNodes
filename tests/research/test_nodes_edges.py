@@ -9,7 +9,6 @@ from QuantNodes.research.factor_test.nodes.adjust_date_node import AdjustDateNod
 from QuantNodes.research.factor_test.nodes.factor_preprocess_node import FactorPreprocessNode
 from QuantNodes.research.factor_test.nodes.load_data_node import LoadDataNode
 from QuantNodes.research.factor_test.nodes.tradability_filter_node import TradabilityFilterNode
-from QuantNodes.research.factor_test.utils.data_loader import DataLoader
 
 
 @pytest.fixture

@@ -11,7 +11,6 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
 
-import pytest
 
 from QuantNodes.agent.providers.base import LLMProvider, LLMResponse
 
@@ -63,7 +62,6 @@ class TestAgentServiceNoDoubleSave:
         if provider:
             from QuantNodes.agent import Agent
             from QuantNodes.agent.bus.queue import MessageBus
-            from QuantNodes.agent.tools.registry import ToolRegistry
 
             bus = MessageBus()
             agent = Agent.__new__(Agent)

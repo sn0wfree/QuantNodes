@@ -9,10 +9,8 @@
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
-import pytest
 
 from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.core.monitoring import (
@@ -22,7 +20,7 @@ from QuantNodes.core.monitoring import (
     RagMetrics,
     generate_dashboard_html,
 )
-from QuantNodes.core.trajectory import TrajectoryEntry, TrajectoryPool
+from QuantNodes.core.trajectory import TrajectoryEntry
 from QuantNodes.core.visualization import (
     build_lineage_layout,
     generate_html,

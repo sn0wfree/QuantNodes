@@ -14,7 +14,6 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-import pytest
 
 from QuantNodes.core.knowledge.metrics import (
     dcg_at_k,
@@ -31,7 +30,6 @@ from QuantNodes.core.knowledge.metrics import (
 )
 from QuantNodes.core.knowledge.metrics.evaluator import (
     EvalReport,
-    QueryResult,
     RAGEvaluator,
 )
 

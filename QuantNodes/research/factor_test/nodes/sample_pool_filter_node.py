@@ -4,14 +4,13 @@
 Migrated from factor_utils.py:155-234 select_range()
 """
 
-from typing import Dict, Union
+from typing import Union
 
 import numpy as np
 import pandas as pd
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import SamplePoolNodeConfig
-from QuantNodes.research.factor_test.utils.constants import INDEX_MAPPING, INDUSTRY_MAPPING
 from QuantNodes.research.factor_test.utils.constants import resolve_index_mapping, resolve_industry_map
 
 

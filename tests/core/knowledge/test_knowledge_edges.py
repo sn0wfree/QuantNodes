@@ -16,9 +16,7 @@ import pytest
 
 from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.core.knowledge import (
-    Compressor,
     KnowledgeBase,
-    expand_lineage,
     make_retriever,
 )
 from QuantNodes.core.knowledge.retriever import (

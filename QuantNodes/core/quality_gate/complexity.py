@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import ast
-from typing import Set
 
 from ..constants import BASE_FEATURE_NAMES as _BASE_FEATURE_NAMES
 from ..feedback import ChannelFeedback, FeedbackChannel

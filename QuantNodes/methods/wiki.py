@@ -9,17 +9,14 @@ Provides access to QuantNodes Wiki knowledge base.
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from QuantNodes.research.wiki import (
     WikiFactorProxy,
     WikiFactor,
-    WikiLogic,
     WikiStrategy,
-    WikiReproduction,
     FactorSource,
     FactorCategory,
-    LogicSource,
 )
 
 

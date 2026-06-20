@@ -207,7 +207,6 @@ def generate_dashboard_html(
         streaming: True → 加 JS 定时刷新 (读取同目录 metrics.json)
         refresh_interval_sec: 刷新间隔秒数 (默认 10s)
     """
-    import plotly.graph_objects as go
 
     figures = [
         ("rag_lines", "RAG 指标趋势", _fig_rag_lines(collector)),

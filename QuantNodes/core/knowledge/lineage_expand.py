@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 from collections import deque
-from typing import Mapping, Optional
 
 from ..trajectory import TrajectoryEntry, TrajectoryPool, children_of
 

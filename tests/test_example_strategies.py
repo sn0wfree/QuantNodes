@@ -99,7 +99,7 @@ async def main():
                     print(f"  错误: {err[:200]}")
 
         except Exception as e:
-            print(f"  状态: EXCEPTION")
+            print("  状态: EXCEPTION")
             print(f"  异常: {e}")
             results[name] = {"status": "error", "errors": [str(e)]}
 

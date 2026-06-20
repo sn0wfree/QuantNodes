@@ -8,11 +8,9 @@
 """
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from QuantNodes.core.evolution import EvolutionLoop, EvolutionSetting
 from QuantNodes.core.feedback import FactorFeedback
@@ -133,7 +131,6 @@ def test_cli_dashboard_streaming_flag():
     from QuantNodes.cli import cmd_factor_dashboard
     import io
     from contextlib import redirect_stdout
-    import shutil
 
     # 创建一个包含数据的 pool
     with tempfile.TemporaryDirectory() as td:
@@ -164,9 +161,7 @@ def test_cli_dashboard_streaming_flag():
 
 def test_cli_dashboard_watch_flag():
     """--watch 后台运行 (中断后返回)。"""
-    from QuantNodes.cli import cmd_factor_dashboard
     import io
-    from contextlib import redirect_stdout
 
     with tempfile.TemporaryDirectory() as td:
         pool = TrajectoryPool(Path(td) / "pool")
@@ -189,7 +184,6 @@ def test_cli_dashboard_watch_flag():
         # Watch 会进入 while True, 但 pool 无变化, 需要中断
         # 这里测试 watch 初始化不报错 (实际中靠 KeyboardInterrupt 退出)
         # 简化: 只检查 watch 参数被识别
-        import sys
         # 不调用 cmd_factor_dashboard (会死循环), 只验证 watch 参数
         args = Args()
         assert args.watch is True

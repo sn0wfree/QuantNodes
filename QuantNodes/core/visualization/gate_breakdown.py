@@ -4,7 +4,6 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Mapping
 
-from ..trajectory import TrajectoryEntry
 
 
 def gate_breakdown_figure(

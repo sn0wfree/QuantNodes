@@ -1,7 +1,6 @@
 """FactorFeedback dataclass/collector 进阶边界测试 (20 tests)。"""
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from pathlib import Path
 

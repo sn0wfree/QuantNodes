@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 
 # ── iFinD API 配置 ──────────────────────────────────────────────
 IFIND_SKILL_DIR = Path.home() / '.agents/skills/ifind'

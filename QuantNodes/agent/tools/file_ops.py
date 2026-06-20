@@ -6,10 +6,8 @@
 路径限制在 workspace 内，防止 path traversal。
 """
 
-import os
-import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from .base import Tool
 

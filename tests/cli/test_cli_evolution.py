@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import io
-import json
 import tempfile
 from contextlib import redirect_stdout
 from pathlib import Path
 
-import pytest
 
 from QuantNodes.cli import (
     cmd_evolve,

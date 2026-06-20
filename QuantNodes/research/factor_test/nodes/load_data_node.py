@@ -1,7 +1,7 @@
 # coding: utf-8
 """Node 1: 加载数据 / Load Data Node"""
 
-from typing import Dict, Optional, Union
+from typing import Dict, Union
 
 import pandas as pd
 

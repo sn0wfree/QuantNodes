@@ -9,21 +9,16 @@ Phase 4: Skill 桥接 + DreamEngine 增强测试
 - Skill API Router
 """
 
-import asyncio
 import threading
-import tempfile
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict
-from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
 from QuantNodes.agent.skills.base import (
-    Skill, SkillCategory, SkillMetadata, SkillResult, SkillStatus,
+    Skill, SkillCategory, SkillMetadata, SkillResult,
 )
 from QuantNodes.agent.skills.registry import SkillRegistry
-from QuantNodes.agent.tools.base import Tool
 
 
 # ─── Test Helpers ──────────────────────────────────────────────────────
@@ -309,7 +304,6 @@ class TestDreamEngineEnhancements:
 
     @pytest.mark.asyncio
     async def test_dispatch_skills(self, tmp_path):
-        from QuantNodes.agent.core.dream import DreamEngine
 
         engine, store = self._make_engine(tmp_path)
         _reset_registry()
@@ -324,7 +318,6 @@ class TestDreamEngineEnhancements:
 
     @pytest.mark.asyncio
     async def test_dispatch_skills_empty_registry(self, tmp_path):
-        from QuantNodes.agent.core.dream import DreamEngine
 
         engine, store = self._make_engine(tmp_path)
         _reset_registry()
@@ -335,7 +328,6 @@ class TestDreamEngineEnhancements:
 
     @pytest.mark.asyncio
     async def test_dispatch_skills_with_failing(self, tmp_path):
-        from QuantNodes.agent.core.dream import DreamEngine
 
         engine, store = self._make_engine(tmp_path)
         _reset_registry()

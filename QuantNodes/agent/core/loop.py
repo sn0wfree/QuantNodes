@@ -263,7 +263,7 @@ class AgentLoop:
             dream_type="compaction_insight",
             content=f"被截断的对话历史摘要 ({len(pending)} 条消息)",
             source="compaction",
-            insights=[f"截断消息中检测到关键词，已提取摘要"],
+            insights=["截断消息中检测到关键词，已提取摘要"],
             confidence=0.7,
             tags=["compaction", "auto"],
         )
@@ -388,7 +388,7 @@ class AgentLoop:
             max_tokens=self.max_tokens,
             max_iterations=self.max_iterations,
         )
-        logger.info(f"[loop.chat] Running agent spec...")
+        logger.info("[loop.chat] Running agent spec...")
 
         result = await self.runner.run(spec)
         logger.info(f"[loop.chat] Runner completed: final_content_length={len(result.final_content) if result.final_content else 0}")

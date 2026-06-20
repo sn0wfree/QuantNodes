@@ -13,9 +13,7 @@ import io
 import json
 import tempfile
 from contextlib import redirect_stdout
-from pathlib import Path
 
-import pytest
 
 from QuantNodes.cli import cmd_factor_rag_eval
 from QuantNodes.core.evolution import EvolutionLoop, EvolutionSetting
@@ -24,20 +22,11 @@ from QuantNodes.core.knowledge import (
     EvalReport,
     QueryResult,
     RAGEvaluator,
-    dcg_at_k,
     hit_rate_at_k,
     intra_list_diversity,
-    jaccard_similarity,
     lineage_coverage,
-    mean_hit_rate_at_k,
-    mean_ndcg_at_k,
-    mean_reciprocal_rank,
     ndcg_at_k,
     reciprocal_rank,
-)
-from QuantNodes.core.knowledge.metrics.metrics import (
-    dcg_at_k as dcg_at_k_direct,
-    ndcg_at_k as ndcg_at_k_direct,
 )
 from QuantNodes.core.trajectory import TrajectoryEntry, TrajectoryPool
 

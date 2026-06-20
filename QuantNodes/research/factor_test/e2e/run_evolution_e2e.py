@@ -39,22 +39,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from QuantNodes.core.evolution import (
-    EvolutionLoop,
-    EvolutionSetting,
-    FactorCandidate,
-)
-from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.core.knowledge import (
     IdentityRetriever,
     KnowledgeBase,
     RAGEvaluator,
 )
-from QuantNodes.core.quality_gate import (
-    QualityGateNode,
-    QualityGateSetting,
-)
-from QuantNodes.core.trajectory import TrajectoryPool
 from QuantNodes.core.visualization import generate_html
 from QuantNodes.research.factor_test.config import (
     AnalysisSetting,
@@ -202,7 +191,7 @@ def main():
     directions = [d.strip() for d in args.directions.split(",") if d.strip()]
 
     print("=" * 70)
-    print(f"E2E 演化实验")
+    print("E2E 演化实验")
     print(f"  data_path:  {data_path}")
     print(f"  output_dir: {output_dir}")
     print(f"  directions: {directions}")
@@ -224,7 +213,7 @@ def main():
     print(f"\n[1/5] 注入 LoadData: factor={runner._context['LoadData']['factor'].shape}")
 
     # 2. 先单次回测 (验证 12 节点)
-    print(f"\n[2/5] 单次回测 (验证 12 节点 + QualityGate)...")
+    print("\n[2/5] 单次回测 (验证 12 节点 + QualityGate)...")
     try:
         ctx = runner.run()
         print(f"  ✓ 12 节点全部执行, ctx keys: {list(ctx.keys())}")
@@ -237,7 +226,7 @@ def main():
         return 1
 
     # 3. 设置演化组件
-    print(f"\n[3/5] 构造演化组件...")
+    print("\n[3/5] 构造演化组件...")
     pool = runner._build_trajectory_pool()
     quality_gate = runner._build_quality_gate()
 
@@ -245,7 +234,7 @@ def main():
     evaluator = RAGEvaluator()
     print(f"  ✓ TrajectoryPool: {pool.base_dir}")
     print(f"  ✓ QualityGateNode: {'enabled' if quality_gate else 'disabled'}")
-    print(f"  ✓ KnowledgeBase + RAGEvaluator (TF-IDF always enabled)")
+    print("  ✓ KnowledgeBase + RAGEvaluator (TF-IDF always enabled)")
 
     # 4. 演化循环
     print(f"\n[4/5] 演化循环 ({args.max_rounds} 轮)...")
@@ -277,7 +266,7 @@ def main():
         print(f"    Round {m['round']}: HR@5={m['hit_at_5']:.3f} NDCG@5={m['ndcg_at_5']:.3f}")
 
     # 5. 报告生成
-    print(f"\n[5/5] 生成报告...")
+    print("\n[5/5] 生成报告...")
     report_path = output_dir / "evolution_report.html"
     try:
         generate_html(pool, metric="sharpe",

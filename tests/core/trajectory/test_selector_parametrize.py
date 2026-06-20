@@ -6,13 +6,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.core.trajectory import (
     ParentSelector,
-    SelectionStrategy,
     TrajectoryEntry,
     TrajectoryPool,
 )
@@ -234,7 +232,6 @@ class TestMetricEdges:
 
     def test_nan_metric_does_not_crash(self, tmp_path: Path):
         pool = TrajectoryPool(tmp_path)
-        import math
         pool.add(TrajectoryEntry(
             entry_id="e1",
             feedback=FactorFeedback(factor_id="e1", factor_name="f", decision=True),

@@ -1,6 +1,5 @@
 # coding: utf-8
 """Test that rate_limit and cache_ttl are configurable on IFindFetcher (H17/H18 HIGH)"""
-import pytest
 from QuantNodes.research.factor_test.ifind_db.fetcher import IFindFetcher
 
 

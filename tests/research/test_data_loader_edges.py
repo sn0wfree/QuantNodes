@@ -147,8 +147,6 @@ class TestLoadCustom:
 # ============================================================================
 
 from QuantNodes.research.factor_test.utils.constants import (
-    INDEX_MAPPING,
-    INDUSTRY_MAPPING,
     ANNUAL_DAYS,
     load_overrides,
     resolve_industry_map,

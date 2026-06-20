@@ -6,10 +6,9 @@
 import pytest
 
 from QuantNodes.core.trajectory import (
-    TrajectoryEntry, TrajectoryPool, ParentSelector,
+    TrajectoryEntry, ParentSelector,
 )
 from QuantNodes.core.feedback import FactorFeedback
-from datetime import datetime
 
 
 def _make_entry(eid, sharpe):

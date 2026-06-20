@@ -12,13 +12,10 @@
 from __future__ import annotations
 
 import io
-import tempfile
 from contextlib import redirect_stdout
-from pathlib import Path
 from typing import Callable
 
 import pandas as pd
-import pytest
 
 from QuantNodes.cli import cmd_factor_best, cmd_factor_info
 from QuantNodes.core.evolution import (
@@ -34,7 +31,6 @@ from QuantNodes.core.quality_gate import (
     RedundancySetting,
 )
 from QuantNodes.core.trajectory import (
-    SelectionStrategy,
     TrajectoryEntry,
     TrajectoryPool,
 )

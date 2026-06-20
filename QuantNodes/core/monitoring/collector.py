@@ -16,16 +16,14 @@
 from __future__ import annotations
 
 import json
-import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
 
 import pandas as pd
 
 from ..feedback import FeedbackChannel
-from ..trajectory import TrajectoryEntry, TrajectoryPool
+from ..trajectory import TrajectoryPool
 
 
 # ============================================================================

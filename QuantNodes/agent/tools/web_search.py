@@ -6,7 +6,6 @@ Web Search 工具
 """
 
 from typing import Any, Dict, List
-from urllib.parse import quote_plus
 
 import httpx
 from bs4 import BeautifulSoup
