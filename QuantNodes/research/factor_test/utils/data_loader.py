@@ -3,6 +3,14 @@
 
 Migrated from ~/Public/单因子回测/factor_utils.py (Factor class)
 Security: all exec()/eval() eliminated.
+
+Phase H3 (2026-06-20):
+  - HDF5 stores are cached per file path in self._h5_stores. Previously
+    every load_h5() opened + closed a new HDFStore; now stores stay open
+    for the loader lifetime. Read-mode HDFStore is thread-safe.
+  - Axis data (stock + index) cached after first get_axis() call.
+    add_index() calls get_axis() on every load (10+ per pipeline run),
+    previously 2 H5 opens per call.
 """
 
 import pandas as pd
@@ -14,22 +22,44 @@ class DataLoader:
 
     def __init__(self, api_path: str = './testdata/test_h5_new/'):
         self.api = api_path if api_path.endswith('/') else api_path + '/'
+        self._h5_stores: dict[str, pd.HDFStore] = {}
+        self._axis_cache: dict[str, tuple] = {}
+
+    def _get_store(self, path: str) -> pd.HDFStore:
+        """Get or lazily open a read-mode HDFStore for `path`."""
+        store = self._h5_stores.get(path)
+        if store is None:
+            store = pd.HDFStore(path, mode='r')
+            self._h5_stores[path] = store
+        return store
+
+    def close(self) -> None:
+        """Close all cached HDFStores. Call at end of pipeline run."""
+        for store in self._h5_stores.values():
+            try:
+                store.close()
+            except Exception:
+                pass
+        self._h5_stores.clear()
+        self._axis_cache.clear()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def load_h5(self, filename: str, key: str) -> pd.DataFrame:
-        """从 H5 文件加载数据"""
+        """从 H5 文件加载数据 (H3: 复用 cached HDFStore)"""
         path = self.api + filename
-        h5_store = pd.HDFStore(path, mode='r')
-        try:
-            # 标准化 key: HDFStore 自动加 / 前缀
-            norm_key = key if key.startswith('/') else '/' + key
-            if norm_key in h5_store.keys():
-                return h5_store.get(norm_key)
-            elif key in h5_store.keys():
-                return h5_store.get(key)
-            else:
-                raise KeyError(f"Key '{key}' not found in {path}. Available: {h5_store.keys()}")
-        finally:
-            h5_store.close()
+        store = self._get_store(path)
+        # 标准化 key: HDFStore 自动加 / 前缀
+        norm_key = key if key.startswith('/') else '/' + key
+        if norm_key in store.keys():
+            return store.get(norm_key)
+        if key in store.keys():
+            return store.get(key)
+        raise KeyError(f"Key '{key}' not found in {path}. Available: {store.keys()}")
 
     def load_csv(self, path: str) -> pd.DataFrame:
         """从 CSV 加载数据"""
@@ -55,11 +85,8 @@ class DataLoader:
         elif filename.endswith('.npy'):
             return self.load_npy(dir_path + filename)
         elif dir_path.endswith('.h5'):
-            h5_store = pd.HDFStore(dir_path, mode='r')
-            try:
-                return h5_store.get(filename)
-            finally:
-                h5_store.close()
+            store = self._get_store(dir_path)
+            return store.get(filename)
         else:
             raise ValueError(f"不支持的数据格式: {dir_path}, {filename}")
 
@@ -87,13 +114,17 @@ class DataLoader:
         return indexlist, trade_dt
 
     def get_axis(self, axis_type: str = 'stock') -> tuple:
-        """获取轴数据"""
+        """获取轴数据 (H3: cached after first call)"""
+        if axis_type in self._axis_cache:
+            return self._axis_cache[axis_type]
         if axis_type == 'stock':
-            return self.get_stock_axis()
+            result = self.get_stock_axis()
         elif axis_type == 'index':
-            return self.get_index_axis()
+            result = self.get_index_axis()
         else:
             raise ValueError(f"不支持的 axis_type: {axis_type}")
+        self._axis_cache[axis_type] = result
+        return result
 
     def add_index(self, factor: pd.DataFrame, axis_type: str = 'stock') -> pd.DataFrame:
         """给因子添加标准索引 (行=交易日, 列=股票/指数)"""
