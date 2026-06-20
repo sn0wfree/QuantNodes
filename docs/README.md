@@ -67,7 +67,20 @@
 
 ## 归档文档
 
-旧版文档已归档到 `archived/` 目录。
+落地后的过程文档（实施计划 / 重构方案 / 修复记录）已迁入 [`archived/`](./archived/)。
+
+`archived/` 包含两类:
+1. **2026-05-08 之前**的历史文档快照
+2. **B6 (2026-06-20) 整理**的过程文档:
+   - AgentChat-* 系列重构方案 (Layout/Phase0/Refactor/UI-Enhancement)
+   - AgentMemory-Persistence-Plan / AgentWebUI-Enhancement-Plan
+   - AgentPhase3 / AgentPhase4 实施计划
+   - Feature3A / 3B / 3C 实施计划
+   - Fix-DoubleSave / Fix-ModelSwitch / Fix-P1-AgentLoop
+   - QuantNodes-Frontend-Implementation-Plan / Architecture-Analysis-2026-05-13 / ARCHITECTURE_CHANGE
+   - 代码质量修复计划
+
+   注: Feature3D（用户友好自定义算子 API）保留在主目录, 因相关 API 仍在演进。
 
 ---
 
