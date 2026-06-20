@@ -2,6 +2,8 @@
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
+Only `GRAPH_REPORT.md` and `.graphify_root` are tracked in VCS. The `graph.json` (~21MB) and `manifest.json` (~144KB) are gitignored and **regenerated locally** by `graphify update .` (AST-only, no API cost). After fresh clone, run `graphify update .` once before reading the graph.
+
 Rules:
 - ALWAYS read graphify-out/GRAPH_REPORT.md before reading any source files, running grep/glob searches, or answering codebase questions. The graph is your primary map of the codebase.
 - IF graphify-out/wiki/index.md EXISTS, navigate it instead of reading raw files
