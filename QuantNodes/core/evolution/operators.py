@@ -98,10 +98,6 @@ class Hypothesizer(BaseOperator):
             Compressor(model="mock") if use_compress else None
         )
 
-    def set_knowledge_base(self, kb) -> None:
-        """注入 KnowledgeBase (在 EvolutionLoop 中设置)。"""
-        self.knowledge_base = kb
-
     def hypothesize(
         self,
         direction: str,

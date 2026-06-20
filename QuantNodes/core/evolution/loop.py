@@ -14,8 +14,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import Callable, Optional
 
+from ..feedback import FactorFeedback
 from ..quality_gate import QualityGateNode
 from ..trajectory import (
     ParentSelector,
@@ -25,9 +26,6 @@ from ..trajectory import (
 from ..knowledge import KnowledgeBase, RAGEvaluator
 from .operators import Crosser, FactorCandidate, Hypothesizer, Mutator
 from .settings import EvolutionSetting
-
-if TYPE_CHECKING:
-    from ..feedback import FactorFeedback
 
 
 # 回调签名: candidate -> (passed, metrics, feedback)
@@ -387,7 +385,6 @@ class EvolutionLoop:
                     "description": c.description,
                 })
                 if not gate["passed"]:
-                    from ..feedback import FactorFeedback
                     entry = TrajectoryEntry(
                         entry_id=c.factor_id,
                         round_idx=round_idx,
@@ -492,7 +489,6 @@ class EvolutionLoop:
         round_idx: int = 0,
     ) -> TrajectoryEntry:
         """从 evaluate result dict 构造 TrajectoryEntry。"""
-        from ..feedback import FactorFeedback
         passed = bool(result.get("passed", False))
         metrics = result.get("metrics", {})
         feedback_dict = result.get("feedback_dict")
@@ -561,7 +557,6 @@ class EvolutionLoop:
         candidate: FactorCandidate,
     ) -> tuple[bool, dict, FactorFeedback]:
         """EvolutionLoop.evaluate_fn 回调 (PipelineRunner 用)。"""
-        from ..feedback import FactorFeedback
         if self.evaluate_fn is not None and self.evaluate_fn is not self._evaluate_candidate:
             return self.evaluate_fn(candidate)
         return False, {}, FactorFeedback(
@@ -584,13 +579,4 @@ def _update_best(
     return current_best
 
 
-def _maybe_update_best(
-    current_best: float,
-    entry: TrajectoryEntry,
-    metric: str,
-) -> tuple[float, bool]:
-    """更新 best, 返回 (new_best, improved)。"""
-    val = float((entry.metrics or {}).get(metric, 0) or 0)
-    if val > current_best:
-        return val, True
-    return current_best, False
+

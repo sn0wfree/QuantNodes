@@ -252,15 +252,6 @@ class TestBaseNodeValidation:
         assert result == "test"
 
 
-class TestBaseNodeSerialization:
-    """Tests for BaseNode serialization
-
-    Note: Direct BaseNode serialization requires @serializable decorator
-    and proper registration. See test_pipeline.py for serialization tests
-    using properly registered types.
-    """
-
-
 class TestNodeErrors:
     """Tests for Node error handling"""
     def test_error_propagation(self):

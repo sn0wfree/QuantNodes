@@ -17,7 +17,6 @@ def test_cli_accepts_new_flags():
         # Any exit is okay, as long as parser accepted the args
         pass
     # If we got here, it didn't crash on unrecognized args, so flags are correctly registered
-    assert True
 
 
 def test_cli_override_help():

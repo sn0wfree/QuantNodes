@@ -667,29 +667,7 @@ def deserialize_node_encrypted(data: bytes, key: Union[str, bytes]):
     return deserialize_node_json(plaintext)
 
 
-# ============================================================================
-# 更新序列化方法注册表
-# ============================================================================
-# TODO [已被取代]: 此函数已被 expression.py 中的直接实现取代
-#
-# 设计背景：
-# - 原始设计意图：通过 monkey patching 动态添加序列化方法
-# - 优点：避免 Expression 类直接导入 serialization 模块（循环依赖）
-# - 缺点：不够直观，难以维护
-#
-# 当前状态：
-# - Expression.to_proto / from_proto 已直接实现（expression.py:159-168）
-# - Expression.to_encrypted / from_encrypted 已直接实现（expression.py:170-179）
-# - 此函数不再被调用，保留作为历史参考
-#
-# 相关函数：
-# - add_serialization_methods() (line 179) - 同样的模式，同样的命运
-def _update_expression_serialization():
-    """添加新增的序列化方法到 Expression"""
-    Expression.to_proto = serialize_proto
-    Expression.from_proto = staticmethod(deserialize_proto)
-    Expression.to_encrypted = serialize_encrypted
-    Expression.from_encrypted = staticmethod(deserialize_encrypted)
-
-
-# 在 expression.py 中调用此函数
+# 注：原 _update_expression_serialization() 已删除 (Phase F, 2026-06-20)。
+# 该函数原本通过 monkey patching 给 Expression 类注入 to_proto/from_proto 等方法,
+# 已被 expression.py 中的直接实现取代 (expression.py:159-179), 无外部 caller。
+# 详见 git log: 历史 commit 9b8a64c 引入后, 2026-05 改写为直接方法。
