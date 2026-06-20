@@ -35,13 +35,9 @@ class GroupAnalyzerNode(PydanticConfigNode):
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})
-        neutralized = context.get('FactorNeutralize')
-        factor_data = (
-            neutralized if neutralized is not None
-            else context.get('FactorPreprocess')
-        )
-        price = context.get('LoadData', {}).get('price')
-        index_cp = context.get('LoadData', {}).get('index_cp')
+        factor_data = self._factor_data(context)
+        price = self._ctx_load(context, 'price')
+        index_cp = self._ctx_load(context, 'index_cp')
 
         if factor_data is None or price is None:
             raise ValueError("因子或价格数据缺失")

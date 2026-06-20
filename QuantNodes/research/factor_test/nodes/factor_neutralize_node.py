@@ -39,14 +39,14 @@ class FactorNeutralizeNode(PydanticConfigNode):
         if not self._if_industry and not self._if_risk:
             return factor_std
 
-        industry = context.get('LoadData', {}).get('id_citic1')
+        industry = self._ctx_load(context, 'id_citic1')
         if industry is None and self._if_industry:
             raise ValueError("行业数据缺失")
 
         # 加载风险因子
         risk_data = []
         if self._if_risk and self._risk_factor_specs:
-            loader = context.get('LoadData', {}).get('_loader')
+            loader = self._ctx_load(context, '_loader')
             for file_key, factor_key in self._risk_factor_specs:
                 try:
                     if file_key == 'risk_factor.h5':

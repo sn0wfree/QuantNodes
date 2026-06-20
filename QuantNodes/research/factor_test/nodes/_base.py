@@ -66,3 +66,26 @@ class PydanticConfigNode(BaseNode):
             elif isinstance(value, tuple):
                 value = list(value)
             setattr(self, alias, value)
+
+    def _ctx(self, context: dict) -> dict:
+        """Drill into context['LoadData'] dict (Phase G4)."""
+        return context.get("LoadData", {})
+
+    def _ctx_load(self, context: dict, key: str, default=None):
+        """Get one key from context['LoadData'] (Phase G4).
+
+        Replaces 13 sites of: ``context.get('LoadData', {}).get(KEY)``.
+        """
+        return self._ctx(context).get(key, default)
+
+    def _factor_data(self, context: dict):
+        """Return FactorNeutralize output if set, else FactorPreprocess (Phase G4).
+
+        Replaces the 4-line pattern in 4 analysis nodes (ic_analyzer,
+        factor_score, group_analyzer, risk_correlation). Returns None
+        if neither is set, leaving None-handling to the caller.
+        """
+        neutralized = context.get("FactorNeutralize")
+        if neutralized is not None:
+            return neutralized
+        return context.get("FactorPreprocess")

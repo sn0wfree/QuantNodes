@@ -28,15 +28,11 @@ class RiskCorrelationNode(PydanticConfigNode):
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})
-        neutralized = context.get('FactorNeutralize')
-        factor_data = (
-            neutralized if neutralized is not None
-            else context.get('FactorPreprocess')
-        )
+        factor_data = self._factor_data(context)
         if factor_data is None:
             raise ValueError("因子数据缺失")
 
-        loader = context.get('LoadData', {}).get('_loader')
+        loader = self._ctx_load(context, '_loader')
         if loader is None:
             raise ValueError("数据加载器缺失")
 

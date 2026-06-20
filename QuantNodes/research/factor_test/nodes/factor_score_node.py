@@ -33,14 +33,10 @@ class FactorScoreNode(PydanticConfigNode):
             return {}
 
         context = kwargs.get('context', {})
-        neutralized = context.get('FactorNeutralize')
-        factor_data = (
-            neutralized if neutralized is not None
-            else context.get('FactorPreprocess')
-        )
-        mv = context.get('LoadData', {}).get('mv_float')
-        industry = context.get('LoadData', {}).get('id_citic1')
-        price = context.get('LoadData', {}).get('price')
+        factor_data = self._factor_data(context)
+        mv = self._ctx_load(context, 'mv_float')
+        industry = self._ctx_load(context, 'id_citic1')
+        price = self._ctx_load(context, 'price')
         factor_ori = context.get('GroupAnalyzer', {}).get('factor_direction', 1)
 
         if factor_data is None or mv is None or industry is None or price is None:

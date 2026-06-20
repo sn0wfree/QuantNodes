@@ -34,7 +34,7 @@ class AdjustDateNode(PydanticConfigNode):
             )
 
         context = kwargs.get('context', {})
-        load_data = context.get('LoadData', input_data)
+        load_data = context.get('LoadData') or input_data or {}
 
         trade_dt = load_data['trade_dt']
 

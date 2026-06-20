@@ -24,7 +24,7 @@ class TradabilityFilterNode(PydanticConfigNode):
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})
-        load_data = context.get('LoadData', {})
+        load_data = self._ctx(context)
         sample = context.get('SamplePoolFilter')
 
         loader = load_data['_loader']

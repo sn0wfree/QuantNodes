@@ -44,7 +44,7 @@ class SamplePoolFilterNode(PydanticConfigNode):
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})
-        load_data = context.get('LoadData', input_data)
+        load_data = context.get('LoadData') or input_data or {}
 
         stklist = load_data['stklist']
         trade_dt = load_data['trade_dt']

@@ -40,8 +40,8 @@ class FactorTestReportNode(PydanticConfigNode):
         context = kwargs.get('context', {})
 
         report = {
-            'factor_name': context.get('LoadData', {}).get('factor', pd.DataFrame()).columns[0]
-                if hasattr(context.get('LoadData', {}).get('factor', pd.DataFrame()), 'columns')
+            'factor_name': self._ctx_load(context, 'factor', pd.DataFrame()).columns[0]
+                if hasattr(self._ctx_load(context, 'factor', pd.DataFrame()), 'columns')
                 else 'unknown',
             'timestamp': datetime.now().isoformat(),
         }

@@ -34,7 +34,7 @@ class FactorPreprocessNode(PydanticConfigNode):
 
     def _execute(self, input_data=None, **kwargs) -> pd.DataFrame:
         context = kwargs.get('context', {})
-        factor = context.get('LoadData', {}).get('factor')
+        factor = self._ctx_load(context, 'factor')
         tradable = context.get('TradabilityFilter')
         adj_dates = context.get('AdjustDate')
 
@@ -56,7 +56,7 @@ class FactorPreprocessNode(PydanticConfigNode):
         tradable_adj = tradable.loc[tradable.index.isin(adj_date_values)]
 
         # 行业数据
-        industry = context.get('LoadData', {}).get('id_citic1')
+        industry = self._ctx_load(context, 'id_citic1')
         if industry is not None:
             industry_adj = industry.loc[industry.index.isin(adj_date_values)]
         else:
