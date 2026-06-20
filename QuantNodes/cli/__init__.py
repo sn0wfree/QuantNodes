@@ -30,7 +30,16 @@ import sys
 import argparse
 
 from ._helpers import *  # noqa: F401,F403  (helpers + constants re-exported)
-from ._helpers import PROG_NAME
+from ._helpers import (
+    PROG_NAME,
+    add_cli_overrides,
+    add_lineage_depth_args,
+    add_metric_arg,
+    add_output_arg,
+    add_pool_dir_arg,
+    add_title_arg,
+    add_top_arg,
+)
 from .commands.init import cmd_init
 from .commands.run import (
     cmd_run,
@@ -55,7 +64,14 @@ from .commands.factor import (
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """Build the top-level argparse parser (with all subcommands)."""
+    """Build the top-level argparse parser (with all subcommands).
+
+    Phase I1 (2026-06-20): repeated argument groups consolidated via
+    builders in _helpers.py:
+      add_pool_dir_arg (6 sites), add_top_arg (2), add_metric_arg (2),
+      add_title_arg (2), add_output_arg (3), add_lineage_depth_args (2),
+      add_cli_overrides (2).
+    """
     parser = argparse.ArgumentParser(
         prog=PROG_NAME,
         description="QuantNodes CLI - 量化研究节点架构命令行工具",
@@ -87,41 +103,36 @@ def _build_parser() -> argparse.ArgumentParser:
     evolve_parser.add_argument("--max-rounds", type=int, default=None, help="覆盖 config.max_rounds")
     evolve_parser.add_argument("--early-stop", type=int, default=None, help="覆盖 config.early_stop_patience")
     evolve_parser.add_argument("--workers", type=int, default=1, help="并行评估数 (默认 1=串行, >1=ThreadPool)")
-    # M13-M15: 增加 CLI 覆盖配置默认值
-    evolve_parser.add_argument("--min-ipo-days", type=int, default=None, help="剔除上市不足 N 日新股 (覆盖 config 默认值 360)")
-    evolve_parser.add_argument("--min-group-size", type=int, default=None, help="计算 IC 最少样本数 (覆盖 config 默认值 5)")
-    evolve_parser.add_argument("--groups", type=int, default=None, help="分组分析分组数 (覆盖 config 默认值 5)")
+    add_cli_overrides(evolve_parser)
 
     info_parser = subparsers.add_parser("factor-info", help="显示 TrajectoryPool 统计")
-    info_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+    add_pool_dir_arg(info_parser)
 
     best_parser = subparsers.add_parser("factor-best", help="显示 Top-N 最佳 entry")
-    best_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
-    best_parser.add_argument("--top", type=int, default=5, help="Top-N (默认 5)")
-    best_parser.add_argument("--metric", default="sharpe", help="排序指标 (默认 sharpe)")
+    add_pool_dir_arg(best_parser)
+    add_top_arg(best_parser)
+    add_metric_arg(best_parser)
 
     visual_parser = subparsers.add_parser("factor-visual", help="生成可视化 HTML 报告 (Week 6)")
-    visual_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
-    visual_parser.add_argument("--output", default=None, help="HTML 输出路径 (默认 <pool-dir>_report.html)")
-    visual_parser.add_argument("--metric", default="sharpe", help="用于可视化的指标 (默认 sharpe)")
-    visual_parser.add_argument("--title", default=None, help="报告标题")
+    add_pool_dir_arg(visual_parser)
+    add_output_arg(visual_parser)
+    add_metric_arg(visual_parser)
+    add_title_arg(visual_parser)
 
     rag_parser = subparsers.add_parser("factor-rag-show", help="RAG 检索演示 (Week 7)")
-    rag_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+    add_pool_dir_arg(rag_parser)
     rag_parser.add_argument("--query", required=True, help="查询文本")
-    rag_parser.add_argument("--top", type=int, default=5, help="Top-K (默认 5)")
+    add_top_arg(rag_parser)
     rag_parser.add_argument("--compress", action="store_true", help="启用谱系压缩 (Week 9)")
-    rag_parser.add_argument("--ancestor-depth", type=int, default=2, help="祖先深度 (默认 2)")
-    rag_parser.add_argument("--descendant-depth", type=int, default=2, help="后裔深度 (默认 2)")
+    add_lineage_depth_args(rag_parser)
     rag_parser.add_argument("--max-tokens", type=int, default=200, help="压缩最大字符数 (默认 200)")
 
     rag_eval_parser = subparsers.add_parser("factor-rag-eval", help="批量评估 RAG 检索质量 (Week 10)")
-    rag_eval_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+    add_pool_dir_arg(rag_eval_parser)
     rag_eval_parser.add_argument("--queries", required=True, help="逗号分隔的 query 列表")
-    rag_eval_parser.add_argument("--top", type=int, default=5, help="Top-K (默认 5)")
-    rag_eval_parser.add_argument("--ancestor-depth", type=int, default=2, help="祖先深度")
-    rag_eval_parser.add_argument("--descendant-depth", type=int, default=2, help="后裔深度")
-    rag_eval_parser.add_argument("--output", default=None, help="EvalReport JSON 输出路径")
+    add_top_arg(rag_eval_parser)
+    add_lineage_depth_args(rag_eval_parser)
+    add_output_arg(rag_eval_parser)
 
     fetch_parser = subparsers.add_parser("factor-data-fetch", help="从 iFinD 拉取数据 + 写 H5 (Week 12)")
     fetch_parser.add_argument("--output-dir", required=True, help="HDF5 输出目录")
@@ -129,15 +140,12 @@ def _build_parser() -> argparse.ArgumentParser:
     fetch_parser.add_argument("--date-end", default="", help="截止日期 (空=今天)")
     fetch_parser.add_argument("--universe", default="all", help="股票池 (默认 all, 与 iFinD API 兼容)")
     fetch_parser.add_argument("--factors", default="", help="逗号分隔的因子列表")
-    # M13-M15: 增加 CLI 覆盖配置默认值
-    fetch_parser.add_argument("--min-ipo-days", type=int, default=None, help="剔除上市不足 N 日新股 (默认 360)")
-    fetch_parser.add_argument("--min-group-size", type=int, default=None, help="计算 IC 最少样本数 (默认 5)")
-    fetch_parser.add_argument("--groups", type=int, default=None, help="分组分析分组数 (默认 5)")
+    add_cli_overrides(fetch_parser)
 
     dash_parser = subparsers.add_parser("factor-dashboard", help="生成 3 类指标 dashboard (Week 13/16)")
-    dash_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
-    dash_parser.add_argument("--output", default=None, help="HTML 输出路径")
-    dash_parser.add_argument("--title", default=None, help="报告标题")
+    add_pool_dir_arg(dash_parser)
+    add_output_arg(dash_parser)
+    add_title_arg(dash_parser)
     dash_parser.add_argument("--streaming", action="store_true", help="启用 streaming 模式 (自动刷新 10s)")
     dash_parser.add_argument("--refresh", type=int, default=10, help="streaming 刷新间隔秒数 (默认 10)")
     dash_parser.add_argument("--watch", action="store_true", help="后台模式: 每 10s 刷新 dashboard")

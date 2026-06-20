@@ -1,6 +1,7 @@
 # coding=utf-8
 """Helper functions and constants used by QuantNodes CLI commands."""
 
+import argparse
 import sys
 import subprocess
 from pathlib import Path
@@ -108,6 +109,57 @@ def get_input_with_default(prompt: str, default: str, required: bool = False) ->
             if required:
                 continue
             return default
+
+
+# ============================================================================
+# Phase I1: argparse builders for repeated argument groups (2026-06-20)
+# ============================================================================
+# Each builder attaches a common set of CLI args to the given parser.
+# Used by _build_parser() to dedup 6+ repeated patterns across factor-* cmds:
+#   --pool-dir (6 sites), --top (2), --metric (2), --title (2),
+#   --ancestor-depth/--descendant-depth (2),
+#   --min-ipo-days/--min-group-size/--groups (2).
+
+
+def add_pool_dir_arg(parser: argparse.ArgumentParser) -> None:
+    """Attach --pool-dir <path> (required)."""
+    parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
+
+
+def add_top_arg(parser: argparse.ArgumentParser, default: int = 5) -> None:
+    """Attach --top <N>."""
+    parser.add_argument("--top", type=int, default=default, help=f"Top-N (默认 {default})")
+
+
+def add_metric_arg(parser: argparse.ArgumentParser, default: str = "sharpe") -> None:
+    """Attach --metric <name>."""
+    parser.add_argument("--metric", default=default, help=f"排序指标 (默认 {default})")
+
+
+def add_title_arg(parser: argparse.ArgumentParser) -> None:
+    """Attach --title <text>."""
+    parser.add_argument("--title", default=None, help="报告标题")
+
+
+def add_output_arg(parser: argparse.ArgumentParser, default: str | None = None) -> None:
+    """Attach --output <path>."""
+    parser.add_argument("--output", default=default, help="HTML 输出路径")
+
+
+def add_lineage_depth_args(parser: argparse.ArgumentParser) -> None:
+    """Attach --ancestor-depth / --descendant-depth (default 2 each)."""
+    parser.add_argument("--ancestor-depth", type=int, default=2, help="祖先深度 (默认 2)")
+    parser.add_argument("--descendant-depth", type=int, default=2, help="后裔深度 (默认 2)")
+
+
+def add_cli_overrides(parser: argparse.ArgumentParser) -> None:
+    """Attach --min-ipo-days / --min-group-size / --groups (CLI overrides)."""
+    parser.add_argument("--min-ipo-days", type=int, default=None,
+                        help="剔除上市不足 N 日新股 (覆盖 config 默认值 360)")
+    parser.add_argument("--min-group-size", type=int, default=None,
+                        help="计算 IC 最少样本数 (覆盖 config 默认值 5)")
+    parser.add_argument("--groups", type=int, default=None,
+                        help="分组分析分组数 (覆盖 config 默认值 5)")
 
 
 def get_yes_no(prompt: str, default: bool = True) -> bool:
