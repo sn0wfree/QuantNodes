@@ -47,11 +47,17 @@ def get_project_root() -> Path:
 
 
 def create_directory_structure():
-    """Create necessary directories."""
+    """Create necessary directories.
+
+    Two output roots are used by different subsystems:
+    - outputs/    backtest engine results (equity / signals / trades parquets)
+    - output/     factor_test pipeline artefacts (per-node parquets + final report)
+    """
     dirs = [
         "data",
         ".quant_agent/memory",
         ".quant_agent/dream",
+        "output",
         "outputs",
         "logs",
     ]

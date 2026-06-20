@@ -62,7 +62,9 @@ QuantNodes/
 │   └── views/
 ├── tests/                           # 测试套件
 ├── examples/                        # 示例代码
-└── docs/                           # 设计文档
+├── docs/                           # 设计文档
+├── output/                          # factor_test pipeline 节点产物 (运行时)
+└── outputs/                         # 回测引擎结果 (运行时)
 ```
 
 ## 快速开始
