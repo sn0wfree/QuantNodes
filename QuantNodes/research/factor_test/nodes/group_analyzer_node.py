@@ -5,6 +5,8 @@ Migrated from factor_performance.py:361-560 cal_group_ret()
 """
 
 
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -14,6 +16,8 @@ from QuantNodes.research.factor_test.utils.performance_metrics import (
     evaluation, cal_net_simple
 )
 from QuantNodes.research.factor_test.utils.constants import INDEX_CP_MAPPING
+
+logger = logging.getLogger(__name__)
 
 
 class GroupAnalyzerNode(PydanticConfigNode):
@@ -221,7 +225,7 @@ class GroupAnalyzerNode(PydanticConfigNode):
                 loader = DataLoader()
                 custom = loader.load_custom(('', hedge_path))
                 return custom.iloc[:, 0]
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("GroupAnalyzerNode: 自定义对冲加载失败 (%s): %s", hedge_path, e)
 
         return None
