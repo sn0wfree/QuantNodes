@@ -1,10 +1,10 @@
 # coding: utf-8
 """iFinD API 封装 + Markdown 表格解析 + 限流 + 本地缓存"""
 
+import importlib.util
 import json
 import time
 import hashlib
-import sys
 from pathlib import Path
 
 import pandas as pd
@@ -12,10 +12,7 @@ import pandas as pd
 # ── iFinD API 配置 ──────────────────────────────────────────────
 IFIND_SKILL_DIR = Path.home() / '.agents/skills/ifind'
 IFIND_CONFIG = IFIND_SKILL_DIR / 'mcp_config.json'
-
-# 将 skill 目录加入 sys.path 以导入 call.py
-if str(IFIND_SKILL_DIR) not in sys.path:
-    sys.path.insert(0, str(IFIND_SKILL_DIR))
+IFIND_CALL_MODULE = IFIND_SKILL_DIR / 'call.py'
 
 
 def _load_auth_token() -> str:
@@ -64,10 +61,23 @@ class IFindFetcher:
         self._auth_token = _load_auth_token()
 
     def _get_call_fn(self):
-        """延迟导入 iFinD call 函数"""
+        """延迟加载 iFinD call 函数 (按文件路径, 不污染 sys.path)."""
         if self._call_fn is None:
-            from call import call as _call
-            self._call_fn = _call
+            if not IFIND_CALL_MODULE.exists():
+                raise FileNotFoundError(
+                    f"iFinD call.py 不存在: {IFIND_CALL_MODULE}\n"
+                    "请确认 ~/.agents/skills/ifind/ 已安装"
+                )
+            spec = importlib.util.spec_from_file_location(
+                "_ifind_call_runtime", IFIND_CALL_MODULE
+            )
+            if spec is None or spec.loader is None:
+                raise ImportError(
+                    f"无法从 {IFIND_CALL_MODULE} 加载 iFinD call 模块"
+                )
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)  # type: ignore[union-attr]
+            self._call_fn = module.call
         return self._call_fn
 
     def _rate_limit(self):
