@@ -3,7 +3,7 @@
 
 支持连接池，基于 pymysql + SQLAlchemy
 """
-from typing import Optional, List
+from typing import Optional
 
 import pandas as pd
 from sqlalchemy import create_engine, pool
@@ -98,21 +98,3 @@ class MySQLNode(BaseDBNode):
         if self._engine:
             self._engine.dispose()
             self._engine = None
-
-    def health_check(self) -> bool:
-        """健康检查"""
-        try:
-            self.query("SELECT 1")
-            return True
-        except Exception:
-            return False
-
-    def show_tables(self) -> List[str]:
-        """列出所有表"""
-        result = self.query("SHOW TABLES")
-        return result.iloc[:, 0].tolist()
-
-    def show_databases(self) -> List[str]:
-        """列出所有数据库"""
-        result = self.query("SHOW DATABASES")
-        return result.iloc[:, 0].tolist()

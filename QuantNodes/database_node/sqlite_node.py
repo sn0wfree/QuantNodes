@@ -65,11 +65,3 @@ class SQLiteNode(BaseDBNode):
         if self._conn:
             self._conn.close()
             self._conn = None
-
-    def health_check(self) -> bool:
-        """健康检查"""
-        try:
-            self.query("SELECT 1")
-            return True
-        except Exception:
-            return False

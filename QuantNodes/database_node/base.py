@@ -87,6 +87,33 @@ class BaseDBNode(ABC):
         except Exception:
             return False
 
+    def show_tables(self) -> list:
+        """列出所有表。默认通过 SHOW TABLES 实现。
+
+        Returns:
+            list[str] 表名列表。
+
+        Note:
+            ClickHouse 等需要在 schema 中限定表名的数据库可重写此方法
+            (例: ``SHOW TABLES FROM <database>``)。csv/parquet 等无 schema
+            概念的 backend 也应重写, 抛 NotImplementedError 或返回自定义列表。
+        """
+        result = self.query("SHOW TABLES")
+        return result.iloc[:, 0].tolist()
+
+    def show_databases(self) -> list:
+        """列出所有数据库/Schema。默认通过 SHOW DATABASES 实现。
+
+        Returns:
+            list[str] 数据库名列表。
+
+        Note:
+            单数据库 backend (sqlite, csv, parquet, 单 instance duckdb)
+            可重写返回 ``[self._database]`` 或抛 NotImplementedError。
+        """
+        result = self.query("SHOW DATABASES")
+        return result.iloc[:, 0].tolist()
+
     def __enter__(self):
         """上下文管理器入口"""
         self.connect()

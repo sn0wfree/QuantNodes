@@ -8,7 +8,7 @@ import http.client
 import json
 import urllib.parse
 from collections import namedtuple
-from typing import Optional, List
+from typing import Optional
 
 import pandas as pd
 
@@ -266,20 +266,7 @@ class ClickHouseNode(BaseDBNode):
             self._client = None
         self._http_client = None
 
-    def health_check(self) -> bool:
-        """健康检查"""
-        try:
-            self.query("SELECT 1")
-            return True
-        except Exception:
-            return False
-
-    def show_tables(self) -> List[str]:
-        """列出所有表"""
+    def show_tables(self) -> list:
+        """ClickHouse 需要按数据库限定表名 (SHOW TABLES FROM <db>)。"""
         result = self.query(f"SHOW TABLES FROM {self._database}")
-        return result.iloc[:, 0].tolist()
-
-    def show_databases(self) -> List[str]:
-        """列出所有数据库"""
-        result = self.query("SHOW DATABASES")
         return result.iloc[:, 0].tolist()
