@@ -15,6 +15,7 @@ Phase R2 (2026-06-19): 从 pipeline_runner.py 抽出, 单一职责.
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -139,17 +140,31 @@ def run_one_factor(runner: "PipelineRunner", candidate: FactorCandidate) -> dict
     """
     if not isinstance(candidate, FactorCandidate):
         raise TypeError(f"expected FactorCandidate, got {type(candidate)}")
-    original_name = runner.config.factor.name
-    runner.config.factor.name = candidate.name
-    if not getattr(runner.config.factor, "expression", ""):
+    with override_factor_config(runner, candidate):
+        return runner.run()
+
+
+@contextmanager
+def override_factor_config(runner: "PipelineRunner", candidate: FactorCandidate):
+    """Temporarily replace runner.config.factor.name (and expression if empty).
+
+    Phase J5 (2026-06-20): extracts the mutate-and-restore pattern from
+    run_one_factor() into a reusable context manager. Future callers
+    that need the same override (e.g. CLI flags, parallel workers) can
+    reuse without re-implementing the cleanup logic.
+    """
+    cfg = runner.config.factor
+    orig_name = cfg.name
+    cfg.name = candidate.name
+    if not getattr(cfg, "expression", ""):
         try:
-            runner.config.factor.expression = candidate.expression  # type: ignore[attr-defined]
+            cfg.expression = candidate.expression  # type: ignore[attr-defined]
         except Exception:
             pass
     try:
-        return runner.run()
+        yield
     finally:
-        runner.config.factor.name = original_name
+        cfg.name = orig_name
 
 
 def run_evolution(
