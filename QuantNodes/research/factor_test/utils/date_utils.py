@@ -129,31 +129,42 @@ def get_adjust_date(trade_dt: pd.DataFrame, beg_date: int, end_date: int,
 
 
 def offset_date(date_input, trade_dt_all, n, mode='D', if_modify=False):
-    """日期偏移"""
+    """日期偏移
+
+    H6: replaced ``arr[arr <= x][-1]`` (O(M) boolean mask per query) with
+    ``arr[idx-1]`` where ``idx = np.searchsorted(arr, x, side='right')``
+    (O(log M) per query). Cumulative gain is K * (M -> log M) where K is
+    the size of date_input and M is the size of trade_dt_all.
+    """
     if isinstance(trade_dt_all, pd.DataFrame):
         trade_dt_all = trade_dt_all.iloc[:, 0]
 
     if mode == 'D':
         adj_date = trade_dt_all
-        date_last = list(map(
-            lambda x: trade_dt_all.values[trade_dt_all.values <= x][-1],
-            list(date_input)
-        ))
-        date_last_idx = pd.Index(trade_dt_all).get_indexer(date_last)
+        adj_values = np.asarray(trade_dt_all.values).ravel()
     elif mode in ('W', 'M', 'Q'):
         adj_date = resample_trade_date(trade_dt_all.to_frame(), (mode, 'end'))
-        date_last = list(map(
-            lambda x: adj_date.values[adj_date.values <= x][-1],
-            list(date_input)
-        ))
-        date_last_idx = pd.Index(adj_date.iloc[:, 0]).get_indexer(date_last)
+        # resample_trade_date returns a DataFrame; flatten to 1D for searchsorted.
+        adj_values = np.asarray(adj_date.iloc[:, 0].values).ravel()
     else:
         raise ValueError(f"不支持的偏移模式: {mode}")
 
+    date_input_arr = np.asarray(list(date_input))
+    # For each x, find largest idx where adj_values[idx] <= x (searchsorted).
+    insert_idx = np.searchsorted(adj_values, date_input_arr, side='right')
+    date_last_idx = np.clip(insert_idx - 1, 0, len(adj_values) - 1)
+    date_last = adj_values[date_last_idx]
+    # Use the same 1D representation for the lookup index.
+    if isinstance(adj_date, pd.DataFrame):
+        adj_index = pd.Index(adj_date.iloc[:, 0])
+    else:
+        adj_index = pd.Index(adj_date)
+    adj_date_idx = adj_index.get_indexer(date_last)
+
     try:
-        return np.array(adj_date.iloc[date_last_idx + n])
+        return np.array(adj_date.iloc[adj_date_idx + n])
     except IndexError:
         if if_modify:
-            new_idx = np.clip(date_last_idx + n, 0, len(trade_dt_all) - 1)
+            new_idx = np.clip(adj_date_idx + n, 0, len(trade_dt_all) - 1)
             return np.array(trade_dt_all.iloc[new_idx])
         raise
