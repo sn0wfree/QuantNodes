@@ -4,6 +4,8 @@
 import json
 from pathlib import Path
 
+from QuantNodes.cli._helpers import cli_safe_run
+
 
 def _load_runner_from_config(config_path: str):
     """从 YAML 配置构造 PipelineRunner (延迟 import 避免顶层依赖)。"""
@@ -11,6 +13,7 @@ def _load_runner_from_config(config_path: str):
     return PipelineRunner.from_yaml(config_path)
 
 
+@cli_safe_run
 def cmd_evolve(args) -> int:
     """多轮演化主入口。
 

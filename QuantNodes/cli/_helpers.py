@@ -2,6 +2,7 @@
 """Helper functions and constants used by QuantNodes CLI commands."""
 
 import argparse
+import functools
 import sys
 import subprocess
 from pathlib import Path
@@ -160,6 +161,26 @@ def add_cli_overrides(parser: argparse.ArgumentParser) -> None:
                         help="计算 IC 最少样本数 (覆盖 config 默认值 5)")
     parser.add_argument("--groups", type=int, default=None,
                         help="分组分析分组数 (覆盖 config 默认值 5)")
+
+
+# ============================================================================
+# Phase I2: cli_safe_run decorator (2026-06-20)
+# ============================================================================
+
+def cli_safe_run(func):
+    """Decorator: catch Exception, print 错误 + return 1.
+
+    Replaces the manual ``try: ... except Exception as e: print(f"错误: {e}"); return 1``
+    wrapper that was repeated 7+ times in factor.py and evolve.py.
+    """
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"错误: {e}")
+            return 1
+    return wrapper
 
 
 def get_yes_no(prompt: str, default: bool = True) -> bool:

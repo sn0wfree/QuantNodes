@@ -7,7 +7,10 @@ visual reporting / iFinD data fetching / live monitoring dashboards.
 
 from pathlib import Path
 
+from QuantNodes.cli._helpers import cli_safe_run
 
+
+@cli_safe_run
 def cmd_factor_info(args) -> int:
     """显示 TrajectoryPool 统计信息。
 
@@ -41,6 +44,7 @@ def cmd_factor_info(args) -> int:
     return 0
 
 
+@cli_safe_run
 def cmd_factor_best(args) -> int:
     """显示 Top-N 最佳 entry (按 metric 排序)。
 
@@ -67,6 +71,7 @@ def cmd_factor_best(args) -> int:
     return 0
 
 
+@cli_safe_run
 def cmd_factor_visual(args) -> int:
     """生成可视化 HTML 报告 (谱系 DAG + 指标分布 + 拦截率 + 趋势)。
 
@@ -89,16 +94,13 @@ def cmd_factor_visual(args) -> int:
 
     output = args.output or str(Path(pool_dir).parent / f"{Path(pool_dir).name}_report.html")
     title = args.title or f"QuantNodes 演化报告: {pool_dir}"
-    try:
-        generate_html(pool, metric=args.metric, title=title, output_path=output)
-    except Exception as e:
-        print(f"错误: 生成报告失败: {e}")
-        return 1
+    generate_html(pool, metric=args.metric, title=title, output_path=output)
     print(f"✓ HTML 报告已生成: {output}")
     print(f"  size: {pool.size}, metric: {args.metric}")
     return 0
 
 
+@cli_safe_run
 def cmd_factor_dashboard(args) -> int:
     """生成 3 类指标 dashboard (Week 13)。
 
@@ -189,6 +191,9 @@ def cmd_factor_dashboard(args) -> int:
             streaming=streaming, refresh_interval_sec=refresh_sec,
         )
     except Exception as e:
+        # 嵌套: 这里包了 generate_dashboard_html 的内部异常。
+        # 整体 cmd_factor_dashboard 由 @cli_safe_run 包了顶层异常,
+        # 这里只针对 generate_dashboard_html 单独报错以便区分。
         print(f"错误: 生成 dashboard 失败: {e}")
         return 1
 
@@ -226,6 +231,7 @@ def cmd_factor_dashboard(args) -> int:
     return 0
 
 
+@cli_safe_run
 def cmd_factor_data_fetch(args) -> int:
     """从 iFinD 拉取数据 + 写为 HDF5 格式 (Week 12)。
 
@@ -265,11 +271,7 @@ def cmd_factor_data_fetch(args) -> int:
     print(f"  factors: {factor_names or '(none)'}")
     print("=" * 60)
 
-    try:
-        stats = db.fetch_to_h5(output_dir, factor_names=factor_names)
-    except Exception as e:
-        print(f"错误: 拉取失败: {e}")
-        return 1
+    stats = db.fetch_to_h5(output_dir, factor_names=factor_names)
 
     print()
     print("=" * 60)
@@ -284,6 +286,7 @@ def cmd_factor_data_fetch(args) -> int:
     return 0
 
 
+@cli_safe_run
 def cmd_factor_rag_eval(args) -> int:
     """批量评估 RAG 检索质量 (Week 10)。
 
@@ -380,6 +383,7 @@ def cmd_factor_rag_eval(args) -> int:
     return 0
 
 
+@cli_safe_run
 def cmd_factor_rag_show(args) -> int:
     """从 TrajectoryPool 检索相似因子 (RAG demo)。
 

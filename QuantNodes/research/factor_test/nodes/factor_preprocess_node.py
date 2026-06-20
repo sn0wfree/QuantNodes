@@ -126,10 +126,14 @@ class FactorPreprocessNode(PydanticConfigNode):
             }).dropna(subset=['ind'])
             long = long[long['ind'] > 0]
             if not long.empty:
-                group_mean = long.groupby([long.index.get_level_values(0), 'ind'])['factor'].transform('mean')
+                date_level = long.index.get_level_values(0)
+                group_mean = long.groupby([date_level, 'ind'])['factor'].transform('mean')
                 filled = long['factor'].fillna(group_mean)
                 # Write back into wide result.
-                filled_wide = filled.unstack(level=-1) if isinstance(filled.index, pd.MultiIndex) else filled
+                filled_wide = (
+                    filled.unstack(level=-1)
+                    if isinstance(filled.index, pd.MultiIndex) else filled
+                )
                 if isinstance(filled.index, pd.MultiIndex):
                     # Re-stack to wide format keyed on original (date, stock).
                     filled_wide = filled.unstack(level=1)
