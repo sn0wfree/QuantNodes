@@ -160,7 +160,11 @@ class StrategyGenerator:
             if line.startswith('```'):
                 in_code = not in_code
                 continue
-            if in_code or (line.startswith('import ') or line.startswith('from ') or line.startswith('#')):
+            starts_code = (
+                line.startswith('import ') or line.startswith('from ')
+                or line.startswith('#')
+            )
+            if in_code or starts_code:
                 code_lines.append(line)
 
         if code_lines:
@@ -195,10 +199,18 @@ class StrategyGenerator:
                 break
 
             if result.validation_result.warnings_only:
-                refinement_prompt = f"Refine the following code to address warnings:\n\n{result.code}\n\nWarnings: {result.validation_result.warnings}"
+                refinement_prompt = (
+                    f"Refine the following code to address warnings:\n\n"
+                    f"{result.code}\n\n"
+                    f"Warnings: {result.validation_result.warnings}"
+                )
                 result = self._refine_code(refinement_prompt, **kwargs)
             else:
-                refinement_prompt = f"Fix the following code errors:\n\n{result.code}\n\nErrors: {result.validation_result.errors}"
+                refinement_prompt = (
+                    f"Fix the following code errors:\n\n"
+                    f"{result.code}\n\n"
+                    f"Errors: {result.validation_result.errors}"
+                )
                 result = self._refine_code(refinement_prompt, **kwargs)
 
         return result
@@ -232,7 +244,10 @@ class StrategyGenerator:
                 code=code,
                 is_valid=validation_result.is_safe,
                 validation_result=validation_result,
-                error_message=None if validation_result.is_safe else f"Validation failed: {validation_result.errors}",
+                error_message=(
+                    None if validation_result.is_safe
+                    else f"Validation failed: {validation_result.errors}"
+                ),
                 warnings=validation_result.warnings
             )
 
@@ -260,7 +275,10 @@ class StrategyGenerator:
         """
         messages = [
             Message(role=MessageRole.SYSTEM, content=PromptLibrary.get_system_prompt()),
-            Message(role=MessageRole.USER, content=f"Review the following QuantNodes code:\n\n{code}"),
+            Message(
+                role=MessageRole.USER,
+                content=f"Review the following QuantNodes code:\n\n{code}",
+            ),
         ]
 
         try:
@@ -288,7 +306,10 @@ class StrategyGenerator:
         Returns:
             str 解释
         """
-        prompt = f"Explain what this QuantNodes strategy does:\n\n{code}\n\nProvide a clear explanation of the pipeline and its components."
+        prompt = (
+            f"Explain what this QuantNodes strategy does:\n\n{code}\n\n"
+            f"Provide a clear explanation of the pipeline and its components."
+        )
 
         messages = [
             Message(role=MessageRole.SYSTEM, content=PromptLibrary.get_system_prompt()),

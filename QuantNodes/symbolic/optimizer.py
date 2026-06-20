@@ -100,8 +100,8 @@ class SQLOptimizer:
 
     def _optimize_comparison(self, expr: "SQLComparison") -> "SQLExpression":  # noqa: F821
         """优化比较运算"""
-        left = self.optimize(expr.left)
-        right = self.optimize(expr.right)
+        left = self.optimize(expr.left)  # noqa: F841 (placeholder for future folding)
+        right = self.optimize(expr.right)  # noqa: F841
         return expr
 
     def _optimize_logical_op(self, expr: "SQLLogicalOp") -> "SQLExpression":  # noqa: F821
@@ -122,14 +122,12 @@ class SQLOptimizer:
 
     def _optimize_function(self, expr: "SQLFunction") -> "SQLExpression":  # noqa: F821
         """优化函数调用"""
-        args = [self.optimize(arg) for arg in expr.args]
-        kwargs = {k: self.optimize(v) for k, v in expr.kwargs.items()}
+        args = [self.optimize(arg) for arg in expr.args]  # noqa: F841 (placeholder)
+        kwargs = {k: self.optimize(v) for k, v in expr.kwargs.items()}  # noqa: F841
         return expr
 
     def _optimize_case(self, expr: "SQLCase") -> "SQLExpression":  # noqa: F821
         """优化 CASE 表达式"""
-        when_clauses = [(self.optimize(cond), self.optimize(val)) for cond, val in expr.when_clauses]
-        else_ = self.optimize(expr.else_) if expr.else_ else None
         return expr
 
     def _fold_binary_op(self, op: str, a: Any, b: Any) -> "SQLExpression":

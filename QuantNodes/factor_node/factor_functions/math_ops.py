@@ -33,12 +33,12 @@ def abs(f: Union[Expr, str], **kwargs) -> Expr:
 @register_operator(OperatorCategory.POINT)
 def log(f: Union[Expr, str], base: Optional[str] = None, **kwargs) -> Expr:
     """对数
-    
+
     base: 对数底数，"e"/"2"/"10" 或 None（自然对数）
     """
     e = _ensure_expr(f)
     col_name = f if isinstance(f, str) else None
-    
+
     if base is None or base == "e":
         result = e.log()
     elif base == "2":
@@ -47,7 +47,7 @@ def log(f: Union[Expr, str], base: Optional[str] = None, **kwargs) -> Expr:
         result = e.log10()
     else:
         result = e.log()
-    
+
     if col_name:
         return result.alias(col_name)
     return result
@@ -94,12 +94,12 @@ def clip(f: Union[Expr, str], lower: Optional[float] = None,
 @register_operator(OperatorCategory.POINT)
 def fill_null(f: Union[Expr, str], value: float = 0.0, **kwargs) -> Expr:
     """填充 null
-    
+
     value: 填充值，或 "forward"/"backward" 策略
     """
     e = _ensure_expr(f)
     col_name = f if isinstance(f, str) else None
-    
+
     if isinstance(value, str):
         if value == "forward":
             result = e.fill_null(strategy="forward")
@@ -109,7 +109,7 @@ def fill_null(f: Union[Expr, str], value: float = 0.0, **kwargs) -> Expr:
             result = e.fill_null(0)
     else:
         result = e.fill_null(value)
-    
+
     if col_name:
         return result.alias(col_name)
     return result

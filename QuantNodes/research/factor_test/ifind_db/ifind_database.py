@@ -275,7 +275,12 @@ class IFinDDatabase:
 
         # 尝试从指数数据获取交易日
         try:
-            query = f'沪深300、中证500{self._date_beg[:4]}年{self._date_beg[4:6]}月至{self._date_end[4:6]}月的收盘点数'
+            beg_year = self._date_beg[:4]
+            beg_month = self._date_beg[4:6]
+            end_month = self._date_end[4:6]
+            query = (
+                f'沪深300、中证500{beg_year}年{beg_month}月至{end_month}月的收盘点数'
+            )
             df = self._query_index_data(query)
             if not df.empty:
                 date_col = None
@@ -284,7 +289,10 @@ class IFinDDatabase:
                         date_col = col
                         break
                 if date_col:
-                    dates = sorted(pd.to_numeric(df[date_col], errors='coerce').dropna().astype(int).unique().tolist())
+                    dates = sorted(
+                        pd.to_numeric(df[date_col], errors='coerce')
+                        .dropna().astype(int).unique().tolist()
+                    )
                     self._trade_dt = pd.DataFrame(dates)
                     return dates
         except Exception:
@@ -337,7 +345,12 @@ class IFinDDatabase:
         for i in range(0, len(codes), self._batch_size):
             batch = codes[i:i + self._batch_size]
             code_str = '、'.join(batch)
-            query = f'{code_str}{self._date_beg[:4]}年{self._date_beg[4:6]}月至{self._date_end[4:6]}月的日收盘价'
+            beg_year = self._date_beg[:4]
+            beg_month = self._date_beg[4:6]
+            end_month = self._date_end[4:6]
+            query = (
+                f'{code_str}{beg_year}年{beg_month}月至{end_month}月的日收盘价'
+            )
             df = self._query_stock_info(query)
             if not df.empty:
                 all_dfs.append(df)
@@ -503,7 +516,12 @@ class IFinDDatabase:
         indexlist = self._get_index_axis_raw()
         indices = indexlist.iloc[:, 0].tolist()
         code_str = '、'.join(indices)
-        query = f'{code_str}{self._date_beg[:4]}年{self._date_beg[4:6]}月至{self._date_end[4:6]}月的收盘点数'
+        beg_year = self._date_beg[:4]
+        beg_month = self._date_beg[4:6]
+        end_month = self._date_end[4:6]
+        query = (
+            f'{code_str}{beg_year}年{beg_month}月至{end_month}月的收盘点数'
+        )
         df = self._query_index_data(query)
 
         if df.empty:
@@ -547,7 +565,12 @@ class IFinDDatabase:
 
     def _get_factor(self, factor_dir: str, factor_name: str) -> pd.DataFrame:
         """通过 iFinD 获取因子数据"""
-        query = f'{factor_name}因子{self._date_beg[:4]}年{self._date_beg[4:6]}月至{self._date_end[4:6]}月'
+        beg_year = self._date_beg[:4]
+        beg_month = self._date_beg[4:6]
+        end_month = self._date_end[4:6]
+        query = (
+            f'{factor_name}因子{beg_year}年{beg_month}月至{end_month}月'
+        )
         df = self._query_stock_info(query)
         if df.empty:
             raise RuntimeError(f"无法获取因子: {factor_name}")

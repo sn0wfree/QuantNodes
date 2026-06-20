@@ -24,12 +24,16 @@ class FactorCandidate:
     description: str = ""
 
 
-_HYPOTHESIZE_PROMPT = """你是一个量化研究员, 负责基于研究假设生成 alpha 因子。
-研究假设: {hypothesis}
-现有描述: {description}
-
-请生成一个可执行的因子表达式 (Python 语法, 引用基础特征: open/high/low/close/volume/amount/vwap/turnover/mv_float)。
-返回 JSON: {{"name": "因子名", "expression": "代码表达式", "description": "因子描述"}}"""
+_HYPOTHESIZE_PROMPT = (
+    "你是一个量化研究员, 负责基于研究假设生成 alpha 因子。\n"
+    "研究假设: {hypothesis}\n"
+    "现有描述: {description}\n\n"
+    "请生成一个可执行的因子表达式 "
+    "(Python 语法, 引用基础特征: "
+    "open/high/low/close/volume/amount/vwap/turnover/mv_float)。\n"
+    "返回 JSON: {{\"name\": \"因子名\", \"expression\": \"代码表达式\", "
+    "\"description\": \"因子描述\"}}"
+)
 
 
 _MUTATE_PROMPT = """你是一个量化研究员, 负责对父因子做变异, 探索新变体。
@@ -204,7 +208,10 @@ class Crosser(BaseOperator):
                     name=str(data.get("name", f"x_{parent1.name}_{parent2.name}")),
                     expression=str(data["expression"]),
                     hypothesis=f"combo({parent1.hypothesis}, {parent2.hypothesis})",
-                    description=str(data.get("description", f"combo of {parent1.name} + {parent2.name}")),
+                    description=str(data.get(
+                        "description",
+                        f"combo of {parent1.name} + {parent2.name}",
+                    )),
                 )
             except (json.JSONDecodeError, KeyError, TypeError):
                 if attempt == self.max_correction_attempts:
@@ -214,7 +221,10 @@ class Crosser(BaseOperator):
                         name=str(data.get("name", f"x_{parent1.name}_{parent2.name}")),
                         expression=str(data["expression"]),
                         hypothesis=f"combo({parent1.hypothesis}, {parent2.hypothesis})",
-                        description=str(data.get("description", f"combo of {parent1.name} + {parent2.name}")),
+                        description=str(data.get(
+                            "description",
+                            f"combo of {parent1.name} + {parent2.name}",
+                        )),
                     )
                 continue
         raise RuntimeError("unreachable")

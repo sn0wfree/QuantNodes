@@ -268,7 +268,7 @@ class TestKnowledgeBaseSync:
         pool = TrajectoryPool(tmp_path / "pool")
         kb = KnowledgeBase(pool=pool)
         loop = EvolutionLoop(settings=s, pool=pool, knowledge_base=kb, evaluate_fn=_make_evaluate_fn())
-        result = loop.run(initial_directions=["alpha1"])
+        loop.run(initial_directions=["alpha1"])
         n = loop.sync_knowledge_base()
         assert n >= 1
         assert len(kb) >= 1

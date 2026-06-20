@@ -99,7 +99,6 @@ class SQLBuilderNode(OperatorNode):
         """生成 SQL 语句"""
         from QuantNodes.operator_node.sql_utils import SQLBuilder
 
-        cols_str = ','.join(self._columns)
         db_table = self._table
 
         sql = SQLBuilder.create_select_sql(

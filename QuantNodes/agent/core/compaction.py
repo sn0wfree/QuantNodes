@@ -86,7 +86,11 @@ class ContextCompactor:
         system_msgs = [m for m in messages if m.get("role") == "system"]
         other_msgs = [m for m in messages if m.get("role") != "system"]
 
-        if self._config.use_llm_summarization and self._provider and len(other_msgs) >= self._config.min_messages_to_compact:
+        if (
+            self._config.use_llm_summarization
+            and self._provider
+            and len(other_msgs) >= self._config.min_messages_to_compact
+        ):
             return await self._llm_compact(system_msgs, other_msgs, original_count)
 
         return self._simple_compact(system_msgs, other_msgs, original_count)

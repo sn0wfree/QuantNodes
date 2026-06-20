@@ -43,7 +43,7 @@ class CompositeOperators:
         exprs = [_ensure_expr(f) for f in factors]
         weights_arr = pl.Series(weights)
         weights_arr = weights_arr / weights_arr.sum()
-        
+
         first_factor = factors[0]
         if isinstance(first_factor, str):
             col_name = first_factor
@@ -54,11 +54,13 @@ class CompositeOperators:
                 col_name = "result"
         else:
             col_name = "result"
-        
+
         return sum(e * w for e, w in zip(exprs, weights_arr)).alias(col_name)
 
     @staticmethod
-    def weighted_avg(factors: List[Union[Expr, str]], weights: Optional[List[float]] = None) -> Expr:
+    def weighted_avg(
+        factors: List[Union[Expr, str]], weights: Optional[List[float]] = None,
+    ) -> Expr:
         if weights is None:
             weights = [1.0] * len(factors)
         return CompositeOperators.weighted_sum(factors, weights)
@@ -85,7 +87,7 @@ class CompositeOperators:
     def combine(factors: List[Union[Expr, str]], method: str = "add") -> Expr:
         exprs = [_ensure_expr(f) for f in factors]
         first_factor = factors[0] if isinstance(factors[0], str) else "result"
-        
+
         if method in ("add", "sum"):
             return sum(exprs).alias(first_factor)
         elif method == "avg":
@@ -133,9 +135,11 @@ class CompositeOperators:
         return pl.when(e.abs() > threshold).then(e).otherwise(pl.lit(0.0)).alias(col_name)
 
     @staticmethod
-    def rank_sort(factors: List[Union[Expr, str]], weights: Optional[List[float]] = None) -> List[Expr]:
+    def rank_sort(
+        factors: List[Union[Expr, str]], weights: Optional[List[float]] = None,
+    ) -> List[Expr]:
         exprs = [_ensure_expr(f) for f in factors]
-        
+
         if weights is not None:
             weights_arr = pl.Series(weights)
             weights_arr = weights_arr / weights_arr.sum()
@@ -143,9 +147,12 @@ class CompositeOperators:
             combined = weighted_expr
         else:
             combined = pl.max_horizontal(*exprs)
-        
-        return [combined.rank().eq(i + 1).alias(f) if isinstance(f, str) else combined.rank().eq(i + 1) 
-                for i, f in enumerate(factors)]
+
+        ranked = combined.rank()
+        return [
+            ranked.eq(i + 1).alias(f) if isinstance(f, str) else ranked.eq(i + 1)
+            for i, f in enumerate(factors)
+        ]
 
 
 def _ensure_expr(f: Union[Expr, str]) -> Expr:

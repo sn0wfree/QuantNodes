@@ -45,7 +45,9 @@ class CacheMetadata:
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-            return CacheMeta(**{k: v for k, v in data.items() if k in CacheMeta.__dataclass_fields__})
+            valid_keys = CacheMeta.__dataclass_fields__
+            filtered = {k: v for k, v in data.items() if k in valid_keys}
+            return CacheMeta(**filtered)
         except Exception:
             return None
 

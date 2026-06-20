@@ -220,7 +220,11 @@ class QuantNodesLLMProvider(LLMProvider):
 
         if self.api_base and actual_model and "/" in actual_model:
             parts = actual_model.split("/", 1)
-            known_prefixes = {"openrouter", "anthropic", "huggingface", "bedrock", "vertex_ai", "ollama", "deepseek", "groq", "fireworks_ai", "mistral", "perplexity", "together_ai", "replicate"}
+            known_prefixes = {
+                "openrouter", "anthropic", "huggingface", "bedrock", "vertex_ai",
+                "ollama", "deepseek", "groq", "fireworks_ai", "mistral",
+                "perplexity", "together_ai", "replicate",
+            }
             if parts[0] in known_prefixes:
                 actual_model = parts[1]
                 logger.info(f"Stripped provider prefix for LiteLLM, model: {actual_model}")
@@ -273,16 +277,23 @@ class QuantNodesLLMProvider(LLMProvider):
             system_msg = next((m for m in qn_messages if m.role == MessageRole.SYSTEM), None)
             if system_msg:
                 system_msg.content += f"\n\n可用工具:\n{tools_desc}"
-                system_msg.content += "\n\n如果需要调用工具，请使用```tool_call```代码块输出JSON格式的工具调用。"
+                system_msg.content += (
+    "\n\n如果需要调用工具，请使用```tool_call```代码块输出JSON格式的工具调用。"
+)
 
         effective_max_tokens = max_tokens or self.default_max_tokens
         client, actual_model = self._get_client_for_model(model)
 
-        # Strip litellm provider prefix for legacy client (e.g. openrouter/google/gemini -> google/gemini)
+        # Strip litellm provider prefix for legacy client
+# (e.g. openrouter/google/gemini -> google/gemini)
         # LiteLLM needs the prefix to route correctly, but legacy OpenAI client doesn't use it
         if actual_model and "/" in actual_model:
             parts = actual_model.split("/", 1)
-            known_prefixes = {"openrouter", "anthropic", "huggingface", "bedrock", "vertex_ai", "ollama", "deepseek", "groq", "fireworks_ai", "mistral", "perplexity", "together_ai", "replicate"}
+            known_prefixes = {
+                "openrouter", "anthropic", "huggingface", "bedrock", "vertex_ai",
+                "ollama", "deepseek", "groq", "fireworks_ai", "mistral",
+                "perplexity", "together_ai", "replicate",
+            }
             if parts[0] in known_prefixes:
                 actual_model = parts[1]
                 logger.info(f"Stripped provider prefix for legacy client, model: {actual_model}")
@@ -460,7 +471,10 @@ class QuantNodesLLMProvider(LLMProvider):
                 parsed = self._parse_tool_calls(full_content)
                 tool_calls.extend(parsed)
 
-            content = full_content.split("```tool_call")[0].strip() if tool_calls else full_content.strip()
+            content = (
+                full_content.split("```tool_call")[0].strip()
+                if tool_calls else full_content.strip()
+            )
 
             return LLMResponse(
                 content=content,
@@ -505,19 +519,28 @@ class QuantNodesLLMProvider(LLMProvider):
             system_msg = next((m for m in qn_messages if m.role == MessageRole.SYSTEM), None)
             if system_msg:
                 system_msg.content += f"\n\n可用工具:\n{tools_desc}"
-                system_msg.content += "\n\n如果需要调用工具，请使用```tool_call```代码块输出JSON格式的工具调用。"
+                system_msg.content += (
+    "\n\n如果需要调用工具，请使用```tool_call```代码块输出JSON格式的工具调用。"
+)
 
         effective_max_tokens = max_tokens or self.default_max_tokens
         client, actual_model = self._get_client_for_model(model)
 
-        # Strip litellm provider prefix for legacy client (e.g. openrouter/google/gemini -> google/gemini)
+        # Strip litellm provider prefix for legacy client
+# (e.g. openrouter/google/gemini -> google/gemini)
         # LiteLLM needs the prefix to route correctly, but legacy OpenAI client doesn't use it
         if actual_model and "/" in actual_model:
             parts = actual_model.split("/", 1)
-            known_prefixes = {"openrouter", "anthropic", "huggingface", "bedrock", "vertex_ai", "ollama", "deepseek", "groq", "fireworks_ai", "mistral", "perplexity", "together_ai", "replicate"}
+            known_prefixes = {
+                "openrouter", "anthropic", "huggingface", "bedrock", "vertex_ai",
+                "ollama", "deepseek", "groq", "fireworks_ai", "mistral",
+                "perplexity", "together_ai", "replicate",
+            }
             if parts[0] in known_prefixes:
                 actual_model = parts[1]
-                logger.info(f"Stripped provider prefix for legacy stream client, model: {actual_model}")
+                logger.info(
+                    f"Stripped provider prefix for legacy stream client, model: {actual_model}"
+                )
 
         if client is None:
             raise RuntimeError(
@@ -574,7 +597,10 @@ class QuantNodesLLMProvider(LLMProvider):
                     await on_content_delta(new_text)
 
         tool_calls = self._parse_tool_calls(full_content)
-        content = full_content.split("```tool_call")[0].strip() if tool_calls else full_content.strip()
+        content = (
+            full_content.split("```tool_call")[0].strip()
+            if tool_calls else full_content.strip()
+        )
 
         return LLMResponse(
             content=content,

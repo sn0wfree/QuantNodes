@@ -175,7 +175,7 @@ class TestGenerateReport:
     def test_generate_html_writes_file(self, tmp_path: Path):
         e1 = _entry("e1", round_idx=0, sharpe=1.0)
         output = tmp_path / "report.html"
-        html = generate_html([e1], metric="sharpe", output_path=output)
+        generate_html([e1], metric="sharpe", output_path=output)
         assert output.exists()
         content = output.read_text(encoding="utf-8")
         assert "QuantNodes" in content
@@ -216,7 +216,7 @@ class TestDashboardHtml:
         c = MetricCollector()
         c.add_evolution(EvolutionMetrics(round=0, pool_size=5))
         output = tmp_path / "dash.html"
-        html = generate_dashboard_html(c, output_path=output, streaming=True)
+        generate_dashboard_html(c, output_path=output, streaming=True)
         assert output.exists()
         content = output.read_text(encoding="utf-8")
         assert "LIVE" in content

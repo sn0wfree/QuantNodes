@@ -38,33 +38,33 @@ _CATEGORY_MAP = {
 
 class ConfigLoader:
     """YAML配置加载器"""
-    
+
     def __init__(self, working_dir: str = "."):
         self.working_dir = Path(working_dir)
         self._config: Optional[StrategyConfig] = None
-    
+
     def load(self, path: str) -> StrategyConfig:
         """加载YAML配置文件
-        
+
         Args:
             path: 配置文件路径
-        
+
         Returns:
             StrategyConfig 对象
         """
         config_path = self.working_dir / path
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-        
+
         with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        
+
         if data is None:
             data = {}
-        
+
         self._config = self._parse(data)
         return self._config
-    
+
     def _parse(self, data: dict) -> StrategyConfig:
         """解析配置字典"""
         config = StrategyConfig(
@@ -72,7 +72,7 @@ class ConfigLoader:
             name=data.get("name", ""),
             description=data.get("description", ""),
         )
-        
+
         # 数据源配置
         if "data" in data:
             d = data["data"]
@@ -101,7 +101,7 @@ class ConfigLoader:
                 cache_dir=d.get("cache_dir", "~/.quantnodes/cache"),
                 cache_force_refresh=d.get("cache_force_refresh", False),
             )
-        
+
         # 因子定义
         config.factors = [
             FactorConfig(
@@ -111,7 +111,7 @@ class ConfigLoader:
             )
             for f in data.get("factors", [])
         ]
-        
+
         # 运算配置
         config.operations = [
             OperationConfig(
@@ -123,7 +123,7 @@ class ConfigLoader:
             )
             for op in data.get("operations", [])
         ]
-        
+
         # 组合因子
         config.composite = [
             CompositeConfig(
@@ -135,7 +135,7 @@ class ConfigLoader:
             )
             for c in data.get("composite", [])
         ]
-        
+
         # 回测配置
         if "backtest" in data:
             bt = data["backtest"]
@@ -149,7 +149,7 @@ class ConfigLoader:
                 signals=bt.get("signals", {}),
                 positions=bt.get("positions", {}),
             )
-        
+
         # 验证配置
         if "validation" in data:
             v = data["validation"]
@@ -159,7 +159,7 @@ class ConfigLoader:
                 metrics=v.get("metrics", {}),
                 custom_operators=v.get("custom_operators", []),
             )
-        
+
         # 输出配置
         if "output" in data:
             o = data["output"]
@@ -170,22 +170,22 @@ class ConfigLoader:
                 save_positions=o.get("save_positions", True),
                 save_equity_curve=o.get("save_equity_curve", True),
             )
-        
+
         return config
-    
+
     def _preload_custom_operators(self, custom_operators: list) -> None:
         """预加载自定义算子到 registry
-        
+
         在 check_coverage 之前调用，确保自定义算子被识别。
-        
+
         Args:
             custom_operators: ValidationConfig.custom_operators 列表
         """
         if not custom_operators:
             return
-        
+
         from QuantNodes.operators.proxy import register_operator
-        
+
         for entry in custom_operators:
             if isinstance(entry, str):
                 source_path = entry
@@ -195,10 +195,10 @@ class ConfigLoader:
                 source_path = entry.get("source", "")
                 category = entry.get("category", "point")
                 functions = entry.get("functions")
-            
+
             if not source_path:
                 continue
-            
+
             try:
                 spec = importlib.util.spec_from_file_location("custom_ops", source_path)
                 if spec is None or spec.loader is None:
@@ -209,7 +209,7 @@ class ConfigLoader:
             except Exception as e:
                 warnings.warn(f"加载自定义算子文件失败 {source_path}: {e}")
                 continue
-            
+
             for name in dir(module):
                 if name.startswith("_"):
                     continue
@@ -217,71 +217,71 @@ class ConfigLoader:
                     continue
                 if not functions and not name.startswith("custom_"):
                     continue
-                
+
                 func = getattr(module, name)
                 if not callable(func):
                     continue
-                
+
                 register_operator(_CATEGORY_MAP.get(category, "point"), name=name)(func)
-    
+
     def check_coverage(self, config: StrategyConfig) -> CoverageReport:
         """检查配置覆盖度
-        
+
         使用 factor_functions 的真实注册表检查算子是否存在。
         会先加载 custom_operators 以确保自定义算子被识别。
-        
+
         Args:
             config: 策略配置
-        
+
         Returns:
             CoverageReport 对象
         """
         # 预加载自定义算子
         self._preload_custom_operators(config.validation.custom_operators)
-        
+
         covered = []
         unresolved = []
-        
+
         # 获取所有已注册的算子名称
         all_operators = set(_list_operators())
-        
+
         # 已定义的列名（factors + operations 的输出）
         defined_names = set()
         for factor in config.factors:
             defined_names.add(factor.name)
         for op in config.operations:
             defined_names.add(op.name)
-        
+
         # 检查因子定义
         for factor in config.factors:
             if factor.expr:
                 covered.append("factor:%s" % factor.name)
             else:
                 unresolved.append("factor:%s" % factor.name)
-        
+
         # 检查算子 - 使用 factor_functions 真实注册表
         for op in config.operations:
             category = op.category
-            
+
             if category in all_operators:
                 covered.append("op:%s" % category)
             else:
                 unresolved.append("op:%s" % category)
-        
+
         # 检查组合因子公式
         for comp in config.composite:
             if not comp.formula:
                 unresolved.append("composite:%s" % comp.name)
                 continue
-            
+
             covered.append("composite:%s" % comp.name)
-            
+
             # 提取公式中调用的函数名
             func_names = re.findall(r'\b([a-zA-Z_]\w*)\s*\(', comp.formula)
             for fn in func_names:
                 if fn not in all_operators and fn not in defined_names:
                     unresolved.append("composite:%s:unknown_func:%s" % (comp.name, fn))
-            
+
             # 提取公式中引用的标识符（非函数调用的）
             # 移除函数调用部分后，提取剩余的标识符
             formula_no_funcs = re.sub(r'\b\w+\s*\([^)]*\)', '', comp.formula)
@@ -292,16 +292,16 @@ class ConfigLoader:
                     continue
                 if rn not in defined_names and rn not in all_operators:
                     unresolved.append("composite:%s:unknown_ref:%s" % (comp.name, rn))
-        
+
         return CoverageReport(covered=covered, unresolved=unresolved)
-    
+
     def get_config(self) -> Optional[StrategyConfig]:
         """获取当前配置"""
         return self._config
-    
+
     def to_yaml(self, config: StrategyConfig, path: str) -> None:
         """导出配置为YAML
-        
+
         Args:
             config: 策略配置
             path: 输出路径
@@ -311,7 +311,7 @@ class ConfigLoader:
             "name": config.name,
             "description": config.description,
         }
-        
+
         if config.data:
             data["data"] = {
                 "source": config.data.source,
@@ -343,7 +343,7 @@ class ConfigLoader:
                     data["data"]["cache_dir"] = config.data.cache_dir
                 if config.data.cache_force_refresh:
                     data["data"]["cache_force_refresh"] = True
-        
+
         data["factors"] = [
             {
                 "name": f.name,
@@ -352,7 +352,7 @@ class ConfigLoader:
             }
             for f in config.factors
         ]
-        
+
         data["operations"] = [
             {
                 "type": op.type,
@@ -363,7 +363,7 @@ class ConfigLoader:
             }
             for op in config.operations
         ]
-        
+
         data["composite"] = [
             {
                 "name": c.name,
@@ -374,7 +374,7 @@ class ConfigLoader:
             }
             for c in config.composite
         ]
-        
+
         if config.backtest:
             data["backtest"] = {
                 "start_date": config.backtest.start_date,
@@ -416,10 +416,10 @@ class ConfigLoader:
 
 def load_config(path: str) -> StrategyConfig:
     """便捷加载函数
-    
+
     Args:
         path: 配置文件路径
-    
+
     Returns:
         StrategyConfig 对象
     """

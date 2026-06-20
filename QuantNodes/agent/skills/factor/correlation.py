@@ -36,22 +36,22 @@ def correlation_analysis(data, factor_cols={factors}):
     相关性分析
     - 计算因子之间的Pearson相关系数矩阵
     - 识别高相关性因子对 (|corr| > 0.8)
-    
+
     Parameters:
     - data: DataFrame with factor columns
     - factor_cols: 因子列名列表
-    
+
     Returns:
     - corr_matrix: 相关性矩阵
     - high_corr_pairs: 高相关性因子对
     """
     import pandas as pd
     import numpy as np
-    
+
     factor_data = data[factor_cols]
-    
+
     corr_matrix = factor_data.corr()
-    
+
     high_corr_threshold = 0.8
     high_corr_pairs = []
     for i in range(len(factor_cols)):
@@ -63,12 +63,14 @@ def correlation_analysis(data, factor_cols={factors}):
                     "factor2": factor_cols[j],
                     "correlation": corr_val,
                 }})
-    
+
     result = {{
         "factors": {factors},
         "corr_matrix": corr_matrix.to_dict(),
         "high_corr_pairs": high_corr_pairs,
-        "mean_abs_corr": corr_matrix.abs().values[np.triu_indices_from(corr_matrix.values, k=1)].mean(),
+        "mean_abs_corr": corr_matrix.abs().values[
+            np.triu_indices_from(corr_matrix.values, k=1)
+        ].mean(),
     }}
     return result
 '''

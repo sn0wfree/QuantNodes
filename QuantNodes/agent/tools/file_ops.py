@@ -104,14 +104,21 @@ class FileOpsTool(Tool):
             raise ValueError(f"Unknown action: {action}")
         return await fn(**kwargs)
 
-    async def _read_file(self, path: str = "", offset: int = 1, limit: int = 2000, **kw) -> Dict[str, Any]:
+    async def _read_file(
+        self, path: str = "", offset: int = 1, limit: int = 2000, **kw,
+    ) -> Dict[str, Any]:
         target = self._safe_path(path)
         if not target.exists():
             return {"error": f"File not found: {path}"}
         if not target.is_file():
             return {"error": f"Not a file: {path}"}
         if target.stat().st_size > self.MAX_FILE_SIZE:
-            return {"error": f"File too large ({target.stat().st_size} bytes). Max: {self.MAX_FILE_SIZE}"}
+            return {
+                "error": (
+                    f"File too large ({target.stat().st_size} bytes). "
+                    f"Max: {self.MAX_FILE_SIZE}"
+                )
+            }
 
         lines = target.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
         total = len(lines)
@@ -123,13 +130,21 @@ class FileOpsTool(Tool):
             "lines_returned": len(sliced),
         }
 
-    async def _write_file(self, path: str = "", content: str = "", **kw) -> Dict[str, Any]:
+    async def _write_file(
+        self, path: str = "", content: str = "", **kw,
+    ) -> Dict[str, Any]:
         target = self._safe_path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
-        return {"status": "ok", "bytes_written": len(content.encode("utf-8")), "path": str(target.relative_to(self.workspace))}
+        return {
+            "status": "ok",
+            "bytes_written": len(content.encode("utf-8")),
+            "path": str(target.relative_to(self.workspace)),
+        }
 
-    async def _edit_file(self, path: str = "", old_string: str = "", new_string: str = "", **kw) -> Dict[str, Any]:
+    async def _edit_file(
+        self, path: str = "", old_string: str = "", new_string: str = "", **kw,
+    ) -> Dict[str, Any]:
         if not old_string:
             return {"error": "old_string is required"}
         target = self._safe_path(path)
@@ -141,11 +156,20 @@ class FileOpsTool(Tool):
         if count == 0:
             return {"error": "old_string not found in file"}
         if count > 1:
-            return {"error": f"old_string found {count} times. Provide more context to make it unique."}
+            return {
+                "error": (
+                    f"old_string found {count} times. "
+                    "Provide more context to make it unique."
+                )
+            }
 
         updated = original.replace(old_string, new_string, 1)
         target.write_text(updated, encoding="utf-8")
-        return {"status": "ok", "replacements": 1, "path": str(target.relative_to(self.workspace))}
+        return {
+            "status": "ok",
+            "replacements": 1,
+            "path": str(target.relative_to(self.workspace)),
+        }
 
     async def _list_files(self, path: str = "", pattern: str = "", **kw) -> Dict[str, Any]:
         target = self._safe_path(path or ".")

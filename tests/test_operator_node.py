@@ -67,7 +67,7 @@ class TestChainOperator:
     def test_chain_with_input(self):
         """测试带输入的链式执行"""
         results = []
-        
+
         class RecordOperator(OperatorNode):
             def _execute_operation(self, input_data=None, **kwargs):
                 results.append(input_data)
@@ -76,7 +76,7 @@ class TestChainOperator:
         op1 = RecordOperator()
         op2 = RecordOperator()
         chain = ChainOperator([op1, op2])
-        
+
         result = chain.execute("input")
         assert result == "processed_processed_input"
         assert results == ["input", "processed_input"]
@@ -90,7 +90,7 @@ class TestSQLBuilderNode:
         builder = SQLBuilderNode(table="users")
         builder.select(["id", "name"]).where(["active = 1"]).limit(10)
         sql = builder.to_sql()
-        
+
         assert "SELECT" in sql
         assert "FROM users" in sql
         assert "WHERE active = 1" in sql
@@ -101,7 +101,7 @@ class TestSQLBuilderNode:
         builder = SQLBuilderNode(table="users")
         builder.where(["a = 1"]).where(["b = 2"])
         sql = builder.to_sql()
-        
+
         assert "a = 1" in sql
         assert "b = 2" in sql
 
@@ -110,7 +110,7 @@ class TestSQLBuilderNode:
         builder = SQLBuilderNode(table="orders")
         builder.select(["status", "count(*) as cnt"]).group_by(["status"])
         sql = builder.to_sql()
-        
+
         assert "GROUP BY" in sql
         assert "status" in sql
 
@@ -119,7 +119,7 @@ class TestSQLBuilderNode:
         builder = SQLBuilderNode(table="users")
         builder.select(["id", "name"]).order_by(["created_at desc"])
         sql = builder.to_sql()
-        
+
         assert "ORDER BY" in sql
         assert "created_at desc" in sql
 
@@ -146,7 +146,7 @@ class TestTransformNode:
         """测试选择列"""
         transformer = TransformNode().select(["id", "name"])
         result = transformer.execute(sample_df)
-        
+
         assert list(result.columns) == ["id", "name"]
         assert len(result) == 5
 
@@ -154,7 +154,7 @@ class TestTransformNode:
         """测试过滤行（lambda）"""
         transformer = TransformNode().filter(lambda df: df["score"] >= 90)
         result = transformer.execute(sample_df)
-        
+
         assert len(result) == 2
         assert result.iloc[0]["name"] == "Bob"
 
@@ -162,7 +162,7 @@ class TestTransformNode:
         """测试过滤行（字符串）"""
         transformer = TransformNode().filter("score >= 90")
         result = transformer.execute(sample_df)
-        
+
         assert len(result) == 2
 
     def test_aggregate(self, sample_df):
@@ -176,7 +176,7 @@ class TestTransformNode:
             agg={"value": "sum"}
         )
         result = transformer.execute(df_with_category)
-        
+
         assert len(result) == 2
         assert result[result["category"] == "A"]["value"].iloc[0] == 30
         assert result[result["category"] == "B"]["value"].iloc[0] == 120
@@ -185,7 +185,7 @@ class TestTransformNode:
         """测试排序"""
         transformer = TransformNode().sort_by("score", ascending=False)
         result = transformer.execute(sample_df)
-        
+
         assert result.iloc[0]["name"] == "David"
         assert result.iloc[-1]["name"] == "Charlie"
 
@@ -193,7 +193,7 @@ class TestTransformNode:
         """测试重命名列"""
         transformer = TransformNode().rename({"name": "full_name"})
         result = transformer.execute(sample_df)
-        
+
         assert "full_name" in result.columns
         assert "name" not in result.columns
 
@@ -205,7 +205,7 @@ class TestTransformNode:
         })
         transformer = TransformNode().fillna(0)
         result = transformer.execute(df_with_null)
-        
+
         assert result['a'].iloc[2] == 0
         assert result['b'].iloc[0] == 0
         assert result['b'].iloc[-1] == 0
@@ -219,7 +219,7 @@ class TestTransformNode:
             .sort_by("score", ascending=False)
         )
         result = transformer.execute(sample_df)
-        
+
         assert len(result) == 4
         assert result.iloc[0]["name"] == "David"
 
@@ -249,7 +249,7 @@ class TestSQLBuilder:
             limit_by=None,
             limit=None
         )
-        
+
         assert "SELECT id,name" in sql
         assert "FROM users" in sql
 
@@ -269,7 +269,7 @@ class TestSQLBuilder:
             limit_by=None,
             limit=None
         )
-        
+
         assert "WHERE" in sql
         assert "active = 1" in sql
         assert "age > 18" in sql
@@ -290,7 +290,7 @@ class TestSQLBuilder:
             limit_by=None,
             limit=None
         )
-        
+
         assert "GROUP BY" in sql
         assert "status" in sql
 
@@ -310,5 +310,5 @@ class TestSQLBuilder:
             limit_by=None,
             limit=10
         )
-        
+
         assert "LIMIT 10" in sql

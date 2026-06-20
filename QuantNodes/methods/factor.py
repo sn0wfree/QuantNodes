@@ -119,7 +119,9 @@ def _compute_ic(df) -> Dict[str, Any]:
         factor = df["factor_value"]
         fwd = df["forward_return"]
         ic_val = factor.to_frame().select(pl.corr(factor, fwd)).to_series()[0]
-        rank_ic_val = factor.rank().to_frame().select(pl.corr(factor.rank(), fwd.rank())).to_series()[0]
+        rank_ic_val = factor.rank().to_frame().select(
+            pl.corr(factor.rank(), fwd.rank())
+        ).to_series()[0]
         return {
             "ic_mean": ic_val,
             "ic_std": 0.0,

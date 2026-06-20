@@ -101,7 +101,9 @@ class CodeSearchTool(Tool):
             raise ValueError(f"Unknown action: {action}")
         return await fn(**kwargs)
 
-    async def _grep(self, pattern: str = "", path: str = "", include: str = "", **kw) -> Dict[str, Any]:
+    async def _grep(
+        self, pattern: str = "", path: str = "", include: str = "", **kw
+    ) -> Dict[str, Any]:
         search_dir = self._safe_path(path)
         if not search_dir.exists():
             return {"error": f"Directory not found: {path}"}
@@ -133,7 +135,11 @@ class CodeSearchTool(Tool):
                                 "content": line.rstrip()[:200],
                             })
                             if len(results) >= self.MAX_RESULTS:
-                                return {"results": results, "truncated": True, "total": len(results)}
+                                return {
+                                    "results": results,
+                                    "truncated": True,
+                                    "total": len(results),
+                                }
                 except (PermissionError, OSError):
                     continue
 
@@ -157,7 +163,10 @@ class CodeSearchTool(Tool):
 
         return {"matches": results, "total": len(results)}
 
-    async def _search_code(self, query: str = "", path: str = "", include: str = "", context_lines: int = 3, **kw) -> Dict[str, Any]:
+    async def _search_code(
+        self, query: str = "", path: str = "", include: str = "",
+        context_lines: int = 3, **kw,
+    ) -> Dict[str, Any]:
         search_dir = self._safe_path(path)
         if not search_dir.exists():
             return {"error": f"Directory not found: {path}"}
@@ -196,7 +205,11 @@ class CodeSearchTool(Tool):
                                 "context": "\n".join(context),
                             })
                             if len(results) >= self.MAX_RESULTS:
-                                return {"results": results, "truncated": True, "total": len(results)}
+                                return {
+                                    "results": results,
+                                    "truncated": True,
+                                    "total": len(results),
+                                }
                 except (PermissionError, OSError):
                     continue
 

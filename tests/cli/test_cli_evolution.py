@@ -275,7 +275,7 @@ def test_factor_visual_writes_html(tmp_path):
 
 def test_factor_visual_empty_pool(tmp_path):
     """空 pool → exit 1。"""
-    pool = TrajectoryPool(tmp_path / "pool")  # 空
+    TrajectoryPool(tmp_path / "pool")  # 空
     class Args:
         pass
     args = Args()
@@ -396,7 +396,7 @@ def test_factor_rag_show_missing_dir():
 
 def test_factor_rag_show_empty_pool(tmp_path):
     """空 pool → exit 1。"""
-    pool = TrajectoryPool(tmp_path / "pool")  # 空
+    TrajectoryPool(tmp_path / "pool")  # 空
     class Args:
         pass
     args = Args()

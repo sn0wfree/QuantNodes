@@ -162,7 +162,6 @@ class TestAgentServiceNoDoubleSave:
                 agent._loop = loop
                 service._agent = agent
 
-                original_chat = loop.chat
 
                 async def failing_chat(message, session_id="default"):
                     raise RuntimeError("Simulated agent failure")

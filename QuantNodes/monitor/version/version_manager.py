@@ -85,7 +85,8 @@ class VersionManager:
         shutil.copy2(str(src), str(dst))
 
         # Git commit
-        commit_hash = self._git_commit(strategy_dir, f"version {version_str}: {description or strategy_name}")
+        commit_msg = f"version {version_str}: {description or strategy_name}"
+        commit_hash = self._git_commit(strategy_dir, commit_msg)
 
         # 同时保存为 current
         current_dst = strategy_dir / f"{strategy_name}_current.yaml"

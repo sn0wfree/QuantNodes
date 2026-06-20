@@ -40,13 +40,13 @@ def momentum_strategy(data, period={period}):
       - 动量为负卖出(-1)
     """
     import pandas as pd
-    
+
     data["momentum"] = data["close"] / data["close"].shift({period}) - 1
-    
+
     data["signal"] = 0
     data.loc[data["momentum"] > 0, "signal"] = 1
     data.loc[data["momentum"] <= 0, "signal"] = -1
-    
+
     data["position"] = data["signal"].shift(1)
     return data
 '''

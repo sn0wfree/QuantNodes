@@ -1111,7 +1111,7 @@ def add(expr_a: Union[Expr, str], expr_b: Union[Expr, str]) -> Expr:
     import talib
     e_a = _ensure_expr(expr_a)
     e_b = _ensure_expr(expr_b)
-    return e_a.map_batches(lambda s: pl.Series(talib.ADD(s.to_numpy(), e_b.eval(pl.col(s.name))[0].to_numpy()))) 
+    return e_a.map_batches(lambda s: pl.Series(talib.ADD(s.to_numpy(), e_b.eval(pl.col(s.name))[0].to_numpy())))
 
 
 def sub(expr_a: Union[Expr, str], expr_b: Union[Expr, str]) -> Expr:
@@ -1163,7 +1163,7 @@ def _wrap_and_register(name: str, func, param_docs: str = ""):
     """包装函数并注册到算子注册表"""
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
-    
+
     wrapper.__name__ = f"talib_{name}"
     wrapper.__doc__ = f"TA-Lib {name}\n\n    {param_docs}\n    "
     register_operator(OperatorCategory.TALIB, f"talib_{name}")(wrapper)

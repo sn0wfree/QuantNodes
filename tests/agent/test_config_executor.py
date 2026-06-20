@@ -20,72 +20,72 @@ from QuantNodes.agent.config.types import (
 
 class TestExprParser:
     """表达式解析器测试"""
-    
+
     def test_simple_column(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("close")
         assert expr is not None
-    
+
     def test_number_literal(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("20")
         assert expr is not None
-    
+
     def test_float_literal(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("3.14")
         assert expr is not None
-    
+
     def test_addition(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("close + volume")
         assert expr is not None
-    
+
     def test_subtraction(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("close - open")
         assert expr is not None
-    
+
     def test_multiplication(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("close * 2")
         assert expr is not None
-    
+
     def test_division(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("close / open")
         assert expr is not None
-    
+
     def test_complex_arithmetic(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("close / close.shift(20) - 1")
         assert expr is not None
-    
+
     def test_unary_negation(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("-rank(close)")
         assert expr is not None
-    
+
     def test_parentheses(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("(close + volume) / 2")
         assert expr is not None
-    
+
     def test_nested_parentheses(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("((close + volume) / 2) - 1")
         assert expr is not None
-    
+
     def test_ts_lag_call(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("ts_lag(close, 20)")
         assert expr is not None
-    
+
     def test_ts_mean_call(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("ts_mean(close, 20)")
         assert expr is not None
-    
+
     def test_method_chain(self):
         executor = ConfigExecutor()
         expr = executor._parse_expr("close.shift(20)")
@@ -94,7 +94,7 @@ class TestExprParser:
 
 class TestConfigExecutor:
     """ConfigExecutor 测试"""
-    
+
     def _make_config(self, factors=None, operations=None, composite=None, backtest=None):
         return StrategyConfig(
             name="test",
@@ -103,7 +103,7 @@ class TestConfigExecutor:
             composite=composite or [],
             backtest=backtest,
         )
-    
+
     def _make_data(self):
         return pl.LazyFrame({
             "date": ["2024-01-01", "2024-01-02", "2024-01-03"],
@@ -112,7 +112,7 @@ class TestConfigExecutor:
             "open": [99.0, 100.0, 102.0],
             "volume": [1000, 1200, 1100],
         })
-    
+
     def test_run_simple_factor(self):
         executor = ConfigExecutor()
         config = self._make_config(
@@ -121,7 +121,7 @@ class TestConfigExecutor:
         result = executor.run(config, self._make_data())
         assert result.status == "success"
         assert "ret" in result.factors
-    
+
     def test_run_preserves_original_columns(self):
         executor = ConfigExecutor()
         config = self._make_config(
@@ -134,7 +134,7 @@ class TestConfigExecutor:
         assert "code" in result.data.columns
         assert "close" in result.data.columns
         assert "ret" in result.data.columns
-    
+
     def test_run_with_operations(self):
         executor = ConfigExecutor()
         config = self._make_config(
@@ -152,7 +152,7 @@ class TestConfigExecutor:
         result = executor.run(config, self._make_data())
         assert result.status == "success"
         assert "ret_ma" in result.factors
-    
+
     def test_run_with_composite(self):
         executor = ConfigExecutor()
         config = self._make_config(
@@ -164,7 +164,7 @@ class TestConfigExecutor:
         result = executor.run(config, self._make_data())
         assert result.status == "success"
         assert "alpha" in result.factors
-    
+
     def test_run_backtest_generates_signals(self):
         executor = ConfigExecutor()
         config = self._make_config(
@@ -182,7 +182,7 @@ class TestConfigExecutor:
         assert result.backtest is not None
         assert "signals" in result.backtest
         assert "config" in result.backtest
-    
+
     def test_run_backtest_compatible_threshold_names(self):
         executor = ConfigExecutor()
         config = self._make_config(
@@ -497,37 +497,37 @@ class TestCheckCoverageExtended:
 
 class TestConfigLoader:
     """ConfigLoader 测试"""
-    
+
     def test_load_momentum_yaml(self):
         from QuantNodes.agent.config.loader import ConfigLoader
         from pathlib import Path
-        
+
         templates_dir = Path(__file__).parent.parent.parent / "QuantNodes" / "agent" / "config" / "templates"
         yaml_path = templates_dir / "momentum.yaml"
-        
+
         if yaml_path.exists():
             loader = ConfigLoader()
             config = loader.load(str(yaml_path))
             assert config.name == "momentum_20d"
             assert len(config.factors) > 0
             assert config.backtest is not None
-    
+
     def test_load_mean_reversion_yaml(self):
         from QuantNodes.agent.config.loader import ConfigLoader
         from pathlib import Path
-        
+
         templates_dir = Path(__file__).parent.parent.parent / "QuantNodes" / "agent" / "config" / "templates"
         yaml_path = templates_dir / "mean_reversion.yaml"
-        
+
         if yaml_path.exists():
             loader = ConfigLoader()
             config = loader.load(str(yaml_path))
             assert config.name == "mean_reversion"
             assert len(config.factors) > 0
-    
+
     def test_check_coverage(self):
         from QuantNodes.agent.config.loader import ConfigLoader
-        
+
         config = StrategyConfig(
             name="test",
             factors=[FactorConfig(name="f1", expr="close")],
@@ -541,7 +541,7 @@ class TestConfigLoader:
                 )
             ]
         )
-        
+
         loader = ConfigLoader()
         report = loader.check_coverage(config)
         assert report.is_complete

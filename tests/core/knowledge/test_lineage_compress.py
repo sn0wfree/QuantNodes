@@ -241,10 +241,9 @@ def test_cli_rag_show_with_compress(chain_pool):
 def test_compression_ratio_demonstration():
     """演示: 启发式压缩在多 entry 时减少 token。"""
     pool = TrajectoryPool(tempfile.mkdtemp())
-    expr = "close - open"
     for i in range(8):
         pid = f"e{i}" if i == 0 else f"e{i-1}"
-        rid = i if i == 0 else i - 1
+        i if i == 0 else i - 1
         pool.add(_make_entry(
             f"e{i}", f"e{i}", parent_ids=[pid] if i > 0 else None,
             round_idx=i, operation="mutation" if i > 0 else "original",

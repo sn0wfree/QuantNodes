@@ -25,43 +25,45 @@ class PromptTemplate:
         )
 
 
-SYSTEM_PROMPT = """You are a quantitative trading strategy expert specializing in designing and implementing trading systems using the QuantNodes framework.
-
-QuantNodes Framework Overview:
-- BaseNode: Unified node base class with execute() method
-- Pipeline: Chain nodes together using >> operator
-- DatabaseNode: Query data from various databases (SQLite, DuckDB, MySQL, ClickHouse)
-- factor_functions: 140+ Polars-based operators (rolling_mean, zscore, rank, etc.)
-- BacktestNode: Run backtesting simulations
-- OperatorNode: SQL operations and data transformations
-
-Key Conventions:
-- All nodes inherit from BaseNode
-- Use >> to chain nodes in a pipeline
-- Configuration passed via config dict in constructor
-- Input/output data is typically pandas DataFrame
-- Factor computation uses factor_functions (ff) module
-
-Your task is to generate valid Python code that creates QuantNodes pipelines based on user requests.
-"""
+SYSTEM_PROMPT = (
+    "You are a quantitative trading strategy expert specializing in"
+    " designing and implementing trading systems using the QuantNodes"
+    " framework.\n\n"
+    "QuantNodes Framework Overview:\n"
+    "- BaseNode: Unified node base class with execute() method\n"
+    "- Pipeline: Chain nodes together using >> operator\n"
+    "- DatabaseNode: Query data from various databases (SQLite, DuckDB, MySQL,"
+    " ClickHouse)\n"
+    "- factor_functions: 140+ Polars-based operators (rolling_mean, zscore,"
+    " rank, etc.)\n"
+    "- BacktestNode: Run backtesting simulations\n"
+    "- OperatorNode: SQL operations and data transformations\n\n"
+    "Key Conventions:\n"
+    "- All nodes inherit from BaseNode\n"
+    "- Use >> to chain nodes in a pipeline\n"
+    "- Configuration passed via config dict in constructor\n"
+    "- Input/output data is typically pandas DataFrame\n"
+    "- Factor computation uses factor_functions (ff) module\n\n"
+    "Your task is to generate valid Python code that creates QuantNodes"
+    " pipelines based on user requests.\n"
+)
 
 STRATEGY_GENERATION_PROMPT = PromptTemplate(
     system=SYSTEM_PROMPT,
-    user="""Generate a QuantNodes trading strategy pipeline based on the following description:
-
-{trading_description}
-
-Requirements:
-- Use Python code
-- Create appropriate nodes (DatabaseNode, BacktestNode, etc.) and use factor_functions for factor computation
-- Use the >> operator to chain nodes
-- Include necessary configuration
-
-Available Data:
-The database contains stock OHLCV data with columns: date, code, open, high, low, close, volume
-
-Generate the Python code:""",
-    description="Generate trading strategy pipeline from natural language"
+    user=(
+        "Generate a QuantNodes trading strategy pipeline based on the following"
+        " description:\n\n{trading_description}\n\nRequirements:\n"
+        "- Use Python code\n"
+        "- Create appropriate nodes (DatabaseNode, BacktestNode, etc.) and"
+        " use factor_functions for factor computation\n"
+        "- Use the >> operator to chain nodes\n"
+        "- Include necessary configuration\n\n"
+        "Available Data:\n"
+        "The database contains stock OHLCV data with columns: date, code,"
+        " open, high, low, close, volume\n\n"
+        "Generate the Python code:"
+    ),
+    description="Generate trading strategy pipeline from natural language",
 )
 
 CODE_REVIEW_PROMPT = PromptTemplate(

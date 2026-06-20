@@ -234,7 +234,6 @@ class TestProcessMessageErrorRecovery:
                 loop = AgentLoop(bus, provider, Path(tmpdir))
 
                 # 让 runner.run 抛异常
-                original_run = loop.runner.run
 
                 async def failing_run(spec):
                     raise RuntimeError("Simulated runner failure")

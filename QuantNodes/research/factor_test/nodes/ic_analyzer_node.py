@@ -29,7 +29,11 @@ class ICAnalyzerNode(PydanticConfigNode):
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})
-        factor_data = context.get('FactorNeutralize') if context.get('FactorNeutralize') is not None else context.get('FactorPreprocess')
+        neutralized = context.get('FactorNeutralize')
+        factor_data = (
+            neutralized if neutralized is not None
+            else context.get('FactorPreprocess')
+        )
         price = context.get('LoadData', {}).get('price')
 
         if factor_data is None or price is None:
@@ -79,7 +83,8 @@ class ICAnalyzerNode(PydanticConfigNode):
         ic_result = pd.Series([
             ic.mean(), ic.std(ddof=1),
             ic.mean() / ic.std(ddof=1) if ic.std(ddof=1) != 0 else np.nan,
-            ic.mean() / ic.std(ddof=1) * np.sqrt(ic.notna().sum() - 1) if ic.std(ddof=1) != 0 else np.nan,
+            ic.mean() / ic.std(ddof=1) * np.sqrt(ic.notna().sum() - 1)
+            if ic.std(ddof=1) != 0 else np.nan,
             ((ic > 0).sum() / ic.count()) if ic.count() > 0 else np.nan,
             ((ic < 0).sum() / ic.count()) if ic.count() > 0 else np.nan,
         ], index=['IC均值', 'IC标准差', 'ICIR', 'IC_T值', 'IC为正比例', 'IC为负比例'])
@@ -87,10 +92,14 @@ class ICAnalyzerNode(PydanticConfigNode):
         rank_ic_result = pd.Series([
             rank_ic.mean(), rank_ic.std(ddof=1),
             rank_ic.mean() / rank_ic.std(ddof=1) if rank_ic.std(ddof=1) != 0 else np.nan,
-            rank_ic.mean() / rank_ic.std(ddof=1) * np.sqrt(rank_ic.notna().sum() - 1) if rank_ic.std(ddof=1) != 0 else np.nan,
+            rank_ic.mean() / rank_ic.std(ddof=1) * np.sqrt(rank_ic.notna().sum() - 1)
+            if rank_ic.std(ddof=1) != 0 else np.nan,
             ((rank_ic > 0).sum() / rank_ic.count()) if rank_ic.count() > 0 else np.nan,
             ((rank_ic < 0).sum() / rank_ic.count()) if rank_ic.count() > 0 else np.nan,
-        ], index=['rankIC均值', 'rankIC标准差', 'rankICIR', 'rankIC_T值', 'rankIC为正比例', 'rankIC为负比例'])
+        ], index=[
+            'rankIC均值', 'rankIC标准差', 'rankICIR',
+            'rankIC_T值', 'rankIC为正比例', 'rankIC为负比例',
+        ])
 
         return {
             'ic': ic,

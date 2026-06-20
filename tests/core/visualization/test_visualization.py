@@ -243,6 +243,6 @@ def test_cli_visual_subcommand(tmp_path, small_pool):
 
     # 通过 generate_html 直接验证 (CLI 子命令验证在 test_cli_evolution)
     out = tmp_path / "report.html"
-    html = generate_html(pool, metric="sharpe", output_path=out)
+    generate_html(pool, metric="sharpe", output_path=out)
     assert out.exists()
     assert out.stat().st_size > 1000

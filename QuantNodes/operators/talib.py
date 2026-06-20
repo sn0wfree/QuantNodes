@@ -194,7 +194,7 @@ class TaLibOperators:
               slowk_matype: int = 0, slowd_period: int = 3, slowd_matype: int = 0) -> Tuple[Expr, Expr]:
         """随机指标 (Stochastic) — 返回 (slowk, slowd)"""
         from QuantNodes.factor_node.factor_functions import talib_ops
-        return talib_ops.talib_stoch(expr, fastk_period=fastk_period, slowk_period=slowk_period, 
+        return talib_ops.talib_stoch(expr, fastk_period=fastk_period, slowk_period=slowk_period,
                                      slowk_matype=slowk_matype, slowd_period=slowd_period, slowd_matype=slowd_matype)
 
     @staticmethod

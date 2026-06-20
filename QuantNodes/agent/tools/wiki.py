@@ -50,7 +50,10 @@ class WikiTool(Tool):
                 },
                 "category": {
                     "type": "string",
-                    "enum": ["momentum", "value", "quality", "volatility", "size", "growth", "other"],
+                    "enum": [
+                        "momentum", "value", "quality",
+                        "volatility", "size", "growth", "other",
+                    ],
                     "description": "因子分类",
                 },
                 "ic_mean": {"type": "number", "description": "IC 均值"},
@@ -172,10 +175,16 @@ class WikiTool(Tool):
             "type": "object",
             "properties": {
                 "source_name": {"type": "string", "description": "源节点（如 Factor/xxx）"},
-                "target_name": {"type": "string", "description": "目标节点（如 Strategy/yyy）"},
+                "target_name": {
+                    "type": "string",
+                    "description": "目标节点（如 Strategy/yyy）",
+                },
                 "relation": {
                     "type": "string",
-                    "enum": ["uses", "correlates_with", "derived_from", "outperforms", "similar_to"],
+                    "enum": [
+                        "uses", "correlates_with", "derived_from",
+                        "outperforms", "similar_to",
+                    ],
                 },
             },
             "required": ["source_name", "target_name", "relation"],
@@ -270,7 +279,9 @@ class WikiTool(Tool):
         factors = self.proxy.search_factors(query, limit=limit)
         return [self._factor_to_dict(f) for f in factors]
 
-    async def _list_factors(self, source=None, category=None, tags=None, limit=50, **kwargs) -> List[Dict[str, Any]]:
+    async def _list_factors(
+        self, source=None, category=None, tags=None, limit=50, **kwargs,
+    ) -> List[Dict[str, Any]]:
         if source:
             source = FactorSource(source)
         if category:
@@ -318,7 +329,9 @@ class WikiTool(Tool):
             }
         return None
 
-    async def _list_strategies(self, category=None, tags=None, limit=50, **kwargs) -> List[Dict[str, Any]]:
+    async def _list_strategies(
+        self, category=None, tags=None, limit=50, **kwargs,
+    ) -> List[Dict[str, Any]]:
         strategies = self.proxy.list_strategies(category=category, tags=tags, limit=limit)
         return [
             {
@@ -337,7 +350,9 @@ class WikiTool(Tool):
         self._logger.info(f"[WikiTool] stored reproduction: {result}")
         return result
 
-    async def _add_relation(self, source_name: str, target_name: str, relation: str, **kwargs) -> bool:
+    async def _add_relation(
+        self, source_name: str, target_name: str, relation: str, **kwargs,
+    ) -> bool:
         result = self.proxy.add_relation(source_name, target_name, relation)
         self._logger.info(f"[WikiTool] added relation: {source_name} -> {target_name}")
         return result

@@ -14,9 +14,9 @@ from typing import Any, Dict
 class QuantNodesObject:
     """
     QuantNodes 基础对象类
-    
+
     使用 dataclass 提供配置属性系统
-    
+
     Attributes:
         name: 对象名称
         config: 配置字典
@@ -33,11 +33,11 @@ class QuantNodesObject:
     def get_config(self, key: str, default: Any = None) -> Any:
         """
         获取配置值
-        
+
         Args:
             key: 配置键
             default: 默认值
-        
+
         Returns:
             配置值
         """
@@ -46,7 +46,7 @@ class QuantNodesObject:
     def set_config(self, key: str, value: Any) -> None:
         """
         设置配置值
-        
+
         Args:
             key: 配置键
             value: 配置值

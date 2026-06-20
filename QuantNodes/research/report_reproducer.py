@@ -156,8 +156,14 @@ class ResearchReportReproducer:
             else:
                 result = ReproductionResult(
                     logic=logic,
-                    verification_status="pending" if logic.logic_type != "factor" else "unverifiable",
-                    deviation="非因子类型, 待人工验证" if logic.logic_type != "factor" else "缺少数据, 无法验证",
+                    verification_status=(
+                        "pending" if logic.logic_type != "factor" else "unverifiable"
+                    ),
+                    deviation=(
+                        "非因子类型, 待人工验证"
+                        if logic.logic_type != "factor"
+                        else "缺少数据, 无法验证"
+                    ),
                 )
             results.append(result)
 
@@ -341,7 +347,10 @@ class ResearchReportReproducer:
         else:
             result.verification_status = "failed"
             result.factor_result = eval_result
-            result.deviation = "; ".join(eval_result.fail_reasons) if eval_result.fail_reasons else "未通过验证"
+            if eval_result.fail_reasons:
+                result.deviation = "; ".join(eval_result.fail_reasons)
+            else:
+                result.deviation = "未通过验证"
 
         return result
 

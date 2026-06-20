@@ -254,7 +254,7 @@ class TestAgentAPIBaseNormalization:
 
     def test_strip_chat_completions(self):
         from QuantNodes.agent import Agent
-        agent = Agent(workspace="/tmp/test_agent_norm", config={})
+        Agent(workspace="/tmp/test_agent_norm", config={})
         # Verify the normalization logic inline
         base_url = "https://openrouter.ai/api/v1/chat/completions"
         # Simulate normalization

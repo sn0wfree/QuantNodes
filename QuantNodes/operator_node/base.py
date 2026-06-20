@@ -74,7 +74,10 @@ class ChainOperator(OperatorNode):
     将多个 OperatorNode 链接在一起执行。
     """
 
-    def __init__(self, operators: List[OperatorNode], name: str = None, config: Dict[str, Any] = None):
+    def __init__(
+        self, operators: List[OperatorNode], name: str = None,
+        config: Dict[str, Any] = None,
+    ):
         super().__init__(name=name or "Chain", config=config)
         self.operators = operators
 

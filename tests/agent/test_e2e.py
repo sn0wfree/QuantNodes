@@ -441,7 +441,7 @@ factor = ff.rolling_mean("close", 20)
     def test_dangerous_code_blocked_in_pipeline(self):
         async def _test():
             sandbox_tool = SandboxTool()
-            pipeline_tool = PipelineTool()
+            PipelineTool()
 
             dangerous_code = """import os
 os.system('rm -rf /')

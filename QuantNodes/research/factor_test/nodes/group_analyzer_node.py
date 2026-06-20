@@ -38,7 +38,11 @@ class GroupAnalyzerNode(PydanticConfigNode):
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})
-        factor_data = context.get('FactorNeutralize') if context.get('FactorNeutralize') is not None else context.get('FactorPreprocess')
+        neutralized = context.get('FactorNeutralize')
+        factor_data = (
+            neutralized if neutralized is not None
+            else context.get('FactorPreprocess')
+        )
         price = context.get('LoadData', {}).get('price')
         index_cp = context.get('LoadData', {}).get('index_cp')
 
@@ -101,7 +105,8 @@ class GroupAnalyzerNode(PydanticConfigNode):
                         group_winratio.loc[t_i, g] = (vals > 0).mean()
                         pos = vals[vals > 0].mean()
                         neg = vals[vals < 0].mean()
-                        group_winloss.loc[t_i, g] = pos / neg * -1 if pd.notna(neg) and neg != 0 else np.nan
+                        has_valid_neg = pd.notna(neg) and neg != 0
+                        group_winloss.loc[t_i, g] = pos / neg * -1 if has_valid_neg else np.nan
 
         # 各组日度净值 (单利)
         price_full = price.loc[adj_dates[0]:adj_dates[-1]]
@@ -125,7 +130,8 @@ class GroupAnalyzerNode(PydanticConfigNode):
                     valid_stocks = [s for s in stocks_g if s in cycle_net.columns]
                     if valid_stocks:
                         group_net = cycle_net[valid_stocks].mean(axis=1)
-                        group_daily_ret.loc[group_net.index[1:], g] = group_net.pct_change(fill_method=None).iloc[1:]
+                        pct_change_values = group_net.pct_change(fill_method=None).iloc[1:]
+                        group_daily_ret.loc[group_net.index[1:], g] = pct_change_values
 
         group_daily_net_cmp = (group_daily_ret + 1).cumprod()
         group_daily_net_simp = group_daily_net_cmp.copy() * np.nan
@@ -206,7 +212,9 @@ class GroupAnalyzerNode(PydanticConfigNode):
                 cycle = price_full.loc[t_i:t_ii] / price_full.loc[t_i]
                 valid = [s for s in stocks_with_factor if s in cycle.columns]
                 if valid:
-                    benchmark.loc[cycle.index[1:]] = cycle[valid].mean(axis=1).pct_change(fill_method=None).iloc[1:]
+                    benchmark.loc[cycle.index[1:]] = (
+                        cycle[valid].mean(axis=1).pct_change(fill_method=None).iloc[1:]
+                    )
             return (benchmark + 1).cumprod()
 
         elif hedge in INDEX_CP_MAPPING and index_cp is not None:

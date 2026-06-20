@@ -134,14 +134,17 @@ class IFindFetcher:
         """解析 Markdown 表格为 DataFrame"""
         lines = text.strip().split('\n')
         # 筛选 | 开头的行
-        table_lines = [l for l in lines if l.strip().startswith('|')]
+        table_lines = [line for line in lines if line.strip().startswith('|')]
         if len(table_lines) < 2:
             return pd.DataFrame()
 
         # 解析 header
         header = [c.strip() for c in table_lines[0].split('|')[1:-1]]
         # 跳过 separator 行 (|---|---|...)
-        data_lines = [l for l in table_lines[1:] if not l.strip().replace('|', '').replace('-', '').replace(' ', '') == '']
+        data_lines = [
+            line for line in table_lines[1:]
+            if not line.strip().replace('|', '').replace('-', '').replace(' ', '') == ''
+        ]
 
         rows = []
         for line in data_lines:

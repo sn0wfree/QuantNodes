@@ -2,7 +2,8 @@
 """Pipeline Runner / 管线编排器
 
 混合模式数据传递:
-- Phase 1 (严格串联): LoadData >> SampleFilter >> TradabilityFilter >> AdjustDate >> Preprocess >> Neutralize
+- Phase 1 (严格串联): LoadData >> SampleFilter >> TradabilityFilter >>
+  AdjustDate >> Preprocess >> Neutralize
 - Phase 2 (Context 共享): ICAnalyzer / GroupAnalyzer / FactorScore / RiskCorrelation
 - Phase 3 (依赖分析): LongShort
 - Phase 4 (输出): FactorTestReport

@@ -45,21 +45,21 @@ def rsi_reversal_strategy(data, period={period}, oversold={oversold}, overbought
       - 持有(0)
     """
     import pandas as pd
-    
+
     delta = data["close"].diff()
     gain = delta.where(delta > 0, 0)
     loss = -delta.where(delta < 0, 0)
-    
+
     avg_gain = gain.rolling({period}).mean()
     avg_loss = loss.rolling({period}).mean()
-    
+
     rs = avg_gain / avg_loss
     data["rsi"] = 100 - (100 / (1 + rs))
-    
+
     data["signal"] = 0
     data.loc[data["rsi"] < {oversold}, "signal"] = 1
     data.loc[data["rsi"] > {overbought}, "signal"] = -1
-    
+
     data["position"] = data["signal"].shift(1)
     return data
 '''

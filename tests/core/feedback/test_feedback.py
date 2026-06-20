@@ -365,8 +365,6 @@ def test_ensure_feedback_invalid_type():
 # M3: FeedbackCollector 决策聚合 agg_mode
 # ============================================================================
 
-from QuantNodes.core.feedback import FeedbackCollector, FeedbackChannel
-
 
 class TestCollectorAggMode:
     """3 通道 1 失败时, 不同 agg_mode 决策不同。"""

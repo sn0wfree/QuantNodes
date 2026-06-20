@@ -116,8 +116,6 @@ def _inject_prepared_data(runner: PipelineRunner, data_path: Path) -> None:
     名称: 从已 prepare 好的 H5 数据 (data_prep.py 输出) 注入到 ctx,
     与"合成"无关 (R4 重命名: ``_inject_synthetic_data`` → ``_inject_prepared_data``).
     """
-    import numpy as np
-    rng = np.random.RandomState(42)
     # 读 H5 实际数据
     cp = pd.read_hdf(data_path / "stk_daily.h5", key="cp")
     st = pd.read_hdf(data_path / "stk_daily.h5", key="st")
@@ -257,7 +255,10 @@ def main():
         use_compress=not args.no_compress,
     )
     result = loop.run(initial_directions=directions)
-    print(f"  ✓ 演化完成: {result.rounds_completed} 轮, 总数 {result.total_count}, 拒绝 {result.rejected_count}")
+    print(
+        f"  ✓ 演化完成: {result.rounds_completed} 轮, "
+        f"总数 {result.total_count}, 拒绝 {result.rejected_count}"
+    )
     if kb is not None:
         print(f"  ✓ KB 已索引 {len(kb)} entry")
     print(f"  ✓ RAG 评估历史: {len(loop.rag_metrics_history)} 轮")

@@ -101,7 +101,7 @@ def profile_executor(config, lf):
 
     if result.data is not None:
         t0 = time.time()
-        schema = result.data.collect_schema()
+        result.data.collect_schema()
         timings["schema_check"] = time.time() - t0
 
     return result, timings

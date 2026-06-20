@@ -62,7 +62,10 @@ class DreamSkill(Skill):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "查询类型: recent 或具体类型 (wiki_insight/factor_insight/strategy_insight)",
+                    "description": (
+                        "查询类型: recent 或具体类型 "
+                        "(wiki_insight/factor_insight/strategy_insight)"
+                    ),
                     "default": "recent",
                 },
                 "limit": {

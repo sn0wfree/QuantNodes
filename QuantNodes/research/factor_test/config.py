@@ -33,11 +33,17 @@ class PreprocessSetting(BaseModel):
     - 新增 3 隐式默认 Pydantic 字段 (mad_n=5.0, pct_low=0.025, pct_high=0.975, M5)
     M12: 新增 i18n_name_map 自定义行业名称映射 (覆盖全局默认 INDUSTRY_MAPPING)
     """
-    adj_date_beg: Optional[int] = Field(default=None, description="起始日期 yyyymmdd (H10: None → 启动报错)")
-    adj_date_end: Optional[int] = Field(default=None, description="截止日期 yyyymmdd (H10: None → 启动报错)")
+    adj_date_beg: Optional[int] = Field(
+        default=None, description="起始日期 yyyymmdd (H10: None → 启动报错)"
+    )
+    adj_date_end: Optional[int] = Field(
+        default=None, description="截止日期 yyyymmdd (H10: None → 启动报错)"
+    )
     adj_mode: list = Field(default=['M', 'end'], description="调仓模式: [mode, position]")
     sample_index: str = Field(default='all', description="样本池: all/HS300/ZZ500/ZZ800/custom")
-    sample_index_customdir: Optional[tuple] = Field(default=None, description="自定义样本池路径 (sample_index=custom 时必填)")
+    sample_index_customdir: Optional[tuple] = Field(
+        default=None, description="自定义样本池路径 (sample_index=custom 时必填)"
+    )
     sample_industry: str = Field(default='all', description="行业筛选: all/中信行业名")
     tradable: TradableSetting = Field(default_factory=TradableSetting)
     missing: str = Field(default='', description="缺失值处理: ''/ind_avg")
@@ -66,7 +72,9 @@ class GroupSetting(BaseModel):
     """分组分析配置"""
     groups: int = Field(default=5, description="分组数")
     factor_direction: int = Field(default=1, description="因子方向: 1=越大越好, -1=越小越好")
-    floor_mode: str = Field(default='group', description="数据不足时策略: group=跳过, last=沿用上期")
+    floor_mode: str = Field(
+        default='group', description="数据不足时策略: group=跳过, last=沿用上期"
+    )
     hedge: str = Field(default='equal', description="对冲基准: HS300/ZZ500/equal/custom")
     hedge_path: Optional[str] = Field(default=None, description="自定义对冲基准路径")
 
@@ -120,7 +128,9 @@ class FeedbackSetting(BaseModel):
         default=None,
         description="Parquet/JSON 持久化目录 (None=不持久化, 仅返回 ctx)",
     )
-    judge_enabled: bool = Field(default=False, description="是否启用 LLMJudge (hypothesis↔expression 一致性)")
+    judge_enabled: bool = Field(
+        default=False, description="是否启用 LLMJudge (hypothesis↔expression 一致性)"
+    )
     judge_model: str = Field(default="mock", description="LLMJudge 模型名 (mock/deepseek-v3/...)")
     judge_max_attempts: int = Field(default=3, description="LLMJudge 解析失败最大重试次数")
 
@@ -150,7 +160,9 @@ class EvolutionConfig(BaseModel):
     )
     top_percent_threshold: float = Field(default=0.3, description="top_percent_plus_random 阈值")
     metric: str = Field(default="sharpe", description="用于排序/加权的指标")
-    pool_dir: Optional[str] = Field(default=None, description="TrajectoryPool 路径 (None=output.dir/trajectory)")
+    pool_dir: Optional[str] = Field(
+        default=None, description="TrajectoryPool 路径 (None=output.dir/trajectory)"
+    )
     early_stop_patience: int = Field(default=0, description="连续 N 轮无改善则停 (0=不启用)")
 
 

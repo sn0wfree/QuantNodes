@@ -65,7 +65,9 @@ class ConfigNode(BaseNode, ABC):
         self._cached_config = self._load_config()
         return self._cached_config
 
-    def execute(self, input_data: Any = None, *, use_cache: bool = True, **kwargs) -> Dict[str, Any]:
+    def execute(
+        self, input_data: Any = None, *, use_cache: bool = True, **kwargs,
+    ) -> Dict[str, Any]:
         """
         执行配置加载
 

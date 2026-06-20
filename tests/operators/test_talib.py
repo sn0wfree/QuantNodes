@@ -77,7 +77,7 @@ class TestTaLibMomentumIndicators:
         assert isinstance(result, tuple)
 
     def test_macd_returns_tuple(self, price_data):
-        df = pl.DataFrame({"close": price_data})
+        pl.DataFrame({"close": price_data})
         result = talib_ops.macd(pl.col("close"))
         assert len(result) == 3
         macd_line, signal, hist = result

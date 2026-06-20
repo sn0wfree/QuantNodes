@@ -204,7 +204,7 @@ class TestBaseNode:
             _enable_stats = False
             def _execute(self, input_data=None, **kwargs):
                 return input_data
-        
+
         node = NoStatsNode()
         assert node.stats is None
 
@@ -215,7 +215,7 @@ class TestBaseNodeHooks:
         class HookNode(EchoNode):
             def before_execute(self, input_data, **kwargs):
                 self._hook_called = True
-        
+
         node = HookNode()
         node.execute("test")
         assert node._hook_called is True
@@ -224,9 +224,9 @@ class TestBaseNodeHooks:
         class HookNode(EchoNode):
             def after_execute(self, result, **kwargs):
                 self._hook_result = result
-        
+
         node = HookNode()
-        result = node.execute("test")
+        node.execute("test")
         assert node._hook_result == "test"
 
     def test_hooks_disabled(self):
@@ -234,7 +234,7 @@ class TestBaseNodeHooks:
             _enable_hooks = False
             def before_execute(self, input_data, **kwargs):
                 raise AssertionError("Hook should not be called")
-        
+
         node = HookNode()
         node.execute("test")
 
@@ -246,7 +246,7 @@ class TestBaseNodeValidation:
             _enable_validation = False
             def _execute(self, input_data=None, **kwargs):
                 return input_data
-        
+
         node = NoValidationNode()
         result = node.execute("test")
         assert result == "test"
@@ -254,7 +254,7 @@ class TestBaseNodeValidation:
 
 class TestBaseNodeSerialization:
     """Tests for BaseNode serialization
-    
+
     Note: Direct BaseNode serialization requires @serializable decorator
     and proper registration. See test_pipeline.py for serialization tests
     using properly registered types.

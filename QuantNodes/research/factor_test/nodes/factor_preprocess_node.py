@@ -43,7 +43,6 @@ class FactorPreprocessNode(PydanticConfigNode):
         factor = context.get('LoadData', {}).get('factor')
         tradable = context.get('TradabilityFilter')
         adj_dates = context.get('AdjustDate')
-        sample = context.get('SamplePoolFilter')
 
         if factor is None:
             raise ValueError("因子数据缺失")
@@ -54,7 +53,11 @@ class FactorPreprocessNode(PydanticConfigNode):
         tradable_factor = factor * tradable
 
         # 提取调仓日的因子值
-        adj_date_values = adj_dates.iloc[:, 0].values if isinstance(adj_dates, pd.DataFrame) else adj_dates
+        adj_date_values = (
+            adj_dates.iloc[:, 0].values
+            if isinstance(adj_dates, pd.DataFrame)
+            else adj_dates
+        )
         tradable_factor_adj = tradable_factor.loc[tradable_factor.index.isin(adj_date_values)]
         tradable_adj = tradable.loc[tradable.index.isin(adj_date_values)]
 

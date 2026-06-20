@@ -32,7 +32,10 @@ def build_lineage_layout(
 
     Returns:
         dict: {
-            'nodes': [{'id', 'x', 'y', 'label', 'color', 'size', 'metric', 'operation', 'round_idx'}, ...],
+            'nodes': [{
+                'id', 'x', 'y', 'label', 'color', 'size',
+                'metric', 'operation', 'round_idx',
+            }, ...],
             'edges': [{'source', 'target', 'color'}, ...],
         }
     """
@@ -121,7 +124,6 @@ def lineage_dag_figure(entries, metric: str = "sharpe", title: str | None = None
     # 节点: scatter (x, y)
     node_x = [n["x"] for n in layout["nodes"]]
     node_y = [n["y"] for n in layout["nodes"]]
-    node_text = [n["label"] for n in layout["nodes"]]
     node_color = [n["color"] for n in layout["nodes"]]
     node_size = [n["size"] for n in layout["nodes"]]
     node_custom = [n for n in layout["nodes"]]

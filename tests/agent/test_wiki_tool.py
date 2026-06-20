@@ -192,7 +192,7 @@ class TestWikiToolAddRelation:
         )
 
 
-class TestWikiToolSearch:
+class TestWikiToolGenericSearch:
     @pytest.mark.asyncio
     async def test_search(self, wiki_tool):
         mock_results = [

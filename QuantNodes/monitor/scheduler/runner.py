@@ -129,9 +129,5 @@ class StrategyRunner:
         loader = ConfigLoader()
         config = loader.load(config_path)
 
-        # 使用 ConfigBacktestRunner 执行
-        from QuantNodes.agent.tools.config_backtest import ConfigBacktestTool
-
-        tool = ConfigBacktestTool()
-        # 简化: 直接返回基本统计
+        # TODO: integrate ConfigBacktestTool when stub is ready
         return {"status": "completed", "config": config.name}

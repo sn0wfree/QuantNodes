@@ -15,9 +15,9 @@ import pandas as pd
 import numpy as np
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
+from QuantNodes.research.factor_test.nodes.configs import ReportNodeConfig
 
 logger = logging.getLogger(__name__)
-from QuantNodes.research.factor_test.nodes.configs import ReportNodeConfig
 
 
 class FactorTestReportNode(PydanticConfigNode):

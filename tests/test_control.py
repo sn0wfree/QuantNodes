@@ -55,11 +55,11 @@ class TestIfNode:
 
         # 条件为 True
         assert node.execute(20) == 40
-        assert node._last_branch_taken == True
+        assert node._last_branch_taken is True
 
         # 条件为 False
         assert node.execute(5) == 15
-        assert node._last_branch_taken == False
+        assert node._last_branch_taken is False
 
     def test_if_without_false_branch(self):
         """测试只有真分支（False 时返回原输入）"""

@@ -13,16 +13,16 @@ Modules:
 
 Usage:
     from QuantNodes.operators import ts, sec, math, talib_ops
-    
+
     # 时间序列
     result = ts.ts_mean(pl.col("close"), 20)
-    
+
     # 截面
     result = sec.rank(pl.col("factor"))
-    
+
     # 数学
     result = math.add(pl.col("factor"), 1.0)
-    
+
     # TA-Lib
     result = talib_ops.rsi(pl.col("close"), timeperiod=14)
 """
@@ -31,6 +31,8 @@ from .time_series import TimeSeriesOperators as _ts
 from .section import SectionOperators as _sec
 from .math import MathOperators as _math
 from .composite import CompositeOperators as _composite
+from .proxy import list_operators, get_operator, register_operator
+from .custom import CustomOperator, OperatorTemplate, point, time, section
 
 # 统一导出
 ts = _ts()
@@ -52,6 +54,3 @@ __all__ = [
     "CustomOperator", "OperatorTemplate",
     "point", "time", "section",
 ]
-
-from .proxy import list_operators, get_operator, register_operator
-from .custom import CustomOperator, OperatorTemplate, point, time, section

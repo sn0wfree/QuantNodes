@@ -50,7 +50,7 @@ class DerivativeFactor(Factor):
     """因子运算基类
 
     所有因子运算类的基类，提供描述子管理和通用接口。
-    
+
     Attributes:
         Operator: 运算函数，签名为 (f, idt, iid, x, args) -> result
         ModelArgs: 参数字典
@@ -160,7 +160,7 @@ class PointOperation(DerivativeFactor):
     """单点运算
 
     对描述子进行单点运算，即每个时点-ID组合独立计算。
-    
+
     Attributes:
         dt_mode: 运算时点模式
         id_mode: 运算ID模式
@@ -342,10 +342,10 @@ class LookBackMode(Enum):
 @dataclass
 class _LookBackOperation(DerivativeFactor):
     """带 LookBack 窗口运算的基类
-    
+
     提取 TimeOperation 和 PanelOperation 中相同的 LookBack 窗口计算逻辑。
     子类需要实现具体的 _calcData 方法或使用策略分派模式。
-    
+
     Attributes:
         look_back: 回溯期数列表，对应每个描述子
         look_back_mode: 回溯模式列表
@@ -377,15 +377,15 @@ class _LookBackOperation(DerivativeFactor):
         dt_ruler: List[Any]
     ) -> Tuple[np.ndarray, int, List[Any], List[Tuple[int, int]], int, int, List[np.ndarray]]:
         """准备 LookBack 窗口数据
-        
+
         计算窗口参数、处理初始数据、扩展时间标尺。
-        
+
         Args:
             ids: ID列表
             dts: 时间点列表
             descriptor_data: 描述子数据列表
             dt_ruler: 时间标尺列表
-        
+
         Returns:
             tuple: (StdData, iStartInd, DTRuler, StartIndAndLen, MaxLookBack, MaxLen, descriptor_data)
             - StdData: 预分配的结果数组
@@ -716,9 +716,9 @@ class TimeOperation(_LookBackOperation):
 # 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class SectionOperation(DerivativeFactor):
     """截面运算
-    
+
     对描述子进行截面运算，即在同一时点对全截面ID进行计算。
-    
+
     Attributes:
         dt_mode: 运算时点模式
         output_mode: 输出形式
@@ -937,9 +937,9 @@ class SectionOperation(DerivativeFactor):
 # 如果运算时点参数为多时点, 那么 x 元素为 array(shape=(回溯期数+nDT, nID)), 如果输出形式为全截面返回 array(shape=(nDT, nID)), 否则返回 array(shape=(nDT, ))
 class PanelOperation(_LookBackOperation):
     """面板运算
-    
+
     结合时间序列和截面运算，对描述子进行面板数据计算。
-    
+
     Attributes:
         dt_mode: 运算时点模式
         output_mode: 输出形式
@@ -970,8 +970,9 @@ class PanelOperation(_LookBackOperation):
             self.descriptor_section = [None] * len(descriptors)
 
     def _QN_init_operation(self, start_dt, dt_dict, prepare_ids, id_dict):
-        if len(self._Descriptors) > len(self.look_back): raise FactorError(
-            "面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.name)
+        if len(self._Descriptors) > len(self.look_back):
+            raise FactorError(
+                "面板运算因子 : '%s' 的参数'回溯期数'序列长度小于描述子个数!" % self.name)
         OldStartDT = dt_dict.get(self.Name, None)
         DTRuler = self._OperationMode.DTRuler
         if (OldStartDT is None) or (start_dt < OldStartDT):
@@ -991,11 +992,13 @@ class PanelOperation(_LookBackOperation):
         else:
             StartInd = DTRuler.index(OldStartDT)
         PrepareIDs = id_dict.setdefault(self.Name, prepare_ids)
-        if prepare_ids != PrepareIDs: raise FactorError("因子 %s 指定了不同的截面!" % self.Name)
+        if prepare_ids != PrepareIDs:
+            raise FactorError("因子 %s 指定了不同的截面!" % self.Name)
         for i, iDescriptor in enumerate(self._Descriptors):
             iStartInd = StartInd - self.look_back[i]
-            if iStartInd < 0: self._QN_logger.warning(
-                "注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
+            if iStartInd < 0:
+                self._QN_logger.warning(
+                    "注意: 对于因子 '%s' 的描述子 '%s', 时点标尺长度不足!" % (self.Name, iDescriptor.Name))
             iStartDT = DTRuler[max(0, iStartInd)]
             if self.descriptor_section[i] is None:
                 iDescriptor._QN_init_operation(iStartDT, dt_dict, prepare_ids, id_dict)
@@ -1014,12 +1017,14 @@ class PanelOperation(_LookBackOperation):
             else:
                 StartInd = min(StartInd, DTRuler.index(self.i_init_data.index[-1]) + 1)
         EndInd = (DTRuler.index(dts[-1]) if dts[-1] in DTRuler else len(DTRuler) - 1)
-        if StartInd > EndInd: return pd.DataFrame(index=dts, columns=ids)
+        if StartInd > EndInd:
+            return pd.DataFrame(index=dts, columns=ids)
         DescriptorData = []
         for i, iDescriptor in enumerate(self._Descriptors):
             iDTs = DTRuler[max(StartInd - self.look_back[i], 0):EndInd + 1]
             iSectionIDs = self.descriptor_section[i]
-            if iSectionIDs is None: iSectionIDs = SectionIDs
+            if iSectionIDs is None:
+                iSectionIDs = SectionIDs
             iIDNum = len(iSectionIDs)
             if iDTs:
                 iDescriptorData = iDescriptor.readData(ids=iSectionIDs, dts=iDTs, **kwargs).values
@@ -1081,13 +1086,15 @@ class PanelOperation(_LookBackOperation):
                 iDescriptor._QN_get_data(iDTs, pids=None)
             StdData = create_empty_dataframe([], IDs, self.DataType, include_index=False)
         elif IDs:
-            DescriptorData, StartInd = [], self._OperationMode.DTRuler.index(DTs[0])
+            DescriptorData = []
+            StartInd = self._OperationMode.DTRuler.index(DTs[0])
             for i, iDescriptor in enumerate(self._Descriptors):
                 iStartInd = StartInd - self.look_back[i]
                 iDTs = list(self._OperationMode.DTRuler[max(0, iStartInd):StartInd]) + DTs
                 iDescriptorData = iDescriptor._QN_get_data(iDTs, pids=None).values
-                if iStartInd < 0: iDescriptorData = np.r_[
-                    np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
+                if iStartInd < 0:
+                    iDescriptorData = np.r_[
+                        np.full(shape=(abs(iStartInd), iDescriptorData.shape[1]), fill_value=np.nan), iDescriptorData]
                 DescriptorData.append(iDescriptorData)
             StdData = self._calcData(ids=IDs, dts=DTs, descriptor_data=DescriptorData,
                                      dt_ruler=self._OperationMode.DTRuler)

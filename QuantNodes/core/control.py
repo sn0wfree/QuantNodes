@@ -121,7 +121,8 @@ class IfNode(BaseNode):
         """从字典反序列化重建 IfNode"""
         condition = Expression.deserialize(data["condition"])
         true_branch = BaseNode.deserialize(data["true_branch"])
-        false_branch = BaseNode.deserialize(data["false_branch"]) if data.get("false_branch") else None
+        false_branch_data = data.get("false_branch")
+        false_branch = BaseNode.deserialize(false_branch_data) if false_branch_data else None
 
         return IfNode(
             condition=condition,
@@ -220,7 +221,11 @@ class MapNode(BaseNode, Generic[I, O]):
             if isinstance(input_data, (list, tuple)):
                 if isinstance(self.group_by_expr, Expression):
                     from itertools import groupby
-                    return [(k, list(v)) for k, v in groupby(sorted(input_data, key=self.group_by_expr.evaluate), key=self.group_by_expr.evaluate)]
+                    sorted_data = sorted(input_data, key=self.group_by_expr.evaluate)
+                    return [
+                        (k, list(v))
+                        for k, v in groupby(sorted_data, key=self.group_by_expr.evaluate)
+                    ]
                 else:
                     return [(i, item) for i, item in enumerate(input_data)]
             else:
@@ -261,7 +266,11 @@ class MapNode(BaseNode, Generic[I, O]):
         """返回需要序列化的额外字段"""
         return {
             "node": self.node.serialize(),
-            "group_by": self.group_by_expr if isinstance(self.group_by_expr, str) else self.group_by_expr.serialize(),
+            "group_by": (
+                self.group_by_expr
+                if isinstance(self.group_by_expr, str)
+                else self.group_by_expr.serialize()
+            ),
             "max_workers": self.max_workers,
             "parallel": self.parallel,
         }
@@ -288,7 +297,11 @@ class MapNode(BaseNode, Generic[I, O]):
     def to_info(self) -> Dict[str, Any]:
         """导出节点信息"""
         result = super().to_info()
-        result['group_by'] = repr(self.group_by_expr) if isinstance(self.group_by_expr, Expression) else self.group_by_expr
+        result['group_by'] = (
+            repr(self.group_by_expr)
+            if isinstance(self.group_by_expr, Expression)
+            else self.group_by_expr
+        )
         result['node'] = self.node.to_info()
         result['max_workers'] = self.max_workers
         result['parallel'] = self.parallel

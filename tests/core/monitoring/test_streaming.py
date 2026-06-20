@@ -83,7 +83,7 @@ def test_evolution_loop_streams_metrics(tmp_path):
         collector = MetricCollector()
         loop = EvolutionLoop(settings, pool, evaluate_fn=_mock_eval)
         loop.metric_collector = collector
-        result = loop.run(initial_directions=["d1", "d2"])
+        loop.run(initial_directions=["d1", "d2"])
 
     # Round 0 + round 1 + round 2 → 至少 3 evo metrics
     assert len(collector.evolution_history) >= 3
@@ -180,7 +180,7 @@ def test_cli_dashboard_watch_flag():
             watch = True  # Watch 模式
             refresh = 1
 
-        buf = io.StringIO()
+        io.StringIO()
         # Watch 会进入 while True, 但 pool 无变化, 需要中断
         # 这里测试 watch 初始化不报错 (实际中靠 KeyboardInterrupt 退出)
         # 简化: 只检查 watch 参数被识别

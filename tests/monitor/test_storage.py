@@ -110,7 +110,7 @@ class TestStrategyRunRepository:
             run_repo.create(StrategyRun(
                 strategy_name="s1", run_type="backtest", status="success",
             ))
-        deleted = run_repo.delete_old("s1", keep_count=2)
+        run_repo.delete_old("s1", keep_count=2)
         remaining = run_repo.get_by_strategy("s1", limit=100)
         assert len(remaining) == 2
 

@@ -26,7 +26,8 @@ class FactorScoreNode(PydanticConfigNode):
     def __init__(self, name: str = "FactorScore",
                  config: Union[dict, ScoreNodeConfig, None] = None, **kwargs):
         super().__init__(name, config, **kwargs)
-        # T0-2: 3 隐式默认从 Pydantic 字段读取 (n_industries=29, n_size_groups=3, n_quantile_groups=5)
+        # T0-2: 3 隐式默认从 Pydantic 字段读取
+        # (n_industries=29, n_size_groups=3, n_quantile_groups=5)
         self._enabled = self.cfg.enabled
         self._n_industries = self.cfg.n_industries
         self._n_size_groups = self.cfg.n_size_groups
@@ -37,7 +38,11 @@ class FactorScoreNode(PydanticConfigNode):
             return {}
 
         context = kwargs.get('context', {})
-        factor_data = context.get('FactorNeutralize') if context.get('FactorNeutralize') is not None else context.get('FactorPreprocess')
+        neutralized = context.get('FactorNeutralize')
+        factor_data = (
+            neutralized if neutralized is not None
+            else context.get('FactorPreprocess')
+        )
         mv = context.get('LoadData', {}).get('mv_float')
         industry = context.get('LoadData', {}).get('id_citic1')
         price = context.get('LoadData', {}).get('price')

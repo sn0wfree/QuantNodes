@@ -38,13 +38,13 @@ def calculate_ic_analysis(data, factor_col="factor", return_col="return", n_days
     - 计算因子IC序列
     - 计算IC均值、IC标准差、ICIR
     - 计算Rank IC
-    
+
     Parameters:
     - data: DataFrame with factor and return columns
     - factor_col: 因子列名
     - return_col: 收益列名
     - n_days: 计算周期
-    
+
     Returns:
     - ic_series: IC时间序列
     - ic_mean: IC均值
@@ -54,16 +54,16 @@ def calculate_ic_analysis(data, factor_col="factor", return_col="return", n_days
     """
     import pandas as pd
     import numpy as np
-    
+
     ic_series = data[factor_col].corr(data[return_col])
     rank_ic_series = data[factor_col].rank().corr(data[return_col].rank())
-    
+
     ic_mean = ic_series.mean()
     ic_std = ic_series.std()
     icir = ic_mean / ic_std if ic_std != 0 else 0
-    
+
     rank_ic_mean = rank_ic_series.mean()
-    
+
     result = {{
         "factor_name": "{factor_name}",
         "n_dates": n_days,

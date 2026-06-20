@@ -64,7 +64,9 @@ def generate_report(
 
     return {
         "overview": overview,
-        "lineage_dag": lineage_dag_figure(items, metric=metric, title=f"演化谱系 DAG (按 {metric})"),
+        "lineage_dag": lineage_dag_figure(
+            items, metric=metric, title=f"演化谱系 DAG (按 {metric})"
+        ),
         "metric_distribution": metric_distribution_figure(items, metric=metric),
         "metric_per_round": metric_per_round_figure(items, metric=metric),
         "gate_breakdown": gate_breakdown_figure(items),

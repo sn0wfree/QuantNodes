@@ -12,9 +12,9 @@ import pandas as pd
 import statsmodels.api as sm
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
+from QuantNodes.research.factor_test.nodes.configs import NeutralizeNodeConfig
 
 logger = logging.getLogger(__name__)
-from QuantNodes.research.factor_test.nodes.configs import NeutralizeNodeConfig
 
 
 class FactorNeutralizeNode(PydanticConfigNode):

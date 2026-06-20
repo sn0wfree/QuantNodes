@@ -300,7 +300,8 @@ class ExecutionBrokerNode(BrokerNode):
             c, d = q_codes[i], q_dates[i]
             if c not in price_map:
                 price_map[c] = {}
-            price_map[c][d] = (float(q_open[i]), float(q_close[i]) if q_close is not None else float(q_open[i]))
+            qc = float(q_close[i]) if q_close is not None else float(q_open[i])
+            price_map[c][d] = (float(q_open[i]), qc)
 
         # 构建每个 code 的首条/末条 fallback
         code_first: Dict[str, tuple] = {}
@@ -316,7 +317,10 @@ class ExecutionBrokerNode(BrokerNode):
         n_orders = len(orders.orders)
         order_codes = [o.code for o in orders.orders]
         order_sizes = np.array([o.size for o in orders.orders])
-        order_dates = [str(o.create_date) if o.create_date is not None else None for o in orders.orders]
+        order_dates = [
+            str(o.create_date) if o.create_date is not None else None
+            for o in orders.orders
+        ]
         order_ids = [o.order_id or f"order_{i}" for i, o in enumerate(orders.orders)]
 
         # 向量化价格查找

@@ -148,7 +148,9 @@ def run_backtest(
         result.summary = {
             "total_trades": len(trade_result.trades) if hasattr(trade_result, "trades") else 0,
             "final_cash": trade_result.cash if hasattr(trade_result, "cash") else initial_cash,
-            "total_commission": trade_result.commission if hasattr(trade_result, "commission") else 0,
+            "total_commission": (
+                trade_result.commission if hasattr(trade_result, "commission") else 0
+            ),
             "strategy": strategy.__class__.__name__,
             "broker": broker.__class__.__name__,
             "risk_nodes": [r.__class__.__name__ for r in risk_nodes],

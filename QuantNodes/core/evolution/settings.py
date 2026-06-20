@@ -23,9 +23,13 @@ class EvolutionSetting(BaseModel):
         default="top_percent_plus_random",
         description="选择策略 (best/random/weighted/weighted_inverse/top_percent_plus_random)",
     )
-    top_percent_threshold: float = Field(default=0.3, description="top_percent_plus_random 的 top 比例")
+    top_percent_threshold: float = Field(
+        default=0.3, description="top_percent_plus_random 的 top 比例"
+    )
     metric: str = Field(default="sharpe", description="用于排序/加权的指标")
-    pool_dir: Optional[str] = Field(default=None, description="TrajectoryPool 目录 (None=output.dir/trajectory)")
+    pool_dir: Optional[str] = Field(
+        default=None, description="TrajectoryPool 目录 (None=output.dir/trajectory)"
+    )
     early_stop_patience: int = Field(default=0, description="连续 N 轮无改善则停 (0=不启用)")
     top_n: int = Field(default=10, description="最终 best_entries 返回 Top-N (EvolutionResult)")
     hypothesizer: OperatorSetting = Field(default_factory=OperatorSetting)

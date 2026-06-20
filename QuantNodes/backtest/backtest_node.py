@@ -133,7 +133,9 @@ class BacktestNode(BaseNode[pd.DataFrame, BacktestResult], ABC):
         elif isinstance(input_data, pd.DataFrame):
             pass
         else:
-            raise ValueError(f"input_data must be DataFrame or tuple, got {type(input_data).__name__}")
+            raise ValueError(
+                f"input_data must be DataFrame or tuple, got {type(input_data).__name__}"
+            )
 
     def get_statistics(self) -> Dict[str, Any]:
         """获取回测统计信息"""

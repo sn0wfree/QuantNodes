@@ -163,7 +163,7 @@ class TestStrategyRunner:
                 f.write("name: test\n")
                 config_path = f.name
 
-            result = runner.run_strategy(
+            runner.run_strategy(
                 strategy_name="recording_test",
                 config_path=config_path,
                 run_type="sample_out",

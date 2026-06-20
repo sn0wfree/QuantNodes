@@ -150,7 +150,11 @@ class LLMClientBase(ABC):
             ChatCompletion 或 None（流式模式）
         """
         normalized_messages = self._normalize_messages(messages)
-        return self._call_api(normalized_messages, model, temperature=temperature, max_tokens=max_tokens, stream=stream, **kwargs)
+        return self._call_api(
+            normalized_messages, model,
+            temperature=temperature, max_tokens=max_tokens,
+            stream=stream, **kwargs,
+        )
 
     def _normalize_messages(
         self,
@@ -194,7 +198,10 @@ class LLMClientBase(ABC):
             ChatCompletionChunk 流式块
         """
         normalized_messages = self._normalize_messages(messages)
-        for chunk in self._call_api_stream(normalized_messages, model, temperature=temperature, max_tokens=max_tokens, **kwargs):
+        for chunk in self._call_api_stream(
+            normalized_messages, model,
+            temperature=temperature, max_tokens=max_tokens, **kwargs,
+        ):
             yield chunk
 
     def _call_api_stream(

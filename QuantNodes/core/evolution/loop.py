@@ -148,7 +148,8 @@ class EvolutionLoop:
     ) -> None:
         """RAG 评估: 用 directions 作 query, 评估 Top-K 检索质量。
 
-        简化版 ground truth: 当前 pool 中所有 entry 都视为相关 (实际使用应提供 query→relevant 映射)。
+        简化版 ground truth: 当前 pool 中所有 entry 都视为相关
+        (实际使用应提供 query→relevant 映射)。
         结果写入 self.rag_metrics_history。
         """
         if not directions or self.rag_evaluator is None:
@@ -547,7 +548,8 @@ class EvolutionLoop:
         parent_ids: list[str],
         round_idx: int = 0,
     ) -> TrajectoryEntry:
-        """评估单个 candidate, 写入 TrajectoryPool (遗留方法, 建议迁移到 _batch_evaluate_and_record)。"""
+        """评估单个 candidate, 写入 TrajectoryPool
+        (遗留方法, 建议迁移到 _batch_evaluate_and_record)。"""
         results = self._batch_evaluate_and_record(
             [candidate], round_idx=round_idx,
             ops=[operation], parent_ids_list=[parent_ids],

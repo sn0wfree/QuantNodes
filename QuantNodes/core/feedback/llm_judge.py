@@ -96,7 +96,11 @@ class LLMJudge:
         if not e:
             return json.dumps({"consistent": False, "reason": "表达式为空", "score": 0.0})
         if not h and not d:
-            return json.dumps({"consistent": False, "reason": "hypothesis 和 description 都为空", "score": 0.0})
+            return json.dumps({
+                "consistent": False,
+                "reason": "hypothesis 和 description 都为空",
+                "score": 0.0,
+            })
 
         keywords_h = {"momentum", "反转", "反转", "波动", "volume", "量价", "动量"}
         text = (h + " " + d).lower()

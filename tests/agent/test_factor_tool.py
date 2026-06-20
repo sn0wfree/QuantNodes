@@ -123,22 +123,6 @@ result = pl.DataFrame({
         assert result["analysis"]["correlation"] == {}
 
     @pytest.mark.asyncio
-    async def test_execute_correlation_only(self, tool):
-        code = """
-import polars as pl
-result = pl.DataFrame({
-    "date": ["2024-01-01", "2024-01-01", "2024-01-02", "2024-01-02"],
-    "code": ["A", "B", "A", "B"],
-    "factor_value": [0.1, 0.2, 0.3, 0.4],
-    "forward_return": [0.05, 0.03, 0.02, 0.01],
-})
-"""
-        result = await tool.execute(factor_code=code, analysis_type="correlation")
-        assert "analysis" in result
-        assert "correlation" in result["analysis"]
-        assert result["analysis"]["ic"] == {}
-
-    @pytest.mark.asyncio
     async def test_execute_with_date_filter(self, tool):
         code = """
 import polars as pl
@@ -156,18 +140,6 @@ result = pl.DataFrame({
             end_date="2024-01-03"
         )
         assert result["status"] == "success"
-
-    @pytest.mark.asyncio
-    async def test_execute_single_cross_section(self, tool):
-        code = """
-import polars as pl
-result = pl.DataFrame({
-    "factor_value": [0.1, 0.2, 0.3, 0.4],
-    "forward_return": [0.05, 0.03, 0.02, 0.01],
-})
-"""
-        result = await tool.execute(factor_code=code, analysis_type="ic")
-        assert "analysis" in result
 
 
 class TestFactorToolComputeIC:

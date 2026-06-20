@@ -16,12 +16,12 @@ class BacktestTool(Tool):
 
     通过 CodeSandbox 安全执行策略代码，提取节点，
     然后运行 Strategy→Risk→Broker 回测流程。
-    
+
     pipeline_code 示例:
         import pandas as pd
         from QuantNodes.backtest.strategy_node import MAStrategyNode
         from QuantNodes.backtest.broker_node import SimulatedBrokerNode
-        
+
         strategy = MAStrategyNode(config={'short_window': 5, 'long_window': 20})
         broker = SimulatedBrokerNode(config={'cash': 100000, 'commission': 0.001})
         quote_data = pd.read_csv('data.csv')
@@ -50,7 +50,9 @@ class BacktestTool(Tool):
             "properties": {
                 "pipeline_code": {
                     "type": "string",
-                    "description": "策略Pipeline代码，需创建 strategy、broker 变量和 quote_data DataFrame"
+                    "description": (
+                        "策略Pipeline代码，需创建 strategy、broker 变量和 quote_data DataFrame"
+                    ),
                 },
                 "start_date": {
                     "type": "string",
@@ -196,7 +198,9 @@ class BacktestTool(Tool):
             result["summary"] = {
                 "total_trades": len(trade_result.trades) if hasattr(trade_result, "trades") else 0,
                 "final_cash": trade_result.cash if hasattr(trade_result, "cash") else initial_cash,
-                "total_commission": trade_result.commission if hasattr(trade_result, "commission") else 0,
+                "total_commission": (
+                    trade_result.commission if hasattr(trade_result, "commission") else 0
+                ),
                 "strategy": strategy.__class__.__name__,
                 "broker": broker.__class__.__name__,
                 "risk_nodes": [r.__class__.__name__ for r in risk_nodes],

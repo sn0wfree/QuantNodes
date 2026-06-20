@@ -27,7 +27,9 @@ _RAG_EXAMPLE_TEMPLATE = """---
 指标: sharpe={sharpe}, arr={arr}, ic_mean={ic_mean}
 """
 
-_LINEAGE_RELATION_TEMPLATE = """{relation} (depth={depth}): {name} | sharpe={sharpe} | {expression}"""
+_LINEAGE_RELATION_TEMPLATE = (
+    "{relation} (depth={depth}): {name} | sharpe={sharpe} | {expression}"
+)
 
 _LINEAGE_COMPRESSED_TEMPLATE = """{relation} ({n} entries): {summary}"""
 

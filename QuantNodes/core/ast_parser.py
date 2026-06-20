@@ -97,10 +97,10 @@ def _ast_to_expr(node: ast.AST) -> Expression:
         if isinstance(node.func, ast.Attribute):
             expr = _ast_to_expr(node.func.value)
             method_name = node.func.attr
-            
+
             if method_name in FORBIDDEN_METHODS:
                 raise ValueError(f"Forbidden method: {method_name}")
-            
+
             args = tuple(_ast_to_expr(arg) for arg in node.args)
             kwargs = {
                 kw.arg: _ast_to_expr(kw.value)

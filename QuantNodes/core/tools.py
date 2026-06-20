@@ -49,17 +49,17 @@ def partition_list(data: List[T], n_parts: int) -> List[List[T]]:
         return [data]
     if n_parts >= len(data):
         return [[x] for x in data]
-    
+
     part_size = len(data) // n_parts
     remainder = len(data) % n_parts
-    
+
     result = []
     start = 0
     for i in range(n_parts):
         end = start + part_size + (1 if i < remainder else 0)
         result.append(data[start:end])
         start = end
-    
+
     return result
 
 
@@ -83,10 +83,10 @@ def partition_list_moving_sampling(
         return [data]
     if n_parts >= len(data):
         return [[x] for x in data]
-    
+
     if step is None:
         step = max(1, len(data) // n_parts)
-    
+
     result = []
     for i in range(n_parts):
         start = i * step
@@ -95,7 +95,7 @@ def partition_list_moving_sampling(
             result.append(data[start:end])
         else:
             result.append([])
-    
+
     return result
 
 
@@ -119,15 +119,15 @@ def start_multi_process(
     """
     if n_processes is None:
         n_processes = mp.cpu_count()
-    
+
     n_processes = min(n_processes, len(args_list)) if args_list else 1
-    
+
     if n_processes == 1:
         return [func(*args) for args in args_list]
-    
+
     with mp.Pool(processes=n_processes, maxtasksperchild=1) as pool:
         results = pool.starmap(func, args_list)
-    
+
     return results
 
 
@@ -149,7 +149,7 @@ def fill_na_by_lookback(
     """
     if lookback <= 0:
         return data
-    
+
     if isinstance(data, pd.DataFrame):
         result = data.copy()
         for _ in range(lookback):
@@ -188,12 +188,19 @@ def compile_id_filter_str(
     """
     if not filter_str:
         return None, None
-    
+
     try:
         valid_names = set(factor_names)
         if "@" in filter_str:
             factors = []
-            parts = filter_str.replace("=", "==").replace(">", " > ").replace("<", " < ").replace("&", " & ").replace("|", " | ").split()
+            normalized = (
+                filter_str.replace("=", "==")
+                .replace(">", " > ")
+                .replace("<", " < ")
+                .replace("&", " & ")
+                .replace("|", " | ")
+            )
+            parts = normalized.split()
             for part in parts:
                 part = part.strip()
                 if part.startswith("@") and part[1:] in valid_names:
@@ -242,11 +249,14 @@ def merge_data_frames(
         return pd.DataFrame()
     if len(dfs) == 1:
         return dfs[0]
-    
+
     result = dfs[0]
     for df in dfs[1:]:
-        result = pd.merge(result, df, how=how, on=on, left_index=left_index, right_index=right_index)
-    
+        result = pd.merge(
+            result, df, how=how, on=on,
+            left_index=left_index, right_index=right_index,
+        )
+
     return result
 
 

@@ -217,16 +217,16 @@ class CustomOperator:
     ) -> Callable:
         """
         直接注册自定义算子的便捷方法
-        
+
         Args:
             category: 算子类别 ("point", "time", "section", "multi_section", "talib")
             name: 算子名称
             func: 算子函数
             **kwargs: 额外参数
-        
+
         Returns:
             注册后的函数
-        
+
         Example:
             >>> def my_double(f, multiplier=2.0):
             ...     return f * multiplier

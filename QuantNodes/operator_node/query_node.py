@@ -113,7 +113,7 @@ class TableQueryNode(OperatorNode):
             raise ValueError("table or sql must be set")
 
         builder = SQLBuilderNode(table=self._table, columns=self._columns or ['*'])
-        
+
         if self._where:
             builder.where(self._where)
         if self._group_by:

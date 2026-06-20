@@ -201,7 +201,7 @@ class ConfigBacktestTool(Tool):
 
     def _load_data(self, config, data_path: str = None):
         """加载数据为 Polars LazyFrame
-        
+
         数据加载分发逻辑:
         1. data_path 参数 → 直接读文件（向后兼容）
         2. config.data.source == "csv"/"parquet" → 读文件
@@ -236,11 +236,11 @@ class ConfigBacktestTool(Tool):
 
     def _load_from_db(self, config):
         """从 database_node 加载数据
-        
+
         流程: 读取 conn.ini → 构建 SQL → 查询 → 列名映射 → 返回 LazyFrame
-        
+
         如果 cache_enabled=True, 优先使用 MarketDataCacheNode 缓存查询结果。
-        
+
         注意: DateTime 转换使用映射后的 date_column（而非 db_date_column）。
         """
         import polars as pl
@@ -357,7 +357,7 @@ class ConfigBacktestTool(Tool):
 
     def _build_query(self, data_cfg):
         """从 DataConfig 构建 SQL 查询
-        
+
         使用 db_*_column 作为 SQL 标识符（数据库原始列名）。
         如果 db_*_column 为空，则 fallback 到 date_column/code_column。
         """

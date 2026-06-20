@@ -466,7 +466,7 @@ class FactorTable(QuantNodesObject):
         CompiledIDFilterStr, IDFilterFactors = compile_id_filter_str(id_filter_str, self.FactorNames)
         if CompiledIDFilterStr is None:
             raise FactorError("过滤条件字符串有误!")
-        temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
+        temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]  # noqa: F841 (used in eval below)
         return eval("temp[" + CompiledIDFilterStr + "].index.tolist()")
 
     def getDateTime(self, ifactor_name=None, iid=None, start_dt=None, end_dt=None, args={}):
@@ -956,7 +956,7 @@ class CustomFT(FactorTable):
             self._IDFilterStr = OldIDFilterStr
             return pd.Series(True, index=ids)
         CompiledFilterStr, IDFilterFactors = self._CompiledIDFilter[self._IDFilterStr]
-        temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
+        temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]  # noqa: F841 (used in eval below)
         self._IDFilterStr = OldIDFilterStr
         return eval(CompiledFilterStr)
 
@@ -970,7 +970,7 @@ class CustomFT(FactorTable):
         CompiledFilterStr, IDFilterFactors = self._CompiledIDFilter[self._IDFilterStr]
         if CompiledFilterStr is None:
             raise FactorError("过滤条件字符串有误!")
-        temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]
+        temp = self.readData(factor_names=IDFilterFactors, ids=ids, dts=[idt], args=args).loc[:, idt, :]  # noqa: F841 (used in eval below)
         self._IDFilterStr = OldIDFilterStr
         return eval("temp[" + CompiledFilterStr + "].index.tolist()")
 

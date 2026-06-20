@@ -50,7 +50,10 @@ class FactorTool(Tool):
             "properties": {
                 "factor_code": {
                     "type": "string",
-                    "description": "因子的Python代码，结果应赋给 'result' 变量，包含 date/code/factor_value/forward_return 列"
+                    "description": (
+                        "因子的Python代码，结果应赋给 'result' 变量，"
+                        "包含 date/code/factor_value/forward_return 列"
+                    ),
                 },
                 "analysis_type": {
                     "type": "string",
@@ -164,7 +167,9 @@ class FactorTool(Tool):
             factor = df["factor_value"]
             fwd = df["forward_return"]
             ic_val = factor.to_frame().select(pl.corr(factor, fwd)).to_series()[0]
-            rank_ic_val = factor.rank().to_frame().select(pl.corr(factor.rank(), fwd.rank())).to_series()[0]
+            rank_ic_val = factor.rank().to_frame().select(
+                pl.corr(factor.rank(), fwd.rank())
+            ).to_series()[0]
             return {
                 "ic_mean": ic_val,
                 "ic_std": 0.0,

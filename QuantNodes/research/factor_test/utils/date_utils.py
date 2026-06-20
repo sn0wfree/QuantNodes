@@ -88,7 +88,7 @@ def get_adjust_date(trade_dt: pd.DataFrame, beg_date: int, end_date: int,
     """根据起始日、截止日、调仓模式确定调仓日"""
     trade_dt = trade_dt.copy()
 
-    if type(beg_date) != type(end_date) or not isinstance(beg_date, int):
+    if type(beg_date) is not type(end_date) or not isinstance(beg_date, int):
         raise ValueError("起始日与截止日格式不一致或非 int 型")
 
     if not isinstance(adj_mode, tuple) or len(adj_mode) != 2:

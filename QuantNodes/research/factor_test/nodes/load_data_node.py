@@ -30,7 +30,9 @@ class LoadDataNode(PydanticConfigNode):
     def _execute(self, input_data=None, **kwargs) -> Dict[str, pd.DataFrame]:
         # P-2: 空字符串校验 (Pydantic Field(...) 不挡空串, 需显式检查)
         if not self._data_path:
-            raise ValueError("data_path required (P-2: 启动报错, 防止 None 数据目录导致下游谜之失败)")
+            raise ValueError(
+                "data_path required (P-2: 启动报错, 防止 None 数据目录导致下游谜之失败)"
+            )
 
         loader = DataLoader(self._data_path)
         result = {}
@@ -43,7 +45,9 @@ class LoadDataNode(PydanticConfigNode):
                 if loader.valid_shape(factor):
                     factor = loader.add_index(factor)
                 else:
-                    raise ValueError(f"因子 {self._factor_config.name} shape 不一致: {factor.shape}")
+                    raise ValueError(
+                        f"因子 {self._factor_config.name} shape 不一致: {factor.shape}"
+                    )
             else:
                 stklist, trade_dt = loader.get_stock_axis()
                 factor = factor.reindex(index=trade_dt.iloc[:, 0], columns=stklist.iloc[:, 0])

@@ -99,7 +99,7 @@ def main():
     print(f"    Shape: {collected.shape}")
 
     t0 = time.time()
-    pandas_df = collected.to_pandas()
+    collected.to_pandas()
     t1 = time.time()
     print(f"    to_pandas 耗时: {t1-t0:.4f}s")
 

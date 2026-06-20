@@ -95,7 +95,7 @@ def scale(f: Union[Expr, str], method: str = "zscore", **kwargs) -> Expr:
     """归一化"""
     e = _ensure_expr(f)
     col_name = f if isinstance(f, str) else None
-    
+
     if method == "zscore":
         result = standardizeZScore(e)
     else:
@@ -103,7 +103,7 @@ def scale(f: Union[Expr, str], method: str = "zscore", **kwargs) -> Expr:
         e_max = e.max()
         diff = e_max - e_min
         result = pl.when(diff == 0).then(pl.lit(0.0)).otherwise((e - e_min) / diff)
-    
+
     if col_name:
         return result.alias(col_name)
     return result

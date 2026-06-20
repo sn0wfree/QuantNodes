@@ -11,7 +11,9 @@ import pandas as pd
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import SamplePoolNodeConfig
-from QuantNodes.research.factor_test.utils.constants import resolve_index_mapping, resolve_industry_map
+from QuantNodes.research.factor_test.utils.constants import (
+    resolve_index_mapping, resolve_industry_map,
+)
 
 
 class SamplePoolFilterNode(PydanticConfigNode):
@@ -84,7 +86,9 @@ class SamplePoolFilterNode(PydanticConfigNode):
             # M12: i18n 映射: self._i18n_name_map
             if self._i18n_name_map and ind_key in self._i18n_name_map:
                 ind_name = self._i18n_name_map[ind_key]
-            id_name_data = loader.load_h5('stk_daily.h5', f'ind_name_{ind_key.replace("id_", "").upper()}')
+            id_name_data = loader.load_h5(
+                'stk_daily.h5', f'ind_name_{ind_key.replace("id_", "").upper()}'
+            )
 
             # 找到行业名称对应的编号
             ind_idx = np.where(id_name_data.values == ind_name)[0]

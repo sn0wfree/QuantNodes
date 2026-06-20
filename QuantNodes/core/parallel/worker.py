@@ -107,7 +107,10 @@ def parallel_evaluate(
                 try:
                     results[idx] = fut.result()
                 except Exception as e:
-                    results[idx] = {"passed": False, "metrics": {}, "feedback_dict": None, "error": str(e)}
+                    results[idx] = {
+                        "passed": False, "metrics": {},
+                        "feedback_dict": None, "error": str(e),
+                    }
             return results  # type: ignore
 
     # ThreadPool 模式 (无需 pickle)
@@ -118,7 +121,7 @@ def parallel_evaluate(
             idx = futures[fut]
             try:
                 results[idx] = fut.result()
-            except Exception as e:
+            except Exception:
                 results[idx] = (False, {}, None)
         return results  # type: ignore
 

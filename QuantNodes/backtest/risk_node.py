@@ -127,7 +127,9 @@ class RiskNode(BaseNode[OrdersResult, RiskResult], ABC):
             elif isinstance(positions, TradeResult):
                 positions = self._derive_positions_from_trades(positions)
             else:
-                raise ValueError(f"positions must be dict or TradeResult, got {type(positions).__name__}")
+                raise ValueError(
+                    f"positions must be dict or TradeResult, got {type(positions).__name__}"
+                )
         else:
             raise ValueError(
                 f"input_data must be OrdersResult or (orders, positions) tuple, "
@@ -244,7 +246,10 @@ class PositionLimitRiskNode(RiskNode):
             return RiskCheck(
                 passed=False,
                 order=order,
-                reason=f"Position limit would be exceeded: {abs(new_position)} > {self._max_position}"
+                reason=(
+                    f"Position limit would be exceeded: {abs(new_position)}"
+                    f" > {self._max_position}"
+                )
             )
 
         return RiskCheck(passed=True, order=order)
@@ -301,7 +306,10 @@ class CashRiskNode(RiskNode):
         if order.size <= 0:
             return RiskCheck(passed=True, order=order)
 
-        estimated_cost = order.size * (order.limit_price or 0) * (1 + self._config.get('commission', 0.001))
+        commission_rate = self._config.get('commission', 0.001)
+        estimated_cost = (
+            order.size * (order.limit_price or 0) * (1 + commission_rate)
+        )
 
         if cash - estimated_cost < self._min_cash:
             return RiskCheck(

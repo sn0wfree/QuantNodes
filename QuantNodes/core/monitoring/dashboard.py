@@ -158,7 +158,10 @@ def _fig_quality_rejection(c: MetricCollector) -> Any:
             fail_n = getattr(m, f"{ch}_fail")
             total = pass_n + fail_n
             rate = fail_n / total if total > 0 else 0.0
-            df_dicts.append({"round": m.round, "channel": ch, "rejection_rate": rate, "total": total})
+            df_dicts.append({
+                "round": m.round, "channel": ch,
+                "rejection_rate": rate, "total": total,
+            })
     df = pd.DataFrame(df_dicts)
     fig = go.Figure()
     colors = {"code": "#4C78A8", "value": "#F58518", "llm": "#E45756"}
@@ -248,7 +251,8 @@ def generate_dashboard_html(
 (function() {{
   var INTERVAL = {refresh_interval_sec} * 1000;
   var lastModified = 0;
-  var metricsPath = "{str(Path(output_path).parent / (Path(output_path).stem + '_metrics.json')) if output_path else 'metrics.json'}";
+  var metricsPath = "{str(Path(output_path).parent / (Path(output_path).stem + '_metrics.json'))
+                    if output_path else 'metrics.json'}";
 
   function checkUpdate() {{
     fetch(metricsPath + '?t=' + Date.now(), {{method: 'HEAD'}})

@@ -135,7 +135,7 @@ class CoverageReport:
     """配置覆盖报告"""
     covered: List[str] = field(default_factory=list)
     unresolved: List[str] = field(default_factory=list)
-    
+
     @property
     def is_complete(self) -> bool:
         return len(self.unresolved) == 0
@@ -150,7 +150,7 @@ class ExecutionResult:
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     data: Any = None  # 计算后的 LazyFrame
-    
+
     @property
     def is_success(self) -> bool:
         return self.status == "success"

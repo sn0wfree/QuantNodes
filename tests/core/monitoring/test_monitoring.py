@@ -188,7 +188,7 @@ def test_cli_factor_dashboard(pool_with_metrics, tmp_path):
     import shutil
     real_pool_dir = tmp_path / "pool"
     shutil.copytree(pool_with_metrics.base_dir, real_pool_dir)
-    new_pool = TrajectoryPool(real_pool_dir)
+    TrajectoryPool(real_pool_dir)
 
     class Args:
         pool_dir = str(real_pool_dir)

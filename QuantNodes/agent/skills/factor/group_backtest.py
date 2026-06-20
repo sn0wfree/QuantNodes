@@ -32,20 +32,23 @@ class GroupBacktestSkill(Skill):
         period = context.get("period", 20)
 
         code = f'''
-def group_backtest(data, factor_col="factor", return_col="return", n_groups={n_groups}, period={period}):
+def group_backtest(
+    data, factor_col="factor", return_col="return",
+    n_groups={n_groups}, period={period},
+):
     """
     分组回测
     - 按因子值分{n_groups}组
     - 计算每组未来{period}天收益
     - 计算多空组合收益 (Group{n_groups} - Group1)
-    
+
     Parameters:
     - data: DataFrame with factor and return columns
     - factor_col: 因子列名
     - return_col: 收益列名
     - n_groups: 分组数量
     - period: 持有周期
-    
+
     Returns:
     - group_returns: 各组平均收益
     - long_short_return: 多空组合收益
@@ -53,23 +56,23 @@ def group_backtest(data, factor_col="factor", return_col="return", n_groups={n_g
     """
     import pandas as pd
     import numpy as np
-    
+
     data = data.copy()
     data["group"] = pd.qcut(data[factor_col], q={n_groups}, labels=False, duplicates="drop")
-    
+
     future_returns = data[return_col].shift(-{period})
     data["future_return"] = future_returns
-    
+
     group_returns = data.groupby("group")["future_return"].mean()
-    
+
     if len(group_returns) >= {n_groups}:
         long_short_return = group_returns.iloc[-1] - group_returns.iloc[0]
     else:
         long_short_return = np.nan
-    
+
     position = data.groupby("date")["group"].shift(1)
     turnover = (position != position.shift(1)).sum() / len(data)
-    
+
     result = {{
         "n_groups": {n_groups},
         "period": {period},

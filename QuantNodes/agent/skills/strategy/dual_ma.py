@@ -41,14 +41,14 @@ def dual_ma_strategy(data, fast_period={fast_period}, slow_period={slow_period})
       - 金叉买入(1), 死叉卖出(-1), 持有(0)
     """
     import pandas as pd
-    
+
     data["fast_ma"] = data["close"].rolling({fast_period}).mean()
     data["slow_ma"] = data["close"].rolling({slow_period}).mean()
-    
+
     data["signal"] = 0
     data.loc[data["fast_ma"] > data["slow_ma"], "signal"] = 1
     data.loc[data["fast_ma"] <= data["slow_ma"], "signal"] = -1
-    
+
     data["position"] = data["signal"].shift(1)
     return data
 '''

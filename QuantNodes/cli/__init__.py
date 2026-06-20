@@ -55,7 +55,7 @@ def create_directory_structure():
         "outputs",
         "logs",
     ]
-    
+
     for d in dirs:
         Path(d).mkdir(parents=True, exist_ok=True)
         print(f"  ✓ 创建目录: {d}/")
@@ -64,9 +64,9 @@ def create_directory_structure():
 def init_llmwikify_wiki(force: bool = False) -> bool:
     """Initialize QuantNodes wiki structure."""
     print("\n  初始化 QuantNodes Wiki...")
-    
+
     wiki_exists = Path("wiki/index.md").exists()
-    
+
     if wiki_exists and not force:
         print("  ⏭️  Wiki 已存在，跳过初始化")
         try:
@@ -76,10 +76,10 @@ def init_llmwikify_wiki(force: bool = False) -> bool:
         except Exception as e:
             print(f"  ⚠ 配置更新失败: {e}")
             return False
-    
+
     if wiki_exists and force:
         print("  🔄 强制重新初始化 Wiki")
-    
+
     try:
         result = subprocess.run(
             [sys.executable, "-m", "llmwikify", "init"],
@@ -93,7 +93,7 @@ def init_llmwikify_wiki(force: bool = False) -> bool:
     except Exception as e:
         print(f"  ⚠ llmwikify 初始化失败: {e}")
         return False
-    
+
     try:
         init_factor_wiki("wiki", force=True)
         print("  ✓ QuantNodes 专用配置写入完成")
@@ -142,13 +142,13 @@ def get_model_choice() -> str:
         "3": "gpt-4-turbo",
         "4": "custom",
     }
-    
+
     print("  选择模型:")
     print("    1) gpt-4 (默认)")
     print("    2) gpt-3.5-turbo")
     print("    3) gpt-4-turbo")
     print("    4) 自定义")
-    
+
     while True:
         try:
             choice = input("  选择 [1]: ").strip()
@@ -176,7 +176,7 @@ QUANTNODES__DUCKDB__PATH={duckdb_path}
 
 # 可选数据源
 """
-    
+
     if clickhouse_config:
         env_content += f"""QUANTNODES__CLICKHOUSE__HOST={clickhouse_config['host']}
 QUANTNODES__CLICKHOUSE__PORT={clickhouse_config['port']}
@@ -185,7 +185,7 @@ QUANTNODES__CLICKHOUSE__PASSWORD={clickhouse_config['passwd']}
 QUANTNODES__CLICKHOUSE__DATABASE={clickhouse_config['db']}
 
 """
-    
+
     if mysql_config:
         env_content += f"""QUANTNODES__MYSQL__HOST={mysql_config['host']}
 QUANTNODES__MYSQL__PORT={mysql_config['port']}
@@ -194,12 +194,12 @@ QUANTNODES__MYSQL__PASSWORD={mysql_config['passwd']}
 QUANTNODES__MYSQL__DATABASE={mysql_config['db']}
 
 """
-    
+
     env_content += """# 缓存配置 (H18: 与 IFindFetcher.DEFAULT_CACHE_TTL_S=604800 对齐)
 QUANTNODES__CACHE_ENABLED=true
 QUANTNODES__CACHE_TTL=604800
 """
-    
+
     with open(".env", "w", encoding="utf-8") as f:
         f.write(env_content)
     print("  ✓ 创建文件: .env")
@@ -212,7 +212,7 @@ path = {duckdb_path}
 read_only = False
 
 """
-    
+
     if clickhouse_config:
         conn_content += f"""[ClickHouse]
 host = {clickhouse_config['host']}
@@ -222,7 +222,7 @@ passwd = {clickhouse_config['passwd']}
 db = {clickhouse_config['db']}
 
 """
-    
+
     if mysql_config:
         conn_content += f"""[MySQL]
 host = {mysql_config['host']}
@@ -231,7 +231,7 @@ user = {mysql_config['user']}
 passwd = {mysql_config['passwd']}
 db = {mysql_config['db']}
 """
-    
+
     with open("conn.ini", "w", encoding="utf-8") as f:
         f.write(conn_content)
     print("  ✓ 创建文件: conn.ini")
@@ -263,34 +263,34 @@ def cmd_init(args) -> int:
     print("=" * 50)
     print("QuantNodes 初始化向导")
     print("=" * 50)
-    
+
     current_dir = Path.cwd()
     print(f"\n✓ 检测当前目录: {current_dir}")
     print("✓ 检查初始化状态...")
-    
+
     already_init = False
     if Path(".env").exists():
         print("  ✗ .env 已存在")
         already_init = True
-    
+
     if Path("conn.ini").exists():
         print("  ✗ conn.ini 已存在")
         already_init = True
-    
+
     if already_init and not args.force:
         print("\n错误: 当前目录已初始化")
         print("请先 cd 到其他目录，或使用 --force 强制重新初始化")
         return 1
-    
+
     if already_init and args.force:
         print("  (强制模式: 将覆盖现有配置)")
-    
+
     print()
-    
+
     print("-" * 50)
     print("配置 LLM")
     print("-" * 50)
-    
+
     api_key = get_input_with_default(
         "请输入 OpenAI API Key (sk-...)",
         "",
@@ -303,32 +303,32 @@ def cmd_init(args) -> int:
             "",
             required=True
         )
-    
+
     base_url = get_input_with_default(
         "请输入 API Base URL",
         "https://api.openai.com/v1"
     )
-    
+
     model = get_model_choice()
     if model == "custom":
         model = get_input_with_default("请输入自定义模型名称", "gpt-4")
-    
+
     print()
     print("-" * 50)
     print("配置数据源")
     print("-" * 50)
-    
+
     duckdb_path = get_input_with_default(
         "DuckDB 数据库路径",
         "data/quantnodes.db"
     )
-    
+
     configure_clickhouse = get_yes_no("是否配置 ClickHouse", default=False)
     configure_mysql = get_yes_no("是否配置 MySQL", default=False)
-    
+
     clickhouse_config = {}
     mysql_config = {}
-    
+
     if configure_clickhouse:
         print("\n  ClickHouse 配置:")
         clickhouse_config["host"] = get_input_with_default("    Host", "localhost")
@@ -336,7 +336,7 @@ def cmd_init(args) -> int:
         clickhouse_config["user"] = get_input_with_default("    User", "default")
         clickhouse_config["passwd"] = get_input_with_default("    Password", "")
         clickhouse_config["db"] = get_input_with_default("    Database", "default")
-    
+
     if configure_mysql:
         print("\n  MySQL 配置:")
         mysql_config["host"] = get_input_with_default("    Host", "localhost")
@@ -344,34 +344,34 @@ def cmd_init(args) -> int:
         mysql_config["user"] = get_input_with_default("    User", "root")
         mysql_config["passwd"] = get_input_with_default("    Password", "")
         mysql_config["db"] = get_input_with_default("    Database", "quant")
-    
+
     print()
-    
+
     print("-" * 50)
     print("初始化 llmwikify Wiki")
     print("-" * 50)
     init_llmwikify_wiki(force=args.force)
     print()
-    
+
     print("-" * 50)
     print("创建目录结构")
     print("-" * 50)
     create_directory_structure()
     print()
-    
+
     print("-" * 50)
     print("创建配置文件")
     print("-" * 50)
-    
+
     write_env_file(api_key, base_url, model, duckdb_path, clickhouse_config, mysql_config)
     write_conn_ini(duckdb_path, clickhouse_config, mysql_config)
-    
+
     print()
-    
+
     install_talib_option = get_yes_no("是否安装 TA-Lib 技术分析库 (可选)", default=True)
     if install_talib_option:
         install_talib()
-    
+
     print()
     print("=" * 50)
     print("✓ 初始化完成!")
@@ -388,7 +388,7 @@ def cmd_init(args) -> int:
     print()
     print("访问 http://localhost:5173")
     print()
-    
+
     return 0
 
 
@@ -401,7 +401,7 @@ def start_api_server(host: str, port: int, log_file: Optional[Path] = None) -> T
         "--port", str(port),
         "--reload"
     ]
-    
+
     if log_file:
         log_file.parent.mkdir(parents=True, exist_ok=True)
         log_fd = open(log_file, "w", encoding="utf-8")
@@ -423,12 +423,12 @@ def start_api_server(host: str, port: int, log_file: Optional[Path] = None) -> T
 def start_frontend_server(host: str, port: int, api_port: int = 8000, log_file: Optional[Path] = None) -> Tuple[subprocess.Popen, Optional[Any]]:
     """Start the frontend server. Returns (process, log_file_handle)."""
     cmd = ["npm", "run", "dev"]
-    
+
     env = os.environ.copy()
     env["HOST"] = host
     env["PORT"] = str(port)
     env["API_PORT"] = str(api_port)
-    
+
     if log_file:
         log_file.parent.mkdir(parents=True, exist_ok=True)
         log_fd = open(log_file, "w", encoding="utf-8")
@@ -455,7 +455,7 @@ def cmd_run(args) -> int:
         print("错误: 当前目录未初始化")
         print("请先运行: quantnodes init")
         return 1
-    
+
     host = args.host or DEFAULT_HOST
     frontend_port = args.port or DEFAULT_FRONTEND_PORT
     # 联动：如果只设置 --port，则 api_port = port + 1000
@@ -463,19 +463,19 @@ def cmd_run(args) -> int:
         api_port = args.port + 1000
     else:
         api_port = args.api_port or DEFAULT_API_PORT
-    
+
     if args.daemon:
         if sys.platform != "linux":
             print("错误: daemon 模式仅支持 Linux")
             return 1
-        
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_dir = Path("logs")
         log_dir.mkdir(exist_ok=True)
-        
+
         api_log = log_dir / f"quantnodes_api_{timestamp}.log"
         frontend_log = log_dir / f"quantnodes_frontend_{timestamp}.log"
-        
+
         print("=" * 50)
         print("QuantNodes 服务 (后台运行)")
         print("=" * 50)
@@ -484,10 +484,10 @@ def cmd_run(args) -> int:
         print(f"  API 日志: {api_log}")
         print(f"  前端日志: {frontend_log}")
         print()
-        
+
         api_proc, api_fd = start_api_server(host, api_port, api_log)
         frontend_proc, frontend_fd = start_frontend_server(host, frontend_port, api_port, frontend_log)
-        
+
         print("✓ 服务已后台启动")
         print(f"  API 进程: {api_proc.pid}")
         print(f"  前端进程: {frontend_proc.pid}")
@@ -498,16 +498,16 @@ def cmd_run(args) -> int:
         print()
         print("停止服务:")
         print(f"  kill {api_proc.pid} {frontend_proc.pid}")
-        
+
         return 0
-    
+
     print("=" * 50)
     print("QuantNodes 服务")
     print("=" * 50)
-    
+
     processes: List[Tuple[str, subprocess.Popen]] = []
     log_fds: List[Any] = []
-    
+
     try:
         if not args.frontend_only:
             print(f"\n启动后端: http://{host}:{api_port}")
@@ -515,7 +515,7 @@ def cmd_run(args) -> int:
             processes.append(("API", api_proc))
             log_fds.append(api_fd)
             print(f"  进程 PID: {api_proc.pid}")
-        
+
         if not args.api_only:
             print(f"\n启动前端: http://{host}:{frontend_port}")
             # Wait for backend to be ready before starting frontend
@@ -536,7 +536,7 @@ def cmd_run(args) -> int:
             processes.append(("Frontend", frontend_proc))
             log_fds.append(frontend_fd)
             print(f"  进程 PID: {frontend_proc.pid}")
-        
+
         print()
         print("=" * 50)
         print("✓ 服务已启动")
@@ -550,7 +550,7 @@ def cmd_run(args) -> int:
         print()
         print("按 Ctrl+C 停止服务")
         print()
-        
+
         try:
             for name, proc in processes:
                 proc.wait()
@@ -563,7 +563,7 @@ def cmd_run(args) -> int:
                 if fd:
                     fd.close()
             print("✓ 服务已停止")
-        
+
     except Exception as e:
         print(f"错误: {e}")
         for name, proc in processes:
@@ -572,7 +572,7 @@ def cmd_run(args) -> int:
             if fd:
                 fd.close()
         return 1
-    
+
     return 0
 
 
@@ -1199,12 +1199,12 @@ def main():
         description="QuantNodes CLI - 量化研究节点架构命令行工具",
         add_help=False
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
-    
+
     init_parser = subparsers.add_parser("init", help="初始化当前目录")
     init_parser.add_argument("--force", action="store_true", help="强制重新初始化")
-    
+
     run_parser = subparsers.add_parser("run", help="启动服务")
     run_parser.add_argument("--host", help="绑定主机")
     run_parser.add_argument("--port", type=int, help="前端端口")
@@ -1212,11 +1212,11 @@ def main():
     run_parser.add_argument("--daemon", action="store_true", help="后台运行 (仅 Linux)")
     run_parser.add_argument("--api-only", action="store_true", dest="api_only", help="仅启动后端")
     run_parser.add_argument("--frontend-only", action="store_true", dest="frontend_only", help="仅启动前端")
-    
+
     chat_parser = subparsers.add_parser("chat", help="启动 Agent 对话模式")
     chat_parser.add_argument("message", nargs="?", help="单次提问（不指定则进入交互模式）")
     chat_parser.add_argument("--workspace", default=".", help="工作目录")
-    
+
     # Week 5: 演化实验子命令
     evolve_parser = subparsers.add_parser("evolve", help="多轮演化主入口")
     evolve_parser.add_argument("--config", required=True, help="YAML 配置文件路径")
@@ -1229,10 +1229,10 @@ def main():
     evolve_parser.add_argument("--min-ipo-days", type=int, default=None, help="剔除上市不足 N 日新股 (覆盖 config 默认值 360)")
     evolve_parser.add_argument("--min-group-size", type=int, default=None, help="计算 IC 最少样本数 (覆盖 config 默认值 5)")
     evolve_parser.add_argument("--groups", type=int, default=None, help="分组分析分组数 (覆盖 config 默认值 5)")
-    
+
     info_parser = subparsers.add_parser("factor-info", help="显示 TrajectoryPool 统计")
     info_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
-    
+
     best_parser = subparsers.add_parser("factor-best", help="显示 Top-N 最佳 entry")
     best_parser.add_argument("--pool-dir", required=True, help="Pool 目录路径")
     best_parser.add_argument("--top", type=int, default=5, help="Top-N (默认 5)")
@@ -1279,12 +1279,12 @@ def main():
     dash_parser.add_argument("--streaming", action="store_true", help="启用 streaming 模式 (自动刷新 10s)")
     dash_parser.add_argument("--refresh", type=int, default=10, help="streaming 刷新间隔秒数 (默认 10)")
     dash_parser.add_argument("--watch", action="store_true", help="后台模式: 每 10s 刷新 dashboard")
-    
+
     subparsers.add_parser("version", help="显示版本")
     subparsers.add_parser("help", help="显示帮助")
-    
+
     args = parser.parse_args()
-    
+
     if args.command == "init":
         return cmd_init(args)
     elif args.command == "run":

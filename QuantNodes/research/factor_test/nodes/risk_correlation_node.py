@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
+from QuantNodes.research.factor_test.nodes.configs import RiskCorrelationNodeConfig
 
 logger = logging.getLogger(__name__)
-from QuantNodes.research.factor_test.nodes.configs import RiskCorrelationNodeConfig
 
 
 class RiskCorrelationNode(PydanticConfigNode):
@@ -33,7 +33,11 @@ class RiskCorrelationNode(PydanticConfigNode):
 
     def _execute(self, input_data=None, **kwargs) -> dict:
         context = kwargs.get('context', {})
-        factor_data = context.get('FactorNeutralize') if context.get('FactorNeutralize') is not None else context.get('FactorPreprocess')
+        neutralized = context.get('FactorNeutralize')
+        factor_data = (
+            neutralized if neutralized is not None
+            else context.get('FactorPreprocess')
+        )
         if factor_data is None:
             raise ValueError("因子数据缺失")
 

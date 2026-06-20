@@ -26,11 +26,11 @@ def _check_and_install_frontend():
     global _frontend_installed
     if _frontend_installed:
         return
-    
+
     package_root = Path(__file__).parent.parent
     frontend_dir = package_root / "frontend"
     node_modules = frontend_dir / "node_modules"
-    
+
     if frontend_dir.exists() and not node_modules.exists():
         print("检测到前端依赖未安装，正在安装...")
         try:
@@ -43,7 +43,7 @@ def _check_and_install_frontend():
             print("✓ 前端依赖安装完成")
         except Exception as e:
             print(f"⚠ 前端依赖安装失败: {e}")
-    
+
     _frontend_installed = True
 
 

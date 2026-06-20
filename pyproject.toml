@@ -60,6 +60,31 @@ markers = [
 line-length = 100
 target-version = "py39"
 
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E731",  # lambda assignment: common in operator registries, project style
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Symbolic dialect implements an abstract SQL dialect interface; one-liner
+# method bodies are intentional for line-by-line parity with the other dialects.
+"QuantNodes/symbolic/dialect.py" = ["E701", "E501"]
+# Factor / operator / time-series code: dense math/algorithm code frequently
+# needs longer lines for readability of expressions.
+"QuantNodes/factor_node/factor_table.py" = ["E501"]
+"QuantNodes/factor_node/factor_operation.py" = ["E501"]
+"QuantNodes/factor_node/factor.py" = ["E501"]
+"QuantNodes/factor_node/factor_functions/talib_ops.py" = ["E501"]
+"QuantNodes/factor_node/factor_functions/time_ops.py" = ["E501"]
+"QuantNodes/operators/talib.py" = ["E501"]
+"QuantNodes/operators/time_series.py" = ["E501"]
+"QuantNodes/database_node/clickhouse_node.py" = ["E501"]
+# CLI is a 1300-line module scheduled for E1 split; allow long lines for now.
+"QuantNodes/cli/__init__.py" = ["E501"]
+"QuantNodes/core/control.py" = ["E741"]  # TypeVar('I') / TypeVar('O') are conventional
+"tests/**/*.py" = ["E402", "E501", "E741"]  # tests allow flexible style
+
 [tool.black]
 line-length = 100
 target-version = ["py39"]

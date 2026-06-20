@@ -27,21 +27,27 @@ class TableEngineCreator(object):
 
         PRIMARY_BY_CLAUSE = cls._assemble_cols_2_clause('PRIMARY BY', primary_by_cols, default='')
 
-        PARTITION_by_CLAUSE = cls._assemble_cols_2_clause('PARTITION BY', partition_by_cols, default='')
+        PARTITION_by_CLAUSE = cls._assemble_cols_2_clause('PARTITION BY', partition_by_cols, default='')  # noqa: E501 (long var name)
 
-        return cls.raw_create_ReplacingMergeTree_table_sql(DB_TABLE, cols_def, ORDER_BY_CLAUSE,
-                                                  PRIMARY_BY_CLAUSE=PRIMARY_BY_CLAUSE,
-                                                  SAMPLE_CLAUSE=SAMPLE_CLAUSE,
-                                                  ENGINE_TYPE='ReplacingMergeTree', ON_CLUSTER=ON_CLUSTER,
-                                                  PARTITION_by_CLAUSE=PARTITION_by_CLAUSE)
+        return cls.raw_create_ReplacingMergeTree_table_sql(
+            DB_TABLE, cols_def, ORDER_BY_CLAUSE,
+            PRIMARY_BY_CLAUSE=PRIMARY_BY_CLAUSE,
+            SAMPLE_CLAUSE=SAMPLE_CLAUSE,
+            ENGINE_TYPE='ReplacingMergeTree', ON_CLUSTER=ON_CLUSTER,
+            PARTITION_by_CLAUSE=PARTITION_by_CLAUSE,
+        )
 
     @staticmethod
-    def raw_create_ReplacingMergeTree_table_sql(DB_TABLE, cols_def, ORDER_BY_CLAUSE,
-                                        PRIMARY_BY_CLAUSE='', SAMPLE_CLAUSE='',
-                                        ENGINE_TYPE='ReplacingMergeTree', ON_CLUSTER='', PARTITION_by_CLAUSE='',
-                                        TTL=''
-                                        ):
-        maid_body = f"CREATE TABLE IF NOT EXISTS {DB_TABLE} {ON_CLUSTER} ( {cols_def} ) ENGINE = {ENGINE_TYPE}"
+    def raw_create_ReplacingMergeTree_table_sql(
+        DB_TABLE, cols_def, ORDER_BY_CLAUSE,
+        PRIMARY_BY_CLAUSE='', SAMPLE_CLAUSE='',
+        ENGINE_TYPE='ReplacingMergeTree', ON_CLUSTER='',
+        PARTITION_by_CLAUSE='', TTL='',
+    ):
+        maid_body = (
+            f"CREATE TABLE IF NOT EXISTS {DB_TABLE} {ON_CLUSTER} "
+            f"( {cols_def} ) ENGINE = {ENGINE_TYPE}"
+        )
 
         settings = "SETTINGS index_granularity = 8192"
         conds = f"{PARTITION_by_CLAUSE} {ORDER_BY_CLAUSE} {PRIMARY_BY_CLAUSE} {SAMPLE_CLAUSE} {TTL}"
@@ -135,13 +141,15 @@ class SQLBuilder:
         return sql
 
     @classmethod
-    def create_select_sql(cls, DB_TABLE: str, cols: list,
-                          sample: (int, float, None) = None,
-                          array_join: (list, None) = None, join: (dict, None) = None,
-                          prewhere: (list, None) = None, where: (list, None) = None, having: (list, None) = None,
-                          group_by: (list, None) = None,
-                          order_by: (list, None) = None, limit_by: (dict, None) = None,
-                          limit: (int, None) = None) -> str:
+    def create_select_sql(
+        cls, DB_TABLE: str, cols: list,
+        sample: (int, float, None) = None,
+        array_join: (list, None) = None, join: (dict, None) = None,
+        prewhere: (list, None) = None, where: (list, None) = None,
+        having: (list, None) = None, group_by: (list, None) = None,
+        order_by: (list, None) = None, limit_by: (dict, None) = None,
+        limit: (int, None) = None,
+    ) -> str:
         SELECT_CLAUSE = ','.join(cols)
         SAMPLE_CLAUSE = cls._assemble_sample(sample=sample)
         ARRAY_JOIN_CLAUSE = cls._assemble_array_join(array_join_list=array_join)
@@ -154,9 +162,11 @@ class SQLBuilder:
         LIMIT_N_CLAUSE = cls._assemble_limit_by(limit_by)
         LIMIT_CLAUSE = cls._assemble_limit(limit)
 
-        return cls.raw_create_select_sql(SELECT_CLAUSE, DB_TABLE, SAMPLE_CLAUSE, ARRAY_JOIN_CLAUSE, JOIN_CLAUSE,
-                                  PREWHERE_CLAUSE, WHERE_CLAUSE, GROUP_BY_CLAUSE, HAVING_CLAUSE, ORDER_BY_CLAUSE,
-                                  LIMIT_N_CLAUSE, LIMIT_CLAUSE)
+        return cls.raw_create_select_sql(
+            SELECT_CLAUSE, DB_TABLE, SAMPLE_CLAUSE, ARRAY_JOIN_CLAUSE, JOIN_CLAUSE,
+            PREWHERE_CLAUSE, WHERE_CLAUSE, GROUP_BY_CLAUSE, HAVING_CLAUSE,
+            ORDER_BY_CLAUSE, LIMIT_N_CLAUSE, LIMIT_CLAUSE,
+        )
 
 
 __all__ = ['SQLBuilder', 'TableEngineCreator']

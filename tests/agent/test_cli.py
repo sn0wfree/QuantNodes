@@ -49,7 +49,7 @@ class TestMain:
     def test_main_no_provider(self):
         from QuantNodes.agent.cli.main import main
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory():
             with patch("QuantNodes.agent.cli.main._get_default_provider", return_value=None):
                 with patch("sys.argv", ["agent"]):
                     with patch("sys.stderr"):
@@ -64,7 +64,7 @@ class TestMain:
         mock_loop_instance = Mock()
         mock_loop_instance.chat = AsyncMock(return_value="Response")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory():
             with patch("QuantNodes.agent.cli.main._get_default_provider", return_value=mock_provider):
                 with patch("QuantNodes.agent.cli.main.AgentLoop", return_value=mock_loop_instance):
                     with patch("sys.argv", ["agent", "Hello", "World"]):
@@ -80,7 +80,7 @@ class TestMain:
         mock_loop_instance = Mock()
         mock_loop_instance.chat = AsyncMock(return_value="Response")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory():
             with patch("QuantNodes.agent.cli.main._get_default_provider", return_value=mock_provider):
                 with patch("QuantNodes.agent.cli.main.AgentLoop", return_value=mock_loop_instance):
                     with patch("sys.argv", ["agent", "--no-echo", "test"]):
@@ -96,7 +96,7 @@ class TestMain:
         mock_loop_instance = Mock()
         mock_loop_instance.chat = AsyncMock(return_value="Response")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory():
             with patch("QuantNodes.agent.cli.main._get_default_provider", return_value=mock_provider):
                 with patch("QuantNodes.agent.cli.main.AgentLoop", return_value=mock_loop_instance):
                     with patch("sys.argv", ["agent", "test"]):
@@ -126,7 +126,7 @@ class TestMain:
         mock_loop_instance = Mock()
         mock_loop_instance.chat = AsyncMock(return_value="Response")
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory():
             with patch("QuantNodes.agent.cli.main._get_default_provider", return_value=mock_provider):
                 with patch("QuantNodes.agent.cli.main.AgentLoop", return_value=mock_loop_instance):
                     with patch("sys.argv", ["agent", "--model", "gpt-4", "test"]):

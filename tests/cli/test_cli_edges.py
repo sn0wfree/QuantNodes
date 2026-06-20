@@ -25,7 +25,7 @@ def _parse(args_list: list[str]) -> argparse.Namespace:
     """直接调 main() 入口, 拦截 sys.argv。"""
     test_argv = [PROG_NAME] + args_list
     with patch.object(sys, "argv", test_argv):
-        with patch("QuantNodes.cli.main") as mock_main:
+        with patch("QuantNodes.cli.main"):
             # 让 main() 内部 parser.parse_args() 解析我们的 argv
             # 简化: 直接构造 Namespace
             pass  # 如果存在
@@ -79,7 +79,7 @@ class TestParserConstruction:
             try:
                 result = main()
                 assert result == 0
-            except SystemExit as e:
+            except SystemExit:
                 # argparse 在无 add_help=False 时会抛, 当前有 add_help=False
                 # 应走 help 分支
                 pass
@@ -95,7 +95,6 @@ class TestArgparseInternals:
     def _build_parser_and_parse(self, args_list):
         """构造与 main 相同的 parser, 解析 args。"""
         # 通过捕获 main 内部的 parser 构造
-        captured = {}
 
         def fake_main():
             parser = argparse.ArgumentParser(prog=PROG_NAME, add_help=False)

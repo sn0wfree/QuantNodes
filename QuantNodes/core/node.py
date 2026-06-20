@@ -263,7 +263,10 @@ class BaseNode(QuantNodesBase, Serializable, ABC, Generic[T, R]):
                 self.before_execute(input_data, **kwargs)
 
             # 2. 输入校验（可选）
-            should_validate = validate_input if validate_input is not None else self._enable_validation
+            should_validate = (
+                validate_input if validate_input is not None
+                else self._enable_validation
+            )
             if should_validate:
                 self._validate_input(input_data)
 

@@ -153,7 +153,8 @@ class OpenAIClient(LLMClientBase):
                     raise APIError(f"API error: {response.status_code} - {response.text}")
                 elif response.status_code != 200:
                     self.logger.error(
-                        f"API error: {response.status_code}. URL: {url} | Body: {response.text[:500]}"
+                        f"API error: {response.status_code}. "
+                        f"URL: {url} | Body: {response.text[:500]}"
                     )
                     raise APIError(f"API error: {response.status_code} - {response.text}")
 
@@ -227,13 +228,15 @@ class OpenAIClient(LLMClientBase):
                         time.sleep(wait_time)
                         continue
                     self.logger.error(
-                        f"Stream API error after {self.max_retries} retries: {response.status_code}. "
+                        f"Stream API error after {self.max_retries} retries: "
+                        f"{response.status_code}. "
                         f"URL: {url} | Body: {response.text[:500]}"
                     )
                     raise APIError(f"API error: {response.status_code} - {response.text}")
                 elif response.status_code != 200:
                     self.logger.error(
-                        f"Stream API error: {response.status_code}. URL: {url} | Body: {response.text[:500]}"
+                        f"Stream API error: {response.status_code}. "
+                        f"URL: {url} | Body: {response.text[:500]}"
                     )
                     raise APIError(f"API error: {response.status_code} - {response.text}")
 

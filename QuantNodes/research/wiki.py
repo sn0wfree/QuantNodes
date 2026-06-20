@@ -439,7 +439,13 @@ class WikiFactorProxy:
     def add_relation(self, source_name: str, target_name: str, relation: str) -> bool:
         if relation not in QUANT_RELATION_TYPES:
             raise WikiProxyError(f"Invalid relation type: {relation}")
-        self.wiki.write_relations([{"source": source_name, "target": target_name, "relation": relation, "confidence": "EXTRACTED"}])
+        relation_entry = {
+            "source": source_name,
+            "target": target_name,
+            "relation": relation,
+            "confidence": "EXTRACTED",
+        }
+        self.wiki.write_relations([relation_entry])
         return True
 
     def get_neighbors(self, name: str) -> List[Dict]:
@@ -602,7 +608,8 @@ class WikiFactorProxy:
         category = FactorCategory.OTHER
         formula = ""
         tags = []
-        ic_mean = ic_std = icir = rank_ic_mean = n_dates = factor_return_corr = ic_t_stat = turnover = None
+        ic_mean = ic_std = icir = rank_ic_mean = None
+        n_dates = factor_return_corr = ic_t_stat = turnover = None
         used_by_strategies = []
         strategy_yaml = None
         created_at = None
@@ -686,7 +693,25 @@ class WikiFactorProxy:
                 sl = sl.strip()
                 if sl.startswith('-'):
                     used_by_strategies.append(sl[1:].strip())
-        return WikiFactor(name=name, formula=formula, source=source, category=category, tags=tags, ic_mean=ic_mean, ic_std=ic_std, icir=icir, rank_ic_mean=rank_ic_mean, n_dates=n_dates, factor_return_corr=factor_return_corr, ic_t_stat=ic_t_stat, turnover=turnover, used_by_strategies=used_by_strategies, strategy_yaml=strategy_yaml, wiki_page_name=page_name, created_at=created_at)
+        return WikiFactor(
+            name=name,
+            formula=formula,
+            source=source,
+            category=category,
+            tags=tags,
+            ic_mean=ic_mean,
+            ic_std=ic_std,
+            icir=icir,
+            rank_ic_mean=rank_ic_mean,
+            n_dates=n_dates,
+            factor_return_corr=factor_return_corr,
+            ic_t_stat=ic_t_stat,
+            turnover=turnover,
+            used_by_strategies=used_by_strategies,
+            strategy_yaml=strategy_yaml,
+            wiki_page_name=page_name,
+            created_at=created_at,
+        )
 
     def _render_logic_markdown(self, logic: WikiLogic) -> str:
         lines = ["---"]
@@ -779,7 +804,17 @@ class WikiFactorProxy:
                 sl = sl.strip()
                 if sl.startswith('-'):
                     related_factors.append(sl[1:].strip())
-        return WikiLogic(name=name, content=content_body, source=source, extracted_formula=extracted_formula, related_strategies=related_strategies, related_factors=related_factors, validation_status=validation_status, wiki_page_name=page_name, created_at=created_at)
+        return WikiLogic(
+            name=name,
+            content=content_body,
+            source=source,
+            extracted_formula=extracted_formula,
+            related_strategies=related_strategies,
+            related_factors=related_factors,
+            validation_status=validation_status,
+            wiki_page_name=page_name,
+            created_at=created_at,
+        )
 
     def _page_name_to_name(self, page_name: str, page_type: str) -> str:
         prefix = f'{page_type}/'
@@ -906,7 +941,9 @@ class WikiFactorProxy:
         lines.append(f"- 验证失败: {reproduction.failed_count}")
         return "\n".join(lines)
 
-    def _parse_reproduction_from_page(self, page_name: str, page_data: Dict) -> Optional[WikiReproduction]:
+    def _parse_reproduction_from_page(
+        self, page_name: str, page_data: Dict,
+    ) -> Optional[WikiReproduction]:
         content = page_data.get("content", "")
         name = self._page_name_to_name(page_name, self.PAGE_TYPE_REPRODUCTION)
         if not name:
@@ -916,7 +953,6 @@ class WikiFactorProxy:
         verified_count = 0
         failed_count = 0
         created_at = None
-        report_markdown = ""
         in_frontmatter = False
         in_markdown = False
         markdown_content = ""

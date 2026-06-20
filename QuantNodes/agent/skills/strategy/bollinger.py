@@ -43,16 +43,16 @@ def bollinger_strategy(data, period={period}, std_dev={std_dev}):
       - 持有(0)
     """
     import pandas as pd
-    
+
     data["mid"] = data["close"].rolling({period}).mean()
     data["std"] = data["close"].rolling({period}).std()
     data["upper"] = data["mid"] + {std_dev} * data["std"]
     data["lower"] = data["mid"] - {std_dev} * data["std"]
-    
+
     data["signal"] = 0
     data.loc[data["close"] <= data["lower"], "signal"] = 1
     data.loc[data["close"] >= data["upper"], "signal"] = -1
-    
+
     data["position"] = data["signal"].shift(1)
     return data
 '''

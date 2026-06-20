@@ -52,8 +52,13 @@ class ComplexityChecker:
             )
 
         passed = len(violations) == 0
-        detail = "; ".join(violations) if violations else \
-            f"OK (length={symbol_length}, features={base_features}, free_args={free_args_ratio:.2f})"
+        if violations:
+            detail = "; ".join(violations)
+        else:
+            detail = (
+                f"OK (length={symbol_length}, features={base_features},"
+                f" free_args={free_args_ratio:.2f})"
+            )
         score = 1.0 if passed else 0.0
         return ChannelFeedback(
             channel=FeedbackChannel.CODE,

@@ -412,7 +412,7 @@ class TestCustomOperatorBuilderChain:
         from QuantNodes.operators import CustomOperator
         from QuantNodes.factor_node.factor_functions import get_operator
 
-        result = (
+        (
             CustomOperator.section("chain_section_1")
             .param("method", str, "zscore", "标准化方法")
             .execute(lambda f, method: (f - f.mean()) / f.std())
@@ -449,9 +449,9 @@ class TestCustomOperatorBuilderChain:
             .execute(lambda f, count, ratio, name: f * ratio)
         )
 
-        assert builder._params["count"]["type"] == int
-        assert builder._params["ratio"]["type"] == float
-        assert builder._params["name"]["type"] == str
+        assert builder._params["count"]["type"] is int  # noqa: E721
+        assert builder._params["ratio"]["type"] is float  # noqa: E721
+        assert builder._params["name"]["type"] is str  # noqa: E721
 
     def test_builder_duplicate_alias_ignored(self):
         from QuantNodes.operators import CustomOperator
@@ -486,7 +486,7 @@ class TestCustomOperatorBuilderChain:
             .execute(lambda f: f * 2)
         )
 
-        result1 = builder.register()
+        builder.register()
         assert get_operator("double_register") is not None
 
     def test_builder_with_talib_category(self):

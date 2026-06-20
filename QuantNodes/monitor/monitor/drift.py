@@ -124,7 +124,10 @@ class DriftDetector:
 
         current_dd = current_snapshot.max_drawdown
         if abs(current_dd) > abs(self.max_drawdown_limit):
-            severity = "critical" if abs(current_dd) > abs(self.max_drawdown_limit) * 1.5 else "warning"
+            critical_threshold = abs(self.max_drawdown_limit) * 1.5
+            severity = (
+                "critical" if abs(current_dd) > critical_threshold else "warning"
+            )
             alert = DriftAlert(
                 strategy_name=strategy_name,
                 alert_type="drawdown_breach",

@@ -222,7 +222,7 @@ class TestPointOperators:
 
     def test_ceil(self):
         result = ceil("factor1")
-        expr = result.meta.serialize()
+        result.meta.serialize()
         assert result is not None
 
     def test_floor(self):

@@ -27,7 +27,10 @@ class LambdaNode(BaseNode):
         ... )
     """
 
-    def __init__(self, func: Callable[[Any, Any], Any], name: str = None, config: Dict[str, Any] = None):
+    def __init__(
+        self, func: Callable[[Any, Any], Any], name: str = None,
+        config: Dict[str, Any] = None,
+    ):
         """
         Args:
             func: 执行函数，签名为 func(input_data, context) -> result

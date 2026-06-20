@@ -135,9 +135,15 @@ class MomentumStrategyNode(StrategyNode):
             sig = signals.iloc[i]
             if sig != position:
                 if sig == 1:
-                    orders.append({'date': idx, 'symbol': 'BTC', 'action': 'buy', 'price': row['close']})
+                    orders.append({
+                        'date': idx, 'symbol': 'BTC',
+                        'action': 'buy', 'price': row['close'],
+                    })
                 elif sig == -1:
-                    orders.append({'date': idx, 'symbol': 'BTC', 'action': 'sell', 'price': row['close']})
+                    orders.append({
+                        'date': idx, 'symbol': 'BTC',
+                        'action': 'sell', 'price': row['close'],
+                    })
                 position = sig
         return orders
 

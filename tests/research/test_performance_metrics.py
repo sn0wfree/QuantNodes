@@ -41,7 +41,7 @@ class TestCalcMaxDrawdown:
 class TestCalNetSimple:
     def _net_and_dates(self):
         dates = pd.to_datetime(["2025-01-01", "2025-01-15", "2025-02-01", "2025-02-15"])
-        dates_int = [int(d.strftime("%Y%m%d")) for d in dates]
+        [int(d.strftime("%Y%m%d")) for d in dates]
         np.random.seed(42)
         net = pd.Series(np.cumprod(1 + np.random.randn(46) * 0.01) + 1,
                         index=pd.date_range("2025-01-01", periods=46, freq="D"))

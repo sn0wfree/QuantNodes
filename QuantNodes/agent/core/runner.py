@@ -159,7 +159,8 @@ class AgentRunner:
             dict: 事件字典，类型包括:
                 - {"type": "token", "content": str} - 流式文本token
                 - {"type": "tool_call", "id": str, "name": str, "arguments": dict} - 工具调用开始
-                - {"type": "tool_result", "id": str, "name": str, "content": str, "success": bool} - 工具执行结果
+                - {"type": "tool_result", "id": str, "name": str, "content": str,
+                    "success": bool} - 工具执行结果
                 - {"type": "done", "content": str, "tools_used": list, "stop_reason": str} - 完成
                 - {"type": "error", "content": str} - 错误
         """
@@ -168,7 +169,6 @@ class AgentRunner:
         total_usage: Dict[str, int] = {}
         error: str | None = None
         stop_reason = "max_iterations"
-        had_injections = False
         final_content = ""
 
         for iteration in range(spec.max_iterations):
@@ -273,7 +273,6 @@ class AgentRunner:
                 injections = await spec.injection_callback()
                 if injections:
                     messages.extend(injections)
-                    had_injections = True
 
             final_content = ""
 

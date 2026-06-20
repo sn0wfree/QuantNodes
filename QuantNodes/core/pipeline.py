@@ -319,5 +319,10 @@ class Join(BaseNode):
     def to_info(self) -> Dict[str, Any]:
         """导出节点信息"""
         result = super().to_info()
-        result['join_func'] = self.join_func.__name__ if hasattr(self.join_func, '__name__') else str(self.join_func)
+        join_name = (
+            self.join_func.__name__
+            if hasattr(self.join_func, '__name__')
+            else str(self.join_func)
+        )
+        result['join_func'] = join_name
         return result

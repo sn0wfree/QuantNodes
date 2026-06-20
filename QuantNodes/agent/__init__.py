@@ -6,20 +6,25 @@ QuantNodes Agent 系统
 
 Usage:
     from QuantNodes.agent import Agent
-    
+
     agent = Agent(workspace="./workspace", config={"model": "gpt-4o"})
     response = await agent.run("帮我生成一个动量策略")
 """
+
+from .core.loop import AgentLoop
+from .core.memory import MemoryStore, MemoryManager, DreamStore
+from .core.dream import DreamEngine
+from .core.autocompact import truncate_history, microcompact
 
 __version__ = "2.5.0"
 
 
 class Agent:
     """QuantNodes 量化研究Agent
-    
+
     Doc 14 规定的对外API门面。
     内部组合 AgentLoop + ToolRegistry + LLMProvider。
-    
+
     Examples:
         >>> agent = Agent(workspace="./workspace", config={"model": "gpt-4o"})
         >>> response = await agent.run("生成一个动量因子策略")
@@ -27,7 +32,7 @@ class Agent:
 
     def __init__(self, workspace: str, config: dict = None):
         """初始化Agent
-        
+
         Args:
             workspace: 工作目录路径
             config: 配置字典
@@ -189,26 +194,33 @@ class Agent:
 
     async def run(self, prompt: str, session_id: str = "default") -> str:
         """运行一次对话
-        
+
         Args:
             prompt: 用户输入
             session_id: 会话ID
-            
+
         Returns:
             Agent回复
         """
         return await self._loop.chat(prompt, session_id=session_id)
 
-    async def chat(self, message: str, session_id: str = "default", model: str | None = None, max_tokens: int | None = None, mode: str | None = None):
+    async def chat(
+        self,
+        message: str,
+        session_id: str = "default",
+        model: str | None = None,
+        max_tokens: int | None = None,
+        mode: str | None = None,
+    ):
         """流式对话（生成器）
-        
+
         Args:
             message: 用户输入
             session_id: 会话ID
             model: 可选，覆盖本次对话使用的模型
             max_tokens: 可选，覆盖本次对话的最大token数
             mode: 可选，'build' 或 'plan'，从 mode_models 中解析模型
-            
+
         Yields:
             dict: 事件字典
                 - {"type": "token", "content": str} - 流式文本token
@@ -218,7 +230,10 @@ class Agent:
                 - {"type": "error", "content": str}
         """
         if self._loop.provider is None:
-            yield {"type": "error", "content": "LLM provider not configured. Set QUANTNODES__LLM__API_KEY in .env"}
+            yield {
+                "type": "error",
+                "content": "LLM provider not configured. Set QUANTNODES__LLM__API_KEY in .env",
+            }
             return
 
         # Resolve model from mode if provided
@@ -232,14 +247,14 @@ class Agent:
             if not max_tokens:
                 resolved_max_tokens = mode_config.get("max_tokens", resolved_max_tokens)
 
-        async for event in self._loop.chat_stream(message, session_id=session_id, model=resolved_model, max_tokens=resolved_max_tokens):
+        async for event in self._loop.chat_stream(
+            message,
+            session_id=session_id,
+            model=resolved_model,
+            max_tokens=resolved_max_tokens,
+        ):
             yield event
 
-
-from .core.loop import AgentLoop
-from .core.memory import MemoryStore, MemoryManager, DreamStore
-from .core.dream import DreamEngine
-from .core.autocompact import truncate_history, microcompact
 
 __all__ = [
     "__version__",

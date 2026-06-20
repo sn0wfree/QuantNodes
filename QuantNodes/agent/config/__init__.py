@@ -11,10 +11,10 @@ Modules:
 
 Usage:
     from QuantNodes.agent.config import ConfigLoader, ConfigExecutor
-    
+
     loader = ConfigLoader()
     config = loader.load("strategy.yaml")
-    
+
     executor = ConfigExecutor()
     result = executor.run(config, data)
 """
@@ -25,7 +25,7 @@ from .types import StrategyConfig, FactorConfig, OperationConfig, BacktestConfig
 
 __all__ = [
     "ConfigLoader",
-    "ConfigExecutor", 
+    "ConfigExecutor",
     "load_config",
     "StrategyConfig",
     "FactorConfig",

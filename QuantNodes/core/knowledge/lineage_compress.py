@@ -77,7 +77,9 @@ class Compressor:
                 normalized.append((0, item))
 
         if not normalized:
-            return CompressedLineage(summary="", original_count=0, compressed_chars=0, method="heuristic")
+            return CompressedLineage(
+                summary="", original_count=0, compressed_chars=0, method="heuristic"
+            )
 
         if self._llm_callable is not None:
             summary, method = self._llm_summarize(normalized, relation)

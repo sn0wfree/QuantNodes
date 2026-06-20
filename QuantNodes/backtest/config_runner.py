@@ -117,13 +117,13 @@ class ConfigBacktestRunner:
             "commission": bt.commission if bt else 0.001,
             "slippage": bt.slippage if bt else 0.001,
         }
-        
+
         # 传递可选的Broker参数
         if bt and hasattr(bt, 'positions'):
             for key in ("trade_on_close", "hedging"):
                 if key in bt.positions:
                     broker_config[key] = bt.positions[key]
-        
+
         return ExecutionBrokerNode(config=broker_config)
 
     def _apply_risk(
@@ -266,7 +266,10 @@ class ConfigBacktestRunner:
             d_str = str(d)[:10]  # 统一为 YYYY-MM-DD 格式
 
             # 处理当日交易
-            while trade_idx < len(trades_sorted) and str(trades_sorted[trade_idx]["dt"])[:10] == d_str:
+            while (
+                trade_idx < len(trades_sorted)
+                and str(trades_sorted[trade_idx]["dt"])[:10] == d_str
+            ):
                 t = trades_sorted[trade_idx]
                 sign = 1.0 if t["side"] == "buy" else -1.0
                 qty = t["size"] * sign
@@ -339,7 +342,11 @@ class ConfigBacktestRunner:
 
         stem = Path(output_cfg.path).stem
 
-        if output_cfg.save_equity_curve and bt_result.equity_curve is not None and not bt_result.equity_curve.empty:
+        if (
+            output_cfg.save_equity_curve
+            and bt_result.equity_curve is not None
+            and not bt_result.equity_curve.empty
+        ):
             p = str(out_dir / f"{stem}_equity.{fmt}")
             self._save_dataframe(bt_result.equity_curve, p, fmt)
             saved["equity_curve"] = p
@@ -349,7 +356,11 @@ class ConfigBacktestRunner:
             self._save_dataframe(signals_df, p, fmt)
             saved["signals"] = p
 
-        if output_cfg.save_positions and bt_result.trades is not None and not bt_result.trades.empty:
+        if (
+            output_cfg.save_positions
+            and bt_result.trades is not None
+            and not bt_result.trades.empty
+        ):
             p = str(out_dir / f"{stem}_trades.{fmt}")
             self._save_dataframe(bt_result.trades, p, fmt)
             saved["trades"] = p

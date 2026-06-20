@@ -196,7 +196,11 @@ class SQLFunction(SQLExpression):
 class SQLCase(SQLExpression):
     """CASE WHEN 表达式"""
 
-    def __init__(self, when_clauses: List[Tuple[SQLExpression, SQLExpression]], else_: Optional[SQLExpression] = None):
+    def __init__(
+        self,
+        when_clauses: List[Tuple[SQLExpression, SQLExpression]],
+        else_: Optional[SQLExpression] = None,
+    ):
         self.when_clauses = when_clauses
         self.else_ = else_
 

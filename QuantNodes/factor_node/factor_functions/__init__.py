@@ -46,13 +46,9 @@ from QuantNodes.factor_node.factor_functions.math_ops import (
     where, fillna,
     add, sub, mul, div,
     log1p, if_then_else, market_cap,
+    weighted_sum, combine,
+    book_to_market, earnings_to_market,
 )
-
-# 为测试兼容性导出 (shadow builtins)
-abs = ff_abs
-log = ff_log
-pow = ff_pow
-sqrt = ff_sqrt
 
 from QuantNodes.factor_node.factor_functions.time_ops import (
     rolling_mean, rolling_std, rolling_max, rolling_min, rolling_sum,
@@ -91,10 +87,11 @@ from QuantNodes.factor_node.factor_functions.composite_ops import (
     merge, chg_ids, blend, nav, rebase,
 )
 
-from QuantNodes.factor_node.factor_functions.math_ops import weighted_sum, combine
-
-# 额外的组合/多截面函数
-from QuantNodes.factor_node.factor_functions.math_ops import book_to_market, earnings_to_market
+# 为测试兼容性导出 (shadow builtins)
+abs = ff_abs
+log = ff_log
+pow = ff_pow
+sqrt = ff_sqrt
 
 
 # ==============================================================================

@@ -57,7 +57,9 @@ class YamlConfigNode(ConfigNode):
         try:
             import yaml
         except ImportError:
-            raise ImportError("PyYAML is required for YAML config. Install with: pip install pyyaml")
+            raise ImportError(
+                "PyYAML is required for YAML config. Install with: pip install pyyaml"
+            )
 
         with open(self.file_path, 'r', encoding=self.encoding) as f:
             data = yaml.safe_load(f)

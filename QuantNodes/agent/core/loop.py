@@ -111,7 +111,11 @@ class AgentLoop:
         }
         return limits.get(model or "", 128000)
 
-    def _auto_compact(self, messages: List[Dict[str, Any]], model: str | None) -> List[Dict[str, Any]]:
+    def _auto_compact(
+        self,
+        messages: List[Dict[str, Any]],
+        model: str | None,
+    ) -> List[Dict[str, Any]]:
         """自动压缩：保留系统消息，将历史消息摘要化"""
         system_msgs = [m for m in messages if m.get("role") == "system"]
         non_system_msgs = [m for m in messages if m.get("role") != "system"]
@@ -197,7 +201,8 @@ class AgentLoop:
         session = self.session_manager.get_session(session_key)
 
         # Phase F: 处理待分析截断消息
-        if session_key in self._pending_dream_analysis and self._pending_dream_analysis[session_key]:
+        pending = self._pending_dream_analysis
+        if session_key in pending and pending[session_key]:
             await self._process_compaction_dreams(session_key)
 
         # Phase D: 对话洞察分析（仅在积累足够后触发）
@@ -391,7 +396,8 @@ class AgentLoop:
         logger.info("[loop.chat] Running agent spec...")
 
         result = await self.runner.run(spec)
-        logger.info(f"[loop.chat] Runner completed: final_content_length={len(result.final_content) if result.final_content else 0}")
+        final_len = len(result.final_content) if result.final_content else 0
+        logger.info(f"[loop.chat] Runner completed: final_content_length={final_len}")
 
         # Phase D + F: Dream 分析
         await self._process_dream_analysis(
@@ -411,11 +417,18 @@ class AgentLoop:
         )
 
         self.session_manager.save_session(session)
-        logger.info(f"[loop.chat] Done: returning {len(result.final_content) if result.final_content else 0} chars")
+        final_chars = len(result.final_content) if result.final_content else 0
+        logger.info(f"[loop.chat] Done: returning {final_chars} chars")
 
         return result.final_content or ""
 
-    async def chat_stream(self, message: str, session_id: str = "default", model: str | None = None, max_tokens: int | None = None):
+    async def chat_stream(
+        self,
+        message: str,
+        session_id: str = "default",
+        model: str | None = None,
+        max_tokens: int | None = None,
+    ):
         """流式单轮对话API（不经过消息总线）
 
         Args:
@@ -456,7 +469,13 @@ class AgentLoop:
         estimated_tokens = self._estimate_tokens(messages)
         context_limit = self._get_context_limit(model or self.model)
         if estimated_tokens > context_limit * 0.9:
-            yield {"type": "system", "content": f"Context approaching limit ({estimated_tokens}/{context_limit} tokens). Compacting..."}
+            yield {
+                "type": "system",
+                "content": (
+                    f"Context approaching limit "
+                    f"({estimated_tokens}/{context_limit} tokens). Compacting..."
+                ),
+            }
             messages = self._auto_compact(messages, model or self.model)
 
         spec = AgentRunSpec(

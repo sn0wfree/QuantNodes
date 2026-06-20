@@ -319,7 +319,7 @@ def test_e2e_yaml_to_cli_full_flow(tmp_path):
         pool=pool,
         evaluate_fn=_mock_evaluate(0.5),
     )
-    result = loop.run(initial_directions=["d1", "d2"])
+    loop.run(initial_directions=["d1", "d2"])
 
     assert pool.size >= 3
 

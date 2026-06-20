@@ -286,7 +286,9 @@ class PipelineOptimizer:
         analyses = self.analyzer.analyze(code)
         if analyses:
             estimated_cost = sum(a.estimated_cost for a in analyses)
-            all_improvements.append(f"Analyzed {len(analyses)} nodes, estimated cost: {estimated_cost:.2f}")
+            all_improvements.append(
+                f"Analyzed {len(analyses)} nodes, estimated cost: {estimated_cost:.2f}"
+            )
 
         for optimizer in self.rule_optimizers:
             if optimizer.can_apply(code):
@@ -333,7 +335,9 @@ class PipelineOptimizer:
         if goal == "performance":
             goal_instruction = "Focus on reducing execution time and minimizing API calls."
         elif goal == "memory":
-            goal_instruction = "Focus on reducing memory usage and avoiding unnecessary data copies."
+            goal_instruction = (
+                "Focus on reducing memory usage and avoiding unnecessary data copies."
+            )
         elif goal == "readability":
             goal_instruction = "Focus on improving code clarity and maintainability."
 
@@ -391,6 +395,8 @@ class PipelineOptimizer:
 
         for optimizer in self.rule_optimizers:
             if optimizer.can_apply(code):
-                suggestions.append(f"Rule-based optimization available: {optimizer.__class__.__name__}")
+                suggestions.append(
+                    f"Rule-based optimization available: {optimizer.__class__.__name__}"
+                )
 
         return suggestions

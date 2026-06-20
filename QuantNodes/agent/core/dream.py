@@ -102,7 +102,8 @@ class DreamEngine:
         confidence = 0.6
 
         if any(kw in user_message for kw in ["IC", "ICIR", "因子", "factor"]):
-            if any(kw in assistant_response for kw in ["IC均值", "ICIR", "因子有效", "因子无效", "IC"]):
+            factor_keywords = ["IC均值", "ICIR", "因子有效", "因子无效", "IC"]
+            if any(kw in assistant_response for kw in factor_keywords):
                 insights.append("对话涉及因子分析")
                 confidence += 0.1
 
