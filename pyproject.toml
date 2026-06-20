@@ -26,6 +26,16 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/sn0wfree/QuantNodes"
 
+[project.optional-dependencies]
+streamlit-ui = ["streamlit>=1.28.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.4",
+    "mypy>=1.5",
+]
+
 [project.scripts]
 quantnodes = "QuantNodes.cli:main"
 

@@ -73,6 +73,12 @@ QuantNodes/
 pip install -e .
 ```
 
+可选附加组件:
+
+```bash
+pip install -e '.[streamlit-ui]'   # 启用 Streamlit Agent 调试 UI
+```
+
 ### 初始化项目
 
 ```bash
