@@ -16,7 +16,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from ..quality_gate import FactorZoo, QualityGateNode, QualityGateSetting
 from ..trajectory import (
@@ -28,6 +28,9 @@ from ..trajectory import (
 from ..knowledge import KnowledgeBase, RAGEvaluator
 from .operators import Crosser, FactorCandidate, Hypothesizer, Mutator
 from .settings import EvolutionSetting
+
+if TYPE_CHECKING:
+    from ..feedback import FactorFeedback
 
 
 # 回调签名: candidate -> (passed, metrics, feedback)

@@ -5,10 +5,14 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .entry import TrajectoryEntry
+
+if TYPE_CHECKING:
+    from .pool import TrajectoryPool
 
 
 class SelectionStrategy(str, Enum):
