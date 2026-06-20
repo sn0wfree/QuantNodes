@@ -9,6 +9,7 @@ import pandas as pd
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import LongShortNodeConfig
+from QuantNodes.research.factor_test.utils.labels import L_S_COLS, NET_COLS
 from QuantNodes.research.factor_test.utils.performance_metrics import evaluation
 
 
@@ -65,17 +66,17 @@ class LongShortNode(PydanticConfigNode):
             group_result['group_eva_exc'][short_n],
             eva_longshort.iloc[0, 1:],
         ], axis=1)
-        eva_l_s_ls.columns = ['多头超额', '空头超额', '多空']
+        eva_l_s_ls.columns = L_S_COLS
 
         period_ret = pd.concat([long_ret, short_ret, longshort_ret], axis=1)
-        period_ret.columns = ['多头超额', '空头超额', '多空']
+        period_ret.columns = L_S_COLS
 
         net = pd.concat([
             daily_net_long, daily_net_short,
             daily_exc_long, daily_exc_short,
             daily_net_longshort,
         ], axis=1)
-        net.columns = ['多头', '空头', '多头超额', '空头超额', '多空']
+        net.columns = NET_COLS
 
         eva_yearly = {
             '多头超额': group_result['group_eva_exc_yearly'].get(long_n),
