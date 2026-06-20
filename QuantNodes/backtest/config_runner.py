@@ -22,6 +22,7 @@ from QuantNodes.backtest.backtest_node import BacktestResult
 from QuantNodes.backtest.strategy_node import OrdersResult
 from QuantNodes.backtest.broker_node import ExecutionBrokerNode
 from QuantNodes.backtest.risk_node import PositionLimitRiskNode, RiskNode
+from QuantNodes.core.path_utils import ensure_dir
 
 
 class ConfigBacktestRunner:
@@ -335,7 +336,7 @@ class ConfigBacktestRunner:
             return {}
 
         out_dir = Path(output_cfg.path).parent
-        out_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(out_dir)
 
         fmt = output_cfg.format.lower()
         saved: Dict[str, str] = {}

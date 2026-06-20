@@ -19,6 +19,7 @@ from typing import Any
 import pandas as pd
 
 from .collector import MetricCollector
+from QuantNodes.core.path_utils import ensure_parent
 
 
 def _fig_rag_lines(c: MetricCollector) -> Any:
@@ -308,6 +309,6 @@ th {{ background: #4C78A8; color: white; }}
 
     if output_path is not None:
         output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(output_path)
         output_path.write_text(html, encoding="utf-8")
     return html

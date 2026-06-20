@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from .base import Tool
+from QuantNodes.core.path_utils import ensure_parent
 
 
 class FileOpsTool(Tool):
@@ -134,7 +135,7 @@ class FileOpsTool(Tool):
         self, path: str = "", content: str = "", **kw,
     ) -> Dict[str, Any]:
         target = self._safe_path(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(target)
         target.write_text(content, encoding="utf-8")
         return {
             "status": "ok",

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, List
+from QuantNodes.core.path_utils import ensure_dir
 
 
 @dataclass
@@ -53,7 +54,7 @@ class CacheMetadata:
 
     def save(self, table_dir: Path, meta: CacheMeta) -> None:
         """保存元数据"""
-        table_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(table_dir)
         path = self._get_meta_path(table_dir)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(asdict(meta), f, indent=2, ensure_ascii=False)

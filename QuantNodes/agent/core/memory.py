@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 from pathlib import Path
 import json
+from QuantNodes.core.path_utils import ensure_dir
 
 
 @dataclass
@@ -47,7 +48,7 @@ class DreamStore:
 
     def __init__(self, workspace: Path):
         self.workspace = Path(workspace) / "dream"
-        self.workspace.mkdir(parents=True, exist_ok=True)
+        ensure_dir(self.workspace)
         self._dreams_file = self.workspace / "dreams.jsonl"
         self._memory_file = self.workspace.parent / "memory" / "memory.md"
 
@@ -115,7 +116,7 @@ class MemoryStore:
 
     def __init__(self, workspace: Path | str):
         self.workspace = Path(workspace) / "memory"
-        self.workspace.mkdir(parents=True, exist_ok=True)
+        ensure_dir(self.workspace)
         self._memory_file = self.workspace / "memory.md"
         self._history_file = self.workspace / "history.jsonl"
         self._dream_store = DreamStore(workspace)
@@ -211,7 +212,7 @@ class MemoryManager:
 
     def __init__(self, workspace: Path | str):
         self.workspace = Path(workspace) / "memory"
-        self.workspace.mkdir(parents=True, exist_ok=True)
+        ensure_dir(self.workspace)
         self._index_file = self.workspace / self.INDEX_FILE
 
     def read_index(self) -> str:

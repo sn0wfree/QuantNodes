@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from QuantNodes.core.path_utils import ensure_parent
+
 from .metrics import (
     hit_rate_at_k,
     intra_list_diversity,
@@ -161,14 +163,14 @@ class RAGEvaluator:
     def save(self, report: EvalReport, path: Path | str) -> None:
         """保存为 JSON。"""
         path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(path)
         with path.open("w", encoding="utf-8") as f:
             json.dump(report.to_dict(), f, ensure_ascii=False, indent=2)
 
     def save_csv(self, report: EvalReport, path: Path | str) -> None:
         """保存 per-query 为 CSV。"""
         path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(path)
         rows = [asdict(q) for q in report.per_query]
         df = pd.DataFrame(rows)
         df.to_csv(path, index=False)

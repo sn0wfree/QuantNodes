@@ -11,6 +11,7 @@ import pandas as pd
 from ..constants import PARQUET_COLUMNS as _PARQUET_COLUMNS
 from .entry import TrajectoryEntry
 from .lineage import children_of, descendants, lineage
+from QuantNodes.core.path_utils import ensure_dir
 
 
 _PARQUET_NAME = "trajectories.parquet"
@@ -36,9 +37,9 @@ class TrajectoryPool:
         parquet_name: str = _PARQUET_NAME,
     ):
         self.base_dir = Path(base_dir)
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(self.base_dir)
         self._entries_dir = self.base_dir / _ENTRIES_SUBDIR
-        self._entries_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(self._entries_dir)
         self._parquet_name = parquet_name
         self._entries: dict[str, TrajectoryEntry] = {}
         self._parquet_path = self.base_dir / self._parquet_name

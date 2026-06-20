@@ -10,6 +10,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import Any, Dict, List
 import json
+from QuantNodes.core.path_utils import ensure_dir
 
 
 @dataclass
@@ -54,7 +55,7 @@ class SessionManager:
 
     def __init__(self, workspace: Path | str):
         self.workspace = Path(workspace) / "sessions"
-        self.workspace.mkdir(parents=True, exist_ok=True)
+        ensure_dir(self.workspace)
         self._cache: Dict[str, Session] = {}
 
     def get_session(self, session_id: str) -> Session:

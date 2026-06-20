@@ -11,6 +11,8 @@ Usage:
     response = await agent.run("帮我生成一个动量策略")
 """
 
+from QuantNodes.core.path_utils import ensure_dir
+
 from .core.loop import AgentLoop
 from .core.memory import MemoryStore, MemoryManager, DreamStore
 from .core.dream import DreamEngine
@@ -64,7 +66,7 @@ class Agent:
 
         config = config or {}
         workspace_path = Path(workspace)
-        workspace_path.mkdir(parents=True, exist_ok=True)
+        ensure_dir(workspace_path)
 
         self._max_tokens = config.get("max_tokens", 102400)
 

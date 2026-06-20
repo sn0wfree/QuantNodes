@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import ClassVar, Callable
 
 from .fetcher import IFindFetcher
+from QuantNodes.core.path_utils import ensure_dir
 
 logger = logging.getLogger(__name__)
 
@@ -608,7 +609,7 @@ class IFinDDatabase:
             dict: {file: {key: shape}, ...} 拉取统计
         """
         output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(output_dir)
         all_keys = ['cp', 'st', 'suspend', 'ud_limit', 'ipo_days', 'id_citic1', 'mv_float']
         if keys is None:
             keys = all_keys

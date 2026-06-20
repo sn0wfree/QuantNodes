@@ -8,6 +8,7 @@ from ..trajectory import TrajectoryEntry
 from .gate_breakdown import gate_breakdown_figure, operation_breakdown_figure
 from .lineage_dag import lineage_dag_figure
 from .metric_distribution import metric_distribution_figure, metric_per_round_figure
+from QuantNodes.core.path_utils import ensure_parent
 
 
 _OVERVIEW_TEMPLATE = """
@@ -139,6 +140,6 @@ th {{ background: #4C78A8; color: white; }}
 
     if output_path is not None:
         output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(output_path)
         output_path.write_text(html, encoding="utf-8")
     return html

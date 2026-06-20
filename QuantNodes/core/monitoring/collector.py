@@ -24,6 +24,7 @@ import pandas as pd
 
 from ..feedback import FeedbackChannel
 from ..trajectory import TrajectoryPool
+from QuantNodes.core.path_utils import ensure_parent
 
 
 # ============================================================================
@@ -230,7 +231,7 @@ class MetricCollector:
     def save(self, path: Path | str) -> None:
         """保存为 JSON。"""
         path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(path)
         with path.open("w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, ensure_ascii=False, indent=2)
 
@@ -275,7 +276,7 @@ class MetricCollector:
     def save_csv(self, path_prefix: Path | str) -> None:
         """保存 3 类指标为 3 个 CSV。"""
         path_prefix = Path(path_prefix)
-        path_prefix.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(path_prefix)
         for name, history in (
             ("rag", self.rag_history),
             ("evolution", self.evolution_history),

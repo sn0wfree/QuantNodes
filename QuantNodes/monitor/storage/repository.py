@@ -9,6 +9,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional, List
 
+from QuantNodes.core.path_utils import ensure_parent
+
 from .models import (
     StrategyRun, PerformanceSnapshot, DriftAlert, StrategyVersion,
 )
@@ -78,7 +80,7 @@ class DatabaseManager:
 
     def __init__(self, db_path: str = "~/.quantnodes/monitor.db"):
         self.db_path = Path(db_path).expanduser()
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(self.db_path)
         self._conn: Optional[sqlite3.Connection] = None
 
     def connect(self) -> sqlite3.Connection:

@@ -8,6 +8,7 @@ import hashlib
 from pathlib import Path
 
 import pandas as pd
+from QuantNodes.core.path_utils import ensure_dir
 
 # ── iFinD API 配置 ──────────────────────────────────────────────
 IFIND_SKILL_DIR = Path.home() / '.agents/skills/ifind'
@@ -46,7 +47,7 @@ class IFindFetcher:
         if cache_dir is None:
             cache_dir = Path(__file__).parent / 'cache'
         self._cache_dir = Path(cache_dir)
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(self._cache_dir)
         self._last_call_time = 0.0
         # H17: 限流 / 缓存 TTL 全部可覆盖
         self.rate_limit_s = (

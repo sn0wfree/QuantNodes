@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from QuantNodes.research.wiki import init_factor_wiki
+from QuantNodes.core.path_utils import ensure_dir
 
 PROG_NAME = "quantnodes"
 DEFAULT_API_PORT = 8000
@@ -49,7 +50,7 @@ def create_directory_structure():
     ]
 
     for d in dirs:
-        Path(d).mkdir(parents=True, exist_ok=True)
+        ensure_dir(Path(d))
         print(f"  ✓ 创建目录: {d}/")
 
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Iterator
 
 import pandas as pd
+from QuantNodes.core.path_utils import ensure_parent
 
 
 def ast_hash(expression: str) -> int:
@@ -79,7 +80,7 @@ class FactorZoo:
     def _save(self) -> None:
         if self.path is None or not self._entries:
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(self.path)
         df = pd.DataFrame(
             [(h, e) for h, e in self._entries.items()],
             columns=["hash", "expression"],

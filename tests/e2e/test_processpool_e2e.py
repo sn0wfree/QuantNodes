@@ -27,6 +27,7 @@ from QuantNodes.core.monitoring import (
     RagMetrics,
     generate_dashboard_html,
 )
+from QuantNodes.core.path_utils import ensure_dir
 from QuantNodes.core.parallel import parallel_evaluate
 from QuantNodes.core.parallel.worker_process import (
     prepare_snapshot,
@@ -44,7 +45,7 @@ def _make_h5_dataset(data_dir: Path, n_days: int = 60, n_stocks: int = 20) -> di
     stocks = list(range(100001, 100001 + n_stocks))
     rng = np.random.RandomState(42)
 
-    data_dir.mkdir(parents=True, exist_ok=True)
+    ensure_dir(data_dir)
     pd.DataFrame(stocks, columns=[0]).to_hdf(data_dir / "stklist.h5", key="data", mode="w")
     pd.DataFrame(dates, columns=[0]).to_hdf(data_dir / "trade_dt.h5", key="data", mode="w")
 

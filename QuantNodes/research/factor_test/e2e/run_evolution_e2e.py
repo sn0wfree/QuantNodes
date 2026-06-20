@@ -44,6 +44,7 @@ from QuantNodes.core.knowledge import (
     KnowledgeBase,
     RAGEvaluator,
 )
+from QuantNodes.core.path_utils import ensure_dir
 from QuantNodes.core.visualization import generate_html
 from QuantNodes.research.factor_test.config import (
     AnalysisSetting,
@@ -185,7 +186,7 @@ def main():
 
     data_path = Path(args.data_path)
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    ensure_dir(output_dir)
     directions = [d.strip() for d in args.directions.split(",") if d.strip()]
 
     print("=" * 70)

@@ -20,6 +20,7 @@ from QuantNodes.core.feedback import (
     LLMJudge,
     ensure_feedback,
 )
+from QuantNodes.core.path_utils import ensure_dir
 from QuantNodes.research.factor_test.config import SingleFactorTestConfig
 
 
@@ -85,7 +86,7 @@ def maybe_persist_feedback(
     if cfg.feedback.output_dir is None:
         return
     out = Path(cfg.feedback.output_dir)
-    out.mkdir(parents=True, exist_ok=True)
+    ensure_dir(out)
     parquet_path = out / "feedback.parquet"
     for node_name, fb in feedbacks.items():
         fb.save_parquet(parquet_path)

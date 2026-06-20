@@ -32,6 +32,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from QuantNodes.core.path_utils import ensure_dir
 
 
 def _gen_factor_data(rng: np.random.RandomState, n_days: int, n_stocks: int,
@@ -120,7 +121,7 @@ def main():
     args = parser.parse_args()
 
     out = Path(args.output_dir)
-    out.mkdir(parents=True, exist_ok=True)
+    ensure_dir(out)
     rng = np.random.RandomState(args.seed)
     n_days, n_stocks = args.n_days, args.n_stocks
     factors = [f.strip() for f in args.factors.split(",") if f.strip()]

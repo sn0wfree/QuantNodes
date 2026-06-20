@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, Any, List
 
+from QuantNodes.core.path_utils import ensure_parent
+
 from .._helpers import (
     DEFAULT_API_PORT,
     DEFAULT_FRONTEND_PORT,
@@ -32,7 +34,7 @@ def start_api_server(
     ]
 
     if log_file:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(log_file)
         log_fd = open(log_file, "w", encoding="utf-8")
         proc = subprocess.Popen(
             cmd,
@@ -64,7 +66,7 @@ def start_frontend_server(
     env["API_PORT"] = str(api_port)
 
     if log_file:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(log_file)
         log_fd = open(log_file, "w", encoding="utf-8")
         proc = subprocess.Popen(
             cmd,

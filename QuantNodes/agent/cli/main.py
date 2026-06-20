@@ -12,6 +12,7 @@ from ..bus.queue import MessageBus
 from ..providers.base import LLMProvider
 from ..tools.echo import EchoTool
 from ..core.loop import AgentLoop
+from QuantNodes.core.path_utils import ensure_dir
 
 
 def _get_default_provider() -> Optional[LLMProvider]:
@@ -90,7 +91,7 @@ def main():
     args = parser.parse_args()
 
     workspace = Path(args.workspace).expanduser().resolve()
-    workspace.mkdir(parents=True, exist_ok=True)
+    ensure_dir(workspace)
 
     bus = MessageBus()
     provider = _get_default_provider()

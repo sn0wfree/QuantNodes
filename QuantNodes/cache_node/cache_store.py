@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+from QuantNodes.core.path_utils import ensure_dir
 
 
 class ParquetCacheStore:
@@ -53,7 +54,7 @@ class ParquetCacheStore:
     def write(self, table: str, df: pd.DataFrame) -> None:
         """写入缓存 (覆盖模式)"""
         table_dir = self._get_table_dir(table)
-        table_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(table_dir)
         df.to_parquet(table_dir / "data.parquet", index=False)
 
     def append(self, table: str, df_new: pd.DataFrame) -> int:

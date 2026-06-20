@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pickle
 from pathlib import Path
+from QuantNodes.core.path_utils import ensure_parent
 
 
 # ============================================================================
@@ -227,7 +228,7 @@ class RunnerSnapshot:
     def save(self, path: Path) -> None:
         """序列化到 pickle 文件。"""
         path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(path)
         snapshot = {
             "config": self.config,
             "context": self.context,

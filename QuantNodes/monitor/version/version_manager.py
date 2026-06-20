@@ -10,6 +10,7 @@ from typing import List, Optional
 from ..storage.models import StrategyVersion
 from ..storage.repository import VersionRepository
 from .diff import ConfigDiffer
+from QuantNodes.core.path_utils import ensure_dir
 
 
 class VersionManager:
@@ -26,7 +27,7 @@ class VersionManager:
     ):
         self.repo = version_repo
         self.strategies_dir = Path(strategies_dir).expanduser()
-        self.strategies_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(self.strategies_dir)
         self.differ = ConfigDiffer()
         self._init_repo()
 
@@ -72,7 +73,7 @@ class VersionManager:
         3. 保存到数据库
         """
         strategy_dir = self.strategies_dir / strategy_name
-        strategy_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(strategy_dir)
 
         # 确定版本号
         existing = self.repo.list_versions(strategy_name)
@@ -131,7 +132,7 @@ class VersionManager:
 
         # 写入 current.yaml
         strategy_dir = self.strategies_dir / strategy_name
-        strategy_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(strategy_dir)
         current_path = strategy_dir / f"{strategy_name}_current.yaml"
         current_path.write_text(target.config_snapshot, encoding="utf-8")
 

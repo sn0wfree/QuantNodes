@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 
 from ..constants import EXTENDED_METRIC_KEYS as KNOWN_METRICS
+from QuantNodes.core.path_utils import ensure_parent
 
 
 class FeedbackChannel(str, Enum):
@@ -104,7 +105,7 @@ class FactorFeedback:
     def save_json(self, path: Path) -> None:
         """保存为 JSON 格式 (供调试)。"""
         path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(path)
         with path.open("w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, ensure_ascii=False, indent=2)
 
@@ -136,7 +137,7 @@ class FactorFeedback:
     def save_parquet(self, path: Path) -> None:
         """追加到 Parquet 文件 (或创建新文件)。"""
         path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(path)
         new_row = pd.DataFrame([self.to_parquet_row()])
         if path.exists():
             existing = pd.read_parquet(path)

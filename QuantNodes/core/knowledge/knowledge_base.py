@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..trajectory import TrajectoryEntry, TrajectoryPool
 from .retriever import BaseRetriever, make_retriever
+from QuantNodes.core.path_utils import ensure_parent
 
 
 # H19: 默认字段权重 (外部可覆盖)
@@ -158,7 +159,7 @@ class KnowledgeBase:
     def save(self, path: Path | str) -> None:
         """保存知识库索引 (entry_id 列表 + retriever 文本)。"""
         path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(path)
         rows = []
         if self.pool:
             for e in self.pool.all():

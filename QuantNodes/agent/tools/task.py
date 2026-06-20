@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .base import Tool
+from QuantNodes.core.path_utils import ensure_parent
 
 
 class TaskTool(Tool):
@@ -90,7 +91,7 @@ class TaskTool(Tool):
 
     def _save_tasks(self, tasks: List[Dict[str, Any]]) -> None:
         """保存任务到 JSON 文件"""
-        self._tasks_file.parent.mkdir(parents=True, exist_ok=True)
+        ensure_parent(self._tasks_file)
         self._tasks_file.write_text(
             json.dumps(tasks, ensure_ascii=False, indent=2),
             encoding="utf-8",

@@ -16,6 +16,7 @@ import numpy as np
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import ReportNodeConfig
+from QuantNodes.core.path_utils import ensure_dir
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,7 @@ class FactorTestReportNode(PydanticConfigNode):
     def _save_report(self, report, context):
         """保存报告到文件"""
         output_dir = Path(self._output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        ensure_dir(output_dir)
 
         factor_name = report.get('factor_name', 'factor')
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
