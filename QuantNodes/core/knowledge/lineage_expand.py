@@ -34,8 +34,15 @@ def expand_lineage(
 
     Returns:
         dict: {'root', 'ancestors': [(depth, entry)], 'descendants': [(depth, entry)]}
+
+    H8 (2026-06-20): all_ids set is computed ONCE at function start
+    instead of inside every BFS step. Previously each BFS iteration
+    re-iterated pool.all() (O(N)) and rebuilt a set, making the total
+    cost O(K * N) where K is the BFS depth/width. Now: O(N) total.
     """
-    if root_id not in {e.entry_id for e in pool.all()}:
+    all_ids = {e.entry_id for e in pool.all()}
+
+    if root_id not in all_ids:
         return {"root": None, "ancestors": [], "descendants": []}
 
     try:
@@ -56,7 +63,7 @@ def expand_lineage(
         if depth >= max_ancestor_depth:
             continue
         for pid in node.parent_ids:
-            if pid in visited_up or pid not in {e.entry_id for e in pool.all()}:
+            if pid in visited_up or pid not in all_ids:
                 continue
             visited_up.add(pid)
             try:

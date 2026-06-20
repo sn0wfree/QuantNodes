@@ -117,17 +117,18 @@ class EvolutionLoop:
         from ..monitoring import (
             RagMetrics,
         )
-        # RAG: 从 rag_metrics_history 提取最新
-        for m in self.rag_metrics_history:
-            if m.get("round") == round_idx:
-                self.metric_collector.add_rag(RagMetrics(
-                    round=m.get("round", round_idx),
-                    n_queries=m.get("n_queries", 0),
-                    hit_at_5=m.get("hit_at_5", 0.0),
-                    ndcg_at_5=m.get("ndcg_at_5", 0.0),
-                    mrr=m.get("mrr", 0.0),
-                    diversity=m.get("diversity", 1.0),
-                ))
+        # RAG: H7 - 取最后一条匹配即可 (O(1) vs 之前的 O(R) 扫描)。
+        # rag_metrics_history 按 round 追加, 该 round 通常只有 1 条。
+        if self.rag_metrics_history and self.rag_metrics_history[-1].get("round") == round_idx:
+            m = self.rag_metrics_history[-1]
+            self.metric_collector.add_rag(RagMetrics(
+                round=m.get("round", round_idx),
+                n_queries=m.get("n_queries", 0),
+                hit_at_5=m.get("hit_at_5", 0.0),
+                ndcg_at_5=m.get("ndcg_at_5", 0.0),
+                mrr=m.get("mrr", 0.0),
+                diversity=m.get("diversity", 1.0),
+            ))
         # Evolution: 累积统计
         self.metric_collector.update_evolution_from_pool(self.pool, round_idx)
         # Quality: 3 通道
