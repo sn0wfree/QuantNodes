@@ -554,12 +554,7 @@ class TestWebSearchTool:
         mock_resp.text = mock_html
         mock_resp.raise_for_status = MagicMock()
 
-        mock_client = MagicMock()
-        mock_client.get = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch.object(tool._client, "get", new=AsyncMock(return_value=mock_resp)):
             result = await tool.execute(query="python programming", max_results=3)
         assert "results" in result
         assert "query" in result
@@ -591,12 +586,7 @@ class TestWebSearchTool:
         mock_resp.text = mock_html
         mock_resp.raise_for_status = MagicMock()
 
-        mock_client = MagicMock()
-        mock_client.get = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch.object(tool._client, "get", new=AsyncMock(return_value=mock_resp)):
             result = await tool.execute(query="test", max_results=2)
         assert len(result["results"]) <= 2
 
@@ -615,12 +605,7 @@ class TestWebSearchTool:
         mock_resp.text = mock_html
         mock_resp.raise_for_status = MagicMock()
 
-        mock_client = MagicMock()
-        mock_client.get = AsyncMock(return_value=mock_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("httpx.AsyncClient", return_value=mock_client):
+        with patch.object(tool._client, "get", new=AsyncMock(return_value=mock_resp)):
             result = await tool.execute(query="python", max_results=1)
         results = result.get("results", [])
         assert len(results) == 1

@@ -25,6 +25,19 @@ class WebFetchTool(Tool):
     TIMEOUT = 10.0
     USER_AGENT = "Mozilla/5.0 (compatible; QuantNodes/1.0)"
 
+    def __init__(self) -> None:
+        # H9 (2026-06-20): per-instance AsyncClient for connection pooling.
+        # Previously each execute() opened a fresh client + paid a fresh
+        # TCP+TLS handshake. With many URLs in one agent run, that's
+        # multi-second savings.
+        self._client = httpx.AsyncClient(timeout=self.TIMEOUT, follow_redirects=True)
+
+    async def aclose(self) -> None:
+        """Close the underlying httpx client (call at end of session)."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
     @property
     def name(self) -> str:
         return "web_fetch"
@@ -82,9 +95,8 @@ class WebFetchTool(Tool):
             return {"error": f"URL not allowed: {url}"}
 
         try:
-            async with httpx.AsyncClient(timeout=self.TIMEOUT, follow_redirects=True) as client:
-                resp = await client.get(url, headers={"User-Agent": self.USER_AGENT})
-                resp.raise_for_status()
+            resp = await self._client.get(url, headers={"User-Agent": self.USER_AGENT})
+            resp.raise_for_status()
         except httpx.TimeoutException:
             return {"error": f"Request timed out ({self.TIMEOUT}s)"}
         except httpx.HTTPStatusError as e:

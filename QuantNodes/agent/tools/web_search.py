@@ -23,6 +23,16 @@ class WebSearchTool(Tool):
     USER_AGENT = "Mozilla/5.0 (compatible; QuantNodes/1.0)"
     SEARCH_URL = "https://html.duckduckgo.com/html/"
 
+    def __init__(self) -> None:
+        # H9 (2026-06-20): per-instance AsyncClient for connection pooling.
+        self._client = httpx.AsyncClient(timeout=self.TIMEOUT, follow_redirects=True)
+
+    async def aclose(self) -> None:
+        """Close the underlying httpx client."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
     @property
     def name(self) -> str:
         return "web_search"
@@ -63,13 +73,12 @@ class WebSearchTool(Tool):
         max_results = min(max(max_results, 1), 20)
 
         try:
-            async with httpx.AsyncClient(timeout=self.TIMEOUT, follow_redirects=True) as client:
-                resp = await client.get(
-                    self.SEARCH_URL,
-                    params={"q": query},
-                    headers={"User-Agent": self.USER_AGENT},
-                )
-                resp.raise_for_status()
+            resp = await self._client.get(
+                self.SEARCH_URL,
+                params={"q": query},
+                headers={"User-Agent": self.USER_AGENT},
+            )
+            resp.raise_for_status()
         except httpx.TimeoutException:
             return {"error": f"Search timed out ({self.TIMEOUT}s)"}
         except Exception as e:
