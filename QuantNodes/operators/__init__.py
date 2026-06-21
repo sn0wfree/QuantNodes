@@ -45,6 +45,9 @@ from .composite_dag import (
     load_composites_from_yaml,
 )
 
+# PR-QN-3b (2026-06-21): 20 个内置 composite op (注册副作用)
+from . import composite_dag_ops  # noqa: F401 — 模块导入即注册
+
 # 统一导出
 ts = _ts()
 sec = _sec()
