@@ -141,6 +141,26 @@ class TestResampleTradeDate:
         with pytest.raises(Exception):
             resample_trade_date(trade_dt_year, ("X", "end"))
 
+    # ── L1 (2026-06-21): position alias 测试 ──
+
+    @pytest.mark.parametrize("alias", ["beg", "start", "first"])
+    def test_position_aliases_equal_begin(self, trade_dt_year, alias):
+        """'beg' / 'start' / 'first' 均映射到 'begin', 输出 == ('M','begin')."""
+        expected = resample_trade_date(trade_dt_year, ("M", "begin"))
+        actual = resample_trade_date(trade_dt_year, ("M", alias))
+        pd.testing.assert_frame_equal(actual, expected)
+
+    def test_position_alias_last_equals_end(self, trade_dt_year):
+        """'last' 映射到 'end', 输出 == ('M','end')."""
+        expected = resample_trade_date(trade_dt_year, ("M", "end"))
+        actual = resample_trade_date(trade_dt_year, ("M", "last"))
+        pd.testing.assert_frame_equal(actual, expected)
+
+    def test_unknown_position_still_raises(self, trade_dt_year):
+        """alias 外的未知 position 仍抛 ValueError (e.g. 'middle')."""
+        with pytest.raises(Exception):
+            resample_trade_date(trade_dt_year, ("M", "middle"))
+
     def test_invalid_position_raises(self, trade_dt_year):
         """不支持的 position 应 raise."""
         with pytest.raises(Exception):

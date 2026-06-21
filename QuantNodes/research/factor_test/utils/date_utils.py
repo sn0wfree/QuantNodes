@@ -48,7 +48,30 @@ def chg_idx_to_datestr(data):
 
 
 def resample_trade_date(trade_dt: pd.DataFrame, rule=('M', 'end')) -> pd.DataFrame:
-    """将交易日重采样为周/月/季"""
+    """将交易日重采样为周/月/季
+
+    Args:
+        trade_dt: yyyymmdd int DataFrame, 单列.
+        rule: ``(mode, position)`` 两元组.
+
+            - ``mode``: ``'W'`` (周) / ``'M'`` (月) / ``'Q'`` (季)
+            - ``position``: ``'end'`` 或 ``'begin'``
+
+              L1 (2026-06-21) 新增 alias::
+
+                  'beg' / 'start' / 'first' → 'begin'
+                  'last'                    → 'end'
+
+              用户不再因为写 ``'beg'`` 这类自然简写而踩 ``不支持的 position``
+              错误. 未在 alias 表内的值仍抛 ``ValueError``.
+
+    Returns:
+        DataFrame: 重采样后的 yyyymmdd int 日期序列.
+
+    Raises:
+        ValueError: 日期格式非法 / rule 不是 2 元 tuple / mode 不在 W/M/Q /
+            position 既不在 alias 也不是 begin/end.
+    """
     trade_date = trade_dt.copy()
     trade_date.columns = ['trade_dt']
     if not valid_date(trade_date):
@@ -60,6 +83,15 @@ def resample_trade_date(trade_dt: pd.DataFrame, rule=('M', 'end')) -> pd.DataFra
         raise ValueError("请输入正确的调仓模式 ('M', 'end')")
 
     mode, position = rule
+
+    # L1 (2026-06-21): 友好 alias 表, 用户写 'beg' 等同 'begin'.
+    _POSITION_ALIASES = {
+        'beg': 'begin',
+        'start': 'begin',
+        'first': 'begin',
+        'last': 'end',
+    }
+    position = _POSITION_ALIASES.get(position, position)
 
     if mode in ('W', 'M', 'Q'):
         period_func = {
