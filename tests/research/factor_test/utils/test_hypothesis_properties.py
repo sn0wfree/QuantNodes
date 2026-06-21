@@ -12,8 +12,8 @@
 """
 import numpy as np
 import pandas as pd
-import pytest
-from hypothesis import given, settings, strategies as st, HealthCheck
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from QuantNodes.research.factor_test.utils.performance_metrics import (
     cal_net_simple,
