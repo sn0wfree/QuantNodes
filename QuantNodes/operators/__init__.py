@@ -33,6 +33,17 @@ from .math import MathOperators as _math
 from .composite import CompositeOperators as _composite
 from .proxy import list_operators, get_operator, register_operator
 from .custom import CustomOperator, OperatorTemplate, point, time, section
+# PR-QN-3a (2026-06-21): Composite DAG re-exports
+from .composite_dag import (
+    composite_operator,
+    CompositeSpec,
+    ParamSpec,
+    is_composite_op,
+    get_composite_spec,
+    list_composite_ops,
+    get_composite_doc_for_llm,
+    load_composites_from_yaml,
+)
 
 # 统一导出
 ts = _ts()
@@ -53,4 +64,8 @@ __all__ = [
     "list_operators", "get_operator", "register_operator",
     "CustomOperator", "OperatorTemplate",
     "point", "time", "section",
+    # PR-QN-3a (2026-06-21): Composite DAG
+    "composite_operator", "CompositeSpec", "ParamSpec",
+    "is_composite_op", "get_composite_spec", "list_composite_ops",
+    "get_composite_doc_for_llm", "load_composites_from_yaml",
 ]
