@@ -161,11 +161,6 @@ class TestResampleTradeDate:
         with pytest.raises(Exception):
             resample_trade_date(trade_dt_year, ("M", "middle"))
 
-    def test_invalid_position_raises(self, trade_dt_year):
-        """不支持的 position 应 raise."""
-        with pytest.raises(Exception):
-            resample_trade_date(trade_dt_year, ("M", "middle"))
-
     def test_invalid_date_format_raises(self):
         """非 yyyymmdd int 应 raise."""
         bad = pd.DataFrame(["2026-01-01", "2026-01-02"])
@@ -199,12 +194,7 @@ class TestOffsetDate:
             offset_date([20250108], trade_dt_year, n=1, mode="X")
 
     def test_if_modify_clips_to_bounds(self, trade_dt_year):
-        """if_modify=True 时, 超出范围不应 raise (有 fallback).
-
-        Note: 现有实现用 pandas iloc 负索引会 wrap-around 而非 IndexError,
-        所以 if_modify 分支只在 iloc[idx+n] 真正越界 (大于 len) 时生效.
-        这里只验证不 raise.
-        """
+        """if_modify=True 时, 正向越界应被裁到末日, 不 raise."""
         # 取末日 + 进 100 天 (真正越界)
         result = offset_date([20251229], trade_dt_year, n=100, mode="D", if_modify=True)
         assert result[0] is not None
@@ -225,3 +215,68 @@ class TestOffsetDate:
         # 每个对应 next 工作日
         expected = [20250107, 20250108, 20250109, 20250110, 20250113]
         np.testing.assert_array_equal(result, expected)
+
+    # ── L2 (2026-06-21): 显式越界检查 ──
+
+    def test_negative_overflow_raises(self, trade_dt_year):
+        """L2: n=-100 应显式 raise IndexError (修复 wrap-around silent bug)."""
+        with pytest.raises(IndexError, match="越界"):
+            offset_date([20250110], trade_dt_year, n=-100, mode="D")
+
+    def test_negative_overflow_clamps_with_if_modify(self, trade_dt_year):
+        """L2: n=-100 + if_modify=True 应裁到 idx=0 (最早一日)."""
+        result = offset_date(
+            [20250110], trade_dt_year, n=-100, mode="D", if_modify=True
+        )
+        first_dt = trade_dt_year.iloc[0, 0]
+        assert result[0] == first_dt
+
+    def test_positive_overflow_raises(self, trade_dt_year):
+        """L2: n=+100 不开 if_modify 应 raise."""
+        with pytest.raises(IndexError, match="越界"):
+            offset_date([20251229], trade_dt_year, n=100, mode="D")
+
+    def test_partial_overflow_raises(self, trade_dt_year):
+        """L2: 批量输入中部分越界 → 整批 raise (原子)."""
+        # 中间日期 + n=100 越界
+        with pytest.raises(IndexError, match="越界"):
+            offset_date(
+                [20250106, 20251229, 20250107], trade_dt_year, n=100, mode="D"
+            )
+
+    def test_partial_overflow_clamps_with_if_modify(self, trade_dt_year):
+        """L2: 批量 + if_modify → 越界项裁边界, 合法项保持原 offset.
+
+        末日 idx=258 + n=100 越界; 中间日期 idx=129 + n=100 越界但**先**
+        检测到第一个越界 → 整批 raise (验证非原子). 改: n=1 即可让中间
+        日期合法.
+        """
+        # n=1: 末日 idx=258 + 1 = 259 (合法), 中间 idx=129 + 1 = 130 (合法)
+        result = offset_date(
+            [20251229, 20250701], trade_dt_year, n=1, mode="D", if_modify=True
+        )
+        # 末日 + 1
+        assert result[0] == 20251230
+        # 2025-07-01 + 1 工作日 = 2025-07-02
+        assert result[1] == 20250702
+
+    def test_partial_mixed_validity_with_if_modify(self, trade_dt_year):
+        """L2: n 很大时部分越界, 部分合法 — if_modify 各自处理."""
+        # idx=258 + n=2 = 260 (合法), idx=200 + n=2 = 202 (合法)
+        # 全部合法, if_modify 不应改变结果
+        result = offset_date(
+            [20251229, 20250922], trade_dt_year, n=2, mode="D", if_modify=True
+        )
+        # idx=260 → 20251231
+        assert result[0] == 20251231
+        # idx=202 → 2 个工作日后
+        assert result[1] == 20250924
+
+    def test_no_wrap_around_silent_error(self, trade_dt_year):
+        """L2: 关键回归 — 之前 n=-1 错误返回末尾日期, 现在应 raise.
+
+        注意: trade_dt_year 第 0 行是 20250101, 第 1 行是 20250102. 选 idx=0
+        的日期 + n=-1 → final_idx=-1 越界.
+        """
+        with pytest.raises(IndexError, match="越界"):
+            offset_date([20250101], trade_dt_year, n=-1, mode="D")

@@ -167,6 +167,20 @@ def offset_date(date_input, trade_dt_all, n, mode='D', if_modify=False):
     ``arr[idx-1]`` where ``idx = np.searchsorted(arr, x, side='right')``
     (O(log M) per query). Cumulative gain is K * (M -> log M) where K is
     the size of date_input and M is the size of trade_dt_all.
+
+    L2 (2026-06-21): 显式越界检查.
+
+        修复: 原 ``adj_date.iloc[adj_date_idx + n]`` 在负索引时**不会** raise
+        IndexError — pandas/numpy 负索引会 wrap-around 到末尾, 导致 n=-1
+        (回退 1 天) 错误返回最后一个调仓日. 现改为显式计算 final_idx, 越界
+        元素按 ``if_modify`` 决定:
+
+        - ``if_modify=False`` (默认): 显式 raise ``IndexError``, 错误信息
+          列出越界 idx.
+        - ``if_modify=True``: ``np.clip`` 到 [0, len(adj_date)-1] 边界.
+
+        行为变化: 之前 silent 错误 (返回末尾日期) → 现在明确报错. 任何依赖
+        wrap-around 的上游代码 (经 grep 确认无) 会受影响.
     """
     if isinstance(trade_dt_all, pd.DataFrame):
         trade_dt_all = trade_dt_all.iloc[:, 0]
@@ -193,10 +207,17 @@ def offset_date(date_input, trade_dt_all, n, mode='D', if_modify=False):
         adj_index = pd.Index(adj_date)
     adj_date_idx = adj_index.get_indexer(date_last)
 
-    try:
-        return np.array(adj_date.iloc[adj_date_idx + n])
-    except IndexError:
+    # L2 (2026-06-21): 显式越界检查 (修复 pandas 负索引 wrap-around silent bug).
+    final_idx = adj_date_idx + n
+    out_of_bounds = (final_idx < 0) | (final_idx >= len(adj_date))
+    if out_of_bounds.any():
         if if_modify:
-            new_idx = np.clip(adj_date_idx + n, 0, len(trade_dt_all) - 1)
-            return np.array(trade_dt_all.iloc[new_idx])
-        raise
+            final_idx = np.clip(final_idx, 0, len(adj_date) - 1)
+        else:
+            raise IndexError(
+                f"offset_date 越界 (n={n}): "
+                f"final_idx={final_idx[out_of_bounds].tolist()} "
+                f"不在 [0, {len(adj_date) - 1}] 范围. "
+                f"设置 if_modify=True 可裁剪到边界."
+            )
+    return np.array(adj_date.iloc[final_idx])
