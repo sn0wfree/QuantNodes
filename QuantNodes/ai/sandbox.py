@@ -102,6 +102,9 @@ class CodeSandbox:
         self,
         allow_warnings: bool = False,
         max_code_length: int = 10000,
+        # ===== PR-QN-1 (2026-06-21): 实例级可配置白/黑名单 =====
+        allowed_imports: Optional[List[str]] = None,
+        blocked_imports: Optional[List[str]] = None,
         **kwargs
     ):
         """
@@ -110,9 +113,25 @@ class CodeSandbox:
         Args:
             allow_warnings: 是否允许警告（不阻断执行）
             max_code_length: 最大代码长度
+            allowed_imports: 追加到白名单的 import pattern (regex 列表), 默认 None.
+                实例级配置. 已默认允许的 (quantnodes/pandas/numpy) 不受影响.
+                PR-QN-1 新增, 之前需 monkey-patch 类属性.
+            blocked_imports: 追加到黑名单的 import pattern (regex/字面量列表), 默认 None.
+                实例级配置. 增强默认黑名单 (60+ 危险模块).
+
+        Note:
+            默认参数 (allowed_imports/blocked_imports 均为 None) 时, 行为与 PR-QN-1
+            之前**完全一致** — 现有 4608+ tests 无需任何修改.
         """
         self.allow_warnings = allow_warnings
         self.max_code_length = max_code_length
+        # PR-QN-1: 实例级白/黑名单 (拷贝类级别作为基础, 再追加用户配置)
+        self._allowed_patterns: List[str] = list(self.ALLOWED_PATTERNS) + (
+            allowed_imports or []
+        )
+        self._blocked_imports: Set[str] = set(self.DANGEROUS_IMPORTS) | set(
+            blocked_imports or []
+        )
         self.logger = logging.getLogger(f"sandbox.{self.__class__.__name__}")
 
     def validate(self, code: str) -> CodeValidationResult:
@@ -149,7 +168,7 @@ class CodeSandbox:
         return result
 
     def _check_dangerous_imports(self, code: str) -> List[str]:
-        """检查危险导入"""
+        """检查危险导入 (PR-QN-1: 读 self._blocked_imports 实例属性)"""
         warnings = []
 
         try:
@@ -157,10 +176,10 @@ class CodeSandbox:
             for node in ast.walk(tree):
                 if isinstance(node, ast.Import):
                     for alias in node.names:
-                        if alias.name.split('.')[0] in self.DANGEROUS_IMPORTS:
+                        if alias.name.split('.')[0] in self._blocked_imports:
                             warnings.append(f"Dangerous import: {alias.name}")
                 elif isinstance(node, ast.ImportFrom):
-                    if node.module and node.module.split('.')[0] in self.DANGEROUS_IMPORTS:
+                    if node.module and node.module.split('.')[0] in self._blocked_imports:
                         warnings.append(f"Dangerous import: from {node.module}")
 
         except SyntaxError:
@@ -268,7 +287,7 @@ class CodeSandbox:
             raise DangerousCodeError(f"Execution error: {e}")
 
     def extract_imports(self, code: str) -> Dict[str, List[str]]:
-        """提取代码中的导入语句"""
+        """提取代码中的导入语句 (PR-QN-1: 读 self._blocked_imports 实例属性)"""
         imports = {'standard': [], 'third_party': [], 'local': []}
 
         try:
@@ -277,7 +296,7 @@ class CodeSandbox:
                 if isinstance(node, ast.Import):
                     for alias in node.names:
                         name = alias.name
-                        if name.split('.')[0] in self.DANGEROUS_IMPORTS:
+                        if name.split('.')[0] in self._blocked_imports:
                             continue
                         imports['standard'].append(name)
                 elif isinstance(node, ast.ImportFrom):
