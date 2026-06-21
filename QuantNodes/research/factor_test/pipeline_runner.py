@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import pandas as pd
 import yaml
@@ -79,9 +79,30 @@ class PipelineRunner:
         若 config.feedback.output_dir 不为 None, 还会持久化到该目录。
     """
 
-    def __init__(self, config: SingleFactorTestConfig):
+    def __init__(
+        self,
+        config: SingleFactorTestConfig,
+        specs: Optional[List["PhaseSpec"]] = None,
+    ):
+        """
+        Args:
+            config: 单因子回测配置.
+            specs: PR-QN-2 (2026-06-21) 新增. 自定义 phase 列表 (**追加**到
+                标准 12 阶段之后). 默认 None = 使用 ``list(PIPELINE_SPEC)``.
+                若要**完全替换** 12 阶段, 用 ``list(PIPELINE_SPEC) + specs``
+                显式拼接.
+
+        Note:
+            不传 specs 时, 行为与 PR-QN-2 之前**完全一致**. 4608+ 现有
+            tests 无需任何修改.
+        """
         self.config = config
         self._context: dict = {}
+        # PR-QN-2: 实例级 _specs (默认 = 标准 12 阶段; 传 specs 时**追加**)
+        if specs:
+            self._specs: list = list(PIPELINE_SPEC) + list(specs)
+        else:
+            self._specs = list(PIPELINE_SPEC)
 
     @classmethod
     def from_yaml(cls, yaml_path: str) -> "PipelineRunner":
@@ -91,9 +112,19 @@ class PipelineRunner:
         return cls(SingleFactorTestConfig(**raw))
 
     @classmethod
-    def from_dict(cls, data: dict) -> "PipelineRunner":
-        """从 dict 创建 Runner"""
-        return cls(SingleFactorTestConfig(**data))
+    def from_dict(
+        cls,
+        data: dict,
+        extra_phases: Optional[List["PhaseSpec"]] = None,
+    ) -> "PipelineRunner":
+        """从 dict 创建 Runner
+
+        Args:
+            data: 配置 dict.
+            extra_phases: PR-QN-2 (2026-06-21) 新增. 追加的自定义 phase 列表
+                (在标准 12 阶段之后执行). 默认 None = 与 PR 之前完全一致.
+        """
+        return cls(SingleFactorTestConfig(**data), specs=extra_phases)
 
     # ============================================================
     # Phase R2: 声明式 12 节点 run loop
@@ -125,7 +156,7 @@ class PipelineRunner:
             logger.info("FactorFeedback: ENABLED (factor_id=%s...)", factor_id[:8])
         logger.info("=" * 60)
 
-        for spec in PIPELINE_SPEC:
+        for spec in self._specs:
             self._run_phase(spec, ctx, pre_seeded)
 
         # FactorFeedback 自动包装 (可选)
