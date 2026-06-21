@@ -92,7 +92,18 @@ class FactorTestReportNode(PydanticConfigNode):
         return report
 
     def _save_report(self, report, context):
-        """保存报告到文件"""
+        """保存报告到文件
+
+        L3 (2026-06-21): 未知 format 改为运行时 raise ValueError.
+
+            修复: 原循环中, 不在 ``{'json', 'parquet'}`` 内的 fmt 会被
+            静默 skip — 用户写 ``format=['html']`` 不报错, 也不生成文件,
+            易被误判为"配置没生效". 修复后, 未知 fmt 显式 raise, 错误信息
+            列出所有合法值.
+
+        Raises:
+            ValueError: ``fmt`` 不在 ``{'json', 'parquet'}`` 内.
+        """
         output_dir = Path(self._output_dir)
         ensure_dir(output_dir)
 
@@ -133,3 +144,10 @@ class FactorTestReportNode(PydanticConfigNode):
                         path = output_dir / f"{factor_name}_{key}.parquet"
                         value.to_parquet(path)
                 logger.info(f"Parquet 文件已保存至: {output_dir}")
+
+            else:
+                # L3 (2026-06-21): 未知 format 显式 raise (修复 silent skip).
+                raise ValueError(
+                    f"FactorTestReport 不支持的 format: {fmt!r}, "
+                    f"仅支持 'json' / 'parquet'"
+                )

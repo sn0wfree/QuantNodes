@@ -277,3 +277,40 @@ class TestFactorTestReportNode:
         }).execute(context=ctx)
         required = {'factor_name', 'timestamp', 'ic', 'group', 'longshort'}
         assert required.issubset(set(result.keys()))
+
+    # ── L3 (2026-06-21): 未知 format 运行时 raise ──
+
+    def test_unknown_format_raises(self, synthetic_data, tmp_path):
+        """L3: 未知 format (e.g. 'html') 应 raise ValueError, 不再 silent skip."""
+        ctx = _build_score_context(synthetic_data)
+        ctx['GroupAnalyzer'] = {'daily_net_simp': pd.DataFrame()}
+        ctx['LongShort'] = {'eva_total': pd.DataFrame()}
+        # Node 框架将内部 ValueError 包装为 NodeExecutionError
+        with pytest.raises(Exception, match="不支持的 format"):
+            FactorTestReportNode(config={
+                'dir': str(tmp_path) + '/', 'format': ['html'],
+            }).execute(context=ctx)
+
+    def test_unknown_format_in_mixed_list_raises(self, synthetic_data, tmp_path):
+        """L3: 混合 fmt list 中含未知值 → 整批 raise (执行首个未知 fmt 时即失败)."""
+        ctx = _build_score_context(synthetic_data)
+        ctx['GroupAnalyzer'] = {'daily_net_simp': pd.DataFrame()}
+        ctx['LongShort'] = {'eva_total': pd.DataFrame()}
+        with pytest.raises(Exception, match="不支持的 format"):
+            FactorTestReportNode(config={
+                'dir': str(tmp_path) + '/', 'format': ['json', 'xml'],
+            }).execute(context=ctx)
+
+    def test_empty_format_list_no_op(self, synthetic_data, tmp_path):
+        """L3: format=[] → 循环空, 不 raise 不写文件, 但仍返回报告 dict."""
+        ctx = _build_score_context(synthetic_data)
+        ctx['GroupAnalyzer'] = {'daily_net_simp': pd.DataFrame()}
+        ctx['LongShort'] = {'eva_total': pd.DataFrame()}
+        result = FactorTestReportNode(config={
+            'dir': str(tmp_path) + '/', 'format': [],
+        }).execute(context=ctx)
+        # 无文件生成
+        files = list(tmp_path.glob('*'))
+        assert len(files) == 0
+        # 报告 dict 仍返回
+        assert 'factor_name' in result
