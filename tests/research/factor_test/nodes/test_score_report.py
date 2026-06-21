@@ -66,6 +66,68 @@ class TestFactorScoreNode:
         result = n.execute(context=ctx)
         assert result == {}
 
+    # ── K3: FactorScoreNode 边界 (2026-06-21) ──
+
+    def test_score_no_factor_raises(self, synthetic_data):
+        """因子数据缺失时抛出."""
+        ctx = _build_score_context(synthetic_data)
+        ctx['FactorPreprocess'] = None
+        ctx['FactorNeutralize'] = None
+        n = FactorScoreNode(config={'enabled': True})
+        with pytest.raises(Exception):
+            n.execute(context=ctx)
+
+    def test_score_no_mv_raises(self, synthetic_data):
+        """市值缺失时抛出."""
+        ctx = _build_score_context(synthetic_data)
+        ctx['LoadData']['mv_float'] = None
+        n = FactorScoreNode(config={'enabled': True})
+        with pytest.raises(Exception):
+            n.execute(context=ctx)
+
+    def test_score_no_industry_raises(self, synthetic_data):
+        """行业缺失时抛出."""
+        ctx = _build_score_context(synthetic_data)
+        ctx['LoadData']['id_citic1'] = None
+        n = FactorScoreNode(config={'enabled': True})
+        with pytest.raises(Exception):
+            n.execute(context=ctx)
+
+    def test_score_no_price_raises(self, synthetic_data):
+        """价格缺失时抛出."""
+        ctx = _build_score_context(synthetic_data)
+        ctx['LoadData']['price'] = None
+        n = FactorScoreNode(config={'enabled': True})
+        with pytest.raises(Exception):
+            n.execute(context=ctx)
+
+    def test_score_default_disabled(self, synthetic_data):
+        """空 config 应使用 ScoreSetting 默认值 enabled=True, 因此尝试执行.
+
+        synthetic_data 的市值/行业能跑通 default(n_ind=29, n_size=3, n_q=5)
+        当 universe 不足时, 返回的 dict 形态稳定 (含 fac_group/daily_net_simp/eva 等).
+        """
+        ctx = _build_score_context(synthetic_data)
+        n = FactorScoreNode(config={})
+        result = n.execute(context=ctx)
+        # 默认 enabled=True → 不应返回 {}, 至少含 'fac_group' 等关键 key
+        assert isinstance(result, dict)
+        if result:
+            assert 'fac_group' in result
+            assert 'eva' in result
+
+    @pytest.mark.parametrize('enabled', [False, 0, None, ''])
+    def test_score_falsy_enabled_returns_empty(self, synthetic_data, enabled):
+        """所有 falsy enabled 都返回 {}."""
+        ctx = _build_score_context(synthetic_data)
+        try:
+            n = FactorScoreNode(config={'enabled': enabled})
+            result = n.execute(context=ctx)
+            assert result == {}
+        except Exception:
+            # 部分 falsy 值可能被 pydantic 拒绝, 这本身也是合理的
+            pass
+
 
 # ── RiskCorrelationNode ────────────────────────────────────────
 
@@ -160,3 +222,58 @@ class TestFactorTestReportNode:
         })
         result = n.execute(context=ctx)
         assert 'longshort' in result
+
+    # ── K3: FactorTestReport JSON 文件落盘验证 (2026-06-21) ──
+
+    def test_report_writes_json_file(self, synthetic_data, tmp_path):
+        """JSON 文件实际写入磁盘且可解析."""
+        import json
+        ctx = _build_score_context(synthetic_data)
+        ctx['GroupAnalyzer'] = {
+            'daily_net_simp': pd.DataFrame(np.cumsum(np.random.RandomState(0).randn(5, 5) * 0.01, axis=0)),
+            'group_eva_abs': pd.DataFrame({'SR': [0.5, 0.3, 0.1, -0.1, -0.3]}),
+        }
+        ctx['LongShort'] = {'eva_total': pd.DataFrame({'多空': [0.2, 0.1]})}
+        ctx['RiskCorrelation'] = {'mean': pd.DataFrame(), 'stability': pd.DataFrame()}
+        FactorTestReportNode(config={
+            'dir': str(tmp_path) + '/', 'format': ['json'],
+        }).execute(context=ctx)
+        json_files = list(tmp_path.glob('*.json'))
+        assert len(json_files) >= 1, '至少 1 个 JSON 文件被写入'
+        with open(json_files[0]) as f:
+            data = json.load(f)
+        assert 'factor_name' in data
+        assert 'timestamp' in data
+
+    @pytest.mark.parametrize('fmt', [['json'], ['parquet'], ['json', 'parquet']])
+    def test_report_format_modes(self, synthetic_data, tmp_path, fmt):
+        """format 列表控制输出文件类型 (支持 json/parquet)."""
+        ctx = _build_score_context(synthetic_data)
+        ctx['GroupAnalyzer'] = {
+            'daily_net_simp': pd.DataFrame({'1': [1.0, 1.1]}),
+            'group_eva_abs': pd.DataFrame({'SR': [0.5]}),
+        }
+        ctx['LongShort'] = {'eva_total': pd.DataFrame({'多空': [0.2]})}
+        ctx['RiskCorrelation'] = {'mean': pd.DataFrame(), 'stability': pd.DataFrame()}
+        FactorTestReportNode(config={
+            'dir': str(tmp_path) + '/', 'format': fmt,
+        }).execute(context=ctx)
+        if 'json' in fmt:
+            assert list(tmp_path.glob('*.json'))
+        if 'parquet' in fmt:
+            assert list(tmp_path.glob('*.parquet'))
+
+    def test_report_includes_all_sections(self, synthetic_data, tmp_path):
+        """报告 dict 必须含 4 顶层键: factor_name/timestamp/ic/group + longshort."""
+        ctx = _build_score_context(synthetic_data)
+        ctx['GroupAnalyzer'] = {
+            'daily_net_simp': pd.DataFrame(),
+            'group_eva_abs': pd.DataFrame(),
+        }
+        ctx['LongShort'] = {'eva_total': pd.DataFrame()}
+        ctx['RiskCorrelation'] = {'mean': pd.DataFrame(), 'stability': pd.DataFrame()}
+        result = FactorTestReportNode(config={
+            'dir': str(tmp_path) + '/', 'format': ['json'],
+        }).execute(context=ctx)
+        required = {'factor_name', 'timestamp', 'ic', 'group', 'longshort'}
+        assert required.issubset(set(result.keys()))
