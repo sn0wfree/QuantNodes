@@ -1,7 +1,7 @@
 # QuantNodes 设计文档索引
 
-> **当前架构版本**：v1.0  
-> **最新更新**：2026-05-08
+> **当前架构版本**：v1.0
+> **最新更新**：2026-06-22
 
 ---
 
@@ -14,6 +14,8 @@
 | 13 | [Agent架构设计.md](./13-Agent架构设计.md) | Agent系统 + Config-Driven配置驱动 | ✅ 已完成 |
 | 22 | [算子系统设计与规范.md](./22-算子系统设计与规范.md) | 算子扩展机制 + 重构计划 + TA-Lib集成 | ✅ 已完成 |
 | 24 | [核心功能框架设计.md](./24-核心功能框架设计.md) | 三大核心功能详细设计 | ✅ 已完成 |
+| 25 | [LLM算子层升级设计.md](./25-LLM算子层升级设计.md) | LLM Operator Layer (PR-QN-1/2/3a/3b) | ✅ 已发布 (v2.7.0) |
+| 26 | [设计模式重构与审计.md](./26-设计模式重构与审计.md) | 7 个 GoF 模式应用 + Phase 3 路线 | ✅ Phase 1+2 完成 |
 | 规范 | [大型项目开发测试规范.md](./大型项目开发测试规范.md) | 开发测试流程规范 | ✅ 已完成 |
 | 操作 | [QuantNodes-操作手册.md](./QuantNodes-操作手册.md) | 完整操作指南 | ✅ 新增 |
 | Agent | [Agent-策略构建操作手册.md](./Agent-策略构建操作手册.md) | 小白 Agent 使用指南 | ✅ 新增 |
@@ -28,6 +30,20 @@
 1. ⭐ **[QuickStart.md](./QuickStart.md)** — 5 分钟快速入门
 2. **[Agent-策略构建操作手册.md](./Agent-策略构建操作手册.md)** — 通过自然语言让 Agent 帮你构建策略
 3. **[04-架构设计.md](./04-架构设计.md)** — 总览三层架构、BaseNode、Pipeline、Expression DSL
+
+### 进阶阅读
+
+4. **[24-核心功能框架设计.md](./24-核心功能框架设计.md)** — Pipeline / CodeSandbox / Serializable
+5. **[25-LLM算子层升级设计.md](./25-LLM算子层升级设计.md)** — LLM Operator Layer (PR-QN-3a/3b 落地)
+6. ⭐ **[26-设计模式重构与审计.md](./26-设计模式重构与审计.md)** — 7 个 GoF 模式 (Null Object / Decorator / Builder / Visitor / Chain / Strategy) 的应用记录 + 模式选择决策树
+
+### 修改节点前必读
+
+修改以下节点前先查 26-设计模式重构与审计.md (避免重新发明轮子):
+- `group_analyzer_node.py` — Strategy pattern (3-mode dispatch: ranked/discrete)
+- `factor_preprocess_node.py` — Strategy pattern (3 类 strategy)
+- `factor_neutralize_node.py` — Chain of Responsibility
+- `ai/llm/` — Decorator pattern (4 个 LLM 装饰器)
 
 ### 功能开发
 

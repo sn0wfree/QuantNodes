@@ -585,6 +585,33 @@ monitor/
 
 ## 12. 已观察问题 / Observed Issues
 
+### 12.0 设计模式应用现状 (2026-06 增量)
+
+> **详见**: [`docs/26-设计模式重构与审计.md`](./26-设计模式重构与审计.md)
+
+2026-06 期间，针对 3 个高频 if/elif 节点 + 3 个横切关注点应用了 7 个 GoF 模式:
+
+| 模式 | 位置 | 解决问题 | 状态 |
+|---|---|---|---|
+| **Null Object** | `ai/llm/null.py` | 散落的 `if client is None` | ✅ |
+| **Decorator × 4** | `ai/llm/decorators.py` | LLM retry/log/cost/cache 横切关注 | ✅ |
+| **Builder** | `core/visualization/builder.py` | 报告硬编码 dict 拼接 | ✅ |
+| **Decorator (reg)** | `register_node_config` | 12 节点路由表手工维护 | ✅ |
+| **Visitor × 3** | `composite_dag.py` | spec 树遍历扩展性 | ✅ |
+| **Chain of Responsibility** | `neutralizers.py` | 70 行 if/elif 3 分支 | ✅ |
+| **Strategy × 3 类** | `preprocess_strategies.py` | 102 行 if 链 3 类别 | ✅ |
+
+**量化收益**:
+- 全量回归: 3898 → 4045 passed (+147)
+- 新增测试: 178 个 (88 + 37 + 38 + 15)
+- 修复 latent bug: 3 个 (bool dtype / merge shape / dispatch 路径)
+
+**待应用机会 (Phase 3 路线)**:
+- **CLI Command pattern** (推荐下一步, `cli/__init__.py:159-192` 34 行 if/elif)
+- **DataSource Factory + Adapter** (跨 H5/CSV/Parquet/SQLite/DuckDB)
+- **Operator Facade** (3 个 registry 统一查询)
+- **Abstract Factory 调研结论**: 不适用 (无"一族互相依赖"产品族场景)
+
 ### 12.1 P0: ConfigExecutor God Class
 
 **定义**: `QuantNodes/agent/config/executor.py:242` (942 行)
