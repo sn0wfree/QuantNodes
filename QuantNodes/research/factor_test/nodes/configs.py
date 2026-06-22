@@ -10,6 +10,11 @@ Phase R3-A (2026-06-19): Schema 收敛
 - 8 节点 Config 直接继承 config.py 子模型 (避免字段重复定义)
 - 4 节点 (LoadData/AdjustDate/SamplePool/Report) 字段语义不同, 保留独立定义
 - 单一真值源: 改默认值只改 config.py 一处即可同步到 nodes/configs.py
+
+Phase 1.4: register_node_config 装饰器
+- 替代手工维护的 NODE_CONFIG_SCHEMAS 路由表
+- 用法: @register_node_config("GroupAnalyzer") class GroupAnalyzerNodeConfig(GroupSetting): ...
+- 自动注册到 NODE_CONFIG_SCHEMAS, 避免新增节点时漏改路由表
 """
 
 from typing import Optional
@@ -37,6 +42,48 @@ class _NodeBase(BaseModel):
     model_config = _FORBID
 
 
+# ── 节点名 → Config Schema 路由表 (Phase 1.4: 装饰器自动注册) ─────
+NODE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {}
+
+
+def register_node_config(node_name: str):
+    """装饰器: 将 Config Schema 注册到 NODE_CONFIG_SCHEMAS[node_name]。
+
+    Phase 1.4: 替代手工维护的路由表。新增节点 Config 时只需:
+        @register_node_config("MyNode")
+        class MyNodeConfig(BaseModel):
+            ...
+
+    Args:
+        node_name: 节点在 pipeline 中的名称 (与 BaseNode 子类的注册名一致)
+
+    Returns:
+        装饰器函数, 接受 Config 类并原样返回 (同时写入 NODE_CONFIG_SCHEMAS)
+
+    Raises:
+        TypeError: 装饰的不是 pydantic BaseModel 子类
+        ValueError: 重复注册同一 node_name (且类不同)
+    """
+    def decorator(cls: type[BaseModel]) -> type[BaseModel]:
+        if not issubclass(cls, BaseModel):
+            raise TypeError(
+                f"@register_node_config({node_name!r}) requires a pydantic "
+                f"BaseModel subclass, got {cls!r}"
+            )
+        if node_name in NODE_CONFIG_SCHEMAS:
+            existing = NODE_CONFIG_SCHEMAS[node_name]
+            if existing is not cls:
+                raise ValueError(
+                    f"NODE_CONFIG_SCHEMAS[{node_name!r}] already registered "
+                    f"to {existing.__name__}; refusing to overwrite with {cls.__name__}"
+                )
+        NODE_CONFIG_SCHEMAS[node_name] = cls
+        return cls
+    return decorator
+
+
+# ── 注册所有 12 节点 Config (Phase 1.4: 装饰器替代手工表) ─────────
+@register_node_config("LoadData")
 class LoadDataNodeConfig(_NodeBase):
     """Node 1: LoadDataNode 配置
 
@@ -57,6 +104,7 @@ class LoadDataNodeConfig(_NodeBase):
     )
 
 
+@register_node_config("SamplePoolFilter")
 class SamplePoolNodeConfig(_NodeBase):
     """Node 2: SamplePoolFilterNode 配置
 
@@ -83,6 +131,7 @@ class SamplePoolNodeConfig(_NodeBase):
     )
 
 
+@register_node_config("TradabilityFilter")
 class TradabilityNodeConfig(_NodeBase):
     """Node 3: TradabilityFilterNode 配置"""
     tradable: TradableSetting = Field(
@@ -91,6 +140,7 @@ class TradabilityNodeConfig(_NodeBase):
     )
 
 
+@register_node_config("AdjustDate")
 class AdjustDateNodeConfig(_NodeBase):
     """Node 4: AdjustDateNode 配置
 
@@ -112,6 +162,7 @@ class AdjustDateNodeConfig(_NodeBase):
     )
 
 
+@register_node_config("FactorPreprocess")
 class PreprocessNodeConfig(BaseModel):
     """Node 5: FactorPreprocessNode 配置 (R3-A: 继承 config.py::PreprocessSetting 子集字段).
 
@@ -128,6 +179,7 @@ class PreprocessNodeConfig(BaseModel):
     i18n_name_map: Optional[dict[str, str]] = PreprocessSetting.model_fields["i18n_name_map"]
 
 
+@register_node_config("FactorNeutralize")
 class NeutralizeNodeConfig(BaseModel):
     """Node 6: FactorNeutralizeNode 配置 (R3-A: 继承 PreprocessSetting 中性化字段)."""
     model_config = _FORBID
@@ -136,21 +188,25 @@ class NeutralizeNodeConfig(BaseModel):
     risk_factors: list = PreprocessSetting.model_fields["risk_factors"]
 
 
+@register_node_config("ICAnalyzer")
 class ICAnalyzerNodeConfig(ICSetting):
     """Node 7: ICAnalyzerNode 配置 (R3-A: 继承 ICSetting)."""
     model_config = _FORBID
 
 
+@register_node_config("GroupAnalyzer")
 class GroupAnalyzerNodeConfig(GroupSetting):
     """Node 8: GroupAnalyzerNode 配置 (R3-A: 继承 GroupSetting)."""
     model_config = _FORBID
 
 
+@register_node_config("LongShort")
 class LongShortNodeConfig(LongShortSetting):
     """Node 9: LongShortNode 配置 (R3-A: 继承 LongShortSetting)."""
     model_config = _FORBID
 
 
+@register_node_config("FactorScore")
 class ScoreNodeConfig(ScoreSetting):
     """Node 10: FactorScoreNode 配置 (R3-A: 继承 ScoreSetting).
 
@@ -160,11 +216,13 @@ class ScoreNodeConfig(ScoreSetting):
     model_config = _FORBID
 
 
+@register_node_config("RiskCorrelation")
 class RiskCorrelationNodeConfig(RiskCorrelationSetting):
     """Node 11: RiskCorrelationNode 配置 (R3-A: 继承 RiskCorrelationSetting)."""
     model_config = _FORBID
 
 
+@register_node_config("FactorTestReport")
 class ReportNodeConfig(_NodeBase):
     """Node 12: FactorTestReportNode 配置
 
@@ -180,20 +238,3 @@ class ReportNodeConfig(_NodeBase):
         default_factory=lambda: ["parquet", "json"],
         description="输出格式",
     )
-
-
-# ── 节点名 → Config Schema 路由表 ────────────────────────────
-NODE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
-    "LoadData": LoadDataNodeConfig,
-    "SamplePoolFilter": SamplePoolNodeConfig,
-    "TradabilityFilter": TradabilityNodeConfig,
-    "AdjustDate": AdjustDateNodeConfig,
-    "FactorPreprocess": PreprocessNodeConfig,
-    "FactorNeutralize": NeutralizeNodeConfig,
-    "ICAnalyzer": ICAnalyzerNodeConfig,
-    "GroupAnalyzer": GroupAnalyzerNodeConfig,
-    "LongShort": LongShortNodeConfig,
-    "FactorScore": ScoreNodeConfig,
-    "RiskCorrelation": RiskCorrelationNodeConfig,
-    "FactorTestReport": ReportNodeConfig,
-}
