@@ -6,6 +6,7 @@ Migrated from factor_performance.py:361-560 cal_group_ret()
 
 
 import logging
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,99 @@ from QuantNodes.research.factor_test.utils.performance_metrics import (
 from QuantNodes.research.factor_test.utils.constants import INDEX_CP_MAPPING
 
 logger = logging.getLogger(__name__)
+
+
+_DISCRETE_INT_THRESHOLD = 10
+FactorKind = Literal["continuous", "low_tie", "discrete"]
+
+
+def _classify_factor(row: pd.Series, n_groups: int) -> FactorKind:
+    """按 dtype + n_unique 判别因子分桶策略。
+
+    Returns:
+        "discrete"   — bool dtype, 或 integer dtype 且 n_unique <= 阈值,
+                       或 n_unique <= 2（捕获 float-cast 的二值场景）
+        "low_tie"    — 3 <= n_unique < n_groups（有 ties 但不至于离散）
+        "continuous" — 其余（连续因子）
+    """
+    n_unique = row.nunique()
+    if pd.api.types.is_bool_dtype(row):
+        return "discrete"
+    if pd.api.types.is_integer_dtype(row) and n_unique <= _DISCRETE_INT_THRESHOLD:
+        return "discrete"
+    if n_unique <= 2:
+        return "discrete"
+    if n_unique < n_groups:
+        return "low_tie"
+    return "continuous"
+
+
+def _group_continuous(series: pd.Series, n_groups: int) -> pd.Series:
+    """连续因子: 保持原 pd.qcut 行为, 零回归。"""
+    return pd.qcut(
+        series, n_groups,
+        labels=range(1, n_groups + 1),
+        duplicates='drop'
+    )
+
+
+def _group_low_tie(series: pd.Series, n_groups: int) -> pd.Series:
+    """轻度 ties (3 <= n_unique < n_groups): rank('first') 破 tie + qcut。
+
+    修复原 pd.qcut(duplicates='drop') 在 ties 下抛 ValueError 的 bug。
+    """
+    return pd.qcut(
+        series.rank(method='first'),
+        n_groups,
+        labels=range(1, n_groups + 1),
+        duplicates='drop'
+    )
+
+
+def _group_discrete(
+    series: pd.Series, n_groups: int, date_int: int
+) -> pd.Series:
+    """bool / 离散因子 (n_unique <= 2): 按 value 比例分配组段 + 内部 seeded shuffle。
+
+    算法:
+      1. sorted unique values, 按 count/len*n_groups 比例 round 分配组数
+      2. 最后一个 value 用减法 (n_groups - sum(prev)) 强制补齐, 避免累计漂移
+      3. np.random.seed(date_int % 2**31) 每日同 seed → 可复现
+      4. value 内部 shuffle 后用整数除法 j * n_g // n_v 均分到所属组段
+
+    Args:
+        series: 单日 50 只股票的 factor values (dropna 后)
+        n_groups: 总组数 (默认 5)
+        date_int: yyyymmdd 整数, 用作 shuffle seed
+
+    Returns:
+        pd.Series: index=series.index, values ∈ {1, ..., n_groups}
+    """
+    unique_vals = sorted(series.unique())
+    n_total = len(series)
+    counts = {v: int((series == v).sum()) for v in unique_vals}
+
+    n_g_list: list[int] = []
+    for v in unique_vals[:-1]:
+        n_g_list.append(max(1, round(counts[v] / n_total * n_groups)))
+    n_g_list.append(max(1, n_groups - sum(n_g_list)))
+
+    starts: list[int] = [1]
+    for ng in n_g_list[:-1]:
+        starts.append(starts[-1] + ng)
+
+    np.random.seed(int(date_int) % (2**31))
+    groups = pd.Series(np.nan, index=series.index)
+    for v, ng, g_start in zip(unique_vals, n_g_list, starts):
+        if ng <= 0:
+            continue
+        val_idx = list(series[series == v].index)
+        np.random.shuffle(val_idx)
+        n_v = len(val_idx)
+        for j, idx in enumerate(val_idx):
+            g_within = min(ng - 1, j * ng // n_v) if n_v > 0 else 0
+            groups[idx] = g_start + g_within
+    return groups
 
 
 class GroupAnalyzerNode(PydanticConfigNode):
@@ -62,18 +156,22 @@ class GroupAnalyzerNode(PydanticConfigNode):
         fac_group = factor_data.copy() * np.nan
         for i in range(len(factor_data)):
             t_i = factor_data.index[i]
-            nonan = factor_data.loc[t_i].notna().sum()
+            row = factor_data.loc[t_i].dropna()
+            nonan = len(row)
             if nonan == 0 or nonan < group:
                 if floor_mode == 'group' or i == 0:
                     continue
                 elif floor_mode == 'last':
                     fac_group.loc[t_i] = fac_group.iloc[i - 1]
                     continue
-            fac_group.loc[t_i] = pd.qcut(
-                factor_data.loc[t_i], group,
-                labels=range(1, group + 1),
-                duplicates='drop'
-            )
+
+            kind = _classify_factor(row, group)
+            if kind == "discrete":
+                fac_group.loc[t_i] = _group_discrete(row, group, int(t_i))
+            elif kind == "low_tie":
+                fac_group.loc[t_i] = _group_low_tie(row, group)
+            else:
+                fac_group.loc[t_i] = _group_continuous(row, group)
 
         # 各期每组收益
         price_adj = price.loc[price.index.isin(adj_dates)]

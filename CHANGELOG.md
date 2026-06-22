@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- (TBD on next release)
+### Fixed
+- **`GroupAnalyzerNode` 支持 bool / 离散 / 轻度 ties 因子**
+  (`QuantNodes/research/factor_test/nodes/group_analyzer_node.py:55`)
+  - 原 `_calc_group_return` 在 n_unique < n_groups 时（如 `pl.when(cond)
+    .then(-1).otherwise(+1)` 产出 30×-1 + 20×+1，或 3 unique 的离散因子）
+    调用 `pd.qcut(..., labels=range(1, group+1), duplicates='drop')` 抛
+    `ValueError: Bin labels must be one fewer than the number of bin edges`。
+  - 改为策略模式：`_classify_factor` 按 dtype + n_unique 判别 → 3 个纯
+    函数 handler：
+    - `_group_continuous` — 连续因子，保持 `pd.qcut(series, ...)` 原
+      行为零变化
+    - `_group_low_tie` — 轻度 ties (3 <= n_unique < group)，用
+      `pd.qcut(series.rank(method='first'), ...)` 强制分 N 组（bug
+      修复，原路径崩溃）
+    - `_group_discrete` — bool/离散因子 (n_unique <= 2 或 bool/integer
+      dtype 且 n_unique <= 10)，按 value 比例分配组段 + 内部 seeded
+      shuffle（`seed=yyyymmdd % 2**31`）保证可复现
+  - `_calc_group_return` 改写为 match-case 调度，循环内只调一次
+    `factor_data.loc[t_i].dropna()`。
+  - 新增 `tests/test_group_analyzer_bool.py` 覆盖 3 分支 + dispatch。
 
 ---
 
