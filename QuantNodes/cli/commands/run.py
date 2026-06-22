@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Any, List
 
 from QuantNodes.core.path_utils import ensure_parent
+from QuantNodes.cli.command import Command
 
 from .._helpers import (
     DEFAULT_API_PORT,
@@ -212,3 +213,24 @@ def cmd_run(args) -> int:
         return 1
 
     return 0
+
+
+class RunCommand(Command):
+    """``quantnodes run`` subcommand."""
+
+    name = "run"
+    description = "启动服务"
+
+    def add_arguments(self, subparsers) -> None:
+        p = subparsers.add_parser(self.name, help=self.description)
+        p.add_argument("--host", help="绑定主机")
+        p.add_argument("--port", type=int, help="前端端口")
+        p.add_argument("--api-port", type=int, dest="api_port", help="后端端口")
+        p.add_argument("--daemon", action="store_true", help="后台运行 (仅 Linux)")
+        p.add_argument("--api-only", action="store_true", dest="api_only", help="仅启动后端")
+        p.add_argument(
+            "--frontend-only", action="store_true", dest="frontend_only", help="仅启动前端"
+        )
+
+    def run(self, args) -> int:
+        return cmd_run(args)

@@ -30,166 +30,79 @@ import sys
 import argparse
 
 from ._helpers import *  # noqa: F401,F403  (helpers + constants re-exported)
+# PROG_NAME 在本模块 _build_parser 中使用; 其余 add_* builders 现由各 Command
+# 子类自行调用, 这里保留 re-export 仅为 backward compat (redundant-alias 显式标注).
 from ._helpers import (
     PROG_NAME,
-    add_cli_overrides,
-    add_lineage_depth_args,
-    add_metric_arg,
-    add_output_arg,
-    add_pool_dir_arg,
-    add_title_arg,
-    add_top_arg,
+    add_cli_overrides as add_cli_overrides,
+    add_lineage_depth_args as add_lineage_depth_args,
+    add_metric_arg as add_metric_arg,
+    add_output_arg as add_output_arg,
+    add_pool_dir_arg as add_pool_dir_arg,
+    add_title_arg as add_title_arg,
+    add_top_arg as add_top_arg,
 )
-from .commands.init import cmd_init
+# cmd_* 函数 re-export: backward compat, ``from QuantNodes.cli import cmd_init`` 不变.
+# Phase 3.1 起 main() 已改走 COMMAND_REGISTRY dispatch, 这些函数仅 cmd_help
+# 在缺省分支直接调用, 其余靠各 Command.run() 间接调用.
+from .commands.init import cmd_init as cmd_init
 from .commands.run import (
-    cmd_run,
+    cmd_run as cmd_run,
     start_api_server as start_api_server,
     start_frontend_server as start_frontend_server,
 )
-from .commands.version import cmd_version, cmd_help
-from .commands.chat import cmd_chat
+from .commands.version import cmd_version as cmd_version, cmd_help
+from .commands.chat import cmd_chat as cmd_chat
 from .commands.evolve import (
-    cmd_evolve,
+    cmd_evolve as cmd_evolve,
     _load_runner_from_config as _load_runner_from_config,
 )
 from .commands.factor import (
-    cmd_factor_info,
-    cmd_factor_best,
-    cmd_factor_visual,
-    cmd_factor_dashboard,
-    cmd_factor_data_fetch,
-    cmd_factor_rag_eval,
-    cmd_factor_rag_show,
+    cmd_factor_info as cmd_factor_info,
+    cmd_factor_best as cmd_factor_best,
+    cmd_factor_visual as cmd_factor_visual,
+    cmd_factor_dashboard as cmd_factor_dashboard,
+    cmd_factor_data_fetch as cmd_factor_data_fetch,
+    cmd_factor_rag_eval as cmd_factor_rag_eval,
+    cmd_factor_rag_show as cmd_factor_rag_show,
 )
+from .commands import COMMAND_REGISTRY as COMMAND_REGISTRY
 
 
 def _build_parser() -> argparse.ArgumentParser:
     """Build the top-level argparse parser (with all subcommands).
 
+    Phase 3.1 (2026-06-22): 改为遍历 COMMAND_REGISTRY, 每个 Command 自己
+    负责 add_arguments(subparsers). 替代原 90 行手写 parser 构造. 新增子
+    命令只需写 Command 子类 + 在 commands/__init__.py 注册.
+
     Phase I1 (2026-06-20): repeated argument groups consolidated via
-    builders in _helpers.py:
-      add_pool_dir_arg (6 sites), add_top_arg (2), add_metric_arg (2),
-      add_title_arg (2), add_output_arg (3), add_lineage_depth_args (2),
-      add_cli_overrides (2).
+    builders in _helpers.py (add_pool_dir_arg 等), 现由各 Command 调用.
     """
     parser = argparse.ArgumentParser(
         prog=PROG_NAME,
         description="QuantNodes CLI - 量化研究节点架构命令行工具",
         add_help=False
     )
-
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
-
-    init_parser = subparsers.add_parser("init", help="初始化当前目录")
-    init_parser.add_argument("--force", action="store_true", help="强制重新初始化")
-
-    run_parser = subparsers.add_parser("run", help="启动服务")
-    run_parser.add_argument("--host", help="绑定主机")
-    run_parser.add_argument("--port", type=int, help="前端端口")
-    run_parser.add_argument("--api-port", type=int, dest="api_port", help="后端端口")
-    run_parser.add_argument("--daemon", action="store_true", help="后台运行 (仅 Linux)")
-    run_parser.add_argument("--api-only", action="store_true", dest="api_only", help="仅启动后端")
-    run_parser.add_argument("--frontend-only", action="store_true", dest="frontend_only", help="仅启动前端")
-
-    chat_parser = subparsers.add_parser("chat", help="启动 Agent 对话模式")
-    chat_parser.add_argument("message", nargs="?", help="单次提问（不指定则进入交互模式）")
-    chat_parser.add_argument("--workspace", default=".", help="工作目录")
-
-    # Week 5: 演化实验子命令
-    evolve_parser = subparsers.add_parser("evolve", help="多轮演化主入口")
-    evolve_parser.add_argument("--config", required=True, help="YAML 配置文件路径")
-    evolve_parser.add_argument("--directions", default="", help="逗号分隔的研究方向")
-    evolve_parser.add_argument("--initial-json", default=None, help="初始 candidates JSON")
-    evolve_parser.add_argument("--max-rounds", type=int, default=None, help="覆盖 config.max_rounds")
-    evolve_parser.add_argument("--early-stop", type=int, default=None, help="覆盖 config.early_stop_patience")
-    evolve_parser.add_argument("--workers", type=int, default=1, help="并行评估数 (默认 1=串行, >1=ThreadPool)")
-    add_cli_overrides(evolve_parser)
-
-    info_parser = subparsers.add_parser("factor-info", help="显示 TrajectoryPool 统计")
-    add_pool_dir_arg(info_parser)
-
-    best_parser = subparsers.add_parser("factor-best", help="显示 Top-N 最佳 entry")
-    add_pool_dir_arg(best_parser)
-    add_top_arg(best_parser)
-    add_metric_arg(best_parser)
-
-    visual_parser = subparsers.add_parser("factor-visual", help="生成可视化 HTML 报告 (Week 6)")
-    add_pool_dir_arg(visual_parser)
-    add_output_arg(visual_parser)
-    add_metric_arg(visual_parser)
-    add_title_arg(visual_parser)
-
-    rag_parser = subparsers.add_parser("factor-rag-show", help="RAG 检索演示 (Week 7)")
-    add_pool_dir_arg(rag_parser)
-    rag_parser.add_argument("--query", required=True, help="查询文本")
-    add_top_arg(rag_parser)
-    rag_parser.add_argument("--compress", action="store_true", help="启用谱系压缩 (Week 9)")
-    add_lineage_depth_args(rag_parser)
-    rag_parser.add_argument("--max-tokens", type=int, default=200, help="压缩最大字符数 (默认 200)")
-
-    rag_eval_parser = subparsers.add_parser("factor-rag-eval", help="批量评估 RAG 检索质量 (Week 10)")
-    add_pool_dir_arg(rag_eval_parser)
-    rag_eval_parser.add_argument("--queries", required=True, help="逗号分隔的 query 列表")
-    add_top_arg(rag_eval_parser)
-    add_lineage_depth_args(rag_eval_parser)
-    add_output_arg(rag_eval_parser)
-
-    fetch_parser = subparsers.add_parser("factor-data-fetch", help="从 iFinD 拉取数据 + 写 H5 (Week 12)")
-    fetch_parser.add_argument("--output-dir", required=True, help="HDF5 输出目录")
-    fetch_parser.add_argument("--date-beg", required=True, help="起始日期 (YYYYMMDD)")
-    fetch_parser.add_argument("--date-end", default="", help="截止日期 (空=今天)")
-    fetch_parser.add_argument("--universe", default="all", help="股票池 (默认 all, 与 iFinD API 兼容)")
-    fetch_parser.add_argument("--factors", default="", help="逗号分隔的因子列表")
-    add_cli_overrides(fetch_parser)
-
-    dash_parser = subparsers.add_parser("factor-dashboard", help="生成 3 类指标 dashboard (Week 13/16)")
-    add_pool_dir_arg(dash_parser)
-    add_output_arg(dash_parser)
-    add_title_arg(dash_parser)
-    dash_parser.add_argument("--streaming", action="store_true", help="启用 streaming 模式 (自动刷新 10s)")
-    dash_parser.add_argument("--refresh", type=int, default=10, help="streaming 刷新间隔秒数 (默认 10)")
-    dash_parser.add_argument("--watch", action="store_true", help="后台模式: 每 10s 刷新 dashboard")
-
-    subparsers.add_parser("version", help="显示版本")
-    subparsers.add_parser("help", help="显示帮助")
-
+    for cmd in COMMAND_REGISTRY.all():
+        cmd.add_arguments(subparsers)
     return parser
 
 
 def main():
-    """Main CLI entry point."""
+    """Main CLI entry point.
+
+    Phase 3.1 (2026-06-22): 改为 registry dispatch. 未知/缺省 command 回退
+    到 help (与旧行为一致).
+    """
     parser = _build_parser()
     args = parser.parse_args()
 
-    if args.command == "init":
-        return cmd_init(args)
-    elif args.command == "run":
-        return cmd_run(args)
-    elif args.command == "chat":
-        return cmd_chat(args)
-    elif args.command == "evolve":
-        return cmd_evolve(args)
-    elif args.command == "factor-info":
-        return cmd_factor_info(args)
-    elif args.command == "factor-best":
-        return cmd_factor_best(args)
-    elif args.command == "factor-visual":
-        return cmd_factor_visual(args)
-    elif args.command == "factor-rag-show":
-        return cmd_factor_rag_show(args)
-    elif args.command == "factor-rag-eval":
-        return cmd_factor_rag_eval(args)
-    elif args.command == "factor-data-fetch":
-        return cmd_factor_data_fetch(args)
-    elif args.command == "factor-dashboard":
-        return cmd_factor_dashboard(args)
-    elif args.command == "version":
-        return cmd_version(args)
-    elif args.command == "help":
+    cmd = COMMAND_REGISTRY.get(args.command)
+    if cmd is None:
         return cmd_help(args)
-    else:
-        cmd_help(args)
-        return 0
+    return cmd.run(args)
 
 
 if __name__ == "__main__":

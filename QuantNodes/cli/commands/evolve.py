@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from QuantNodes.cli._helpers import cli_safe_run
+from QuantNodes.cli.command import Command
 
 
 def _load_runner_from_config(config_path: str):
@@ -92,3 +93,28 @@ def cmd_evolve(args) -> int:
               f"{runner.config.evolution.metric}={metric_val:.4f}")
     print("=" * 60)
     return 0
+
+
+class EvolveCommand(Command):
+    """``quantnodes evolve`` subcommand."""
+
+    name = "evolve"
+    description = "多轮演化主入口"
+
+    def add_arguments(self, subparsers) -> None:
+        from .._helpers import add_cli_overrides
+        p = subparsers.add_parser(self.name, help=self.description)
+        p.add_argument("--config", required=True, help="YAML 配置文件路径")
+        p.add_argument("--directions", default="", help="逗号分隔的研究方向")
+        p.add_argument("--initial-json", default=None, help="初始 candidates JSON")
+        p.add_argument("--max-rounds", type=int, default=None, help="覆盖 config.max_rounds")
+        p.add_argument(
+            "--early-stop", type=int, default=None, help="覆盖 config.early_stop_patience"
+        )
+        p.add_argument(
+            "--workers", type=int, default=1, help="并行评估数 (默认 1=串行, >1=ThreadPool)"
+        )
+        add_cli_overrides(p)
+
+    def run(self, args) -> int:
+        return cmd_evolve(args)

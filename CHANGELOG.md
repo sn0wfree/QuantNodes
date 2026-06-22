@@ -82,6 +82,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     覆盖 7 类 (ABC / 3 strategy / Factory / E2E / BackwardCompat)，
     38 个测试
 
+- **CLI 改 Command pattern + CommandRegistry (Phase 3.1)**
+  (`QuantNodes/cli/command.py`, `QuantNodes/cli/__init__.py`)
+  - 原 `cli/__init__.py:main` 34 行 if/elif ladder 派发到 13 个 `cmd_*`
+    函数，且 `_build_parser` 90 行手写 13 个子命令的 argparse 构造。
+  - 新增 `cli/command.py`：
+    - `Command` (ABC)：`name` / `description` / `add_arguments(subparsers)`
+      / `run(args) -> int` 四要素
+    - `CommandRegistry`：`register` (重复同名 / 空 name 抛 ValueError，
+      同实例幂等) / `get` / `all` / `names` / `clear` / `__len__` /
+      `__contains__`
+  - 13 个子命令各暴露一个 `Command` 子类 (`InitCommand` / `RunCommand` /
+    `ChatCommand` / `EvolveCommand` / `Factor{Info,Best,Visual,Dashboard,
+    DataFetch,RagEval,RagShow}Command` / `VersionCommand` / `HelpCommand`)，
+    自身负责 `add_arguments` (复用 `_helpers.py` 的 add_* builders)。
+  - `commands/__init__.py` 建模块级单例 `COMMAND_REGISTRY`，import 时按
+    固定顺序注册全部 13 个 command。
+  - `_build_parser` 退化为遍历 `COMMAND_REGISTRY.all()` 调
+    `cmd.add_arguments(subparsers)`；`main()` 退化为
+    `COMMAND_REGISTRY.get(args.command).run(args)` (缺省/未知回退 help)。
+  - 新增子命令只需写 Command 子类 + 注册一行，无需改 main / _build_parser。
+  - 向后兼容：所有 `cmd_*` 函数 + `start_api_server` /
+    `start_frontend_server` / `_load_runner_from_config` 仍从
+    `QuantNodes.cli` 原样 re-export，调用方式不变。
+  - 新增 `tests/cli/test_cli_command.py` 覆盖 6 类 (Command ABC /
+    Registry / 模块 registry 内容 / _build_parser / main dispatch /
+    BackwardCompat)，25 个测试。
+
 ### Added
 - **端到端集成测试 (Option D 巩固)**
   (`tests/research/factor_test/e2e/test_pipeline_bool_factor.py`)

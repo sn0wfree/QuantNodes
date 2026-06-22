@@ -3,6 +3,7 @@
 
 from pathlib import Path
 
+from QuantNodes.cli.command import Command
 from .._helpers import (
     confirm_section,
     create_directory_structure,
@@ -157,3 +158,17 @@ def cmd_init(args) -> int:
     print()
 
     return 0
+
+
+class InitCommand(Command):
+    """``quantnodes init`` subcommand."""
+
+    name = "init"
+    description = "初始化当前目录"
+
+    def add_arguments(self, subparsers) -> None:
+        p = subparsers.add_parser(self.name, help=self.description)
+        p.add_argument("--force", action="store_true", help="强制重新初始化")
+
+    def run(self, args) -> int:
+        return cmd_init(args)

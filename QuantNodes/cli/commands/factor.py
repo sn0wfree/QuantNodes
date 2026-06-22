@@ -8,6 +8,7 @@ visual reporting / iFinD data fetching / live monitoring dashboards.
 from pathlib import Path
 
 from QuantNodes.cli._helpers import cli_safe_run
+from QuantNodes.cli.command import Command
 
 
 @cli_safe_run
@@ -443,3 +444,126 @@ def cmd_factor_rag_show(args) -> int:
             print(f"     ↓ descendants ({c_desc.original_count}): {c_desc.summary[:80]}")
     print("=" * 60)
     return 0
+
+
+class FactorInfoCommand(Command):
+    name = "factor-info"
+    description = "显示 TrajectoryPool 统计"
+
+    def add_arguments(self, subparsers) -> None:
+        from .._helpers import add_pool_dir_arg
+        p = subparsers.add_parser(self.name, help=self.description)
+        add_pool_dir_arg(p)
+
+    def run(self, args) -> int:
+        return cmd_factor_info(args)
+
+
+class FactorBestCommand(Command):
+    name = "factor-best"
+    description = "显示 Top-N 最佳 entry"
+
+    def add_arguments(self, subparsers) -> None:
+        from .._helpers import add_pool_dir_arg, add_top_arg, add_metric_arg
+        p = subparsers.add_parser(self.name, help=self.description)
+        add_pool_dir_arg(p)
+        add_top_arg(p)
+        add_metric_arg(p)
+
+    def run(self, args) -> int:
+        return cmd_factor_best(args)
+
+
+class FactorVisualCommand(Command):
+    name = "factor-visual"
+    description = "生成可视化 HTML 报告 (Week 6)"
+
+    def add_arguments(self, subparsers) -> None:
+        from .._helpers import (
+            add_pool_dir_arg, add_output_arg, add_metric_arg, add_title_arg,
+        )
+        p = subparsers.add_parser(self.name, help=self.description)
+        add_pool_dir_arg(p)
+        add_output_arg(p)
+        add_metric_arg(p)
+        add_title_arg(p)
+
+    def run(self, args) -> int:
+        return cmd_factor_visual(args)
+
+
+class FactorDashboardCommand(Command):
+    name = "factor-dashboard"
+    description = "生成 3 类指标 dashboard (Week 13/16)"
+
+    def add_arguments(self, subparsers) -> None:
+        from .._helpers import add_pool_dir_arg, add_output_arg, add_title_arg
+        p = subparsers.add_parser(self.name, help=self.description)
+        add_pool_dir_arg(p)
+        add_output_arg(p)
+        add_title_arg(p)
+        p.add_argument(
+            "--streaming", action="store_true", help="启用 streaming 模式 (自动刷新 10s)"
+        )
+        p.add_argument("--refresh", type=int, default=10, help="streaming 刷新间隔秒数 (默认 10)")
+        p.add_argument("--watch", action="store_true", help="后台模式: 每 10s 刷新 dashboard")
+
+    def run(self, args) -> int:
+        return cmd_factor_dashboard(args)
+
+
+class FactorDataFetchCommand(Command):
+    name = "factor-data-fetch"
+    description = "从 iFinD 拉取数据 + 写 H5 (Week 12)"
+
+    def add_arguments(self, subparsers) -> None:
+        from .._helpers import add_cli_overrides
+        p = subparsers.add_parser(self.name, help=self.description)
+        p.add_argument("--output-dir", required=True, help="HDF5 输出目录")
+        p.add_argument("--date-beg", required=True, help="起始日期 (YYYYMMDD)")
+        p.add_argument("--date-end", default="", help="截止日期 (空=今天)")
+        p.add_argument("--universe", default="all", help="股票池 (默认 all, 与 iFinD API 兼容)")
+        p.add_argument("--factors", default="", help="逗号分隔的因子列表")
+        add_cli_overrides(p)
+
+    def run(self, args) -> int:
+        return cmd_factor_data_fetch(args)
+
+
+class FactorRagEvalCommand(Command):
+    name = "factor-rag-eval"
+    description = "批量评估 RAG 检索质量 (Week 10)"
+
+    def add_arguments(self, subparsers) -> None:
+        from .._helpers import (
+            add_pool_dir_arg, add_top_arg, add_lineage_depth_args, add_output_arg,
+        )
+        p = subparsers.add_parser(self.name, help=self.description)
+        add_pool_dir_arg(p)
+        p.add_argument("--queries", required=True, help="逗号分隔的 query 列表")
+        add_top_arg(p)
+        add_lineage_depth_args(p)
+        add_output_arg(p)
+
+    def run(self, args) -> int:
+        return cmd_factor_rag_eval(args)
+
+
+class FactorRagShowCommand(Command):
+    name = "factor-rag-show"
+    description = "RAG 检索演示 (Week 7)"
+
+    def add_arguments(self, subparsers) -> None:
+        from .._helpers import (
+            add_pool_dir_arg, add_top_arg, add_lineage_depth_args,
+        )
+        p = subparsers.add_parser(self.name, help=self.description)
+        add_pool_dir_arg(p)
+        p.add_argument("--query", required=True, help="查询文本")
+        add_top_arg(p)
+        p.add_argument("--compress", action="store_true", help="启用谱系压缩 (Week 9)")
+        add_lineage_depth_args(p)
+        p.add_argument("--max-tokens", type=int, default=200, help="压缩最大字符数 (默认 200)")
+
+    def run(self, args) -> int:
+        return cmd_factor_rag_show(args)

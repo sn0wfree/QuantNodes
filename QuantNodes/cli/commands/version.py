@@ -1,7 +1,12 @@
 # coding=utf-8
-"""``quantnodes version`` and ``quantnodes help`` commands."""
+"""``quantnodes version`` and ``quantnodes help`` commands.
+
+Phase 3.1 (2026-06-22): 改为 Command pattern — VersionCommand + HelpCommand.
+旧的 cmd_version / cmd_help 函数保留作 backward compat.
+"""
 
 from QuantNodes import __version__
+from QuantNodes.cli.command import Command
 
 
 def cmd_version(args) -> int:
@@ -87,3 +92,29 @@ run 选项:
 详细文档: docs/QuickStart.md
 """)
     return 0
+
+
+class VersionCommand(Command):
+    """``quantnodes version`` subcommand."""
+
+    name = "version"
+    description = "显示版本"
+
+    def add_arguments(self, subparsers) -> None:
+        subparsers.add_parser(self.name, help=self.description)
+
+    def run(self, args) -> int:
+        return cmd_version(args)
+
+
+class HelpCommand(Command):
+    """``quantnodes help`` subcommand."""
+
+    name = "help"
+    description = "显示帮助"
+
+    def add_arguments(self, subparsers) -> None:
+        subparsers.add_parser(self.name, help=self.description)
+
+    def run(self, args) -> int:
+        return cmd_help(args)
