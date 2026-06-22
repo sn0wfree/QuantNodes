@@ -1,17 +1,28 @@
-# coding: utf-8
+# coding=utf-8
 """Node 6: 因子中性化 / Factor Neutralize Node
 
 Migrated from factor_utils.py:534-625 neutralize()
+
+Phase 2.1 (Chain of Responsibility):
+  - 原 70 行 _neutralize 三个 if/elif 分支 (industry only / risk only / both)
+    替换为 chain dispatch.
+  - 中性化逻辑 (设计矩阵 X 组装) 抽到 nodes/neutralizers.py:
+      Neutralizer (ABC) / IndustryNeutralizer / RiskNeutralizer
+      build_neutralizer_chain() / apply_neutralizer_chain()
+  - 新增中性化类型 (如 StyleNeutralizer) 只需新增一个 Neutralizer 子类,
+    _execute 无需修改.
 """
 
 import logging
 
-import numpy as np
 import pandas as pd
-import statsmodels.api as sm
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import NeutralizeNodeConfig
+from QuantNodes.research.factor_test.nodes.neutralizers import (
+    apply_neutralizer_chain,
+    build_neutralizer_chain,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,75 +74,14 @@ class FactorNeutralizeNode(PydanticConfigNode):
                                 self._if_risk, risk_data)
 
     def _neutralize(self, factor_i, if_industry, industry, if_risk, risk_data):
-        """中性化处理"""
-        factor_i = factor_i.copy()
-        if industry is not None:
-            industry = industry.copy().replace(np.nan, 0)
+        """中性化处理 (Phase 2.1: 委托给 chain).
 
-        factor_neut = factor_i * np.nan
-        date_factor_i = factor_i.index.values
-
-        if if_industry and if_risk:
-            # 行业 + 风险中性
-            for date_j in date_factor_i:
-                if factor_i.loc[date_j].notna().sum() > 0:
-                    ind_j = industry.loc[date_j]
-                    dum_ind = pd.get_dummies(ind_j)
-                    dum_ind = dum_ind.loc[:, dum_ind.sum() > 0]
-                    X = dum_ind.copy()
-                    for rf in risk_data:
-                        if date_j in rf.index:
-                            X = pd.merge(X, rf.loc[date_j].to_frame().T,
-                                         left_index=True, right_index=True,
-                                         suffixes=('', '_rf'))
-                    lm_data = pd.merge(
-                        factor_i.loc[date_j].to_frame(), X,
-                        left_index=True, right_index=True,
-                        suffixes=('_y', '_x')
-                    ).dropna()
-                    if len(lm_data) > X.shape[1]:
-                        model = sm.OLS(lm_data.iloc[:, 0].values,
-                                       sm.add_constant(lm_data.iloc[:, 1:].values))
-                        resid = model.fit().resid
-                        factor_neut.loc[date_j, lm_data.index.values] = resid
-
-        elif if_industry:
-            # 仅行业中性
-            for date_j in date_factor_i:
-                if factor_i.loc[date_j].notna().sum() > 0:
-                    ind_j = industry.loc[date_j]
-                    dum_ind = pd.get_dummies(ind_j)
-                    dum_ind = dum_ind.loc[:, dum_ind.sum() > 0]
-                    lm_data = pd.merge(
-                        factor_i.loc[date_j].to_frame(), dum_ind,
-                        left_index=True, right_index=True,
-                        suffixes=('_y', '_x')
-                    ).dropna()
-                    if len(lm_data) > dum_ind.shape[1]:
-                        model = sm.OLS(lm_data.iloc[:, 0].values,
-                                       sm.add_constant(lm_data.iloc[:, 1:].values))
-                        resid = model.fit().resid
-                        factor_neut.loc[date_j, lm_data.index.values] = resid
-
-        elif if_risk:
-            # 仅风险中性
-            for date_j in date_factor_i:
-                if factor_i.loc[date_j].notna().sum() > 0:
-                    X = pd.DataFrame()
-                    for rf in risk_data:
-                        if date_j in rf.index:
-                            X = pd.concat([X, rf.loc[date_j].to_frame().T], axis=1)
-                    if not X.empty:
-                        X = sm.add_constant(X)
-                        lm_data = pd.merge(
-                            factor_i.loc[date_j].to_frame(), X,
-                            left_index=True, right_index=True,
-                            suffixes=('_y', '_x')
-                        ).dropna()
-                        if len(lm_data) > X.shape[1]:
-                            model = sm.OLS(lm_data.iloc[:, 0].values,
-                                           lm_data.iloc[:, 1:].values)
-                            resid = model.fit().resid
-                            factor_neut.loc[date_j, lm_data.index.values] = resid
-
-        return factor_neut
+        Phase 2.1 行为完全等价于旧实现:
+          - chain 为空 → 返回 factor_i (全 nan, 与原 _neutralize 入口一致)
+          - 4 种 flag 组合的输出与原 branch 1/2/3 bitwise 一致
+        """
+        chain = build_neutralizer_chain(if_industry, if_risk, industry, risk_data)
+        if not chain:
+            # 无 neutralizer 时返回原 factor (保留 nan 模式), 与旧 line 40 一致
+            return factor_i
+        return apply_neutralizer_chain(factor_i, chain)

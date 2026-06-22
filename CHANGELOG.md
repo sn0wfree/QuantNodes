@@ -33,6 +33,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 新增 `tests/test_group_analyzer_bool.py` 覆盖 2 分支 + dispatch，
     含 alpha-004 真实 ties 场景。
 
+### Changed
+- **`FactorNeutralizeNode` 改 Chain of Responsibility (Phase 2.1)**
+  (`QuantNodes/research/factor_test/nodes/factor_neutralize_node.py:65`)
+  - 原 `_neutralize` 72 行 3 个 if/elif 分支 (industry only / risk only
+    / both) 几乎相同 (90% 重复)，仅 X 设计矩阵组装不同。
+  - 抽出 `nodes/neutralizers.py`：
+    - `Neutralizer` (ABC) / `IndustryNeutralizer` / `RiskNeutralizer`
+    - `build_neutralizer_chain(if_industry, if_risk, industry, risk_data)`
+      → `List[Neutralizer]`，自动过滤 `is_active() == False` 的环节
+    - `apply_neutralizer_chain(factor_i, chain)` 统一"按日期循环 +
+      merge + OLS + 写残差"流程
+  - `_neutralize` 退化为 4 行：构造 chain + 委托
+  - 新增中性化类型 (如 `StyleNeutralizer`) 只需新增一个 `Neutralizer`
+    子类，`_execute` 无需修改
+  - 顺带修复 2 个 latent bugs (原代码从未被测试覆盖):
+    1. `pd.get_dummies` 产出 bool dtype，`sm.add_constant` 报
+       "numpy boolean subtract" 错误。chain 实现显式 `.astype(float)`
+    2. 原 branch 3 (risk only) `pd.concat` 组装 X 时未转置，产生
+       `(n_risks, n_stocks)` 而非预期的 `(n_stocks, n_risks)`，
+       导致后续 `merge(left_index=True, right_index=True)` 错位。
+       chain 实现统一 X 形状 (index=股票代码, columns=factors)
+  - 新增 `tests/research/factor_test/nodes/test_neutralizer_chain.py`
+    覆盖 5 类 (ABC / Industry / Risk / Chain build / Chain apply /
+    Backward compat / E2E)，37 个测试
+
 ---
 
 ## [2.7.0] - 2026-06-21
