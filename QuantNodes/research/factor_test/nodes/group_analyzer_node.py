@@ -21,44 +21,38 @@ from QuantNodes.research.factor_test.utils.constants import INDEX_CP_MAPPING
 logger = logging.getLogger(__name__)
 
 
-_DISCRETE_INT_THRESHOLD = 10
-FactorKind = Literal["continuous", "low_tie", "discrete"]
+FactorKind = Literal["ranked", "discrete"]
 
 
 def _classify_factor(row: pd.Series, n_groups: int) -> FactorKind:
     """按 dtype + n_unique 判别因子分桶策略。
 
     Returns:
-        "discrete"   — bool dtype, 或 integer dtype 且 n_unique <= 阈值,
-                       或 n_unique <= 2（捕获 float-cast 的二值场景）
-        "low_tie"    — 3 <= n_unique < n_groups（有 ties 但不至于离散）
-        "continuous" — 其余（连续因子）
+        "discrete" — bool dtype, 或 n_unique <= 2（捕获 float-cast 二值）
+        "ranked"   — 其余（连续或轻度 ties, 走 rank('first') + qcut）
+
+    注: n_unique >= 3 的整数 dtype 因子走 ranked 分支, 因为
+    _group_discrete 按 value 比例分配组段, 对 n_unique > n_groups 的
+    输入无法产出恰好 n_groups 个组 (会产生 n_unique 个组)。
     """
     n_unique = row.nunique()
     if pd.api.types.is_bool_dtype(row):
         return "discrete"
-    if pd.api.types.is_integer_dtype(row) and n_unique <= _DISCRETE_INT_THRESHOLD:
-        return "discrete"
     if n_unique <= 2:
         return "discrete"
-    if n_unique < n_groups:
-        return "low_tie"
-    return "continuous"
+    return "ranked"
 
 
-def _group_continuous(series: pd.Series, n_groups: int) -> pd.Series:
-    """连续因子: 保持原 pd.qcut 行为, 零回归。"""
-    return pd.qcut(
-        series, n_groups,
-        labels=range(1, n_groups + 1),
-        duplicates='drop'
-    )
+def _group_ranked(series: pd.Series, n_groups: int) -> pd.Series:
+    """通用 rank('first') + qcut: 处理连续和轻度 ties 因子。
 
+    修复 pd.qcut(duplicates='drop') 在 ties 下抛 "Bin labels must be
+    one fewer than the number of bin edges" 的 bug (alpha-004 等场景:
+    7 unique × 50 行有大量 ties)。
 
-def _group_low_tie(series: pd.Series, n_groups: int) -> pd.Series:
-    """轻度 ties (3 <= n_unique < n_groups): rank('first') 破 tie + qcut。
-
-    修复原 pd.qcut(duplicates='drop') 在 ties 下抛 ValueError 的 bug。
+    对无 ties 的纯连续因子, rank('first') 产出 1..n 唯一序号,
+    qcut 在序号上的分位点与原 qcut(series) 上的分位点对应同一组
+    元素 (单调变换保序), 行为 bitwise 等价 (零回归)。
     """
     return pd.qcut(
         series.rank(method='first'),
@@ -168,10 +162,8 @@ class GroupAnalyzerNode(PydanticConfigNode):
             kind = _classify_factor(row, group)
             if kind == "discrete":
                 fac_group.loc[t_i] = _group_discrete(row, group, int(t_i))
-            elif kind == "low_tie":
-                fac_group.loc[t_i] = _group_low_tie(row, group)
             else:
-                fac_group.loc[t_i] = _group_continuous(row, group)
+                fac_group.loc[t_i] = _group_ranked(row, group)
 
         # 各期每组收益
         price_adj = price.loc[price.index.isin(adj_dates)]

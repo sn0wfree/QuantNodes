@@ -14,19 +14,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     .then(-1).otherwise(+1)` 产出 30×-1 + 20×+1，或 3 unique 的离散因子）
     调用 `pd.qcut(..., labels=range(1, group+1), duplicates='drop')` 抛
     `ValueError: Bin labels must be one fewer than the number of bin edges`。
-  - 改为策略模式：`_classify_factor` 按 dtype + n_unique 判别 → 3 个纯
+  - 改为策略模式：`_classify_factor` 按 dtype + n_unique 判别 → 2 个纯
     函数 handler：
-    - `_group_continuous` — 连续因子，保持 `pd.qcut(series, ...)` 原
-      行为零变化
-    - `_group_low_tie` — 轻度 ties (3 <= n_unique < group)，用
-      `pd.qcut(series.rank(method='first'), ...)` 强制分 N 组（bug
-      修复，原路径崩溃）
+    - `_group_ranked` — 连续或轻度 ties 因子（含 alpha-004 场景：
+      7 unique × 50 行有大量 ties 但 n_unique >= group），统一用
+      `pd.qcut(series.rank(method='first'), ...)` 破 tie。对无 ties
+      纯连续因子与原 `pd.qcut(series, ...)` 行为 bitwise 等价
+      （rank 单调变换保序），零回归。
     - `_group_discrete` — bool/离散因子 (n_unique <= 2 或 bool/integer
       dtype 且 n_unique <= 10)，按 value 比例分配组段 + 内部 seeded
-      shuffle（`seed=yyyymmdd % 2**31`）保证可复现
-  - `_calc_group_return` 改写为 match-case 调度，循环内只调一次
+      shuffle（`seed=yyyymmdd % 2**31`）保证可复现。
+  - `_classify_factor` 返回种类从 3 (`continuous`/`low_tie`/`discrete`)
+    合并为 2 (`ranked`/`discrete`)，dispatch 简化为 2 分支。
+  - 原 `_group_continuous` (修复 ties 抛错) + `_group_low_tie` (修复
+    ties 抛错) 合并为单个 `_group_ranked`。
+  - `_calc_group_return` 改写为 dispatch 调度，循环内只调一次
     `factor_data.loc[t_i].dropna()`。
-  - 新增 `tests/test_group_analyzer_bool.py` 覆盖 3 分支 + dispatch。
+  - 新增 `tests/test_group_analyzer_bool.py` 覆盖 2 分支 + dispatch，
+    含 alpha-004 真实 ties 场景。
 
 ---
 
