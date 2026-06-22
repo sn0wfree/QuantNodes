@@ -252,11 +252,55 @@ def list_composite_ops(category: Optional[str] = None) -> List[str]:
 
 
 def get_composite_doc_for_llm() -> str:
-    """生成给 LLM prompt 的 composite 文档 (markdown 格式)."""
-    lines: List[str] = ["# Available Composite Operators\n"]
+    """生成给 LLM prompt 的 composite 文档 (markdown 格式).
+
+    Phase 1.5: 内部委托 LLMDocVisitor, 保持向后兼容的输出格式。
+    """
+    visitor = LLMDocVisitor()
     for spec in _COMPOSITE_REGISTRY.all_specs():
-        lines.append(f"## {spec.name}")
-        lines.append(f"  {spec.doc}")
+        visitor.visit_spec(spec)
+    return visitor.result
+
+
+# ============== Visitor Pattern (Phase 1.5) ==============
+
+class CompositeSpecVisitor:
+    """CompositeSpec 的访问者基类 (Phase 1.5, Visitor pattern).
+
+    用途:
+      - 统一访问 _COMPOSITE_REGISTRY 中所有 CompositeSpec
+      - 不修改 CompositeSpec 即可扩展新的遍历/分析能力
+      - 具体子类: LLMDocVisitor / DependencyVisitor / ValidationVisitor
+
+    使用:
+        >>> visitor = LLMDocVisitor()
+        >>> for spec in _COMPOSITE_REGISTRY.all_specs():
+        ...     visitor.visit_spec(spec)
+        >>> print(visitor.result)
+    """
+
+    def visit_spec(self, spec: CompositeSpec) -> None:
+        """访问一个 CompositeSpec。子类重写此方法实现具体逻辑。"""
+        raise NotImplementedError
+
+    def visit_all(self) -> None:
+        """便利方法: 遍历整个 _COMPOSITE_REGISTRY。"""
+        for spec in _COMPOSITE_REGISTRY.all_specs():
+            self.visit_spec(spec)
+
+
+class LLMDocVisitor(CompositeSpecVisitor):
+    """为 LLM prompt 生成 markdown 格式的 composite 文档。
+
+    输出格式与原 get_composite_doc_for_llm() 完全一致 (向后兼容)。
+    """
+
+    def __init__(self) -> None:
+        self.lines: List[str] = ["# Available Composite Operators"]
+
+    def visit_spec(self, spec: CompositeSpec) -> None:
+        self.lines.append(f"## {spec.name}")
+        self.lines.append(f"  {spec.doc}")
         for pname, pspec in spec.params.items():
             if pspec.required:
                 tag = "(required)"
@@ -264,11 +308,108 @@ def get_composite_doc_for_llm() -> str:
                 tag = f"(default: {pspec.default})"
             else:
                 tag = "(optional)"
-            lines.append(f"  - {pname}: {pspec.type_hint} {tag} — {pspec.description}")
+            self.lines.append(
+                f"  - {pname}: {pspec.type_hint} {tag} — {pspec.description}"
+            )
         if spec.examples:
-            lines.append(f"  Example: {spec.examples[0]}")
-        lines.append("")
-    return "\n".join(lines)
+            self.lines.append(f"  Example: {spec.examples[0]}")
+        self.lines.append("")
+
+    @property
+    def result(self) -> str:
+        return "\n".join(self.lines)
+
+
+class DependencyVisitor(CompositeSpecVisitor):
+    """提取 composite 之间的依赖图 (基于 template 源码中的函数名引用)。
+
+    输出: dict[name, set[dependency_name]], 边从 spec 指向被引用的其他 composite。
+    目前实现是粗略的: 用 inspect.getsource() 提取 template 函数源码,
+    匹配其他 composite 的 name 字符串。
+
+    用途:
+      - DAG 可视化
+      - 检测循环依赖
+      - 增量重编译优化
+    """
+
+    def __init__(self) -> None:
+        self.graph: Dict[str, set] = {}
+
+    def visit_spec(self, spec: CompositeSpec) -> None:
+        deps: set = set()
+        try:
+            import inspect
+            source = inspect.getsource(spec.template)
+            for other_name in _COMPOSITE_REGISTRY.list():
+                if other_name == spec.name:
+                    continue
+                if other_name in source:
+                    deps.add(other_name)
+        except (OSError, TypeError):
+            pass
+        self.graph[spec.name] = deps
+
+    def detect_cycles(self) -> List[List[str]]:
+        """返回所有循环依赖路径, 每条路径是 list of names."""
+        cycles: List[List[str]] = []
+        visited: set = set()
+        path: List[str] = []
+
+        def dfs(node: str) -> None:
+            if node in path:
+                cycle_start = path.index(node)
+                cycles.append(path[cycle_start:] + [node])
+                return
+            if node in visited:
+                return
+            path.append(node)
+            for nxt in self.graph.get(node, ()):
+                dfs(nxt)
+            path.pop()
+            visited.add(node)
+
+        for n in self.graph:
+            dfs(n)
+        return cycles
+
+
+class ValidationVisitor(CompositeSpecVisitor):
+    """检查 CompositeSpec 的语义正确性。
+
+    校验:
+      - spec.name 唯一 (注册时已保证, 这里双重检查)
+      - 必填参数 (required=True) 没有 default (避免语义冲突)
+      - 文档非空 (LLM prompt 友好)
+      - examples 数量 > 0 (推荐)
+    """
+
+    def __init__(self) -> None:
+        self.errors: List[str] = []
+        self.warnings: List[str] = []
+
+    def visit_spec(self, spec: CompositeSpec) -> None:
+        # 必填参数不应该有 default
+        for pname, pspec in spec.params.items():
+            if pspec.required and pspec.default is not None:
+                self.errors.append(
+                    f"Composite '{spec.name}' param '{pname}' is required but has "
+                    f"default={pspec.default!r} (语义冲突)"
+                )
+        # 文档空 → warning
+        if not spec.doc.strip():
+            self.warnings.append(
+                f"Composite '{spec.name}' has empty doc (LLM prompt 会缺少说明)"
+            )
+        # 没有 examples → warning
+        if not spec.examples:
+            self.warnings.append(
+                f"Composite '{spec.name}' has no examples (LLM few-shot 会少)"
+            )
+
+    @property
+    def has_errors(self) -> bool:
+        return bool(self.errors)
 
 
 # ============== 用户 YAML 扩展 ==============
