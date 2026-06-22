@@ -13,6 +13,8 @@ from enum import Enum
 
 import logging
 
+from QuantNodes.core.base import QuantNodesError
+
 
 class MessageRole(str, Enum):
     """消息角色枚举"""
@@ -47,24 +49,24 @@ class ChatCompletionChunk:
     finish_reason: Optional[str] = None
 
 
-class LLMError(Exception):
-    """LLM 异常基类"""
-    pass
+class LLMError(QuantNodesError):
+    """LLM 异常基类 (Phase 1.1: 统一异常层次, 继承 QuantNodesError)"""
+    code = "LLM_ERROR"
 
 
 class RateLimitError(LLMError):
     """速率限制异常"""
-    pass
+    code = "LLM_RATE_LIMIT"
 
 
 class AuthenticationError(LLMError):
     """认证异常"""
-    pass
+    code = "LLM_AUTH"
 
 
 class APIError(LLMError):
     """API 异常"""
-    pass
+    code = "LLM_API"
 
 
 class LLMClientBase(ABC):
