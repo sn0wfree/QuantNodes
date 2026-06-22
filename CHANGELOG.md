@@ -82,6 +82,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     覆盖 7 类 (ABC / 3 strategy / Factory / E2E / BackwardCompat)，
     38 个测试
 
+### Added
+- **端到端集成测试 (Option D 巩固)**
+  (`tests/research/factor_test/e2e/test_pipeline_bool_factor.py`)
+  - 15 个 e2e 测试验证 Phase 1+2 重构后的 3 个节点
+    (preprocess → neutralize → group_analyzer) 在 bool / 离散 /
+    连续因子上的端到端行为
+  - 6 个 test class: bool / low_tie / continuous / group_counts /
+    output_keys / floor_mode
+  - 验证场景: alpha-004 风格 30×-1 + 20×+1、7 unique ties、
+    不同 group 数 (2/3/5/10)、4 种 preprocess 组合、
+    industry neutralize、floor_mode='last'
+- **设计模式审计文档 (Option D)**
+  (`docs/26-设计模式重构与审计.md`)
+  - 总结 Phase 1+2 已应用的 7 个 GoF 模式 (Null Object / Decorator /
+    Builder / Visitor / Chain of Responsibility / Strategy)
+  - 调研结论: Abstract Factory 在 QuantNodes 适用度有限 (无"一族
+    互相依赖的产品族"场景), 改用 Facade + Simple Factory
+  - Phase 3 路线: CLI Command pattern (推荐下一步), DataSource
+    Factory + Adapter, Operator Facade
+  - 模式选择决策树: 9 种场景 → 推荐模式, 供未来参考
+
 ---
 
 ## [2.7.0] - 2026-06-21
