@@ -58,6 +58,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     覆盖 5 类 (ABC / Industry / Risk / Chain build / Chain apply /
     Backward compat / E2E)，37 个测试
 
+- **`FactorPreprocessNode` 改 Strategy pattern (Phase 2.2)**
+  (`QuantNodes/research/factor_test/nodes/factor_preprocess_node.py:85`)
+  - 原 `_preprocess_vectorized` 102 行硬编码 3 类 if 链 (missing fill /
+    de-extreme / normalise)，每类多个 method 分支。
+  - 抽出 `nodes/preprocess_strategies.py`：
+    - `MissingFillStrategy` (ABC) / `PassThroughMissing` / `IndustryAverageMissing`
+    - `DeExtremeStrategy` (ABC) / `PassThroughExtreme` /
+      `MedianAbsoluteDeviationExtreme` / `PercentileShrinkExtreme`
+    - `NormStrategy` (ABC) / `PassThroughNorm` / `ZScoreNorm` / `RankToNormalNorm`
+    - 工厂函数 `build_missing_strategy / build_extreme_strategy /
+      build_norm_strategy / build_preprocess_strategies`
+  - `_preprocess_vectorized` 退化为 3 行 dispatch:
+    `result = missing_s.apply(result, industry=industry)`
+    `result = extreme_s.apply(result, ...)`
+    `result = norm_s.apply(result)`
+  - 新增策略类型 (如 winsorize) 只需新增一个 Strategy 子类，
+    `_preprocess_vectorized` 不变
+  - 与原 if 链 bitwise 一致 (向后兼容) — 4 个 `TestBackwardCompat` 测试
+    验证 zscore / median+pct_shrink / pct_shrink 路径与原公式输出
+    decimal=10 一致
+  - 新增 `tests/research/factor_test/nodes/test_preprocess_strategies.py`
+    覆盖 7 类 (ABC / 3 strategy / Factory / E2E / BackwardCompat)，
+    38 个测试
+
 ---
 
 ## [2.7.0] - 2026-06-21

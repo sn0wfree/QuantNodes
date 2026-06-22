@@ -15,6 +15,9 @@ from scipy.stats import norm as scipy_norm
 
 from QuantNodes.research.factor_test.nodes._base import PydanticConfigNode
 from QuantNodes.research.factor_test.nodes.configs import PreprocessNodeConfig
+from QuantNodes.research.factor_test.nodes.preprocess_strategies import (
+    build_preprocess_strategies,
+)
 
 
 class FactorPreprocessNode(PydanticConfigNode):
@@ -22,6 +25,11 @@ class FactorPreprocessNode(PydanticConfigNode):
 
     输入: factor, tradable, adj_dates, industry
     输出: factor_std (预处理后的因子, 仅调仓日)
+
+    Phase 2.2 (Strategy pattern): 3 类预处理 (missing fill / de-extreme /
+    normalise) 抽到 preprocess_strategies.py, _preprocess_vectorized 退化为
+    简单的 3 行 dispatch. 新增策略类型 (如 winsorize) 只需新增一个 Strategy
+    子类, 本文件无需修改.
     """
 
     ConfigSchema = PreprocessNodeConfig
@@ -80,7 +88,7 @@ class FactorPreprocessNode(PydanticConfigNode):
         return result
 
     # ------------------------------------------------------------------
-    # Vectorised preprocessing (H5, 2026-06-20)
+    # Vectorised preprocessing (H5, 2026-06-20, refactored Phase 2.2)
     # ------------------------------------------------------------------
     def _preprocess_vectorized(
         self,
@@ -95,7 +103,8 @@ class FactorPreprocessNode(PydanticConfigNode):
         """Apply missing-fill + de-extreme + normalise across all dates.
 
         Replaces the previous ``apply(_preprocess_one_period, axis=1)`` loop.
-        Each step is a vectorised DataFrame operation:
+        Each step is a vectorised DataFrame operation, dispatched via
+        strategy pattern (Phase 2.2).
 
           1. Tradable mask (per-row): factor where tradable != 0 & notnan,
              else NaN.
@@ -107,6 +116,9 @@ class FactorPreprocessNode(PydanticConfigNode):
 
         Behavioural parity: produces same NaN pattern and same numeric
         result as the per-date loop, to within floating-point noise.
+
+        Phase 2.2: 3 个 strategy 通过 build_preprocess_strategies() 构造,
+        apply() 顺序串接. 原硬编码 if 链消除.
         """
         result = tradable_factor.copy()
 
@@ -116,72 +128,14 @@ class FactorPreprocessNode(PydanticConfigNode):
             tradable_mask = tradable_mask.notna() & (tradable_mask != 0)
             result = result.where(tradable_mask, np.nan)
 
-        # 2. Missing fill by industry mean
-        if missing == 'ind_avg' and industry is not None:
-            industry_aligned = industry.reindex(index=result.index, columns=result.columns)
-            # Stack to long format for groupby transform on (date, industry).
-            long = pd.DataFrame({
-                'factor': result.stack(),
-                'ind': industry_aligned.stack(),
-            }).dropna(subset=['ind'])
-            long = long[long['ind'] > 0]
-            if not long.empty:
-                date_level = long.index.get_level_values(0)
-                group_mean = long.groupby([date_level, 'ind'])['factor'].transform('mean')
-                filled = long['factor'].fillna(group_mean)
-                # Write back into wide result.
-                filled_wide = (
-                    filled.unstack(level=-1)
-                    if isinstance(filled.index, pd.MultiIndex) else filled
-                )
-                if isinstance(filled.index, pd.MultiIndex):
-                    # Re-stack to wide format keyed on original (date, stock).
-                    filled_wide = filled.unstack(level=1)
-                # Overlay filled values onto result.
-                result.loc[filled_wide.index, filled_wide.columns] = filled_wide.values
-
-        # 3/4. De-extreme (vectorised across rows)
-        if extreme == 'median':
-            n = self._mad_n
-            median_per_row = result.median(axis=1)
-            mad_per_row = (result.sub(median_per_row, axis=0)).abs().median(axis=1)
-            lower = median_per_row - n * mad_per_row
-            upper = median_per_row + n * mad_per_row
-            # Clip per row using broadcasting.
-            result = result.clip(lower=lower, upper=upper, axis=0)
-        elif extreme == 'pct_shrink':
-            q1 = result.quantile(self._pct_low, axis=1)
-            q2 = result.quantile(self._pct_high, axis=1)
-            result = result.clip(lower=q1, upper=q2, axis=0)
-
-        # 5/6. Normalise
-        if norm == 'zscore':
-            mean_per_row = result.mean(axis=1)
-            std_per_row = result.std(axis=1, ddof=1)
-            std_per_row = std_per_row.replace(0, np.nan)
-            result = result.sub(mean_per_row, axis=0).div(std_per_row, axis=0)
-        elif norm == 'norm':
-            ranks = result.rank(axis=1, pct=True)
-            # Clip ranks away from 0 and 1 (avoid -inf/+inf from ppf).
-            min_rank = ranks.where(ranks > 0).min(axis=1) * 0.5
-            max_rank = (ranks.where(ranks < 1).max(axis=1) + 1) * 0.5
-            # Default fallback for rows where min_rank/max_rank is NaN.
-            min_rank = min_rank.fillna(0.01)
-            max_rank = max_rank.fillna(0.99)
-            lower = pd.DataFrame(
-                np.broadcast_to(min_rank.values[:, None], ranks.shape),
-                index=ranks.index, columns=ranks.columns,
-            )
-            upper = pd.DataFrame(
-                np.broadcast_to(max_rank.values[:, None], ranks.shape),
-                index=ranks.index, columns=ranks.columns,
-            )
-            ranks = ranks.where(ranks.notna(), np.nan)  # preserve NaN
-            ranks = ranks.clip(lower=lower, upper=upper, axis=1)
-            result = pd.DataFrame(
-                scipy_norm.ppf(ranks.values, 0, 1),
-                index=ranks.index, columns=ranks.columns,
-            )
+        # Phase 2.2: dispatch via 3 strategies
+        missing_s, extreme_s, norm_s = build_preprocess_strategies(missing, extreme, norm)
+        result = missing_s.apply(result, industry=industry)
+        result = extreme_s.apply(
+            result, mad_n=self._mad_n,
+            pct_low=self._pct_low, pct_high=self._pct_high,
+        )
+        result = norm_s.apply(result)
 
         return result
 
