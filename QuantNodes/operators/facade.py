@@ -65,17 +65,27 @@ class OperatorFacade:
 
     # ---- L1 (composite, 隔离查询) ----
 
-    def get_composite(self, name: str) -> Optional["CompositeSpec"]:
-        """获取 composite DAG 的 ``CompositeSpec`` (L1, 与 L0/L2 隔离)。"""
+    def get_composite(self, name: str, engine: str = "any") -> Optional["CompositeSpec"]:
+        """获取 composite DAG 的 ``CompositeSpec`` (L1, 与 L0/L2 隔离)。
+
+        Args:
+            name: 算子名
+            engine: "any" (default) | "polars" | "pandas"
+        """
         from QuantNodes.operators.composite_dag import get_composite_spec
 
-        return get_composite_spec(name)
+        return get_composite_spec(name, engine=engine)
 
-    def is_composite(self, name: str) -> bool:
-        """判断 name 是否是 composite 算子 (L1)。"""
+    def is_composite(self, name: str, engine: str = "any") -> bool:
+        """判断 name 是否是 composite 算子 (L1)。
+
+        Args:
+            name: 算子名
+            engine: "any" (default) | "polars" | "pandas"
+        """
         from QuantNodes.operators.composite_dag import is_composite_op
 
-        return is_composite_op(name)
+        return is_composite_op(name, engine=engine)
 
     # ---- 跨层统一查询 ----
 

@@ -1335,4 +1335,69 @@ result = spec.instantiate(x=col("close"))
 
 ---
 
-**文档结束** | 实施时间 ~1 周 | 风险等级 中 | 4 个 PR 可独立合并
+## 12. PR-QN-4: Dual-Engine Composite (Polars + Pandas, 2026-06-22)
+
+LLM 训练数据中 pandas 占 95%+，生成 polars 代码时频繁出错。Polars 1.x API 频繁 breaking change，教程/文档滞后，LLM 生成代码出错率高。
+
+### 12.1 问题
+
+- LLM (gpt-4/deepseek/qwen) 写 polars 时 `filter` 已弃用、`group_by` vs `over`、`ewm_mean` vs `ewm`、`clip` 第二参必须 scalar、`Expr` vs `Series` 混淆
+- 下游 81 个文件 import pandas，实际计算全是 pandas；polars 仅在 L0/L1 算子层
+- 既有桥接 (`pdf.to_pandas()`) 手动一次性转，不能链式
+
+### 12.2 方案
+
+- **双注册表**：`_COMPOSITE_REGISTRY_POLARS` + `_COMPOSITE_REGISTRY_PANDAS`，同名 op 分引擎注册
+- **引擎字段**：`CompositeSpec.engine: "polars"|"pandas"`，装饰器 `@composite_operator(engine="polars")`
+- **引擎检测**：`detect_engine(code)` 扫描 import 语句，sandbox 默认 polars，显式 auto 启用检测
+- **YAML 双白名单**：polars/pandas 各自独立白名单，严格分流，互不污染
+- **pandas 镜像**：20 op 全部实现 pandas 版，同名不同 engine
+
+### 12.3 实施范围
+
+| 变更 | 文件 | 行数 |
+|---|---|---|
+| Engine enum + 检测 | `_engine.py` (新) | ~80 |
+| pandas ops 镜像 | `composite_dag_pandas_ops.py` (新) | ~400 |
+| sandbox 桥接 | `sandbox_pandas_bridge.py` (新) | ~120 |
+| composite_dag 改造 | `composite_dag.py` | ~100 |
+| sandbox 改造 | `sandbox.py` | ~40 |
+| pandas ops 测试 | `test_composite_dag_pandas_ops.py` (新) | ~500 |
+| sandbox 测试 | `test_sandbox_pandas_bridge.py` (新) | ~200 |
+| engine 测试 | `test_composite_dag_engine.py` (新) | ~200 |
+| YAML 白名单 | `composite_dag.py` | ~60 |
+| 4 factor prompt | `prompts/factor/*.py` | ~80 |
+| 1 backtest prompt | `prompts/backtest/factor_based.py` | ~20 |
+| docs/22 §18 | `docs/22` | ~180 |
+| docs/25 §12 | 本文件 | ~100 |
+
+### 12.4 风险
+
+| 风险 | 等级 | 缓解 |
+|---|---|---|
+| 同名 op 跨引擎冲突 | 🟡 中 | `engine` 字段区分，查询 API 支持 `engine="any"/"polars"/"pandas"` |
+| sandbox 行为不变 | 🟢 高 | 默认 polars，现有 4608 tests 零回归 |
+| YAML 向后兼容 | 🟢 高 | 旧 YAML 缺 `engine` 字段 = polars |
+| pandas 性能折损 | 🟢 低 | 用户明确接受，polars 仍主路径 |
+
+### 12.5 版本策略
+
+- 主版本 2.7.0 已发布 → 本次升 2.8.0 (minor bump, additive)
+- CHANGELOG.md 新增 2.8.0 段
+- 测试增量: +66 (engine 8 + pandas ops 43 + sandbox 10 + YAML 5)
+
+### 12.6 Commit 计划
+
+| # | Commit | 范围 | 测试 |
+|---|---|---|---|
+| 1 | `feat(operators): dual-engine composite framework` | engine 字段 + pandas registry | +8 |
+| 2 | `feat(operators): add 20 pandas-mirror composite ops` | 20 op 镜像 | +43 |
+| 3 | `feat(ai): sandbox auto-detect pandas engine` | sandbox 桥接 | +10 |
+| 4 | `feat(operators): YAML dual-whitelist` | YAML 分流 | +5 |
+| 5 | `docs(prompts): add pandas examples` | 5 prompt 改造 | 0 |
+| 6 | `docs(22,25): §18 + §12` | 文档 | 0 |
+| 7 | `chore(release): bump 2.7.0 → 2.8.0` | 版本 | 0 |
+
+---
+
+**文档结束** | 实施时间 ~1 周 | 风险等级 中 | 4+1 个 PR 可独立合并

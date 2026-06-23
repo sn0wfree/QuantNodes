@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-06-22
+
+Dual-Engine Composite — allows LLM to write pandas or polars code
+interchangeably. Polars remains the default high-performance engine;
+pandas is the LLM-friendly alternative for easier code generation.
+
+### Added
+
+- **`_engine.py`**: `Engine` enum (`POLARS`/`PANDAS`/`AUTO`) +
+  `detect_engine(code)` scanning imports to auto-detect engine.
+- **`composite_dag_pandas_ops.py`**: 20 pandas-mirror composite ops
+  (same names as polars ops, registered with `engine="pandas"`).
+  Covers: neutralization (3), normalization (3), rolling regression (3),
+  volatility (4), pairs (2), winsorize (3), time-series (2).
+- **`sandbox_pandas_bridge.py`**: `detect_and_inject_context()` for
+  sandbox auto-detect + context injection (pandas/polars df injection).
+- **`CompositeSpec.engine`** field (default `"polars"`): tracks which
+  engine a composite spec uses.
+- **`_COMPOSITE_REGISTRY_PANDAS`**: isolated pandas composite registry
+  (parallel to `_COMPOSITE_REGISTRY` renamed to `_COMPOSITE_REGISTRY_POLARS`).
+- **`_ALLOWED_FUNC_NAMES_PANDAS`**: strict YAML whitelist for pandas
+  templates (40 names, mutually exclusive with polars whitelist).
+- **4 factor prompts** updated with dual-engine examples:
+  `ic_analysis.py`, `group_backtest.py`, `correlation.py`,
+  `backtest/factor_based.py`.
+
+### Changed
+
+- `composite_dag.py`: `is_composite_op(name, engine="any")`,
+  `get_composite_spec(name, engine="any")`,
+  `list_composite_ops(category, engine="any")` — all accept optional
+  `engine` kwarg. `engine="any"` = backward-compatible (union of both
+  registries). `load_composites_from_yaml` requires `engine:` field in
+  YAML entries (default: `"polars"`).
+- `operators/__init__.py`: re-export pandas composite functions +
+  `_COMPOSITE_REGISTRY_PANDAS`.
+- `sandbox.py`: `__init__(default_engine="polars")` +
+  `_detect_engine(code)` method + `validate_and_execute` context injection.
+
+### Testing
+
+Added **+66 tests** (4716 → ~4782 passed):
+
+- `tests/test_composite_dag_pandas_ops.py` (+43, pandas mirror of 20 ops)
+- `tests/test_composite_dag_engine.py` (+8, engine field + registry switching)
+- `tests/test_sandbox_pandas_bridge.py` (+10, auto-detect + context injection)
+- `tests/test_composite_dag_pandas_engine.py` (+5, YAML dual-whitelist)
+
+### Documentation
+
+- `docs/22-算子系统设计与规范.md` §18: Dual-Engine Composite (design rationale,
+  architecture, 20 op mapping, YAML dual whitelist, risk assessment).
+- `docs/25-LLM算子层升级设计.md` §12: PR-QN-4 continuation.
+
 ### Fixed
 - **`DataLoader` parquet 分发修复 (孤儿方法接入)**
   (`QuantNodes/research/factor_test/utils/data_loader.py:72`)

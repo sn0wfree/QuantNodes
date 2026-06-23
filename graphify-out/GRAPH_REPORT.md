@@ -1,16 +1,16 @@
 # Graph Report - QuantNodes  (2026-06-23)
 
 ## Corpus Check
-- 799 files · ~473,719 words
+- 802 files · ~476,921 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 24056 nodes · 48319 edges · 1516 communities (989 shown, 527 thin omitted)
-- Extraction: 79% EXTRACTED · 21% INFERRED · 0% AMBIGUOUS · INFERRED: 10147 edges (avg confidence: 0.6)
+- 24161 nodes · 48467 edges · 1518 communities (988 shown, 530 thin omitted)
+- Extraction: 79% EXTRACTED · 21% INFERRED · 0% AMBIGUOUS · INFERRED: 10155 edges (avg confidence: 0.6)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `74c798e3`
+- Built from commit: `a2c8aa90`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -1447,6 +1447,8 @@
 - [[_COMMUNITY_Community 1512|Community 1512]]
 - [[_COMMUNITY_Community 1513|Community 1513]]
 - [[_COMMUNITY_Community 1514|Community 1514]]
+- [[_COMMUNITY_Community 1515|Community 1515]]
+- [[_COMMUNITY_Community 1516|Community 1516]]
 - [[_COMMUNITY_Community 1525|Community 1525]]
 
 ## God Nodes (most connected - your core abstractions)
@@ -1464,16 +1466,16 @@
 ## Surprising Connections (you probably didn't know these)
 - `synthetic_data()` --calls--> `range()`  [INFERRED]
   QuantNodes/research/factor_test/tests/conftest.py → archive/quantnodes_deprecated/factor_tools.py
-- `TestStandardizeRank` --uses--> `DataPreprocessingFun`  [INFERRED]
-  tests/core/test_data_preprocessing.py → QuantNodes/core/data_preprocessing.py
-- `TestStandardizeQuantile` --uses--> `DataPreprocessingFun`  [INFERRED]
-  tests/core/test_data_preprocessing.py → QuantNodes/core/data_preprocessing.py
 - `store()` --calls--> `ParquetCacheStore`  [INFERRED]
   tests/cache_node/test_cache_store.py → QuantNodes/cache_node/cache_store.py
-- `sample_orders()` --calls--> `Order`  [INFERRED]
-  tests/backtest/conftest.py → QuantNodes/backtest/strategy_node.py
+- `db()` --calls--> `DatabaseManager`  [INFERRED]
+  tests/monitor/test_collector.py → QuantNodes/monitor/storage/repository.py
+- `db()` --calls--> `DatabaseManager`  [INFERRED]
+  tests/monitor/test_drift.py → QuantNodes/monitor/storage/repository.py
+- `alert_repo()` --calls--> `DriftAlertRepository`  [INFERRED]
+  tests/monitor/test_storage.py → QuantNodes/monitor/storage/repository.py
 
-## Communities (1516 total, 527 thin omitted)
+## Communities (1518 total, 530 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.06
@@ -1485,47 +1487,47 @@ Nodes (6): aggr_prod(), log(), neutralize(), neutralize_market(), standardizeZSc
 
 ### Community 2 - "Community 2"
 Cohesion: 0.03
-Nodes (56): _make_data(), ts_std(close / open - 1, 20) - 标准差的收益率, ts_sum(ts_mean(close, 3), 5) - 三层嵌套, ts_sum(ts_mean(close, 3), 5) - 三层嵌套, winsorize(close, lower=0.01, upper=0.01) - keyword 参数, winsorize(close, lower=0.01, upper=0.01) - keyword 参数, ts_lag(close.shift(1), 5) - 函数参数中含方法链, ts_lag(close.shift(1), 5) - 函数参数中含方法链 (+48 more)
+Nodes (48): ts_std(close / open - 1, 20) - 标准差的收益率, ts_sum(ts_mean(close, 3), 5) - 三层嵌套, ts_sum(ts_mean(close, 3), 5) - 三层嵌套, winsorize(close, lower=0.01, upper=0.01) - keyword 参数, winsorize(close, lower=0.01, upper=0.01) - keyword 参数, ts_lag(close.shift(1), 5) - 函数参数中含方法链, ts_lag(close.shift(1), 5) - 函数参数中含方法链, (close * volume) / ts_sum(volume, 20) - 复杂嵌套 (+40 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.05
-Nodes (74): dual_factor_expanding_operator(), dual_factor_rolling_operator(), ewm_operator(), fillna_operator(), OperatorCategory, 指数加权移动平均（EWM）运算装饰器          统一处理 com, span, halflife, alpha 等指数加权参数     支持单因子和双因, 双因子滚动窗口运算装饰器          用于处理需要两个因子输入的滚动运算（如协方差、相关系数）     支持动态运算时点切换（单时点/多时点）和 SubO, 双因子扩展窗口运算装饰器          用于处理需要两个因子输入的扩展窗口运算（如协方差、相关系数） (+66 more)
+Cohesion: 0.04
+Nodes (90): _aggregate(), _chg_ids(), _disaggregate(), dual_factor_expanding_operator(), dual_factor_rolling_operator(), ewm_operator(), fillna_operator(), generate_documentation() (+82 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.02
-Nodes (144): Command, CommandRegistry, CLI 子命令抽象基类 (Command pattern).      子类需实现:       - name: 子命令名 (e.g. "init", "fac, CLI 子命令注册表 (Phase 3.1).      提供 register / get / all 三个方法. 重复注册同名 command 抛 Valu, 注册一个 Command. 重复同名抛 ValueError.          Returns:             传入的 cmd (便于 ``@REG, 按 name 查询. 未找到返回 None., 返回所有注册 command 的 list (顺序与注册顺序一致)., run() (+136 more)
+Nodes (123): Command, CommandRegistry, CLI 子命令抽象基类 (Command pattern).      子类需实现:       - name: 子命令名 (e.g. "init", "fac, CLI 子命令注册表 (Phase 3.1).      提供 register / get / all 三个方法. 重复注册同名 command 抛 Valu, 注册一个 Command. 重复同名抛 ValueError.          Returns:             传入的 cmd (便于 ``@REG, 按 name 查询. 未找到返回 None., 返回所有注册 command 的 list (顺序与注册顺序一致)., run() (+115 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.03
-Nodes (102): Any, bool, str, Any, bool, str, Any, bool (+94 more)
+Cohesion: 0.05
+Nodes (54): Any, bool, int, Path, str, Any, bool, int (+46 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.07
-Nodes (27): BacktestNode, BacktestPipeline, BacktestResult, 回测管道      将多个回测节点组合在一起执行。, 回测管道      将多个回测节点组合在一起执行。, 回测引擎节点基类      提供统一的回测执行接口。      Subclasses must implement:         _run_backtest, 回测引擎节点基类      提供统一的回测执行接口。      Subclasses must implement:         _run_backtest, 执行回测          Args:             input_data: 输入数据，可以是：                 - pd.DataF (+19 more)
+Cohesion: 0.06
+Nodes (25): BacktestNode, BacktestPipeline, 回测管道      将多个回测节点组合在一起执行。, 回测管道      将多个回测节点组合在一起执行。, 回测引擎节点基类      提供统一的回测执行接口。      Subclasses must implement:         _run_backtest, 回测引擎节点基类      提供统一的回测执行接口。      Subclasses must implement:         _run_backtest, 执行回测          Args:             input_data: 输入数据，可以是：                 - pd.DataF, 执行回测          Args:             input_data: 输入数据，可以是：                 - pd.DataF (+17 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.03
-Nodes (85): category(), metadata(), SkillCategory, SkillMetadata, metadata(), SkillMetadata, metadata(), SkillMetadata (+77 more)
+Cohesion: 0.02
+Nodes (180): Agent, QuantNodes 量化研究Agent          Doc 14 规定的对外API门面。     内部组合 AgentLoop + ToolRegist, QuantNodes 量化研究Agent      Doc 14 规定的对外API门面。     内部组合 AgentLoop + ToolRegistry +, QuantNodes 量化研究Agent      Doc 14 规定的对外API门面。     内部组合 AgentLoop + ToolRegistry +, 初始化Agent                  Args:             workspace: 工作目录路径             config, 初始化Agent          Args:             workspace: 工作目录路径             config: 配置字典, 初始化Agent          Args:             workspace: 工作目录路径             config: 配置字典, Phase D: 验证 Dream 对话分析 (+172 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.06
-Nodes (32): ABC, CashRiskNode, _check_order(), CompositeRiskNode, PositionLimitRiskNode, 执行风控检查          Args:             input_data: 输入数据，可以是：                 - Orders, 风控节点基类      提供统一的风控检查接口。      Subclasses must implement:         _check_order():, RiskCheck (+24 more)
+Nodes (33): CashRiskNode, _check_order(), CompositeRiskNode, PositionLimitRiskNode, 执行风控检查          Args:             input_data: 输入数据，可以是：                 - Orders, 风控节点基类      提供统一的风控检查接口。      Subclasses must implement:         _check_order():, RiskCheck, RiskNode (+25 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.05
-Nodes (23): TestExprParser, _parse_func_args() keyword 参数, _parse_func_args() keyword 参数, _resolve_universe() 全路径测试, _resolve_universe() 全路径测试, TestParseFuncArgs, TestParseValue, TestResolveUniverse (+15 more)
+Nodes (22): TestConfigExecutor, TestExprParser, _parse_func_args() keyword 参数, _parse_func_args() keyword 参数, _resolve_universe() 全路径测试, _resolve_universe() 全路径测试, TestParseFuncArgs, TestParseValue (+14 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.04
-Nodes (115): _aggr_count(), _aggr_max(), _aggr_mean(), _aggr_median(), _aggr_min(), _aggr_prod(), _aggr_quantile(), _aggr_std() (+107 more)
+Nodes (97): _aggr_count(), _aggr_max(), _aggr_mean(), _aggr_median(), _aggr_min(), _aggr_prod(), _aggr_quantile(), _aggr_std() (+89 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.06
-Nodes (59): boolop, cmpop, _ast_to_expr(), _bin_op_to_str(), _bool_op_to_str(), _cmp_op_to_str(), parse_expression(), 将二元运算 AST 节点转换为运算符字符串 (+51 more)
+Cohesion: 0.05
+Nodes (9): parse_expression(), 安全解析字符串表达式      Args:         expr_str: 表达式字符串，如 "df['close'] > 50"      Returns, parse(), TestParseExpressionBinaryOps, TestParseExpressionComparisons, TestParseExpressionConstants, TestParseExpressionSecurity, TestParseExpressionVariables (+1 more)
 
 ### Community 12 - "Community 12"
 Cohesion: 0.05
-Nodes (31): _generate_signals(), MAStrategyNode, MomentumStrategyNode, 根据信号创建订单（默认实现）          Args:             signals: 信号列表             **kwargs: 额外, 根据信号创建订单（默认实现）          Args:             signals: 信号列表             **kwargs: 额外, 执行策略          Args:             input_data: 市场数据 DataFrame             **kwargs:, 执行策略          Args:             input_data: 市场数据 DataFrame             **kwargs:, 策略节点基类      提供统一的策略执行接口。      Subclasses must implement:         _generate_signa (+23 more)
+Nodes (31): ABC, _generate_signals(), MAStrategyNode, MomentumStrategyNode, 根据信号创建订单（默认实现）          Args:             signals: 信号列表             **kwargs: 额外, 根据信号创建订单（默认实现）          Args:             signals: 信号列表             **kwargs: 额外, 执行策略          Args:             input_data: 市场数据 DataFrame             **kwargs:, 执行策略          Args:             input_data: 市场数据 DataFrame             **kwargs: (+23 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.08
@@ -1536,8 +1538,8 @@ Cohesion: 0.07
 Nodes (33): FakeLLMClient, make_messages(), Phase 1.1 关键收益: 顶层 except QuantNodesError 现在能捕获 LLM 错误。, LLMError 继承 QuantNodesError 后, 也获得 details 字段。, NullLLMClient 不应访问网络或抛错。, AuthenticationError 不在 retry_on 中, 直接抛。, 推荐组合顺序: Retrying(Logging(Inner)), Cached 在 Retrying 外面: 第二次调用不触发 inner 也不重试。 (+25 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.02
-Nodes (82): TestTruncateHistory, test_concurrent_chat(), fillNaNByRegress(), fillNaNByVal(), orthogonalize(), rolling_regress(), standardizeQuantile(), standardizeRank() (+74 more)
+Cohesion: 0.04
+Nodes (52): TestTruncateHistory, test_concurrent_chat(), Phase F: 验证截断消息 Dream 分析, Phase F: 验证截断消息 Dream 分析, TestPhaseFCompactionDream, backtest_quote_data(), 回测用行情数据 DataFrame      包含 30 天 AAPL 股票数据，日线 OHLCV。, 回测用行情数据 DataFrame      包含 30 天 AAPL 股票数据，日线 OHLCV。 (+44 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.08
@@ -1545,63 +1547,63 @@ Nodes (22): Any, str, LiteralValue, SQLLogicalOp, optimize_expression(), SQL AST
 
 ### Community 17 - "Community 17"
 Cohesion: 0.05
-Nodes (47): ConfigLoader._parse() 新字段解析测试, ConfigLoader._parse() 新字段解析测试, TestE2E_ConfigLoaderParse, check_coverage 集成 custom_operators 测试, check_coverage 集成 custom_operators 测试, ConfigStrategyNode 测试, ConfigStrategyNode 测试, ConfigBacktestTool 测试 (+39 more)
+Nodes (60): ConfigLoader 往返测试: to_yaml → load → 验证字段, ConfigLoader 往返测试: to_yaml → load → 验证字段, to_yaml → load 后 DataConfig 字段完整保留, to_yaml → load 后 DataConfig 字段完整保留, ConfigLoader._parse() 新字段解析测试, ConfigLoader._parse() 新字段解析测试, TestE2E_ConfigLoaderParse, TestE2E_CustomColumnMapping (+52 more)
 
 ### Community 18 - "Community 18"
 Cohesion: 0.03
 Nodes (115): _apply_weights(), decay_exp(), decay_linear(), expanding_count(), expanding_mean(), fetch(), get_operator(), int (+107 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.03
-Nodes (85): Agent, 根据配置创建 LLM Provider          支持两种模式：         1. 多Provider模式：config中包含providers字典, 根据配置创建 LLM Provider          支持两种模式：         1. 多Provider模式：config中包含providers字典, 根据配置创建 LLM Provider          支持两种模式：         1. 多Provider模式：config中包含providers字典, QuantNodes 量化研究Agent          Doc 14 规定的对外API门面。     内部组合 AgentLoop + ToolRegist, QuantNodes 量化研究Agent      Doc 14 规定的对外API门面。     内部组合 AgentLoop + ToolRegistry +, QuantNodes 量化研究Agent      Doc 14 规定的对外API门面。     内部组合 AgentLoop + ToolRegistry +, 初始化Agent                  Args:             workspace: 工作目录路径             config (+77 more)
+Cohesion: 0.05
+Nodes (49): _make_sample_csv(), _make_sample_csv_custom_columns(), 仅因子计算: 无 operations/composite, 仅因子计算: 无 operations/composite, 参数覆盖: start_date, end_date, initial_cash, 参数覆盖: start_date, end_date, initial_cash, DuckDB 内存模式: 插入数据 → 查询 → 回测, DuckDB 内存模式: 插入数据 → 查询 → 回测 (+41 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.05
 Nodes (27): 测试策略 -> 回测 -> 监控告警的完整流程, 测试因子定义 -> 计算 -> 存储的工作流, 测试因子定义 -> 计算 -> 存储的工作流, 测试策略 -> 回测 -> 监控告警的完整流程, TestDataProcessingPipeline, TestFactorWorkflowIntegration, TestMonitorPipelineIntegration, TestOperatorNodeChainIntegration (+19 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.02
-Nodes (99): _group_discrete(), _group_ranked(), 通用 rank('first') + qcut: 处理连续和轻度 ties 因子。      修复 pd.qcut(duplicates='drop') 在 t, bool / 离散因子 (n_unique <= 2): 按 value 比例分配组段 + 内部 seeded shuffle。      算法:, bool / 离散因子 (n_unique <= 2): 按 value 比例分配组段 + 内部 seeded shuffle。      算法:, DataFrame, int, 50 unique values 走 ranked 分支, 5 组每组 10。 (+91 more)
+Cohesion: 0.04
+Nodes (46): _group_discrete(), bool / 离散因子 (n_unique <= 2): 按 value 比例分配组段 + 内部 seeded shuffle。      算法:, bool / 离散因子 (n_unique <= 2): 按 value 比例分配组段 + 内部 seeded shuffle。      算法:, 30 × -1 + 20 × +1 → -1 在 group 1-3, +1 在 group 4-5。, -1/0/+1 (15/20/15) → 3 段组, 不崩。, 30 × -1 + 20 × +1 → -1 在 group 1-3, +1 在 group 4-5。, 同一 date_int 多次调用结果一致。, 30 × -1 + 20 × +1 → -1 在 group 1-3, +1 在 group 4-5。 (+38 more)
 
 ### Community 22 - "Community 22"
-Cohesion: 0.05
-Nodes (73): from_encrypted(), from_pickle(), from_proto(), deserialize_auto(), deserialize_compact(), deserialize_encrypted(), deserialize_json(), deserialize_msgpack() (+65 more)
+Cohesion: 0.04
+Nodes (76): deserialize(), evaluate(), from_encrypted(), from_json(), from_pickle(), from_proto(), deserialize_auto(), deserialize_compact() (+68 more)
 
 ### Community 23 - "Community 23"
 Cohesion: 0.04
 Nodes (66): add(), aggr_quantile(), aggregate(), applymap(), astype(), book_to_market(), chg_ids(), combine() (+58 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.05
-Nodes (35): generate_documentation(), get_operator(), list_operators(), operator_info(), 列出所有算子名称      Args:         category: 可选，限定分类         include_custom: 是否包含自定义算子（, 列出所有算子名称      Args:         category: 可选，限定分类         include_custom: 是否包含自定义算子（, 列出所有算子名称      Args:         category: 可选，限定分类         include_custom: 是否包含自定义算子（, 根据名称获取算子函数（级联查询：先自定义注册表，再内置注册表） (+27 more)
+Cohesion: 0.09
+Nodes (18): 列出三层算子名 (去重, 保持 custom → builtin → composite 顺序)。          Args:             cat, 列出三层算子名 (去重, 保持 custom → builtin → composite 顺序)。          Args:             cat, 生成 L0 内置算子文档 (委托 ``generate_documentation``)。          composite (L1) 的 LLM 文档另有, 生成 composite (L1) 给 LLM 的 markdown 文档。, 生成 L0 内置算子文档 (委托 ``generate_documentation``)。          composite (L1) 的 LLM 文档另有, 生成 composite (L1) 给 LLM 的 markdown 文档。, 获取算子 callable (级联: 自定义 L2 → 内置 L0)。          与 ``factor_functions.get_operator``, 获取算子详细信息 dict (级联: L2 → L0)。 (+10 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.05
-Nodes (48): compress_lineage(), CompressedLineage, 谱系压缩 — LLM 总结祖先/后裔链为 1 段简短描述, 减少 token。  设计:     - Compressor 类 (类似 LLMJudge 的协议, 启发式: 每 entry 1 行, name + operation + sharpe。, 启发式: 每 entry 1 行, name + operation + sharpe。, 真实 LLM 总结。Returns (summary, effective_method)., 真实 LLM 总结。Returns (summary, effective_method)., 便捷函数: 一次性压缩。      Args:         entries: (depth, entry) 列表         relation: "an (+40 more)
+Cohesion: 0.07
+Nodes (32): expand_lineage(), expand_lineage_batch(), 谱系展开 — 从根 entry 出发, BFS 收集 ancestors/descendants 到指定深度。  输出格式:     {         'ro, BFS 展开谱系, 返回 root + ancestors + descendants。      Args:         pool: Trajectory, BFS 展开谱系, 返回 root + ancestors + descendants。      Args:         pool: Trajectory, _entry(), lineage_compress.py / lineage_expand.py 边界测试 (15 tests)。  聚焦:     - Compressor.h, max_ancestors 限制数量, 防止 token 爆炸。 (+24 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.22
-Nodes (8): _make_sample_csv(), 仅因子计算: 无 operations/composite, 仅因子计算: 无 operations/composite, 参数覆盖: start_date, end_date, initial_cash, 参数覆盖: start_date, end_date, initial_cash, CSV 文件端到端: YAML → 回测 → 统计结果, CSV 文件端到端: YAML → 回测 → 统计结果, TestE2E_CSV_FullPipeline
+Cohesion: 0.04
+Nodes (29): _build_task_dispatch(), _calculate(), _calculate_multi_process(), _calculate_single_process(), CustomFT, _ErgodicMode, ErgodicModeType, FactorTable (+21 more)
 
 ### Community 27 - "Community 27"
-Cohesion: 0.05
-Nodes (4): rolling_max(), rolling_max(), TestTimeSeriesOperators, TestTimeOperatorsEdgeCases
+Cohesion: 0.06
+Nodes (28): rolling_max(), rolling_max(), TestTimeSeriesOperators, ewm_corr(), ewm_mean(), ewm_std(), ts_corr(), ts_cov() (+20 more)
 
 ### Community 28 - "Community 28"
 Cohesion: 0.06
 Nodes (25): int, str, compile_expression(), SQL 编译器      将 SQLExpression AST 编译为 SQL 字符串。      Examples:         >>> from Qu, 便捷函数：编译表达式为 SQL 字符串      Args:         expr: SQL 表达式         dialect: SQL 方言实例, SQLCompiler, compile_expression 便捷函数测试, compile_expression 便捷函数测试 (+17 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.09
-Nodes (20): 通用 fallback 测试 - 验证未硬编码的 registry 算子可通过 OperationConfig 使用, 通用 fallback 测试 - 验证未硬编码的 registry 算子可通过 OperationConfig 使用, rolling_quantile 不在硬编码 dispatch 中，应通过 fallback 从 registry 查找, rolling_quantile 不在硬编码 dispatch 中，应通过 fallback 从 registry 查找, expanding_sum 不在硬编码 dispatch 中，应通过 fallback 工作, expanding_sum 不在硬编码 dispatch 中，应通过 fallback 工作, 硬编码 dispatch 应优先于 fallback, 硬编码 dispatch 应优先于 fallback (+12 more)
+Cohesion: 0.07
+Nodes (22): 通用 fallback 测试 - 验证未硬编码的 registry 算子可通过 OperationConfig 使用, 通用 fallback 测试 - 验证未硬编码的 registry 算子可通过 OperationConfig 使用, rolling_quantile 不在硬编码 dispatch 中，应通过 fallback 从 registry 查找, rolling_quantile 不在硬编码 dispatch 中，应通过 fallback 从 registry 查找, expanding_sum 不在硬编码 dispatch 中，应通过 fallback 工作, expanding_sum 不在硬编码 dispatch 中，应通过 fallback 工作, 硬编码 dispatch 应优先于 fallback, 硬编码 dispatch 应优先于 fallback (+14 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.04
-Nodes (11): BinaryOpExpr, evaluate(), Expression, ExpressionBuilder, 防止 Python 隐式布尔转换（用于 & / | 运算符）, 表达式构建器，提供链式 API      使用方式：         >>> Cond('close') > 50           # input_data, 支持 Cond.metrics 形式的属性访问, _wrap_expr() (+3 more)
+Cohesion: 0.06
+Nodes (43): boolop, cmpop, _ast_to_expr(), _bin_op_to_str(), _bool_op_to_str(), _cmp_op_to_str(), 将二元运算 AST 节点转换为运算符字符串, 将一元运算 AST 节点转换为运算符字符串 (+35 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.02
-Nodes (94): FailingProvider, MockProvider, 验证 _pending_dream_analysis 按 session 隔离, 验证 _pending_dream_analysis 按 session 隔离, _pending_dream_analysis 是 Dict 而非 List, _pending_dream_analysis 是 Dict 而非 List, 不同 session 的 dropped 消息隔离存储, 不同 session 的 dropped 消息隔离存储 (+86 more)
+Cohesion: 0.03
+Nodes (78): FailingProvider, MockProvider, 验证 _pending_dream_analysis 按 session 隔离, 验证 _pending_dream_analysis 按 session 隔离, _pending_dream_analysis 是 Dict 而非 List, _pending_dream_analysis 是 Dict 而非 List, 不同 session 的 dropped 消息隔离存储, 不同 session 的 dropped 消息隔离存储 (+70 more)
 
 ### Community 32 - "Community 32"
 Cohesion: 0.10
@@ -1621,35 +1623,35 @@ Nodes (33): bool, LLMClientBase, QNMessage, ToolCallRequest, LiteLLM失败时降
 
 ### Community 36 - "Community 36"
 Cohesion: 0.02
-Nodes (145): cmd_evolve(), cmd_factor_best(), cmd_factor_data_fetch(), cmd_factor_info(), cmd_factor_visual(), cmd_help(), cmd_init(), cmd_run() (+137 more)
+Nodes (220): cmd_evolve(), cmd_factor_best(), cmd_factor_dashboard(), cmd_factor_data_fetch(), cmd_factor_info(), cmd_factor_rag_eval(), cmd_factor_rag_show(), cmd_factor_visual() (+212 more)
 
 ### Community 37 - "Community 37"
-Cohesion: 0.05
-Nodes (7): DataFactor, Factor, 因子      因子可看做一个 DataFrame(index=[时间点], columns=[ID])。     时间点数据类型是 datetime.date, _ErgodicMode, _OperationMode, str, QuantNodesObject
+Cohesion: 0.06
+Nodes (4): DataFactor, Factor, 因子      因子可看做一个 DataFrame(index=[时间点], columns=[ID])。     时间点数据类型是 datetime.date, str
 
 ### Community 38 - "Community 38"
-Cohesion: 0.03
-Nodes (57): ICAnalyzerNode, 计算 IC / Rank IC / ICIR / 因子 rank 自相关性      输入: factor_neutral, price     输出: {ic, 计算 IC / Rank IC / ICIR / 因子 rank 自相关性      输入: factor_neutral, price     输出: {ic, 计算 IC 系列          H4 (2026-06-20): vectorised per-date corr loop into DataFrame., LongShortNode, 多空组合构建 + 净值 + 评价      输入: GroupAnalyzerNode 的输出     输出: {net, eva_total, eva_yea, _build_analysis_context(), IC 值必须在 [-1, 1] 内 (correlation 数学界限). (+49 more)
+Cohesion: 0.04
+Nodes (42): ICAnalyzerNode, 计算 IC / Rank IC / ICIR / 因子 rank 自相关性      输入: factor_neutral, price     输出: {ic, 计算 IC / Rank IC / ICIR / 因子 rank 自相关性      输入: factor_neutral, price     输出: {ic, 计算 IC 系列          H4 (2026-06-20): vectorised per-date corr loop into DataFrame., LongShortNode, 多空组合构建 + 净值 + 评价      输入: GroupAnalyzerNode 的输出     输出: {net, eva_total, eva_yea, _build_analysis_context(), IC 值必须在 [-1, 1] 内 (correlation 数学界限). (+34 more)
 
 ### Community 39 - "Community 39"
 Cohesion: 0.07
 Nodes (21): FactorCategory, bool, DataFrame, EvalConfig, FactorEvaluationResult, float, int, str (+13 more)
 
 ### Community 40 - "Community 40"
-Cohesion: 0.05
-Nodes (44): BrokerNode, _execute_orders(), 执行订单          Args:             input_data: 输入数据，可以是：                 - OrdersRe, 执行订单          Args:             input_data: 输入数据，可以是：                 - OrdersRe, 经纪商节点基类      提供统一的订单执行接口。      Subclasses must implement:         _execute_order, 经纪商节点基类      提供统一的订单执行接口。      Subclasses must implement:         _execute_order, SimulatedBrokerNode, Trade (+36 more)
+Cohesion: 0.07
+Nodes (22): BacktestResult, Trade, TradeResult, TestTrade, TestTradeResult, make_quote_df(), # NOTE: _compute_statistics has a bug when equity_curve is empty:, # NOTE: _compute_statistics has a bug when equity_curve is empty: (+14 more)
 
 ### Community 41 - "Community 41"
 Cohesion: 0.11
-Nodes (37): OptimizationResult, PipelineOptimizer, Pipeline 优化器      提供 Pipeline 自动优化功能。      Examples:         >>> optimizer = Pip, DangerousCodeError, GenerationResult, NaturalLanguageToPipeline, 自然语言转 Pipeline 工具      提供更高级的 Pipeline 生成接口。, 自然语言转 Pipeline 工具      提供更高级的 Pipeline 生成接口。 (+29 more)
+Nodes (35): OptimizationResult, PipelineOptimizer, Pipeline 优化器      提供 Pipeline 自动优化功能。      Examples:         >>> optimizer = Pip, CodeValidationResult, DangerousCodeError, GenerationResult, Exception, APIError (+27 more)
 
 ### Community 42 - "Community 42"
 Cohesion: 0.13
 Nodes (32): float, int, SQLFunction, abs(), ceil(), correlation(), covariance(), cumprod() (+24 more)
 
 ### Community 43 - "Community 43"
-Cohesion: 0.04
-Nodes (50): TestCreateTempDir, TestFillNaByLookback, TestGenAvailableName, TestGetShelveFileSuffix, TestMergeDataFrames, TestPartitionList, TestPartitionListMovingSampling, TestRetryDecorator (+42 more)
+Cohesion: 0.03
+Nodes (50): TestCompileIdFilterStr, TestCreateTempDir, TestFillNaByLookback, TestGenAvailableName, TestGetShelveFileSuffix, TestMergeDataFrames, TestPartitionList, TestRetryDecorator (+42 more)
 
 ### Community 44 - "Community 44"
 Cohesion: 0.08
@@ -1665,27 +1667,27 @@ Nodes (47): 一、背景, 10.1 单元测试, 10.2 集成测试, 10.3 测试数�
 
 ### Community 47 - "Community 47"
 Cohesion: 0.04
-Nodes (14): TestMicrocompact, TestContextBuilder, SimpleHook, TestAgentHook, TestAgentHookContext, TestCompositeHook, AgentHook, microcompact() (+6 more)
+Nodes (26): TestMicrocompact, TestContextBuilder, SimpleHook, TestAgentHook, TestAgentHookContext, TestCompositeHook, AgentHook, Any (+18 more)
 
 ### Community 48 - "Community 48"
 Cohesion: 0.11
 Nodes (18): 一、现状分析, 已有能力, 缺失环节, 三、文件变更清单, 新增文件, 修改文件, 四、依赖关系, 五、测试计划 (+10 more)
 
 ### Community 49 - "Community 49"
-Cohesion: 0.03
-Nodes (45): str, BaseNode, _execute(), NodeStats, 所有节点的统一基类      核心契约：input_data -> execute() -> output_data      子类必须实现：, 子类实现的核心执行逻辑          Args:             input_data: 输入数据             **kwargs: 额外, 统一执行入口          Args:             input_data: 输入数据             validate_input: 是, 管道运算符：A >> B 等价于 Pipeline([A, B]) (+37 more)
+Cohesion: 0.04
+Nodes (44): str, QuantNodesBase, BaseNode, _execute(), NodeExecutionError, NodeState, NodeStats, 所有节点的统一基类      核心契约：input_data -> execute() -> output_data      子类必须实现： (+36 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.10
-Nodes (66): aggr_prod(), aggr_quantile(), aggregate(), blend(), chg_ids(), disaggregate(), merge(), nav() (+58 more)
+Cohesion: 0.13
+Nodes (51): abs(), add(), applymap(), arccos(), arcsin(), arctan(), astype(), book_to_market() (+43 more)
 
 ### Community 51 - "Community 51"
 Cohesion: 0.04
 Nodes (46): 一、背景, 1.1 目标, 1.2 与 Phase 3 的关系, 1.3 架构图, 四、策略技能, 2.1 Skill 基类 (base.py), 2.2 SkillRegistry (registry.py), 2.3 SkillLoader (loader.py) (+38 more)
 
 ### Community 52 - "Community 52"
-Cohesion: 0.14
-Nodes (18): Config, _load_agent_from_settings(), Load agent config from .quant_agent/settings.json (single source of truth), Settings, BaseSettings, ClickHouseConfig, DatabaseConfig, DuckDBConfig (+10 more)
+Cohesion: 0.12
+Nodes (20): Config, _load_agent_from_settings(), Load agent config from .quant_agent/settings.json (single source of truth), Settings, BaseSettings, ClickHouseConfig, DatabaseConfig, DuckDBConfig (+12 more)
 
 ### Community 53 - "Community 53"
 Cohesion: 0.04
@@ -1700,8 +1702,8 @@ Cohesion: 0.04
 Nodes (45): 一、背景与目标, 1.1 当前问题, 1.2 迁移目标, 1.3 设计原则, 提交1: factor_functions_v2.py, 2.1 阶段划分, 提交2: quant_nodes_object.py, 提交3: factor.py (+37 more)
 
 ### Community 56 - "Community 56"
-Cohesion: 0.05
-Nodes (39): _make_sample_csv_custom_columns(), ConfigLoader 往返测试: to_yaml → load → 验证字段, ConfigLoader 往返测试: to_yaml → load → 验证字段, to_yaml → load 后 DataConfig 字段完整保留, to_yaml → load 后 DataConfig 字段完整保留, _build_query() SQL 构建测试, _build_query() SQL 构建测试, 缺少 table → ValueError (+31 more)
+Cohesion: 0.09
+Nodes (21): _build_query() SQL 构建测试, _build_query() SQL 构建测试, 缺少 table → ValueError, 缺少 table → ValueError, TestE2E_BuildQuery, TestDataConfigExtendedFields, _make_config(), _make_data() (+13 more)
 
 ### Community 57 - "Community 57"
 Cohesion: 0.06
@@ -1709,27 +1711,23 @@ Nodes (17): EnvConfigNode, 环境变量配置节点      从环境变量读取�
 
 ### Community 58 - "Community 58"
 Cohesion: 0.04
-Nodes (44): create_empty_dataframe(), create_std_data(), _DummyLock, partition_ids_for_pid(), 为所有 PID 写入缓存文件（SectionOperation/PanelOperation 使用）      Args:         operation_, 创建标准数据数组      Args:         dts: 时间点列表         ids: ID 列表         data_type: 数据类, 创建空 DataFrame      Args:         dts: 时间点列表         ids: ID 列表         data_type, 按 PID 分区 ID 列表      Args:         operation_mode: 运算模式对象         ids: 原始 ID 列表，N (+36 more)
+Nodes (48): create_empty_dataframe(), create_std_data(), _DummyLock, partition_ids_for_pid(), 为所有 PID 写入缓存文件（SectionOperation/PanelOperation 使用）      Args:         operation_, 创建标准数据数组      Args:         dts: 时间点列表         ids: ID 列表         data_type: 数据类, 创建空 DataFrame      Args:         dts: 时间点列表         ids: ID 列表         data_type, 按 PID 分区 ID 列表      Args:         operation_mode: 运算模式对象         ids: 原始 ID 列表，N (+40 more)
 
 ### Community 59 - "Community 59"
 Cohesion: 0.05
-Nodes (9): TestFillNaNByFun, TestFillNaNByRegress, TestFillNaNByValue, TestOrthogonalize, TestRegressChangeRate, TestStandardizeQuantile, TestStandardizeRank, TestStandardizeZScore (+1 more)
+Nodes (11): DataPreprocessingFun, 数据预处理函数集合      提供因子数据预处理的各种静态方法，包括：     - 标准化：Z-Score、Rank、分位数     - 去极值：Winsori, TestFillNaNByFun, TestFillNaNByRegress, TestFillNaNByValue, TestOrthogonalize, TestRegressChangeRate, TestStandardizeQuantile (+3 more)
 
 ### Community 60 - "Community 60"
 Cohesion: 0.03
 Nodes (49): Any, float, int, str, BaseSQLDialect, DuckDBDialect, extract_date_part(), func_abs() (+41 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.04
-Nodes (48): 中性化处理 (Phase 2.1: 委托给 chain).          Phase 2.1 行为完全等价于旧实现:           - chain 为, apply_neutralizer_chain(), build_design_matrix(), build_neutralizer_chain(), IndustryNeutralizer, Neutralizer, 风险因子中性化: 把加载的 risk_data 横向 concat 为 X.      输出 X 形状: index=股票代码, columns=risk_fa, 根据配置构造 chain, 自动过滤 is_active() == False 的环节.      顺序固定: [Industry, Risk] (与原代码 i (+40 more)
+Cohesion: 0.16
+Nodes (13): IndustryNeutralizer, 行业中性化: 对 industry Series 做 one-hot dummy encoding.      行为与原 _neutralize branch, factor_df(), industry_df(), 如果某日期某些行业无股票, 该列应被过滤。, date 不在 industry.index → return None。, industry 里的 nan 在 __init__ 时被替换为 0。, (3 dates × 20 stocks) 连续因子, 无 nan。 (+5 more)
 
 ### Community 62 - "Community 62"
 Cohesion: 0.05
 Nodes (43): 一、背景, 11.1 Mock 策略, 11.2 测试覆盖, 七、因子验证, 二、文件结构, 九、报告生成, 十、实施步骤, 3.1 ExtractedLogic — 从研报提取的逻辑 (+35 more)
-
-### Community 63 - "Community 63"
-Cohesion: 0.06
-Nodes (46): FailingSkill, MockSkill, _reset_registry(), test_bridge_creates_tool_from_skill(), test_bridge_multiple_skills(), test_bridge_preserves_read_only(), test_bridge_tool_executes_skill(), test_bridge_tool_name_prefix() (+38 more)
 
 ### Community 64 - "Community 64"
 Cohesion: 0.13
@@ -1744,8 +1742,8 @@ Cohesion: 0.05
 Nodes (41): 一、系统架构总览, 1.1 三层松耦合架构, 1.2 核心设计原则, 四、核心工作流程, 2.1 Agent子系统完整目录, 2.2 研究工作区目录（文件系统持久化）, 3.1 MCP服务端架构, 3.2 核心MCP工具定义 (+33 more)
 
 ### Community 67 - "Community 67"
-Cohesion: 0.07
-Nodes (33): description(), name(), parameters(), read_only(), version_repo(), TestConfigDiffer, TestVersionManager, version_manager() (+25 more)
+Cohesion: 0.09
+Nodes (22): TestConfigDiffer, TestVersionManager, Any, bool, str, Path, str, StrategyVersion (+14 more)
 
 ### Community 68 - "Community 68"
 Cohesion: 0.06
@@ -1756,24 +1754,24 @@ Cohesion: 0.19
 Nodes (44): decay_exp(), decay_linear(), ewm_corr(), ewm_cov(), ewm_mean(), ewm_std(), ewm_var(), expanding_corr() (+36 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.06
-Nodes (25): NodeExecutionError, _from_dict_impl(), Join, Parallel, Pipeline, 并行分叉节点      所有分支接收相同的输入，并行执行，返回字典格式的结果。     注意：当前版本为多线程实现，计算密集型任务可能不会提速。     后续版, Args:             branches: 分支节点字典，key 为结果字典的 key             name: 节点名称, 重载 | 运算符，支持合并 Parallel 节点 (+17 more)
+Cohesion: 0.05
+Nodes (34): BaseNode, 管道运算符：A >> B 等价于 Pipeline([A, B]), 管道运算符：A >> B 等价于 Pipeline([A, B]), _from_dict_impl(), Join, Parallel, Pipeline, 并行分叉节点      所有分支接收相同的输入，并行执行，返回字典格式的结果。     注意：当前版本为多线程实现，计算密集型任务可能不会提速。     后续版 (+26 more)
 
 ### Community 71 - "Community 71"
 Cohesion: 0.08
 Nodes (17): Any, int, str, execute_sql(), 便捷函数：执行 SQL      Args:         sql: SQL 字符串         connection: 数据库连接         pa, SQL 执行引擎      在数据库连接上执行编译后的 SQL。      Examples:         >>> from QuantNodes.symb, Args:             connection: 数据库连接对象             compiler: SQL 编译器实例, 执行 SQL 查询          Args:             sql: SQL 字符串             params: 查询参数 (+9 more)
 
 ### Community 72 - "Community 72"
-Cohesion: 0.05
-Nodes (55): FeedbackCollector, FeedbackCollector — 聚合多通道反馈的便捷类。, 聚合多个通道的反馈信号, finalize() 返回 FactorFeedback。, 添加一个完整的 ChannelFeedback 对象。, 聚合所有通道, 返回 FactorFeedback。          Args:             decision: 显式决策 (None=按 agg, ChannelFeedback, FeedbackChannel, from_dict() (+47 more)
+Cohesion: 0.07
+Nodes (17): 根据配置创建 LLM Provider          支持两种模式：         1. 多Provider模式：config中包含providers字典, 根据配置创建 LLM Provider          支持两种模式：         1. 多Provider模式：config中包含providers字典, 根据配置创建 LLM Provider          支持两种模式：         1. 多Provider模式：config中包含providers字典, MockLLMClient, TestMessageConversion, TestMessageConversionEdgeCases, TestQuantNodesLLMProviderChat, TestQuantNodesLLMProviderInit (+9 more)
 
 ### Community 73 - "Community 73"
-Cohesion: 0.03
-Nodes (68): _calc_free_args_ratio(), collect_code(), collect_execution(), collect_shape(), collect_value(), _count_base_features(), 4 通道反馈采集器: execution / shape / code / value。  每个函数返回 ChannelFeedback, 可被 Feedbac, VALUE 通道: 数值分布合理性。      检查项:         - NaN 比例 <= nan_threshold (默认 30%) (+60 more)
+Cohesion: 0.02
+Nodes (117): _calc_free_args_ratio(), collect_code(), collect_execution(), collect_shape(), collect_value(), _count_base_features(), 4 通道反馈采集器: execution / shape / code / value。  每个函数返回 ChannelFeedback, 可被 Feedbac, VALUE 通道: 数值分布合理性。      检查项:         - NaN 比例 <= nan_threshold (默认 30%) (+109 more)
 
 ### Community 74 - "Community 74"
 Cohesion: 0.06
-Nodes (32): 带精化的生成（自动修复问题）          Args:             description: 策略描述             max_iter, 带精化的生成（自动修复问题）          Args:             description: 策略描述             max_iter, 审查代码          Args:             code: 待审查的代码             **kwargs: 额外参数, 审查代码          Args:             code: 待审查的代码             **kwargs: 额外参数, 解释策略代码          Args:             code: 策略代码             **kwargs: 额外参数, 解释策略代码          Args:             code: 策略代码             **kwargs: 额外参数, 策略生成器      将自然语言描述转换为 QuantNodes Pipeline 代码。      Examples:         >>> generat, 初始化转换器          Args:             llm_client: LLM 客户端             code_sandbox: (+24 more)
+Nodes (35): NaturalLanguageToPipeline, 带精化的生成（自动修复问题）          Args:             description: 策略描述             max_iter, 带精化的生成（自动修复问题）          Args:             description: 策略描述             max_iter, 审查代码          Args:             code: 待审查的代码             **kwargs: 额外参数, 审查代码          Args:             code: 待审查的代码             **kwargs: 额外参数, 解释策略代码          Args:             code: 策略代码             **kwargs: 额外参数, 解释策略代码          Args:             code: 策略代码             **kwargs: 额外参数, 策略生成器      将自然语言描述转换为 QuantNodes Pipeline 代码。      Examples:         >>> generat (+27 more)
 
 ### Community 75 - "Community 75"
 Cohesion: 0.08
@@ -1781,7 +1779,7 @@ Nodes (13): IniConfigNode, INI 配置文件节点      解析 .ini 格式的配�
 
 ### Community 76 - "Community 76"
 Cohesion: 0.02
-Nodes (177): _mock_evaluate(), 演化框架 E2E 测试: 完整 3 轮演化 (hypothesize → mutate → crossover) + quality_gate。  不在 Pip, E2E: metrics 正确传递并排序。, E2E: metrics 正确传递并排序。, E2E: quality_gate 拒绝的因子不调 evaluate_fn, 但写入 pool。, E2E: quality_gate 拒绝的因子不调 evaluate_fn, 但写入 pool。, E2E: quality_gate 通过时调 evaluate_fn。, E2E: quality_gate 通过时调 evaluate_fn。 (+169 more)
+Nodes (160): EvaluateFn, EvolutionLoop — 多轮演化主循环。  公开 API:     - EvolutionSetting: Pydantic 配置     - Fact, EvolutionLoop, EvolutionResult, _maybe_update_best(), EvolutionLoop — 多轮演化主循环。  调用流程:     1. round 0: 为每个 direction 调 Hypothesizer.hyp, 每轮调用, 更新 metric_collector (如有注入)。, 每轮调用, 更新 metric_collector (如有注入)。 (+152 more)
 
 ### Community 77 - "Community 77"
 Cohesion: 0.07
@@ -1789,7 +1787,7 @@ Nodes (14): 返回 SQL 语句（execute 的别名）, 返回 SQL 语句（execut
 
 ### Community 78 - "Community 78"
 Cohesion: 0.09
-Nodes (14): _classify_factor(), 按 dtype + n_unique 判别因子分桶策略。      Returns:         "discrete" — bool dtype, 或 n_, 按 dtype + n_unique 判别因子分桶策略。      Returns:         "discrete"   — bool dtype, 或, n_unique=1 (全同值) → discrete (走 _group_discrete 安全路径)。, n_unique=2 边界 → discrete。, n_unique=3 边界 → ranked (因为 _group_discrete 对 n_unique>2 会         产出 n_unique 个组, bool dtype 哪怕 n_unique=1 (全 True/全 False) 也走 discrete。, int8 dtype 走 n_unique<=2 判断, 不走 dtype 短路。 (+6 more)
+Nodes (13): _classify_factor(), 按 dtype + n_unique 判别因子分桶策略。      Returns:         "discrete" — bool dtype, 或 n_, 按 dtype + n_unique 判别因子分桶策略。      Returns:         "discrete"   — bool dtype, 或, n_unique=1 (全同值) → discrete (走 _group_discrete 安全路径)。, n_unique=2 边界 → discrete。, n_unique=3 边界 → ranked (因为 _group_discrete 对 n_unique>2 会         产出 n_unique 个组, bool dtype 哪怕 n_unique=1 (全 True/全 False) 也走 discrete。, int8 dtype 走 n_unique<=2 判断, 不走 dtype 短路。 (+5 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.05
@@ -1808,11 +1806,11 @@ Cohesion: 0.05
 Nodes (37): 项目背景, 执行计划, 关键决策, 工作量汇总, 变更记录, 操作记录, 2026-04-27 (下午), 2026-04-27 (+29 more)
 
 ### Community 84 - "Community 84"
-Cohesion: 0.08
-Nodes (29): CompositeSpec, CompositeSpec, CompositeSpecVisitor, DependencyVisitor, LLMDocVisitor, 序列化为 dict (用于 LLM prompt / JSON 持久化)., CompositeSpec 的访问者基类 (Phase 1.5, Visitor pattern).      用途:       - 统一访问 _COMPOS, 访问一个 CompositeSpec。子类重写此方法实现具体逻辑。 (+21 more)
+Cohesion: 0.05
+Nodes (42): CompositeSpec, CompositeSpec, CompositeSpecVisitor, DependencyVisitor, get_composite_doc_for_llm(), LLMDocVisitor, 序列化为 dict (用于 LLM prompt / JSON 持久化)., 序列化为 dict (用于 LLM prompt / JSON 持久化). (+34 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.05
+Cohesion: 0.04
 Nodes (44): 缺 data_path → ValidationError, None → ValidationError, 空字符串 → _execute ValueError, H5: IFinDDatabase industry_map constructor parameter, H6: INDEX_MAPPING via JSON override, resolve_index_mapping 合并默认 + 自定义, H7/H8: factor_score_node 魔数 3*29*group → 可配置, ScoreSetting 默认值: 29 行业, 3 市值组, 5 分位 (+36 more)
 
 ### Community 86 - "Community 86"
@@ -1820,8 +1818,8 @@ Cohesion: 0.06
 Nodes (53): apply(), build_extreme_strategy(), build_missing_strategy(), build_norm_strategy(), build_preprocess_strategies(), DeExtremeStrategy, IndustryAverageMissing, MedianAbsoluteDeviationExtreme (+45 more)
 
 ### Community 87 - "Community 87"
-Cohesion: 0.07
-Nodes (15): Phase A: 验证 SessionManager 替代 AgentService._sessions, Phase A: 验证 SessionManager 替代 AgentService._sessions, TestPhaseASessionUnification, TestSession, TestSessionManager, Any, bool, Path (+7 more)
+Cohesion: 0.03
+Nodes (33): Phase B: 验证 history.jsonl 增强, Phase B: 验证 history.jsonl 增强, Phase C: 验证 MemoryManager, Phase C: 验证 MemoryManager, Phase A: 验证 SessionManager 替代 AgentService._sessions, Phase A: 验证 SessionManager 替代 AgentService._sessions, TestPhaseASessionUnification, TestPhaseBHistoryEnhancement (+25 more)
 
 ### Community 88 - "Community 88"
 Cohesion: 0.05
@@ -1829,7 +1827,7 @@ Nodes (36): 📋 文档说明, 四、控制流节点设计, 一、架构现状�
 
 ### Community 89 - "Community 89"
 Cohesion: 0.02
-Nodes (167): AdjustDateNodeConfig, adj_dates(), make_factor(), 运行 preprocess → neutralize → group_analyzer, 返回 group_analyzer 输出., alpha-004 真实场景: 30 只 -1 + 20 只 +1, 走完整 preprocess → neutralize → group 链路., 30×-1 + 20×+1, 不做 neutralize, 直接 preprocess + group., 30×-1 + 20×+1, 加 industry neutralize., 30×-1 + 20×+1, 用 norm (rank → ppf) 标准化. (+159 more)
+Nodes (149): AdjustDateNodeConfig, adj_dates(), make_factor(), 运行 preprocess → neutralize → group_analyzer, 返回 group_analyzer 输出., alpha-004 真实场景: 30 只 -1 + 20 只 +1, 走完整 preprocess → neutralize → group 链路., 30×-1 + 20×+1, 不做 neutralize, 直接 preprocess + group., 30×-1 + 20×+1, 加 industry neutralize., 30×-1 + 20×+1, 用 norm (rank → ppf) 标准化. (+141 more)
 
 ### Community 90 - "Community 90"
 Cohesion: 0.07
@@ -1853,7 +1851,7 @@ Nodes (20): 3. 详细实施方案, 3.1 文件结构, 3.1 文件结构, 3.2 SQLit
 
 ### Community 95 - "Community 95"
 Cohesion: 0.08
-Nodes (21): CodeSandbox, CodeValidationResult, 初始化代码沙箱          Args:             allow_warnings: 是否允许警告（不阻断执行）             max, 初始化代码沙箱          Args:             allow_warnings: 是否允许警告（不阻断执行）             max, 验证代码安全性          Args:             code: 待验证的代码          Returns:             Co, 验证代码安全性          Args:             code: 待验证的代码          Returns:             Co, 检查危险导入 (PR-QN-1: 读 self._blocked_imports 实例属性), 验证并执行代码          Args:             code: 待执行的代码             context: 执行上下文 (+13 more)
+Nodes (20): CodeSandbox, 初始化代码沙箱          Args:             allow_warnings: 是否允许警告（不阻断执行）             max, 初始化代码沙箱          Args:             allow_warnings: 是否允许警告（不阻断执行）             max, 验证代码安全性          Args:             code: 待验证的代码          Returns:             Co, 验证代码安全性          Args:             code: 待验证的代码          Returns:             Co, 检查危险导入 (PR-QN-1: 读 self._blocked_imports 实例属性), 验证并执行代码          Args:             code: 待执行的代码             context: 执行上下文, 验证并执行代码          Args:             code: 待执行的代码             context: 执行上下文 (+12 more)
 
 ### Community 96 - "Community 96"
 Cohesion: 0.05
@@ -1864,8 +1862,8 @@ Cohesion: 0.12
 Nodes (16): description(), name(), parameters(), read_only(), ScheduleTool, test_execute_list(), test_execute_pause(), test_execute_remove_not_found() (+8 more)
 
 ### Community 98 - "Community 98"
-Cohesion: 0.04
-Nodes (84): ComplexitySetting, ConsistencySetting, QuantNodes 核心常量 — 跨模块统一的常量定义。  修复 4 路常量漂移 (H7+H8):   - BASE_FEATURE_NAMES: feedb, quality_gate 拒绝的因子不进入 evaluate, 但记录到 pool。, quality_gate 拒绝的因子不进入 evaluate, 但记录到 pool。, test_loop_with_quality_gate_rejects(), _calc_free_args_ratio(), ComplexityChecker (+76 more)
+Cohesion: 0.03
+Nodes (104): ComplexitySetting, ConsistencySetting, EvolutionLoop._batch_evaluate_and_record 错误处理测试 (10 tests)。  通过直接调用 _batch_evalu, quality_gate 拒绝的因子不进入 evaluate, 但记录到 pool。, quality_gate 拒绝的因子不进入 evaluate, 但记录到 pool。, test_loop_with_quality_gate_rejects(), LLMJudge, LLM 一致性评判器 — hypothesis ↔ description ↔ expression。      Args:         model: 模型 (+96 more)
 
 ### Community 99 - "Community 99"
 Cohesion: 0.06
@@ -1876,8 +1874,8 @@ Cohesion: 0.06
 Nodes (34): 一、修复内容总览, 三、测试结果, 全量测试, 四、文件变更清单, 新建文件, 重写文件, 修改文件, 删除文件 (+26 more)
 
 ### Community 101 - "Community 101"
-Cohesion: 0.04
-Nodes (52): BaseRetriever, load(), 检索 + 附加谱系 (parents + children, 可配深度) 上下文。          Args:             text: 查询文本, 检索 + 附加谱系 (parents + children, 可配深度) 上下文。          Args:             text: 查询文本, 保存知识库索引 (entry_id 列表 + retriever 文本)。, 保存知识库索引 (entry_id 列表 + retriever 文本)。, 把 entry 转为可检索文本 (按字段权重重复关键 token)。, 把 entry 转为可检索文本 (按字段权重重复关键 token)。 (+44 more)
+Cohesion: 0.07
+Nodes (28): _compute_idf(), 基于 sklearn TfidfVectorizer 的稀疏检索器。      Args:         token_pattern: sklearn 分词正, 添加一条文档, 标记 matrix 失效。, 返回 top_k 文档, 列表 [(doc_id, score)] 降序。, IDF = log(N / df) + 1, 平滑版。, TFIDFRetriever, _tokenize(), _make_entry() (+20 more)
 
 ### Community 102 - "Community 102"
 Cohesion: 0.06
@@ -1888,20 +1886,20 @@ Cohesion: 0.06
 Nodes (33): 一、设计目标, 五、列名映射策略, 七、改动范围, 25-Config-Driven 回测数据加载设计, 八、改动汇总, 3.1 数据库类 (clickhouse / mysql), 3.2 文件类 (csv / parquet), 3.3 嵌入式数据库 (sqlite / duckdb) (+25 more)
 
 ### Community 104 - "Community 104"
-Cohesion: 0.09
-Nodes (17): available_sources(), create_db_node(), 按 source 字符串创建对应的数据库节点实例。      Args:         source: 后端类型, 见 ``available_sources, 注册新的后端 builder (供扩展)。      Args:         source: 后端类型字符串。         builder: 接收 **, register_db_node(), DBNodeBuilder, BaseDBNode, str (+9 more)
+Cohesion: 0.12
+Nodes (13): available_sources(), create_db_node(), 按 source 字符串创建对应的数据库节点实例。      Args:         source: 后端类型, 见 ``available_sources, 注册新的后端 builder (供扩展)。      Args:         source: 后端类型字符串。         builder: 接收 **, register_db_node(), DBNodeBuilder, BaseDBNode, str (+5 more)
 
 ### Community 105 - "Community 105"
 Cohesion: 0.08
 Nodes (19): CSVNode, CSV 文件读取节点      支持 WHERE 子句过滤      Args:         filepath: CSV 文件绝对路径         en, 执行查询          Args:             sql: SQL 查询语句（可选），支持 WHERE 子句             params, bool, DataFrame, int, str, 无 WHERE 子句时返回完整 DataFrame (+11 more)
 
 ### Community 106 - "Community 106"
-Cohesion: 0.07
-Nodes (42): Alerter, DriftDetector, MetricsCollector, Alerter, MetricsCollector, 绩效指标采集器 - 从回测结果或实盘数据采集绩效指标, DriftDetector, 漂移检测器      支持三种检测:     1. KS检验: 收益率分布是否发生变化     2. 夏普比率下降: 夏普比率是否显著下降     3. 最大回 (+34 more)
+Cohesion: 0.09
+Nodes (31): Alerter, DriftDetector, MetricsCollector, Alerter, MetricsCollector, 绩效指标采集器 - 从回测结果或实盘数据采集绩效指标, DriftDetector, 漂移检测器      支持三种检测:     1. KS检验: 收益率分布是否发生变化     2. 夏普比率下降: 夏普比率是否显著下降     3. 最大回 (+23 more)
 
 ### Community 107 - "Community 107"
 Cohesion: 0.05
-Nodes (46): ExprParser, 一元运算: ('-' | '+') primary | primary, 主项: number | column | function_call | method_chain | '(' expr '), 解析标识符 (可能是列名、函数调用或方法链), 解析标识符 (可能是列名、函数调用或方法链), 解析函数调用: func_name(arg1, arg2, ...), 解析函数调用: func_name(arg1, arg2, ...), 读取函数参数字符串（从当前位置到匹配的右括号，消耗 ')')                  注意: 此方法会消耗右括号 ')'，调用后不需要再 consum (+38 more)
+Nodes (48): ExprParser, 一元运算: ('-' | '+') primary | primary, 主项: number | column | function_call | method_chain | '(' expr '), 解析标识符 (可能是列名、函数调用或方法链), 解析标识符 (可能是列名、函数调用或方法链), 解析函数调用: func_name(arg1, arg2, ...), 解析函数调用: func_name(arg1, arg2, ...), 读取函数参数字符串（从当前位置到匹配的右括号，消耗 ')')                  注意: 此方法会消耗右括号 ')'，调用后不需要再 consum (+40 more)
 
 ### Community 108 - "Community 108"
 Cohesion: 0.13
@@ -1920,8 +1918,8 @@ Cohesion: 0.05
 Nodes (7): SQL building utility class, SQL building utility class, SQLBuilder, TableEngineCreator, TestSQLBuilder, TestTableEngineCreator, int
 
 ### Community 112 - "Community 112"
-Cohesion: 0.03
-Nodes (106): int, str, TrajectoryEntry, bool, float, int, TrajectoryEntry, bool (+98 more)
+Cohesion: 0.02
+Nodes (121): E2E: quality_gate 拒绝的因子不调 evaluate_fn, 但写入 pool。, E2E: quality_gate 拒绝的因子不调 evaluate_fn, 但写入 pool。, E2E: quality_gate 通过时调 evaluate_fn。, E2E: quality_gate 通过时调 evaluate_fn。, test_e2e_quality_gate_passes_through(), test_e2e_quality_gate_rejects_rejected_entries(), QuantNodes 核心常量 — 跨模块统一的常量定义。  修复 4 路常量漂移 (H7+H8):   - BASE_FEATURE_NAMES: feedb, FactorFeedback (+113 more)
 
 ### Community 113 - "Community 113"
 Cohesion: 0.11
@@ -1936,16 +1934,16 @@ Cohesion: 0.04
 Nodes (47): 10.1 单元测试, 10.2 集成测试, 10.3 测试数据, 3.1 FactorCandidate — 候选因子, 3.2 FactorEvaluationResult — 6维度评估结果, 3.3 MiningConfig — 挖掘配置, 3.4 AutoResearchResult — 挖掘结果, 4.1 模板分类 (+39 more)
 
 ### Community 116 - "Community 116"
-Cohesion: 0.33
-Nodes (3): DriftAlert, int, str
+Cohesion: 0.05
+Nodes (38): Any, bool, str, Any, bool, str, bool, str (+30 more)
 
 ### Community 117 - "Community 117"
 Cohesion: 0.15
 Nodes (12): 一、现状分析, 已有能力, 文件变更, 九、文件变更总清单, 十、执行顺序, 十一、风险与注意事项, 二、功能优先级, 修改文件（5 个） (+4 more)
 
 ### Community 118 - "Community 118"
-Cohesion: 0.09
-Nodes (25): Any, str, bool, float, int, str, TrajectoryEntry, gate_breakdown_figure() (+17 more)
+Cohesion: 0.08
+Nodes (25): DataFrame, int, 验证 2 种因子在 _calc_group_return 真实入口处的行为。, 验证 2 种因子在 _calc_group_return 真实入口处的行为。, 50 stocks × 5 dates, 全部 bool 因子, 不抛 ValueError。, 50 stocks × 5 dates, 全部 bool 因子, 不抛 ValueError。, 50 stocks × 5 dates, 连续因子, 行为与原 pd.qcut 一致。, 50 stocks × 5 dates, 全部 bool 因子, 不抛 ValueError。 (+17 more)
 
 ### Community 119 - "Community 119"
 Cohesion: 0.10
@@ -1956,12 +1954,12 @@ Cohesion: 0.04
 Nodes (47): 1.1 QuantNodesLLMProvider.chat_stream() 实现, 1.2 AgentRunner.run() 流式改造, 1.3 Agent.chat() 真流式, 1.4 AgentLoop.chat_stream() 新增, 1.5 WebSocket 消息协议扩展, 2.1 安装依赖, 2.2 创建 MarkdownRenderer 组件, 2.3 创建 Markdown 样式 (+39 more)
 
 ### Community 121 - "Community 121"
-Cohesion: 0.12
-Nodes (30): _apply_weights(), _combo_add(), _combo_max(), _combo_min(), _combo_mul(), _cum_dual_corr(), _cum_single_median(), _cum_single_quantile() (+22 more)
+Cohesion: 0.08
+Nodes (34): _apply_weights(), _combo_add(), _combo_max(), _combo_min(), _combo_mul(), _cum_dual_corr(), _cum_single_median(), _cum_single_quantile() (+26 more)
 
 ### Community 122 - "Community 122"
-Cohesion: 0.07
-Nodes (37): EvolutionResult, build_evolution_loop(), build_quality_gate(), build_trajectory_pool(), evaluate_candidate(), override_factor_config(), ``EvolutionLoop`` 评估回调: 单次回测 + metrics + feedback.      Returns:         ``(pass, 执行单次回测 (12 节点), 临时把 candidate 的 expression / name 注入 ``cfg.factor``.      不写 Tra (+29 more)
+Cohesion: 0.13
+Nodes (16): EvolutionResult, build_evolution_loop(), build_trajectory_pool(), 多轮演化主入口.      Args:         runner: ``PipelineRunner`` 实例         initial_direct, 多轮演化主入口.      Args:         runner: ``PipelineRunner`` 实例         initial_direct, 多轮演化主入口.      Args:         runner: ``PipelineRunner`` 实例         initial_direct, 根据 ``cfg.evolution.enabled`` 构造 ``TrajectoryPool``., 根据 ``cfg.evolution.enabled`` 构造 ``TrajectoryPool``. (+8 more)
 
 ### Community 123 - "Community 123"
 Cohesion: 0.18
@@ -1973,19 +1971,19 @@ Nodes (29): 一、业界调研总结, 模式 1：文件系统优先的可移植�
 
 ### Community 125 - "Community 125"
 Cohesion: 0.02
-Nodes (157): cmd_factor_dashboard(), 生成 3 类指标 dashboard (Week 13)。      从 TrajectoryPool 提取 RAG + Evolution + Quality, cmd_factor_dashboard(), 生成 3 类指标 dashboard (Week 13)。      从 TrajectoryPool 提取 RAG + Evolution + Quality, 生成 3 类指标 dashboard (Week 13)。      从 TrajectoryPool 提取 RAG + Evolution + Quality, 生成 3 类指标 dashboard (Week 13)。      从 TrajectoryPool 提取 RAG + Evolution + Quality, ProcessPool 评估后, dashboard streaming 含真实数据。, ProcessPool 评估后, dashboard streaming 含真实数据。 (+149 more)
+Nodes (137): MetricCollector, EvolutionMetrics, load(), MetricCollector, QualityMetrics, RagMetrics, MetricCollector — 3 类指标的中央收集器。  3 类指标:     - RAG:    HitRate@K / NDCG@K / MRR /, 3 类指标中央收集器。      用法:         collector = MetricCollector()         collector.upd (+129 more)
 
 ### Community 126 - "Community 126"
-Cohesion: 0.10
-Nodes (18): ErgodicMode, OperationMode, prepare_mmap_factor_cache_data(), prepare_mmap_id_cache_data(), 基于 mmap 的 ID 缓冲数据准备子进程, 基于 mmap 的 ID 缓冲数据准备子进程, 遍历模式参数对象      管理因子遍历模式下的缓存策略, 遍历模式参数对象      管理因子遍历模式下的缓存策略 (+10 more)
+Cohesion: 0.12
+Nodes (13): ErgodicMode, OperationMode, 遍历模式参数对象      管理因子遍历模式下的缓存策略, 遍历模式参数对象      管理因子遍历模式下的缓存策略, 运算模式参数对象      管理因子运算模式下的多进程调度, 运算模式参数对象      管理因子运算模式下的多进程调度, save_raw_data(), TestErgodicMode (+5 more)
 
 ### Community 127 - "Community 127"
-Cohesion: 0.10
-Nodes (48): cross_sectional_mean(), cross_sectional_rank(), cross_sectional_std(), cross_sectional_sum(), cross_sectional_zscore(), fillNaNByFun(), fillNaNByRegress(), group_norm() (+40 more)
+Cohesion: 0.15
+Nodes (33): cross_sectional_mean(), cross_sectional_rank(), cross_sectional_std(), cross_sectional_sum(), cross_sectional_zscore(), fillNaNByFun(), fillNaNByRegress(), group_norm() (+25 more)
 
 ### Community 128 - "Community 128"
-Cohesion: 0.07
-Nodes (32): BacktestError, BaseModel, ConfigError, DatabaseError, QuantNodesBase, QuantNodesError, ValidationError, _from_dict_impl() (+24 more)
+Cohesion: 0.12
+Nodes (10): _from_dict_impl(), LambdaNode, 将函数包装为节点      Examples:         >>> # 简单函数         >>> add_one = LambdaNode(lamb, Args:             func: 执行函数，签名为 func(input_data, context) -> result, Args:             func: 执行函数，签名为 func(input_data, context) -> result, TestLambdaNodeExecution, TestLambdaNodeName, TestLambdaNodeSerialization (+2 more)
 
 ### Community 129 - "Community 129"
 Cohesion: 0.16
@@ -2001,7 +1999,7 @@ Nodes (10): TestYamlConfigNode, YAML 配置文件节点      解析 .yaml/.yml �
 
 ### Community 132 - "Community 132"
 Cohesion: 0.08
-Nodes (21): create_strategy(), get_factor(), get_factors(), get_strategies(), get_strategy(), Create a new strategy, Update an existing strategy, Search across all wiki content (+13 more)
+Nodes (20): create_strategy(), get_factor(), get_factors(), get_strategies(), get_strategy(), get_wiki_status(), Create a new strategy, Update an existing strategy (+12 more)
 
 ### Community 133 - "Community 133"
 Cohesion: 0.22
@@ -2016,12 +2014,12 @@ Cohesion: 0.12
 Nodes (7): MockConfigNode, ConfigNode 是抽象类，不能直接实例化, ConfigNode 是抽象类，不能直接实例化, 在没有调用 execute 的情况下访问 item, 在没有调用 execute 的情况下访问 item, TestConfigNode, ConfigNode
 
 ### Community 136 - "Community 136"
-Cohesion: 0.05
-Nodes (48): BaseNode, _from_dict_impl(), IfNode, iteration_count(), MapNode, 分组映射节点      对输入数据进行分组，对每个分组执行相同的节点，最后合并结果。     支持并行处理，适合内存友好的流式回测。      Examples, 分组映射节点      对输入数据进行分组，对每个分组执行相同的节点，最后合并结果。     支持并行处理，适合内存友好的流式回测。      Examples, Args:             node: 要在每个分组上执行的节点             group_by: 分组方式，支持多种格式 (+40 more)
+Cohesion: 0.06
+Nodes (36): _from_dict_impl(), iteration_count(), MapNode, 分组映射节点      对输入数据进行分组，对每个分组执行相同的节点，最后合并结果。     支持并行处理，适合内存友好的流式回测。      Examples, 分组映射节点      对输入数据进行分组，对每个分组执行相同的节点，最后合并结果。     支持并行处理，适合内存友好的流式回测。      Examples, Args:             node: 要在每个分组上执行的节点             group_by: 分组方式，支持多种格式, Args:             node: 要在每个分组上执行的节点             group_by: 分组方式，支持多种格式, 条件循环节点      只要条件满足，就循环执行 body 节点。     每次迭代的输出作为下一次迭代的输入。      Examples: (+28 more)
 
 ### Community 137 - "Community 137"
-Cohesion: 0.09
-Nodes (20): CHBase, _check_sql_select_only(), ClickHouseNode, _load_into_pd(), _merge_settings(), ClickHouse 数据库节点      支持 HTTP 接口和官方 driver 双接口      Args:         host: 主机地址, ClickHouse 数据库节点      支持 HTTP 接口和官方 driver 双接口      Args:         host: 主机地址, ClickHouse 需要按数据库限定表名 (SHOW TABLES FROM <db>)。 (+12 more)
+Cohesion: 0.10
+Nodes (17): CHBase, _check_sql_select_only(), ClickHouseNode, _load_into_pd(), _merge_settings(), ClickHouse 数据库节点      支持 HTTP 接口和官方 driver 双接口      Args:         host: 主机地址, ClickHouse 数据库节点      支持 HTTP 接口和官方 driver 双接口      Args:         host: 主机地址, ClickHouse 需要按数据库限定表名 (SHOW TABLES FROM <db>)。 (+9 more)
 
 ### Community 138 - "Community 138"
 Cohesion: 0.04
@@ -2040,8 +2038,8 @@ Cohesion: 0.15
 Nodes (12): 运行一次对话                  Args:             prompt: 用户输入             session_id: 会, 流式对话（生成器）                  Args:             message: 用户输入             session_i, 运行一次对话                  Args:             prompt: 用户输入             session_id: 会, 运行一次对话                  Args:             prompt: 用户输入             session_id: 会, 运行一次对话          Args:             prompt: 用户输入             session_id: 会话ID, 运行一次对话          Args:             prompt: 用户输入             session_id: 会话ID, 流式对话（生成器）                  Args:             message: 用户输入             session_i, 流式对话（生成器）                  Args:             message: 用户输入             session_i (+4 more)
 
 ### Community 143 - "Community 143"
-Cohesion: 0.04
-Nodes (52): Path, bool, float, int, str, TrajectoryEntry, generate_html(), 生成完整 HTML 报告, 含 4 个交互图 + 概览表。      Args:         entries: TrajectoryEntry 列表 (+44 more)
+Cohesion: 0.02
+Nodes (160): Any, bool, Path, str, TrajectoryEntry, Any, str, Any (+152 more)
 
 ### Community 144 - "Community 144"
 Cohesion: 0.08
@@ -2049,7 +2047,7 @@ Nodes (25): acos(), bop(), cdl_3whitesoldiers(), cdl_doji(), cosh(), _ensure_exp
 
 ### Community 145 - "Community 145"
 Cohesion: 0.03
-Nodes (108): AgentHook, Any, AgentLoop, 注入记忆上下文到 system message（Phase C + Phase B）, Phase D + F: runner 完成后处理 Dream 分析, 将 Dream 洞察写入 dream-insights.md 主题文件, 分析被截断的消息，提取洞察生成 Dream, 流式单轮对话API（不经过消息总线）          Args:             message: 用户输入             session_ (+100 more)
+Nodes (104): AgentHook, Any, AgentLoop, 注入记忆上下文到 system message（Phase C + Phase B）, Phase D + F: runner 完成后处理 Dream 分析, 将 Dream 洞察写入 dream-insights.md 主题文件, 分析被截断的消息，提取洞察生成 Dream, 流式单轮对话API（不经过消息总线）          Args:             message: 用户输入             session_ (+96 more)
 
 ### Community 146 - "Community 146"
 Cohesion: 0.05
@@ -2065,7 +2063,7 @@ Nodes (27): abs(), add(), arccos(), arcsin(), arctan(), ceil(), clip(), cos() (+
 
 ### Community 149 - "Community 149"
 Cohesion: 0.05
-Nodes (41): FactorScoreNode, 市值行业分层打分 (3 市值组 × 29 中信行业 × N 分位)      输入: factor_neutral, mv, industry, price, 市值行业分层打分 (3 市值组 × 29 中信行业 × N 分位)      输入: factor_neutral, mv, industry, price, FactorTestReportNode, 汇总所有分析结果, 输出到文件      输入: context 中所有分析结果     输出: FactorTestReport (dict), 保存报告到文件          L3 (2026-06-21): 未知 format 改为运行时 raise ValueError., _resolve_output_dir(), 与风险因子的 Spearman 秩相关 + 稳定系数      输入: factor_neutral, risk_factors     输出: {mean: (+33 more)
+Nodes (39): FactorScoreNode, 市值行业分层打分 (3 市值组 × 29 中信行业 × N 分位)      输入: factor_neutral, mv, industry, price, 市值行业分层打分 (3 市值组 × 29 中信行业 × N 分位)      输入: factor_neutral, mv, industry, price, FactorTestReportNode, 汇总所有分析结果, 输出到文件      输入: context 中所有分析结果     输出: FactorTestReport (dict), 保存报告到文件          L3 (2026-06-21): 未知 format 改为运行时 raise ValueError., 与风险因子的 Spearman 秩相关 + 稳定系数      输入: factor_neutral, risk_factors     输出: {mean:, 与风险因子的 Spearman 秩相关 + 稳定系数      输入: factor_neutral, risk_factors     输出: {mean: (+31 more)
 
 ### Community 150 - "Community 150"
 Cohesion: 0.09
@@ -2076,16 +2074,16 @@ Cohesion: 0.10
 Nodes (12): market_data_df(), market_data_pdf(), monitor_db(), polars_df(), Monitor 临时数据库，带 schema 初始化      返回 (db_path, DatabaseManager) 元组, Monitor 临时数据库，带 schema 初始化      返回 (db_path, DatabaseManager) 元组, 基础 Polars DataFrame fixture, 基础 Polars DataFrame fixture (+4 more)
 
 ### Community 152 - "Community 152"
-Cohesion: 0.03
-Nodes (51): MockFailingProvider, MockProvider, MockProvider, TestAgentChat, TestAgentChatIntegration, MockLLMProvider, TestLLMProvider, TestLLMProviderStreaming (+43 more)
+Cohesion: 0.02
+Nodes (135): TestBacktestTool, TestToolExecutionResult, TestAgentChat, TestAgentChatIntegration, TestFactorTool, MockLLMProvider, TestLLMProvider, TestLLMProviderStreaming (+127 more)
 
 ### Community 153 - "Community 153"
 Cohesion: 0.05
 Nodes (41): 1.1 问题, 1.1 问题, 1.2 修复方案, 1.2 修复方案, 1.3 注意事项, 1.3 注意事项, 1. P1-1: Dream 未注入 System Prompt, 1. P1-1: Dream 未注入 System Prompt (+33 more)
 
 ### Community 155 - "Community 155"
-Cohesion: 0.06
-Nodes (45): QualityGate — 3 门质量检查 (Complexity / Redundancy / Consistency)。  公开 API:     - Qu, QualityGateNode — 集成 3 个 checkers, 输出 passed + FactorFeedback。, RedundancyChecker — 与 Zoo 已有因子 AST hash 汉明距离 < 阈值则拒绝。, 冗余门: 与 Zoo 中已有因子的 AST 哈希距离。, 返回 ChannelFeedback (VALUE 通道)。, RedundancyChecker, QualityGate 配置 — 3 个独立可配门 + 总配置。, REDUNDANCY 门配置 — 防重复 (AST hash + 汉明距离)。 (+37 more)
+Cohesion: 0.05
+Nodes (41): build_quality_gate(), 根据 ``cfg.quality_gate.enabled`` 构造 ``QualityGateNode``., 根据 ``cfg.quality_gate.enabled`` 构造 ``QualityGateNode``., 根据 ``cfg.quality_gate.enabled`` 构造 ``QualityGateNode``., 验证 hash / 种子在多次启动中稳定。, 同一 expression 多次 ast_hash 必返回相同 int。, 结构略不同的 expression 应 hash 不同。, _heavy_evaluate 同 expression 同 seed → 同 sharpe。 (+33 more)
 
 ### Community 156 - "Community 156"
 Cohesion: 0.20
@@ -2096,8 +2094,8 @@ Cohesion: 0.06
 Nodes (15): PR-QN-1: CodeSandbox 实例级可配置白/黑名单测试  锁定 PR-QN-1 (2026-06-21) 行为: - 默认参数行为与 PR 之前完, 未列出的模块不受 blocked_imports 影响., 同时使用 allowed + blocked, 互不影响., 追加 pattern 不替换默认 — os 仍被禁., 旧 **kwargs 仍可接收 (向后兼容)., 默认参数应拷贝类级别到 self._allowed_patterns / self._blocked_imports., allowed_imports 参数追加白名单., allowed_imports=[r'^scipy\\..*'] 应允许 import scipy.stats. (+7 more)
 
 ### Community 158 - "Community 158"
-Cohesion: 0.07
-Nodes (14): MultiplyNode, 测试 IfNode 仍然支持 lambda 条件, 测试 IfNode 仍然支持 lambda 条件, 测试 WhileNode 仍然支持 lambda 条件, 测试 WhileNode 仍然支持 lambda 条件, TestArithmeticOperations, TestBackwardCompatibility, TestDSLBuilder (+6 more)
+Cohesion: 0.06
+Nodes (20): IfNode, 条件分支节点      如果条件满足，执行 true_branch，否则执行 false_branch。      Examples:         >>>, MultiplyNode, int, 测试只有真分支（False 时返回原输入）, 测试只有真分支（False 时返回原输入）, TestIfNode, MultiplyNode (+12 more)
 
 ### Community 159 - "Community 159"
 Cohesion: 0.11
@@ -2108,12 +2106,12 @@ Cohesion: 0.13
 Nodes (14): DataFrame, FactorEvaluationResult, float, str, AutoResearchResult, MCTSNode, MCTSSearch, MCTS 因子搜索      基于蒙特卡洛树搜索，在因子公式空间中寻找高质量因子。 (+6 more)
 
 ### Community 161 - "Community 161"
-Cohesion: 0.08
-Nodes (22): Any, str, TrajectoryEntry, bool, float, int, str, TrajectoryEntry (+14 more)
+Cohesion: 0.09
+Nodes (24): BaseRetriever, load(), 检索 + 附加谱系 (parents + children, 可配深度) 上下文。          Args:             text: 查询文本, 检索 + 附加谱系 (parents + children, 可配深度) 上下文。          Args:             text: 查询文本, 保存知识库索引 (entry_id 列表 + retriever 文本)。, 保存知识库索引 (entry_id 列表 + retriever 文本)。, 把 entry 转为可检索文本 (按字段权重重复关键 token)。, 把 entry 转为可检索文本 (按字段权重重复关键 token)。 (+16 more)
 
 ### Community 162 - "Community 162"
-Cohesion: 0.10
-Nodes (4): expanding_min(), expanding_min(), TestExpandingEdgeCases, TestExpandingSeriesOperators
+Cohesion: 0.09
+Nodes (6): expanding_max(), expanding_min(), expanding_max(), expanding_min(), TestExpandingEdgeCases, TestExpandingSeriesOperators
 
 ### Community 163 - "Community 163"
 Cohesion: 0.13
@@ -2124,12 +2122,12 @@ Cohesion: 0.14
 Nodes (11): format(), get(), get_system_prompt(), list_templates(), PromptBuilder, PromptLibrary, PromptTemplate, 提示词模板库      提供各种任务场景的提示词模板。 (+3 more)
 
 ### Community 165 - "Community 165"
-Cohesion: 0.16
-Nodes (9): MySQLNode, MySQL 数据库节点      支持连接池      Args:         host: 主机地址         port: 端口 (默认 3306), 建立连接（返回 SQLAlchemy Engine）, bool, DataFrame, int, str, 连接后 engine 不为 None - 需要 pymysql (+1 more)
+Cohesion: 0.15
+Nodes (10): BaseDBNode, MySQLNode, MySQL 数据库节点      支持连接池      Args:         host: 主机地址         port: 端口 (默认 3306), 建立连接（返回 SQLAlchemy Engine）, bool, DataFrame, int, str (+2 more)
 
 ### Community 166 - "Community 166"
-Cohesion: 0.06
-Nodes (38): 支持 pydantic model_dump。, 支持 pydantic model_dump。, snapshot_path 不存在 → 返回 passed=False + error。, snapshot_path 不存在 → 返回 passed=False + error。, 损坏的 snapshot 文件 → 错误捕获。, 损坏的 snapshot 文件 → 错误捕获。, TestRunnerSnapshot, TestSubprocessEvaluate (+30 more)
+Cohesion: 0.15
+Nodes (6): detect_engine(), Engine, Scan code for import statements to detect which engine is used.      Heuristics:, TestCompositeSpecEngineField, TestDetectEngine, TestEngineEnum
 
 ### Community 167 - "Community 167"
 Cohesion: 0.13
@@ -2137,7 +2135,7 @@ Nodes (10): Wiki service for API layer, Wiki service for API layer, Get strategi
 
 ### Community 168 - "Community 168"
 Cohesion: 0.04
-Nodes (55): Any, bool, DreamEngine, 分析对话并生成洞察 Dream（仅在包含新洞察时生成）, Analyze factor and generate insight, Analyze strategy and generate insight, Subscribe to new dreams, Unsubscribe from dreams (+47 more)
+Nodes (60): Any, bool, DreamEngine, 分析对话并生成洞察 Dream（仅在包含新洞察时生成）, Analyze factor and generate insight, Analyze strategy and generate insight, Subscribe to new dreams, Unsubscribe from dreams (+52 more)
 
 ### Community 169 - "Community 169"
 Cohesion: 0.09
@@ -2164,20 +2162,20 @@ Cohesion: 0.12
 Nodes (10): TestStrategyScheduler, Any, bool, int, str, 静态函数: 执行策略任务 (避免序列化问题), 基于APScheduler的策略调度器      支持三种触发方式:     - cron: cron表达式定时     - interval: 间隔定时, 添加cron定时任务          Args:             strategy_name: 策略名称 (作为job id) (+2 more)
 
 ### Community 176 - "Community 176"
-Cohesion: 0.05
-Nodes (34): RAGEvaluator, RAG 评估器 — 接受多 query 结果, 汇总 5 个指标。      Args:         k_values: HitRate/NDCG 评估的, RAG 评估器 — 接受多 query 结果, 汇总 5 个指标。      Args:         k_values: HitRate/NDCG 评估的, RAG 评估器 — 接受多 query 结果, 汇总 5 个指标。      Args:         k_values: HitRate/NDCG 评估的, RAGEvaluator 汇总多 query 指标。, RAGEvaluator 汇总多 query 指标。, test_rag_evaluator_basic(), workers=2 结果 metric 正确。 (+26 more)
+Cohesion: 0.08
+Nodes (23): bool, int, Path, str, TrajectoryEntry, 按 feedback.decision 过滤 (None=不过滤)。, 按 metric 降序, 返回 Top-N。, 按 metric 降序, 返回 Top-N。 (+15 more)
 
 ### Community 177 - "Community 177"
 Cohesion: 0.10
 Nodes (3): @register_operator 装饰器正常工作, @register_operator 装饰器正常工作, TestRegistryAPI
 
 ### Community 178 - "Community 178"
-Cohesion: 0.17
-Nodes (24): ewm_corr(), ewm_mean(), ewm_std(), ts_corr(), ts_cov(), ts_delta(), ts_lag(), ts_lead() (+16 more)
+Cohesion: 0.15
+Nodes (8): _execute_orders(), 执行订单          Args:             input_data: 输入数据，可以是：                 - OrdersRe, 执行订单          Args:             input_data: 输入数据，可以是：                 - OrdersRe, Any, DataFrame, float, OrdersResult, str
 
 ### Community 179 - "Community 179"
-Cohesion: 0.12
-Nodes (19): description(), MonitorTool, name(), parameters(), read_only(), test_execute_alerts_with_mock_dashboard(), test_execute_alerts_without_strategy_name(), test_execute_compare_with_mock_dashboard() (+11 more)
+Cohesion: 0.11
+Nodes (20): description(), MonitorTool, name(), parameters(), read_only(), test_execute_alerts_with_mock_dashboard(), test_execute_alerts_without_strategy_name(), test_execute_compare_with_mock_dashboard() (+12 more)
 
 ### Community 180 - "Community 180"
 Cohesion: 0.06
@@ -2196,16 +2194,16 @@ Cohesion: 0.04
 Nodes (61): add(), aggregate(), applymap(), astype(), book_to_market(), ceil(), chg_ids(), combine() (+53 more)
 
 ### Community 184 - "Community 184"
-Cohesion: 0.05
-Nodes (48): Parallel — 多进程评估池。  公开 API:     - parallel_evaluate(candidates, evaluate_fn, max, FakeCandidate, parallel 模块边界条件测试 (15 tests)。  聚焦:     - _heavy_evaluate: 决定性 (相同 expression 同 s, workers=1 串行调用, 返回 list。, workers=1 串行调用, 返回 list。, workers=2 ThreadPool 并行。, workers=2 ThreadPool 并行。, ThreadPool 中 evaluate_fn 抛异常, 单个结果为 (False, {}, None)。 (+40 more)
+Cohesion: 0.03
+Nodes (104): _make_config_and_context(), _make_h5_dataset(), _mock_eval(), ProcessPool E2E 完整测试 (Week 17) — 7 tests。  覆盖:     - 合成 H5 + ProcessPool 完整 12 节, ProcessPool 真实跑 12 节点 (Phase 2-11) 在子进程中, 返回 metrics。, ProcessPool 真实跑 12 节点 (Phase 2-11) 在子进程中, 返回 metrics。, ProcessPool 真实跑 12 节点 (Phase 2-11) 在子进程中, 返回 metrics。, ProcessPool workers=2 应跑通 4 个 candidate (不验证时间, 只验证数量)。 (+96 more)
 
 ### Community 185 - "Community 185"
-Cohesion: 0.09
-Nodes (19): 删除表          Args:             table_name: 表名          Returns:             0 表示, 删除表          Args:             table_name: 表名          Returns:             0 表示, 设置表的元数据          Args:             table_name: 表名             key: 元数据键, 设置表的元数据          Args:             table_name: 表名             key: 元数据键, 重命名因子          Args:             table_name: 表名             old_factor_name: 旧因子, 重命名因子          Args:             table_name: 表名             old_factor_name: 旧因子, 删除因子          Args:             table_name: 表名             factor_names: 因子名列表, 删除因子          Args:             table_name: 表名             factor_names: 因子名列表 (+11 more)
+Cohesion: 0.04
+Nodes (48): FactorDB, 删除表          Args:             table_name: 表名          Returns:             0 表示, 删除表          Args:             table_name: 表名          Returns:             0 表示, 设置表的元数据          Args:             table_name: 表名             key: 元数据键, 设置表的元数据          Args:             table_name: 表名             key: 元数据键, 重命名因子          Args:             table_name: 表名             old_factor_name: 旧因子, 重命名因子          Args:             table_name: 表名             old_factor_name: 旧因子, 删除因子          Args:             table_name: 表名             factor_names: 因子名列表 (+40 more)
 
 ### Community 186 - "Community 186"
-Cohesion: 0.03
-Nodes (80): HDFStore, LoadDataNodeConfig, LoadDataNode, 加载因子数据、价格、行业、市值等      输入: config (LoadDataNodeConfig: data_path + load_keys + fa, 加载因子数据、价格、行业、市值等      输入: config (LoadDataNodeConfig: data_path + load_keys + fa, DataFrame, str, bool (+72 more)
+Cohesion: 0.02
+Nodes (87): B3: ``_inject_synthetic_data`` 重命名为 ``_inject_prepared_data``,     旧名称作为 alias 保, B3: ``_inject_synthetic_data`` 重命名为 ``_inject_prepared_data``,     旧名称作为 alias 保, B1: pipeline_runner.py 顶层 sys.path.insert 已删除,     导入不应破坏 sys.path., B1: pipeline_runner.py 顶层 sys.path.insert 已删除,     导入不应破坏 sys.path., A5: 删除 ``if 'cp' in keys or 'cp' not in keys`` 永真表达式后,     price 仍然无条件加载 (与原行为一致, A5: 删除 ``if 'cp' in keys or 'cp' not in keys`` 永真表达式后,     price 仍然无条件加载 (与原行为一致, test_inject_synthetic_data_alias_still_works(), test_load_data_loads_price_regardless_of_load_keys() (+79 more)
 
 ### Community 187 - "Community 187"
 Cohesion: 0.07
@@ -2224,16 +2222,16 @@ Cohesion: 0.05
 Nodes (43): 11.1 Mock 策略, 11.2 测试覆盖, 3.1 ExtractedLogic — 从研报提取的逻辑, 3.2 ReproductionResult — 单条逻辑的复现结果, 3.3 ReproductionReport — 研报复现报告, 4.1 ResearchReportReproducer, 5.1 使用 llmwikify.extract(), 5.2 llmwikify 提取能力 (+35 more)
 
 ### Community 191 - "Community 191"
-Cohesion: 0.06
-Nodes (34): _entry(), include_lineage=False → 不附谱系段。, include_lineage=False → 不附谱系段。, include_lineage=True + 有 parent → 附谱系段。, include_lineage=True + 有 parent → 附谱系段。, root 无 ancestors/descendants → 谱系段为空 → 不附。, root 无 ancestors/descendants → 谱系段为空 → 不附。, KB 无 pool → 跳过谱系段 (无法 expand)。 (+26 more)
+Cohesion: 0.14
+Nodes (11): apply_neutralizer_chain(), 执行 chain: 每个 neutralizer 顺序回归, 取残差作为新因子值.      行为与原 _neutralize 三分支 (lines 74-13, 空 chain → 返回全 nan, 保留 shape。, 单 Industry: 残差每日均值 ~ 0 (OLS 残差性质)。, factor 某日全 nan → 跳过该日 (与原代码 line 77/101/119 一致)。, Regression: IndustryNeutralizer 输出 bool dummies, 必须转 float 才能 OLS。          原 _n, 与 factor_neutralize_node.py::_neutralize 的原行为对比。      由于原代码有 latent bool bug (br, 无 chain: 输出全 nan 但 shape 保留 (与原 _neutralize 入口 line 71-72 一致)。 (+3 more)
 
 ### Community 192 - "Community 192"
-Cohesion: 0.07
-Nodes (40): _get_hs300_member(), _get_index_axis_raw(), _get_index_cp(), _get_industry(), _get_ipo_days(), _get_limit(), _get_market_value(), _get_prices() (+32 more)
+Cohesion: 0.06
+Nodes (49): _get_hs300_member(), _get_index_axis_raw(), _get_index_cp(), _get_industry(), _get_ipo_days(), _get_limit(), _get_market_value(), _get_prices() (+41 more)
 
 ### Community 193 - "Community 193"
 Cohesion: 0.09
-Nodes (22): get_composite_spec(), 获取 composite spec (用于 LLM 编译时的 schema 查询)., col(), PR-QN-3b: 20 个内置 composite op 测试  锁定 PR-QN-3b (2026-06-21) 行为: - 20 个内置 op 全部注册到, y 为常数时 beta 应为 NaN (std(y)=0)., h=l 时 log(h/l)=0, vol=0., 常数 returns → std=0 → 全 0., a==b → spread=0, zscore=NaN (除 0). (+14 more)
+Nodes (23): get_composite_spec(), 获取 composite spec (用于 LLM 编译时的 schema 查询)., 获取 composite spec (用于 LLM 编译时的 schema 查询).      Args:         name: 算子名, col(), PR-QN-3b: 20 个内置 composite op 测试  锁定 PR-QN-3b (2026-06-21) 行为: - 20 个内置 op 全部注册到, y 为常数时 beta 应为 NaN (std(y)=0)., h=l 时 log(h/l)=0, vol=0., 常数 returns → std=0 → 全 0. (+15 more)
 
 ### Community 194 - "Community 194"
 Cohesion: 0.11
@@ -2248,12 +2246,8 @@ Cohesion: 0.11
 Nodes (18): 一、总体评估结论, 三、关键技术风险深度评估, 四、技术栈成熟度评估, 五、最终评估结论, ✅ 技术方案完全可行, 📋 建议行动项, 阶段 1：基础架构重构（7天）✅ 高可行性, 风险 1：QuantStudio 依赖移除 🔴 高概率，中影响 (+10 more)
 
 ### Community 197 - "Community 197"
-Cohesion: 0.11
-Nodes (17): 写入数据          Args:             data: 数据             table_name: 表名, 写入数据          Args:             data: 数据             table_name: 表名, 时间平移          沿着时间轴将所有数据纵向移动 lag 期         lag > 0 向前移动，lag < 0 向后移动         空出来, 时间平移          沿着时间轴将所有数据纵向移动 lag 期         lag > 0 向前移动，lag < 0 向后移动         空出来, 通用读取-变换-写入模式          Args:             table_name: 表名             factor_names:, 通用读取-变换-写入模式          Args:             table_name: 表名             factor_names:, 数据变换          通过某种变换函数得到新的时间序列和ID序列          Args:             table_name: 表名, 数据变换          通过某种变换函数得到新的时间序列和ID序列          Args:             table_name: 表名 (+9 more)
-
-### Community 198 - "Community 198"
-Cohesion: 0.09
-Nodes (21): Any, str, TrajectoryEntry, bool, float, int, Path, str (+13 more)
+Cohesion: 0.13
+Nodes (12): _make_min_config(), 多个 extra_phase 按顺序追加., run() 应使用 self._specs 而非硬编码 PIPELINE_SPEC.          通过 inspect.signature 验证 run(, 构造最小化 SingleFactorTestConfig (不触发 I/O)., 不传 specs 时, _specs 应为 PIPELINE_SPEC 的拷贝., from_dict 不传 extra_phases 时 _specs 为标准 12 阶段., extra_phases 注入自定义 stage., extra_phases 应追加到标准 12 阶段之后. (+4 more)
 
 ### Community 199 - "Community 199"
 Cohesion: 0.21
@@ -2284,16 +2278,16 @@ Cohesion: 0.09
 Nodes (12): formatJson(), hasArgs, statusColor, summaryText, currentStrategy, editorHeight, handleValidate, hasContent (+4 more)
 
 ### Community 206 - "Community 206"
-Cohesion: 0.18
-Nodes (8): bool, int, 代码安全沙箱工具      提供代码安全校验，防止执行危险操作。, read_only(), SandboxTool, test_execute_returns_validation_result(), test_execute_with_unsafe_code(), TestSandboxTool
+Cohesion: 0.13
+Nodes (13): Any, bool, int, str, description(), name(), parameters(), 代码安全沙箱工具      提供代码安全校验，防止执行危险操作。 (+5 more)
 
 ### Community 207 - "Community 207"
 Cohesion: 0.05
 Nodes (43): 1.1 修复 E722 Bare Except, 1.2 修复 F821 Undefined Name, 2.1 修复 F401 未使用导入, 2.1 按错误类型分类, 2.2 E722 Bare Except (高优先级) - 共 8 处, 2.2 修复 E501 行太长, 2.3 F821 Undefined Name (高优先级) - 共 6+ 处, 3.1 research/mcts_search.py (+35 more)
 
 ### Community 208 - "Community 208"
-Cohesion: 0.05
-Nodes (27): AdjustDateNode, 根据起始日、截止日、调仓模式生成调仓日序列      输入: context["LoadData"] 的输出     输出: adj_dates (yyyymm, 根据起始日、截止日、调仓模式生成调仓日序列      输入: context["LoadData"] 的输出     输出: adj_dates (yyyymm, M-begin: 1 年 ≈ 12 个月初 (注意是 'begin' 不是 'beg')., W-end 返回交易日序列 (现有实现按 weekday-change 切分, 数量较密)., D step=5: 250 交易日 / 5 ≈ 50., beg > end → 抛 raise 或返回空 (实现可选)., 空 data_path 抛 raise (P-2 启动报错). (+19 more)
+Cohesion: 0.06
+Nodes (24): AdjustDateNode, 根据起始日、截止日、调仓模式生成调仓日序列      输入: context["LoadData"] 的输出     输出: adj_dates (yyyymm, 根据起始日、截止日、调仓模式生成调仓日序列      输入: context["LoadData"] 的输出     输出: adj_dates (yyyymm, M-begin: 1 年 ≈ 12 个月初 (注意是 'begin' 不是 'beg')., W-end 返回交易日序列 (现有实现按 weekday-change 切分, 数量较密)., D step=5: 250 交易日 / 5 ≈ 50., beg > end → 抛 raise 或返回空 (实现可选)., 空 data_path 抛 raise (P-2 启动报错). (+16 more)
 
 ### Community 209 - "Community 209"
 Cohesion: 0.18
@@ -2333,7 +2327,7 @@ Nodes (6): callable, TestAliases, test_ifind_database_route_targets_callable(), 
 
 ### Community 220 - "Community 220"
 Cohesion: 0.04
-Nodes (54): count(), CustomOperator, CustomOperatorBuilder, export(), from_template(), get(), import_(), info() (+46 more)
+Nodes (64): generate_documentation(), get_operator(), list_operators(), operator_info(), 列出所有算子名称      Args:         category: 可选，限定分类         include_custom: 是否包含自定义算子（, 列出所有算子名称      Args:         category: 可选，限定分类         include_custom: 是否包含自定义算子（, 列出所有算子名称      Args:         category: 可选，限定分类         include_custom: 是否包含自定义算子（, 根据名称获取算子函数（级联查询：先自定义注册表，再内置注册表） (+56 more)
 
 ### Community 221 - "Community 221"
 Cohesion: 0.08
@@ -2348,28 +2342,24 @@ Cohesion: 0.12
 Nodes (15): 项目概览, 里程碑追踪, 阶段 1：数据层重构（5天）⏳ 待开始, 阶段任务追踪, 阶段 2-6：后续阶段, 阶段 2：符号计算引擎（8天）⏳ 待开始, 阶段 3-6：后续阶段, 风险与问题日志 (+7 more)
 
 ### Community 224 - "Community 224"
-Cohesion: 0.08
-Nodes (14): _clean(), 剔除值为 None 的项, 让 pydantic 默认值生效 (单一真值源)。, 流式构造 ``SingleFactorTestConfig``。      所有 setter 仅记录非 None 字段; ``build()`` 时聚合为 p, SingleFactorTestConfigBuilder, pydantic extra/type 校验在 build() 时触发。, 未设置的字段沿用 pydantic 默认 (单一真值源)。, TestBuildBasics, TestSetters (+6 more)
+Cohesion: 0.07
+Nodes (16): _clean(), 剔除值为 None 的项, 让 pydantic 默认值生效 (单一真值源)。, 流式构造 ``SingleFactorTestConfig``。      所有 setter 仅记录非 None 字段; ``build()`` 时聚合为 p, SingleFactorTestConfigBuilder, pydantic extra/type 校验在 build() 时触发。, builder 输出与等价直接构造 model_dump bitwise 一致。, 未设置的字段沿用 pydantic 默认 (单一真值源)。, TestBuildBasics (+8 more)
 
 ### Community 225 - "Community 225"
 Cohesion: 0.04
-Nodes (46): FactorPreprocessNode, Apply missing-fill + de-extreme + normalise across all dates.          Replaces, 对单日因子值进行预处理 (legacy per-date loop, kept for reference).          H5 (2026-06-20), 对单日因子值进行预处理 (legacy per-date loop, kept for reference).          H5 (2026-06-20), 因子预处理: 缺失值填充 + 去极值 + 标准化      输入: factor, tradable, adj_dates, industry     输出:, 因子预处理: 缺失值填充 + 去极值 + 标准化      输入: factor, tradable, adj_dates, industry     输出:, 因子预处理: 缺失值填充 + 去极值 + 标准化      输入: factor, tradable, adj_dates, industry     输出:, Apply missing-fill + de-extreme + normalise across all dates.          Replaces (+38 more)
+Nodes (48): FactorNeutralizeNode, 行业/风险因子中性化 (OLS 残差)      输入: factor_std, industry, risk_factors     输出: factor_n, 行业/风险因子中性化 (OLS 残差)      输入: factor_std, industry, risk_factors     输出: factor_n, 行业/风险因子中性化 (OLS 残差)      输入: factor_std, industry, risk_factors     输出: factor_n, 中性化处理 (Phase 2.1: 委托给 chain).          Phase 2.1 行为完全等价于旧实现:           - chain 为, FactorPreprocessNode, Apply missing-fill + de-extreme + normalise across all dates.          Replaces, 对单日因子值进行预处理 (legacy per-date loop, kept for reference).          H5 (2026-06-20) (+40 more)
 
 ### Community 226 - "Community 226"
 Cohesion: 0.13
 Nodes (15): ConfigNode, _get_config_path(), _load_config(), 配置节点基类      所有配置节点都继承自此类，提供统一的数据读取接口。      子类必须实现：         _load_config(): 从配置源加, 执行配置加载          Args:             input_data: 可选的输入数据（会被忽略）          Returns:, 执行配置加载          Args:             input_data: 可选的输入数据（会被忽略）             use_cach, 执行配置加载          Args:             input_data: 可选的输入数据（会被忽略）             use_cach, 强制重新加载配置          Returns:             重新加载的配置字典 (+7 more)
-
-### Community 227 - "Community 227"
-Cohesion: 0.03
-Nodes (54): TestToolExecutionResult, agent_loop(), bus(), provider(), test_chat_with_history(), test_different_sessions_isolated(), test_full_chat_flow(), test_session_persistence() (+46 more)
 
 ### Community 228 - "Community 228"
 Cohesion: 0.07
 Nodes (23): bool, float, int, Path, str, TrajectoryEntry, _make_entry(), datetime 字段被 isoformat 化, 还原后相等。 (+15 more)
 
 ### Community 229 - "Community 229"
-Cohesion: 0.09
-Nodes (27): _make_evaluate_fn(), _make_loop(), max_rounds=1 → round 1 产生 mutation (1 parent)。, max_rounds=1 → round 1 产生 mutation (1 parent)。, round 0 有 2 entries → round 1 触发 mutation + crossover。, round 0 有 2 entries → round 1 触发 mutation + crossover。, round 0 全 reject → round 1 selector 返回空 → 停止。, round 0 全 reject → round 1 selector 返回空 → 停止。 (+19 more)
+Cohesion: 0.06
+Nodes (39): _make_evaluate_fn(), _make_loop(), evolution/loop.py 终止条件与边界测试 (15 tests)。  聚焦:     - max_rounds=0 → 只跑 round 0, 给 directions → round 0 生成 N candidates。, 给 directions → round 0 生成 N candidates。, 直接传 candidates → 不调 Hypothesizer。, 直接传 candidates → 不调 Hypothesizer。, evaluate_fn=None 应抛 ValueError。 (+31 more)
 
 ### Community 230 - "Community 230"
 Cohesion: 0.10
@@ -2392,8 +2382,12 @@ Cohesion: 0.20
 Nodes (3): export_session(), get_history(), Export session as Markdown or JSON
 
 ### Community 235 - "Community 235"
-Cohesion: 0.03
-Nodes (121): _aggr_count(), _aggr_max(), _aggr_mean(), _aggr_median(), _aggr_min(), _aggr_prod(), _aggr_quantile(), _aggr_std() (+113 more)
+Cohesion: 0.04
+Nodes (116): _aggr_count(), _aggr_max(), _aggr_mean(), _aggr_median(), _aggr_min(), _aggr_prod(), _aggr_quantile(), _aggr_std() (+108 more)
+
+### Community 236 - "Community 236"
+Cohesion: 0.16
+Nodes (7): build_neutralizer_chain(), 根据配置构造 chain, 自动过滤 is_active() == False 的环节.      顺序固定: [Industry, Risk] (与原代码 i, 默认: neutralizer 始终 active. 子类可覆盖 (如缺数据时关闭)., if_industry=True 但 industry=None → IndustryNeutralizer inactive → 过滤掉。, TestBuildChain, bool, Series
 
 ### Community 237 - "Community 237"
 Cohesion: 0.04
@@ -2416,8 +2410,8 @@ Cohesion: 0.05
 Nodes (22): QualityGateSetting + EvolutionSetting + OperatorSetting 全参数 parametrize (~30 tes, test_any_operator_enabled(), test_enabled(), test_invalid_max_correction_attempts(), test_max_correction_attempts(), test_model(), test_seed(), TestComplexitySetting (+14 more)
 
 ### Community 242 - "Community 242"
-Cohesion: 0.04
-Nodes (53): align_dataframes(), cross_section_rank(), cross_section_zscore(), dataframe_to_panel(), fillna_by_value(), forward_fill_panel(), melt_panel(), panel_to_dataframe() (+45 more)
+Cohesion: 0.03
+Nodes (72): BacktestError, BaseModel, ConfigError, DatabaseError, QuantNodesError, ValidationError, align_dataframes(), cross_section_rank() (+64 more)
 
 ### Community 243 - "Community 243"
 Cohesion: 0.04
@@ -2432,12 +2426,12 @@ Cohesion: 0.13
 Nodes (15): 4.1 类结构, 4.3 工具方法, 4.3.1 因子操作, 4.3.2 逻辑操作, 4.3.3 策略操作（新增）, 4.3.4 关系操作, 4.3.5 基础设施, 4.4 错误处理设计 (+7 more)
 
 ### Community 246 - "Community 246"
-Cohesion: 0.18
-Nodes (15): 阶段 1: 代码质量基础 (第一周), 1.1 Pre-commit Hooks 配置, 1.2 完整 CI/CD 配置, 1.2 修复 F821 Undefined Name, 1.3 测试覆盖率要求, 3.2 防御性编程规范, 三、必要步骤清单, code:yaml (# .pre-commit-config.yaml) (+7 more)
+Cohesion: 0.20
+Nodes (14): 阶段 1: 代码质量基础 (第一周), 1.1 Pre-commit Hooks 配置, 1.2 完整 CI/CD 配置, 1.2 修复 F821 Undefined Name, 1.3 测试覆盖率要求, 3.2 防御性编程规范, 三、必要步骤清单, code:yaml (# .pre-commit-config.yaml) (+6 more)
 
 ### Community 247 - "Community 247"
 Cohesion: 0.18
-Nodes (14): 四、修复计划, 阶段 2: 测试体系建设 (第二周), 2.1 修复 F401 未使用导入, 2.2 修复 E501 行太长, 阶段 4: 文档与知识管理 (持续), 4.1 文档自动化, 4.2 README 模板, code:bash (# API 文档) (+6 more)
+Nodes (12): 2.1 修复 F401 未使用导入, 2.2 修复 E501 行太长, 阶段 4: 文档与知识管理 (持续), 4.1 文档自动化, 4.2 README 模板, code:bash (# API 文档), code:block9 (## 项目状态), 阶段 2: 中优先级 (代码质量) (+4 more)
 
 ### Community 248 - "Community 248"
 Cohesion: 0.10
@@ -2460,8 +2454,8 @@ Cohesion: 0.15
 Nodes (3): Multi-Section 算子边界条件测试, Multi-Section 算子边界条件测试, TestMultiSectionOperatorsEdgeCases
 
 ### Community 253 - "Community 253"
-Cohesion: 0.13
-Nodes (14): Any, int, str, metric_distribution_figure(), 生成 Plotly histogram (按 metric 分桶, 颜色按 operation)。      Args:         entries: Tr, 生成 Plotly histogram (按 metric 分桶, 颜色按 operation)。      Args:         entries: Tr, 所有 entry 无 metrics → 空 fig。, 所有 entry 无 metrics → 空 fig。 (+6 more)
+Cohesion: 0.12
+Nodes (3): TestFactorToolComputeCorrelation, TestFactorToolComputeIC, tool()
 
 ### Community 254 - "Community 254"
 Cohesion: 0.04
@@ -2496,8 +2490,8 @@ Cohesion: 0.07
 Nodes (37): bool, float, int, Path, str, TrajectoryEntry, TrajectoryPool, _entry() (+29 more)
 
 ### Community 262 - "Community 262"
-Cohesion: 0.06
-Nodes (38): build_feedback(), maybe_build_judge(), maybe_persist_feedback(), 包装 5 个分析节点返回值为 FactorFeedback.      包装策略:         - 节点返回 dict → ``ensure_feedbac, 包装 5 个分析节点返回值为 FactorFeedback.      包装策略:         - 节点返回 dict → ``ensure_feedbac, 可选: 持久化 Feedback 到 Parquet.      Args:         feedbacks: ``build_feedback`` 返回的, 可选: 持久化 Feedback 到 Parquet.      Args:         feedbacks: ``build_feedback`` 返回的, 若 ``cfg.feedback.judge_enabled`` 为 True, 构建 LLMJudge; 否则 None. (+30 more)
+Cohesion: 0.03
+Nodes (109): ArgumentParser, _build_config(), _build_loader(), _build_parser(), _inject_prepared_data(), main(), 预填 _context['LoadData'], 跳过 LoadDataNode 真实 H5 读取。      名称: 从已 prepare 好的 H5 数据, 预填 _context['LoadData'], 跳过 LoadDataNode 真实 H5 读取。      名称: 从已 prepare 好的 H5 数据 (+101 more)
 
 ### Community 263 - "Community 263"
 Cohesion: 0.07
@@ -2508,8 +2502,8 @@ Cohesion: 0.04
 Nodes (45): 1.1 当前问题, 1.2 迁移目标, 1.3 设计原则, 2.1 阶段划分, 4.1 测试验证, 4.2 回滚计划, 4.3 兼容性, code:python (# 保持原有函数签名，内部使用 Polars) (+37 more)
 
 ### Community 266 - "Community 266"
-Cohesion: 0.07
-Nodes (30): _compile_template_string(), _CompositeRegistry, _extract_free_vars(), has_errors(), is_composite_op(), load_composites_from_yaml(), Composite op 注册表 (与 _CustomOperatorRegistry 隔离但接口对齐)., 注册一个 composite.          Raises:             ValueError: name 已注册 (重复) (+22 more)
+Cohesion: 0.10
+Nodes (17): _CompositeRegistry, load_composites_from_yaml(), Composite op 注册表 (与 _CustomOperatorRegistry 隔离但接口对齐)., Composite op 注册表 (与 _CustomOperatorRegistry 隔离但接口对齐)., 注册一个 composite.          Raises:             ValueError: name 已注册 (重复), 注册一个 composite.          Raises:             ValueError: name 已注册 (重复), 从用户传入的 dict 构造 ParamSpec (兼容 'type' 字段)., 从用户传入的 dict 构造 ParamSpec (兼容 'type' 字段). (+9 more)
 
 ### Community 267 - "Community 267"
 Cohesion: 0.26
@@ -2520,8 +2514,8 @@ Cohesion: 0.30
 Nodes (14): count(), export_dict(), get(), import_dict(), info(), list(), register(), register_alias() (+6 more)
 
 ### Community 269 - "Community 269"
-Cohesion: 0.14
-Nodes (15): ensure_dir(), ensure_parent(), Path utilities — common pattern extraction.  Consolidates:   1. `Path(x).expandu, Resolve a path with priority: env_var > expanduser(default).      Args:, Create directory at `path` if missing. Idempotent. Returns Path.      Replaces:, Ensure the *parent* of `path` exists (i.e. prepare to write a file).      Replac, resolve_path(), Tests for core/path_utils.py — Phase G1. (+7 more)
+Cohesion: 0.11
+Nodes (19): ensure_dir(), ensure_parent(), Path utilities — common pattern extraction.  Consolidates:   1. `Path(x).expandu, Resolve a path with priority: env_var > expanduser(default).      Args:, Create directory at `path` if missing. Idempotent. Returns Path.      Replaces:, Ensure the *parent* of `path` exists (i.e. prepare to write a file).      Replac, resolve_path(), Tests for core/path_utils.py — Phase G1. (+11 more)
 
 ### Community 270 - "Community 270"
 Cohesion: 0.14
@@ -2532,8 +2526,8 @@ Cohesion: 0.19
 Nodes (8): TestTruncateText, TestTruncateTextBoundary, Any, int, str, count_tokens(), ensure_async(), truncate_text()
 
 ### Community 272 - "Community 272"
-Cohesion: 0.07
-Nodes (18): ts_corr 修复后应产生 [-1, 1] 范围内的相关系数, ts_corr 修复后应产生 [-1, 1] 范围内的相关系数, TestTsOperatorsExtended, 自定义算子通过 ExprParser 表达式调用, 自定义算子通过 ExprParser 表达式调用, 自定义算子在 factor expr 中调用: custom_double(close), 自定义算子在 factor expr 中调用: custom_double(close), 自定义算子在 composite formula 中调用 (+10 more)
+Cohesion: 0.11
+Nodes (15): _make_data(), 自定义算子通过 ExprParser 表达式调用, 自定义算子通过 ExprParser 表达式调用, 自定义算子在 factor expr 中调用: custom_double(close), 自定义算子在 factor expr 中调用: custom_double(close), 自定义算子在 composite formula 中调用, 自定义算子在 composite formula 中调用, 自定义时间序列算子在 factor expr 中调用 (+7 more)
 
 ### Community 273 - "Community 273"
 Cohesion: 0.16
@@ -2576,32 +2570,32 @@ Cohesion: 0.04
 Nodes (45): 1.1 已完成部分, 1.2 待修复问题, 1.3 双注册表详细对比, A1. 修改 config/loader.py, A2. 验证, B1. 目标结构, B2. 迁移步骤, B3. Import 路径更新清单 (+37 more)
 
 ### Community 283 - "Community 283"
-Cohesion: 0.07
-Nodes (22): _make_ctx(), no_st=True 时, ST 股票应为 NaN., no_suspended=True, 停牌日 → NaN., no_up_down_limit=True, 涨跌停日 → NaN., min_ipo_days=600 时, ipo_days=500 全部 < 600 → 全 NaN., min_ipo_days=100, ipo_days=500 满足 → 全 1., 多 flag 组合: ST + 停牌 → NaN 累加 (≥3 个独立 NaN 来源)., 输出 shape == (n_dt, n_stk). (+14 more)
+Cohesion: 0.03
+Nodes (59): 根据指数范围和行业筛选样本池      输入: context["LoadData"] 的输出     输出: stock_sample (1=选中, nan=, 根据指数范围和行业筛选样本池      输入: context["LoadData"] 的输出     输出: stock_sample (1=选中, nan=, 根据指数范围和行业筛选样本池      输入: context["LoadData"] 的输出     输出: stock_sample (1=选中, nan=, SamplePoolFilterNode, _make_ctx(), no_st=True 时, ST 股票应为 NaN., no_suspended=True, 停牌日 → NaN., no_up_down_limit=True, 涨跌停日 → NaN. (+51 more)
 
 ### Community 284 - "Community 284"
 Cohesion: 0.22
 Nodes (6): Any, bool, int, str, WikiFactor, parameters()
 
 ### Community 285 - "Community 285"
-Cohesion: 0.10
-Nodes (20): 0. 背景, 1.1 Phase 1 — Quick Wins (零风险，半天内完成), 1.2 Phase 2 — 同源节点重构 (中等风险，1-2 天), 1.3 Phase 1+2 累计指标, 1. 已应用的设计模式 (Phase 1 + 2), 2.1 新增 `test_pipeline_bool_factor.py`, 2.2 验证结果, 2. 端到端验证 (Option D) (+12 more)
+Cohesion: 0.09
+Nodes (21): 0. 背景, 1.1 Phase 1 — Quick Wins (零风险，半天内完成), 1.2 Phase 2 — 同源节点重构 (中等风险，1-2 天), 1.3 Phase 1+2 累计指标, 1. 已应用的设计模式 (Phase 1 + 2), 2.1 新增 `test_pipeline_bool_factor.py`, 2.2 验证结果, 2. 端到端验证 (Option D) (+13 more)
 
 ### Community 286 - "Community 286"
 Cohesion: 0.04
 Nodes (44): 1. 改造目标, 2.1 决策汇总, 2.2 策略生成方案, 2.3 API Key 认证设计, 2. 架构决策, 3. 实施计划, 4. 最终目录结构, 5.1 简单策略（提示词方案） (+36 more)
 
 ### Community 287 - "Community 287"
-Cohesion: 0.19
-Nodes (13): test_execute_current(), test_execute_diff(), test_execute_diff_need_more_versions(), test_execute_diff_without_version(), test_execute_list(), test_execute_rollback_not_found(), test_execute_rollback_success(), test_execute_rollback_without_version() (+5 more)
+Cohesion: 0.12
+Nodes (20): test_execute_current(), test_execute_diff(), test_execute_diff_need_more_versions(), test_execute_diff_without_version(), test_execute_list(), test_execute_rollback_not_found(), test_execute_rollback_success(), test_execute_rollback_without_version() (+12 more)
 
 ### Community 288 - "Community 288"
 Cohesion: 0.18
 Nodes (6): eval_data(), monitor_db(), Monitor 临时数据库（已连接并初始化 schema）      返回 DatabaseManager 实例, Monitor 临时数据库（已连接并初始化 schema）      返回 DatabaseManager 实例, 因子评估用的样本数据（Polars DataFrame）, 因子评估用的样本数据（Polars DataFrame）
 
 ### Community 289 - "Community 289"
-Cohesion: 0.14
-Nodes (7): QuantNodesObject, QuantNodes 基础对象类      使用 dataclass 提供配置属性系统      Attributes:         name: 对象名称, 获取配置值          Args:             key: 配置键             default: 默认值          Retu, 设置配置值          Args:             key: 配置键             value: 配置值, TestQuantNodesObject, Any, str
+Cohesion: 0.12
+Nodes (10): 检查数据库是否可用          Returns:             True 表示可用, 检查数据库是否可用          Returns:             True 表示可用, QuantNodesObject, QuantNodes 基础对象类      使用 dataclass 提供配置属性系统      Attributes:         name: 对象名称, 获取配置值          Args:             key: 配置键             default: 默认值          Retu, 设置配置值          Args:             key: 配置键             value: 配置值, TestQuantNodesObject, bool (+2 more)
 
 ### Community 291 - "Community 291"
 Cohesion: 0.05
@@ -2636,8 +2630,8 @@ Cohesion: 0.13
 Nodes (14): 第七部分：风险管理, 第八部分：后续扩展, 第九部分：实施计划（详细）, 7.1 风险矩阵, 7.2 Token 用量统计, 8.1 功能路线图, 8.2 性能优化方向, 附录 A: 使用示例 (+6 more)
 
 ### Community 300 - "Community 300"
-Cohesion: 0.07
-Nodes (32): 执行单个阶段 (含 skip / log)., 执行单个阶段 (含 skip / log)., 执行单个阶段 (含 skip / log)., 多轮演化主入口 (委托给 ``evolution_adapter.run_evolution``)., 多轮演化主入口 (委托给 ``evolution_adapter.run_evolution``)., 多轮演化主入口 (委托给 ``evolution_adapter.run_evolution``)., _cfg_adj(), _cfg_group() (+24 more)
+Cohesion: 0.19
+Nodes (18): _cfg_adj(), _cfg_group(), _cfg_ic(), _cfg_load(), _cfg_longshort(), _cfg_neutralize(), _cfg_preprocess(), _cfg_report() (+10 more)
 
 ### Community 301 - "Community 301"
 Cohesion: 0.06
@@ -2648,8 +2642,8 @@ Cohesion: 0.07
 Nodes (28): 1.1 受影响路径, 1.2 具体表现, 1.3 不受影响的系统, 1. 问题概述, 2. 修复原则, 3.1 `api/services/agent_service.py` — send_message(), 3.2 `api/services/agent_service.py` — stream_message(), 3.4 `QuantNodes/agent/core/loop.py` — 无需修改 (+20 more)
 
 ### Community 303 - "Community 303"
-Cohesion: 0.12
-Nodes (33): _gen_dates(), _gen_factor_data(), _gen_index_cp(), _gen_stk_daily(), _gen_stocks(), main(), 生成特定形态的因子值 (与名称挂钩, 让不同因子有不同 IC)。, 生成特定形态的因子值 (与名称挂钩, 让不同因子有不同 IC)。 (+25 more)
+Cohesion: 0.05
+Nodes (58): _gen_dates(), _gen_factor_data(), _gen_index_cp(), _gen_stk_daily(), _gen_stocks(), main(), 生成特定形态的因子值 (与名称挂钩, 让不同因子有不同 IC)。, 生成特定形态的因子值 (与名称挂钩, 让不同因子有不同 IC)。 (+50 more)
 
 ### Community 304 - "Community 304"
 Cohesion: 0.05
@@ -2660,16 +2654,16 @@ Cohesion: 0.06
 Nodes (30): bool, float, int, AdaptiveRateLimiter, AsyncSlidingWindowRateLimiter, AsyncTokenBucket, available_tokens(), current_rate() (+22 more)
 
 ### Community 306 - "Community 306"
-Cohesion: 0.14
-Nodes (8): BacktestService, Get backtest templates, Backtest service for API layer, Format summary for API response, Save result to history file, Get or create ConfigBacktestTool instance, Run backtest with given config, Get backtest result by ID
+Cohesion: 0.13
+Nodes (9): BacktestService, Backtest Service - Bridge between FastAPI and ConfigBacktestTool, Get backtest templates, Backtest service for API layer, Format summary for API response, Save result to history file, Get or create ConfigBacktestTool instance, Run backtest with given config (+1 more)
 
 ### Community 307 - "Community 307"
 Cohesion: 0.15
 Nodes (13): Any, bool, description(), execute(), get_parameters_schema(), name(), Return example prompts, Convert to nanobot Tool Schema (+5 more)
 
 ### Community 308 - "Community 308"
-Cohesion: 0.07
-Nodes (26): Any, bool, Path, str, TrajectoryEntry, 追加一个 section。payload 通常是 plotly Figure, 任何有 to_html() 的对象都接受。, 预置: 加载 4-5 个演化实验常用图 + 概览 (Phase 1.3 兼容 generate_report)。          Args:, 直接构建并渲染为 HTML 字符串 (可选写入文件)。 (+18 more)
+Cohesion: 0.12
+Nodes (16): 18.10 风险评估, 18.1 背景, 18.2 设计目标, 18.3 架构, 18.4 引擎检测, 18.5 双注册表, 18.6 CompositeSpec 引擎字段, 18.7 20 op pandas 镜像 (+8 more)
 
 ### Community 309 - "Community 309"
 Cohesion: 0.20
@@ -2741,7 +2735,7 @@ Nodes (6): useAgent(), useChatSession(), useWebSocket(), WebSocketOptions, ToolC
 
 ### Community 326 - "Community 326"
 Cohesion: 0.05
-Nodes (44): IFindFetcher, _load_auth_token(), 调用 iFinD API, 返回 DataFrame, 调用 iFinD API, 返回 DataFrame, 调用 iFinD API, 返回 DataFrame, 解析 iFinD JSON-RPC 响应, 提取 Markdown 表格, 解析 iFinD JSON-RPC 响应, 提取 Markdown 表格, 解析 iFinD JSON-RPC 响应, 提取 Markdown 表格 (+36 more)
+Nodes (43): IFindFetcher, _load_auth_token(), 调用 iFinD API, 返回 DataFrame, 调用 iFinD API, 返回 DataFrame, 调用 iFinD API, 返回 DataFrame, 解析 iFinD JSON-RPC 响应, 提取 Markdown 表格, 解析 iFinD JSON-RPC 响应, 提取 Markdown 表格, 解析 iFinD JSON-RPC 响应, 提取 Markdown 表格 (+35 more)
 
 ### Community 327 - "Community 327"
 Cohesion: 0.06
@@ -2760,8 +2754,8 @@ Cohesion: 0.10
 Nodes (27): _collect_routes(), 装饰器: 把方法注册到 IFinDDatabase._ROUTE_TABLE[(filename, key)] = method 名.      使用::, 装饰器: 把方法注册到 IFinDDatabase._ROUTE_TABLE[(filename, key)] = method 名.      使用::, 扫描类及所有父类, 收集 ``_routes`` 标记的方法.      Returns:         ``{(filename, key): method, 扫描类及所有父类, 收集 ``_routes`` 标记的方法.      Returns:         ``{(filename, key): method, register_route(), 14 条路由全部到位, 与重构前完全一致., stk_daily.trade_dt 与 index_daily.trade_dt 都指向 _get_trade_dt_raw. (+19 more)
 
 ### Community 331 - "Community 331"
-Cohesion: 0.12
-Nodes (14): DataFrame, int, Series, TestEvaluation, evaluation(), 输入净值曲线返回评价结果 (全期 + 分年)      Args:         account_net: 单利净值曲线         adj_dates:, 输入净值曲线返回评价结果 (全期 + 分年)      Args:         account_net: 单利净值曲线         adj_dates:, _make_net_and_dates() (+6 more)
+Cohesion: 0.13
+Nodes (13): DataFrame, int, TestEvaluation, evaluation(), 输入净值曲线返回评价结果 (全期 + 分年)      Args:         account_net: 单利净值曲线         adj_dates:, 输入净值曲线返回评价结果 (全期 + 分年)      Args:         account_net: 单利净值曲线         adj_dates:, _make_net_and_dates(), 首行 Year == 'all' (全期指标). (+5 more)
 
 ### Community 332 - "Community 332"
 Cohesion: 0.08
@@ -2845,23 +2839,23 @@ Nodes (5): Agent, text, useAgent(), SessionInfo, useAppStore
 
 ### Community 353 - "Community 353"
 Cohesion: 0.02
-Nodes (177): cmd_factor_rag_eval(), cmd_factor_rag_show(), 批量评估 RAG 检索质量 (Week 10)。      用法:         quantnodes factor-rag-eval --pool-dir, 从 TrajectoryPool 检索相似因子 (RAG demo)。      用法:         quantnodes factor-rag-show, test_factor_rag_show_empty_pool(), test_factor_rag_show_missing_dir(), cmd_factor_rag_eval(), cmd_factor_rag_show() (+169 more)
+Nodes (186): Compressor, KnowledgeBase, KnowledgeBaseSetting, KnowledgeBase — 因子知识库 (TrajectoryEntry + Retriever)。, H19: KnowledgeBase 字段权重配置 (Pydantic)。, H19: KnowledgeBase 字段权重配置 (Pydantic)。, 因子知识库。      Args:         retriever: BaseRetriever 实现 (默认 TFIDF)         pool: 可, 因子知识库。      Args:         retriever: BaseRetriever 实现 (默认 TFIDF)         pool: 可 (+178 more)
 
 ### Community 354 - "Community 354"
 Cohesion: 0.05
 Nodes (11): iFinD fetcher 边界测试 (20 tests, no real API)。, H17: rate_limit_s 构造参数。, H17: cache_ttl_s 构造参数。, 验证 _rate_limit 真的用了 self.rate_limit_s。, TestCacheAndQuery, TestCacheTtlParametrize, TestDefaultConstants, TestMarkdownParsing (+3 more)
 
 ### Community 355 - "Community 355"
-Cohesion: 0.02
-Nodes (49): TestE2EWorkflow, TestFactorTool, TestPipelineTool, TestSandboxTool, TestStrategyTool, TestFactorTool, TestFactorToolComputeCorrelation, TestFactorToolComputeIC (+41 more)
+Cohesion: 0.05
+Nodes (10): TestBacktestTool, TestE2EWorkflow, TestFactorTool, TestSandboxTool, TestStrategyTool, test_execute_validate_default_true(), test_execute_without_llm(), TestStrategyTool (+2 more)
 
 ### Community 356 - "Community 356"
-Cohesion: 0.09
-Nodes (22): metadata(), SkillResult, Any, bool, int, Skill, SkillRegistry, description() (+14 more)
+Cohesion: 0.15
+Nodes (4): rolling_cov(), rolling_cov(), TestRollingAdvancedEdgeCases, TestRollingSeriesOperators
 
 ### Community 357 - "Community 357"
-Cohesion: 0.20
-Nodes (9): B3: ``_inject_synthetic_data`` 重命名为 ``_inject_prepared_data``,     旧名称作为 alias 保, B3: ``_inject_synthetic_data`` 重命名为 ``_inject_prepared_data``,     旧名称作为 alias 保, B1: pipeline_runner.py 顶层 sys.path.insert 已删除,     导入不应破坏 sys.path., B1: pipeline_runner.py 顶层 sys.path.insert 已删除,     导入不应破坏 sys.path., A5: 删除 ``if 'cp' in keys or 'cp' not in keys`` 永真表达式后,     price 仍然无条件加载 (与原行为一致, A5: 删除 ``if 'cp' in keys or 'cp' not in keys`` 永真表达式后,     price 仍然无条件加载 (与原行为一致, test_inject_synthetic_data_alias_still_works(), test_load_data_loads_price_regardless_of_load_keys() (+1 more)
+Cohesion: 0.38
+Nodes (13): aggr_prod(), aggr_quantile(), aggregate(), blend(), chg_ids(), disaggregate(), merge(), nav() (+5 more)
 
 ### Community 358 - "Community 358"
 Cohesion: 0.05
@@ -2960,8 +2954,8 @@ Cohesion: 0.29
 Nodes (7): 七、算子扩展机制, 7.1 背景, 7.2 架构, 7.3 通用 Fallback, 7.4 优先级规则, code:block10 (ConfigExecutor._apply_operator(op)), code:python (def _apply_operator(self, op):)
 
 ### Community 383 - "Community 383"
-Cohesion: 0.11
-Nodes (26): ES, _make_evaluate_fn(), _make_loop(), EvolutionLoop + EvolutionSetting 全参数 parametrize (~25 tests)。  遍历 max_rounds/ear, quality gate 全部 reject, round 1 立即 break。, quality gate 全部 reject, round 1 立即 break。, 重复 expression 应被 reject。, 重复 expression 应被 reject。 (+18 more)
+Cohesion: 0.05
+Nodes (55): ES, _cand(), _make_loop(), evaluate_fn 返回 None → passed=False, 不崩。, evaluate_fn 返回 str → 兜底 passed=False。, evaluate_fn 返回 str → 兜底 passed=False。, quality gate reject → 不调 evaluate_fn。, quality gate reject → 不调 evaluate_fn。 (+47 more)
 
 ### Community 384 - "Community 384"
 Cohesion: 0.29
@@ -3165,7 +3159,7 @@ Nodes (6): int, Series, Data and utilities for testing., Returns `n`-period simp
 
 ### Community 437 - "Community 437"
 Cohesion: 0.14
-Nodes (10): FactorDB, 因子库基类（只读接口）      数据库由若干张因子表组成。     不支持某个操作时，方法产生错误。     没有相关数据时，方法返回 None。, 因子库基类（只读接口）      数据库由若干张因子表组成。     不支持某个操作时，方法产生错误。     没有相关数据时，方法返回 None。, 断开数据库连接          Returns:             0 表示成功, 断开数据库连接          Returns:             0 表示成功, 检查数据库是否可用          Returns:             True 表示可用, 检查数据库是否可用          Returns:             True 表示可用, 获取 ID 序列          Returns:             ID 列表 (+2 more)
+Nodes (13): code:block1 (74c798e feat(config): SingleFactorTestConfig fluent Builder ), Commit 列表 (Phase 3 共 8 提交), Phase 3.1 — Command Pattern (CLI), Phase 3.2 — Facade (Operator Registry), Phase 3.3 — Factory + Adapter + DataSource ABC (含 parquet 修复), Phase 3.4 — Builder (`SingleFactorTestConfig`), PR: Design Pattern Refactor — Phase 3 (Command / Facade / Factory+Adapter / Builder), Summary (+5 more)
 
 ### Community 438 - "Community 438"
 Cohesion: 0.06
@@ -3176,8 +3170,8 @@ Cohesion: 0.07
 Nodes (18): Any, _jsonify(), 把 pd.Timestamp / np.ndarray / datetime 等转为 JSON-safe 类型。, 把 pd.Timestamp / np.ndarray / datetime 等转为 JSON-safe 类型。, _jsonify + TrajectoryEntry 序列化边界测试 (15 tests)。  聚焦:     - _jsonify: 各种类型 (str/in, ndarray 无 isoformat → 走 str() 兜底。, ndarray 无 isoformat → 走 str() 兜底。, 自定义对象有 isoformat → 调用它。 (+10 more)
 
 ### Community 440 - "Community 440"
-Cohesion: 0.07
-Nodes (24): 路由到 iFinD 查询, 模拟 H5 加载, 返回 (stklist, trade_dt), 格式与 DataLoader 一致, 路由到 iFinD 查询, 模拟 H5 加载, 路由到 iFinD 查询, 模拟 H5 加载, 给因子添加标准索引。iFinD 数据通常已带标签, 仅做验证, 返回 (stklist, trade_dt), 格式与 DataLoader 一致, 返回 (stklist, trade_dt), 格式与 DataLoader 一致, 给因子添加标准索引。iFinD 数据通常已带标签, 仅做验证 (+16 more)
+Cohesion: 0.11
+Nodes (13): 返回 (stklist, trade_dt), 格式与 DataLoader 一致, 给因子添加标准索引。iFinD 数据通常已带标签, 仅做验证, 返回 (stklist, trade_dt), 格式与 DataLoader 一致, 返回 (stklist, trade_dt), 格式与 DataLoader 一致, 给因子添加标准索引。iFinD 数据通常已带标签, 仅做验证, 给因子添加标准索引。iFinD 数据通常已带标签, 仅做验证, indexlist DataFrame: (N_indices, 1), trade_dt DataFrame: (M_dates, 1) (+5 more)
 
 ### Community 441 - "Community 441"
 Cohesion: 0.17
@@ -3212,12 +3206,12 @@ Cohesion: 0.08
 Nodes (21): TestOffsetDate, offset_date(), 日期偏移      H6: replaced ``arr[arr <= x][-1]`` (O(M) boolean mask per query) with, 日期偏移      H6: replaced ``arr[arr <= x][-1]`` (O(M) boolean mask per query) with, D mode, n=1: 输入日 → 下一交易日., D mode, n=-1: 输入日 → 上一交易日., D mode, n=1: 输入日 → 下一交易日., D mode, n=-1: 输入日 → 上一交易日. (+13 more)
 
 ### Community 449 - "Community 449"
-Cohesion: 0.11
-Nodes (14): DuckDB 内存模式: 插入数据 → 查询 → 回测, DuckDB 内存模式: 插入数据 → 查询 → 回测, DuckDB + query_filter 过滤, DuckDB + query_filter 过滤, BaseDBNode, DuckDBNode, DuckDB 数据库节点      支持内存模式和文件模式，支持只读模式      Args:         database: 数据库路径，`:memory, bool (+6 more)
+Cohesion: 0.13
+Nodes (12): DuckDBNode, DuckDB 数据库节点      支持内存模式和文件模式，支持只读模式      Args:         database: 数据库路径，`:memory, bool, DataFrame, int, str, read_only=True 时写入操作应失败, read_only=True 时写入操作应失败 (+4 more)
 
 ### Community 450 - "Community 450"
-Cohesion: 0.08
-Nodes (37): Any, bool, compact_messages(), CompactionConfig, CompactionResult, ContextCompactor, Compact using LLM summarization for middle messages, Use LLM to summarize a list of messages (+29 more)
+Cohesion: 0.12
+Nodes (25): Any, bool, compact_messages(), CompactionConfig, CompactionResult, ContextCompactor, Compact using LLM summarization for middle messages, Use LLM to summarize a list of messages (+17 more)
 
 ### Community 451 - "Community 451"
 Cohesion: 0.12
@@ -3228,8 +3222,8 @@ Cohesion: 0.08
 Nodes (8): core/constants.py 统一常量 parametrize (~20 tests)。, 9 业务字段 + 6 metric = 15。, PARQUET_COLUMNS 包含全部 METRIC_KEYS。, TestBaseFeatureNames, TestExtendedMetricKeys, TestMetricKeys, TestParquetColumns, TestUnifiedAcrossModules
 
 ### Community 453 - "Community 453"
-Cohesion: 0.19
-Nodes (7): ParamSpec, Composite 参数 schema.      Attributes:         name: 参数名         type_hint: "expr, 运行时类型校验.          Raises:             ValueError: 必填参数为 None             TypeErr, 参数化实例化: 校验 + 填默认 + 调用 template.          Raises:             ValueError: 必填参数缺失, Any, type_hint='expr' 不做运行时类型检查 (polars Expr 在外部传)., TestParamSpec
+Cohesion: 0.27
+Nodes (11): chat(), chat_single(), _print_help(), _print_welcome(), 单次问答模式      Args:         message: 用户消息         workspace: 工作目录         config:, 单次问答模式      Args:         message: 用户消息         workspace: 工作目录         config:, 启动 Agent 对话模式      Args:         workspace: 工作目录         config: Agent 配置, 启动 Agent 对话模式      Args:         workspace: 工作目录         config: Agent 配置 (+3 more)
 
 ### Community 454 - "Community 454"
 Cohesion: 0.11
@@ -3360,8 +3354,8 @@ Cohesion: 0.09
 Nodes (22): 3.1 核心抽象 (按连接数排序), 3.2 ConfigExecutor "God Controller" 问题, 6.1 God Controller 反模式, 6.2 功能重复, 6.3 孤岛节点, 6.4 低凝聚力, code:block1 (core  operators  factor  conf  agent  backtest  database  mo), code:block2 (# 选择一：保留 factor_functions，operators 只做重导出) (+14 more)
 
 ### Community 487 - "Community 487"
-Cohesion: 0.09
-Nodes (10): performance_metrics.py 边界条件测试 (15 tests)。, TestCalcMaxDrawdown, TestPerformanceMetrics, calc_max_drawdown(), 计算最大回撤 (复利净值曲线)      Returns:         dict: MDD, MDD_date, Lastingtime, Endingti, TestPerformanceMetrics, 已知曲线 1→2→0.5: MDD = (2-0.5)/2 = 0.75., 空 Series → MDD = 0, MDD_date = None. (+2 more)
+Cohesion: 0.07
+Nodes (17): Series, performance_metrics.py 边界条件测试 (15 tests)。, TestCalcMaxDrawdown, TestCalNetSimple, TestPerformanceMetrics, cal_net_simple(), calc_max_drawdown(), 计算最大回撤 (复利净值曲线)      Returns:         dict: MDD, MDD_date, Lastingtime, Endingti (+9 more)
 
 ### Community 488 - "Community 488"
 Cohesion: 0.16
@@ -3464,8 +3458,8 @@ Cohesion: 0.17
 Nodes (14): CodeSearch, CodeSearchResult, Search for pattern in a single file., Get surrounding context lines., Check if filename matches the pattern., Count searchable files., Code search functionality for QuantNodes codebase., Check if path is within allowed directories. (+6 more)
 
 ### Community 519 - "Community 519"
-Cohesion: 0.05
-Nodes (60): Any, bool, int, Skill, SkillRegistry, description(), name(), parameters() (+52 more)
+Cohesion: 0.03
+Nodes (105): Any, bool, int, Skill, SkillRegistry, description(), name(), parameters() (+97 more)
 
 ### Community 520 - "Community 520"
 Cohesion: 0.23
@@ -3509,7 +3503,7 @@ Nodes (7): Any, bool, Path, from_dict(), Session, SessionManager, str
 
 ### Community 531 - "Community 531"
 Cohesion: 0.05
-Nodes (35): IFinDDatabase, iFinD API-backed DataLoader replacement.      Usage:         db = IFinDDatabase(, iFinD API-backed DataLoader replacement.      Usage:         db = IFinDDatabase(, 风险因子注册表 (P-4: 改为读 self._risk_registry, 可外部注入), 风险因子注册表 (P-4: 改为读 self._risk_registry, 可外部注入), 风险因子注册表 (P-4: 改为读 self._risk_registry, 可外部注入), iFinD API-backed DataLoader replacement.      Usage:         db = IFinDDatabase(, 获取股票池代码列表 (公开 API, 缓存)。 (+27 more)
+Nodes (35): IFinDDatabase, iFinD API-backed DataLoader replacement.      Usage:         db = IFinDDatabase(, iFinD API-backed DataLoader replacement.      Usage:         db = IFinDDatabase(, 流通市值面板 (dates × stocks), 流通市值面板 (dates × stocks), 流通市值面板 (dates × stocks), iFinD API-backed DataLoader replacement.      Usage:         db = IFinDDatabase(, 获取股票池代码列表 (公开 API, 缓存)。 (+27 more)
 
 ### Community 532 - "Community 532"
 Cohesion: 0.13
@@ -3549,15 +3543,15 @@ Nodes (16): make_fetcher(), test_cache_key_changes_when_params_change(), test_ca
 
 ### Community 548 - "Community 548"
 Cohesion: 0.08
-Nodes (11): bool, TestValidDate, TestDateUtils, 验证日期格式, 必须为 yyyymmdd 数值型, valid_date(), TestDateUtils, yyyymmdd int DataFrame → True., yyyymmdd int Series → True. (+3 more)
+Nodes (12): bool, date_utils.py 边界条件测试 (20 tests)。  覆盖: all 7 public functions + internal edge cas, TestValidDate, TestDateUtils, 验证日期格式, 必须为 yyyymmdd 数值型, valid_date(), TestDateUtils, yyyymmdd int DataFrame → True. (+4 more)
 
 ### Community 549 - "Community 549"
 Cohesion: 0.13
-Nodes (9): TestRAGEvaluator, EvalReport, 评估多 query 结果。          Args:             queries: 查询文本列表             retrieved:, 评估多 query 结果。          Args:             queries: 查询文本列表             retrieved:, 评估多 query 结果。          Args:             queries: 查询文本列表             retrieved:, float, Path, str (+1 more)
+Nodes (10): TestRAGEvaluator, EvalReport, QueryResult, 评估多 query 结果。          Args:             queries: 查询文本列表             retrieved:, 评估多 query 结果。          Args:             queries: 查询文本列表             retrieved:, 评估多 query 结果。          Args:             queries: 查询文本列表             retrieved:, float, Path (+2 more)
 
 ### Community 550 - "Community 550"
-Cohesion: 0.09
-Nodes (26): _make_loop(), evaluate_fn 返回 None → passed=False, 不崩。, evaluate_fn 返回 str → 兜底 passed=False。, evaluate_fn 返回 str → 兜底 passed=False。, quality gate reject → 不调 evaluate_fn。, quality gate reject → 不调 evaluate_fn。, quality gate pass → eval_fn 被调用。, quality gate pass → eval_fn 被调用。 (+18 more)
+Cohesion: 0.15
+Nodes (10): ifind_db(), ifind_fetcher(), 基于 stub 的 IFinDDatabase, 用于单元测试, 基于合成数据的标准 pipeline context, Session 级 iFinD Fetcher (真实 API), Session 级 iFinD 数据库 (真实 API, 带缓存), stub_fetcher(), stub_ifind_db() (+2 more)
 
 ### Community 551 - "Community 551"
 Cohesion: 0.12
@@ -3615,13 +3609,17 @@ Nodes (14): 11.3 路线 B：Agent 安全增强（Day 2-8）, code:block19 (Quant
 Cohesion: 0.15
 Nodes (12): 1.1 已有组件, 1.2 缺失组件（待实现）, 1.3 用户需求确认, 3.1 SQLite 表结构, code:block8 (QuantNodes/), QuantNodes AI 集成规划方案 v3.0, 一、现状总结, 七、风险与应对 (+4 more)
 
+### Community 668 - "Community 668"
+Cohesion: 0.21
+Nodes (7): TestLineageCov, test_coverage(), lineage_coverage(), 检索结果中包含的 ground truth 谱系 entry 比例。      Args:         retrieved_ids: 检索器返回的 entr, lineage_coverage: 检索覆盖的谱系比例。, lineage_coverage: 检索覆盖的谱系比例。, test_lineage_coverage()
+
 ### Community 670 - "Community 670"
 Cohesion: 0.15
 Nodes (13): 10.1 策略生成类, 10.2 回测类, 10.3 分析类, 10.4 保存类, 10. 附录：Prompt 模板, 5.1.1 关键指标卡片, 5.1.2 收益曲线图, 5.1.3 交易记录 (+5 more)
 
 ### Community 671 - "Community 671"
-Cohesion: 0.16
-Nodes (14): 3.1 扩展 useAgent composable, 3.1 扩展 useAgent composable, 3.2 更新 Message 接口, 3.2 更新 Message 接口, 3.3 AgentChat 集成 ToolCallCard, 3.3 AgentChat 集成 ToolCallCard, 3.4 流式中的 Tool 显示, 3.4 流式中的 Tool 显示 (+6 more)
+Cohesion: 0.15
+Nodes (13): 二、实施计划, 3.2 更新 Message 接口, 3.2 更新 Message 接口, 3.3 AgentChat 集成 ToolCallCard, 3.3 AgentChat 集成 ToolCallCard, 3.4 流式中的 Tool 显示, 5.1 AgentChat 布局优化, 5.2 highlight.js 主题选择 (+5 more)
 
 ### Community 672 - "Community 672"
 Cohesion: 0.29
@@ -3632,8 +3630,8 @@ Cohesion: 0.15
 Nodes (12): code:block1 (前端 selector → store.currentModel), Fix: Chat 页面 Per-Message 模型切换, 修改文件, 前端（3 文件）, 后端（3 文件）, 向后兼容, 数据流, 方案 (+4 more)
 
 ### Community 676 - "Community 676"
-Cohesion: 0.08
-Nodes (22): e2e_artifacts(), 真实数据 E2E 测试 (Week 11) — 8 tests。  覆盖:     - data_prep 脚本 (2)     - 完整 E2E 流程 (3), E2E 跑通, stdout 含关键成功标记。, E2E 跑通, stdout 含关键成功标记。, E2E pool size ≥ 3 (round 0 必有 2 directions)。, E2E pool size ≥ 3 (round 0 必有 2 directions)。, PipelineRunner._context 注入 LoadData 后, run() 跳过 LoadDataNode。, PipelineRunner._context 注入 LoadData 后, run() 跳过 LoadDataNode。 (+14 more)
+Cohesion: 0.27
+Nodes (4): _make_node(), _neutralize 在 chain 为空时返回输入 (与 _execute line 39-40 short-circuit 一致).          注, Phase 1.4 引入的 _ALIASES 仍工作 (向后兼容)。, TestFactorNeutralizeNodeE2E
 
 ### Community 679 - "Community 679"
 Cohesion: 0.17
@@ -3660,8 +3658,8 @@ Cohesion: 0.17
 Nodes (12): 6.1.1 对话输入, 6.1.2 Agent 预期回复, 6.1 IC 分析, 6.2 IC 指标说明, 6.3.1 对话输入, 6.3.2 Agent 预期回复, 6.3 相关性分析, 6. 因子分析 (+4 more)
 
 ### Community 688 - "Community 688"
-Cohesion: 0.17
-Nodes (12): Agent Chat UI Enhancement Plan — 基于 OpenCode/Crush 启发, 七、P2-1: 工具调用权限确认, 九、文件变更总清单, 二、功能优先级, 修改文件（5 个）, 八、P2-2: 会话导出, 十、执行顺序, 十一、风险与注意事项 (+4 more)
+Cohesion: 0.20
+Nodes (10): Agent Chat UI Enhancement Plan — 基于 OpenCode/Crush 启发, 二、功能优先级, 五、P1-1: Auto Compact 自动压缩, 八、P2-2: 会话导出, 前端处理, 十、执行顺序, 十一、风险与注意事项, 后端实现 (+2 more)
 
 ### Community 689 - "Community 689"
 Cohesion: 0.18
@@ -3674,6 +3672,10 @@ Nodes (6): 手动失效缓存          Args:             table: 指定表名, �
 ### Community 691 - "Community 691"
 Cohesion: 0.13
 Nodes (7): 复杂度过高, complexity 门 fail。, 复杂度过高, complexity 门 fail。, execute 入口从 context['FactorCandidate'] 取候选。, execute 入口从 context['FactorCandidate'] 取候选。, context=None + kwargs 兼容。, context=None + kwargs 兼容。, TestQualityGateNode
+
+### Community 692 - "Community 692"
+Cohesion: 0.05
+Nodes (7): expanding_sum(), lag(), rolling_sum(), expanding_sum(), lag(), rolling_sum(), TestTimeOperators
 
 ### Community 693 - "Community 693"
 Cohesion: 0.15
@@ -3688,8 +3690,8 @@ Cohesion: 0.18
 Nodes (10): factor_functions.py 重构方案文档, 后续优化方向, 向后兼容保证, 新增功能, 核心目标, 概述, 测试验证计划, 重构前后对比 (+2 more)
 
 ### Community 696 - "Community 696"
-Cohesion: 0.20
-Nodes (11): 1.1 修复 E722 Bare Except, 2.1 测试分类与标记, 2.2 自动化测试场景, 2.3 Mock 和 Fixture 最佳实践, code:python (# 按速度分类), code:python (# conftest.py), code:bash (# 检查所有 bare except 位置), code:python (# 修复前) (+3 more)
+Cohesion: 0.19
+Nodes (14): 四、修复计划, 1.1 修复 E722 Bare Except, 阶段 2: 测试体系建设 (第二周), 2.1 测试分类与标记, 2.2 自动化测试场景, 2.3 Mock 和 Fixture 最佳实践, code:python (# 按速度分类), code:python (# conftest.py) (+6 more)
 
 ### Community 697 - "Community 697"
 Cohesion: 0.18
@@ -3744,8 +3746,8 @@ Cohesion: 0.20
 Nodes (9): 1.1 目标, 1.2 现有能力, 1.3 连接方式选择, 9.1 复用关系, 9.2 3A/3B/3C 集成, Agent Phase 3 实施计划：Wiki 工具集成, code:block30 (Feature 3A (WikiFactorProxy) ← 核心依赖), 一、背景 (+1 more)
 
 ### Community 716 - "Community 716"
-Cohesion: 0.50
-Nodes (4): 5.1 AgentChat 布局优化, 5.2 highlight.js 主题选择, 5.3 响应式适配, Phase 5: 样式与体验优化
+Cohesion: 0.20
+Nodes (10): 3.1 扩展 useAgent composable, 3.1 扩展 useAgent composable, 3.4 流式中的 Tool 显示, 5.1 AgentChat 布局优化, 5.2 highlight.js 主题选择, 5.3 响应式适配, code:typescript (// 新增状态), Phase 3: Tool 可视化 (+2 more)
 
 ### Community 717 - "Community 717"
 Cohesion: 0.20
@@ -3781,7 +3783,7 @@ Nodes (10): 5.1 环境准备, 5.2.1 初始化项目（首次使用）, 5.2 启�
 
 ### Community 771 - "Community 771"
 Cohesion: 0.07
-Nodes (14): _extract_field(), Extract a single field value from a prompt.      Format: '<FieldName> ... : <val, Extract a single field value from a prompt.      Format: '<FieldName> ... : <val, llm_judge.py 错误/降级/边界测试 (12 tests)。  聚焦:     - mock 模式: 关键词匹配、hypothesis+descrip, llm_callable 抛 RuntimeError → 当前实现未捕获, 异常上抛 (已知限制)。, llm_callable 抛 TypeError → judge 捕获 (在 except 列表中)。, model='deepseek' 无 llm_callable → NotImplementedError。, 无关键词匹配, 但 hypothesis+description 都有内容 → mock 默认 pass。 (+6 more)
+Nodes (16): _extract_field(), _mock_call(), Extract a single field value from a prompt.      Format: '<FieldName> ... : <val, Extract a single field value from a prompt.      Format: '<FieldName> ... : <val, llm_judge.py 错误/降级/边界测试 (12 tests)。  聚焦:     - mock 模式: 关键词匹配、hypothesis+descrip, llm_callable 抛 RuntimeError → 当前实现未捕获, 异常上抛 (已知限制)。, llm_callable 抛 TypeError → judge 捕获 (在 except 列表中)。, model='deepseek' 无 llm_callable → NotImplementedError。 (+8 more)
 
 ### Community 773 - "Community 773"
 Cohesion: 0.22
@@ -3796,24 +3798,24 @@ Cohesion: 0.12
 Nodes (17): MultiBrinson, 多期Brinson业绩归因分析——Carino模型     https://zhuanlan.zhihu.com/p/42893026?utm_source=w, Outlier, squered_transform     equal     sqrtroot     log     recipocal     boxcox     si, provide outlier detector, Scaling, object, MultiBrinson (+9 more)
 
 ### Community 787 - "Community 787"
-Cohesion: 0.11
-Nodes (12): composite_operator(), get_composite_doc_for_llm(), 注册 DAG 模板复合算子.      Args:         name: 算子唯一名         category: 5 类之一 (默认 multi_, 生成给 LLM prompt 的 composite 文档 (markdown 格式).      Phase 1.5: 内部委托 LLMDocVisitor,, 便利方法: 遍历整个 _COMPOSITE_REGISTRY。, TestDocumentation, _isolate_composite_registry(), PR-QN-3a: Composite DAG 核心测试  锁定 PR-QN-3a (2026-06-21) 行为: - ParamSpec 类型校验 - Co (+4 more)
+Cohesion: 0.08
+Nodes (17): composite_operator(), ParamSpec, 注册 DAG 模板复合算子.      Args:         name: 算子唯一名         category: 5 类之一 (默认 multi_, 注册 DAG 模板复合算子.      Args:         name: 算子唯一名         category: 5 类之一 (默认 multi_, Composite 参数 schema.      Attributes:         name: 参数名         type_hint: "expr, 运行时类型校验.          Raises:             ValueError: 必填参数为 None             TypeErr, 参数化实例化: 校验 + 填默认 + 调用 template.          Raises:             ValueError: 必填参数缺失, 参数化实例化: 校验 + 填默认 + 调用 template.          Raises:             ValueError: 必填参数缺失 (+9 more)
 
 ### Community 819 - "Community 819"
 Cohesion: 0.36
 Nodes (5): Any, ContextBuilder, 构建完整的消息列表（系统Prompt + 历史 + 当前消息）, Path, str
 
 ### Community 835 - "Community 835"
-Cohesion: 0.25
-Nodes (4): polars_backtest_data(), Polars LazyFrame 回测数据, Polars LazyFrame 回测数据, sample_orders()
+Cohesion: 0.24
+Nodes (7): category(), defaults(), name(), 初始化模板          Args:             name: 新算子名称             category: 算子分类 (point,, Any, Expr, str
 
 ### Community 838 - "Community 838"
 Cohesion: 0.29
 Nodes (7): 3.2 ChatInput.vue 修改, 3.3 ChatKeybindHints.vue（新增）, 4.2 EmptyState.vue 重写, Phase 3: 状态栏与输入区, Phase 4: Header 与 EmptyState, Phase 5: stores/app.ts 修改, 四、详细实现计划
 
 ### Community 1046 - "Community 1046"
-Cohesion: 0.10
-Nodes (20): _build_equity_curve() 空数据, _build_equity_curve() 空数据, _normalize_columns() 边界情况, _normalize_columns() 边界情况, Open 列不存在时 fallback 到 Close, Open 列不存在时 fallback 到 Close, TestBuildEquityCurveEmpty, TestNormalizeColumns (+12 more)
+Cohesion: 0.08
+Nodes (17): ConfigStrategyNode 测试, ConfigStrategyNode 测试, TestConfigStrategyNode, _build_risk_nodes() 测试, _build_risk_nodes() 测试, _build_equity_curve() 空数据, _build_equity_curve() 空数据, _normalize_columns() 边界情况 (+9 more)
 
 ### Community 1047 - "Community 1047"
 Cohesion: 0.22
@@ -3844,8 +3846,8 @@ Cohesion: 0.22
 Nodes (9): 5.1 新增页面类型, 5.2 WikiStrategy 数据类, 5.3 WikiReproduction 数据类, 5.4 扩展方法签名, code:python (class PageType(Enum):), code:python (@dataclass), code:python (@dataclass), code:python (# 新增方法 - WikiFactorProxy) (+1 more)
 
 ### Community 1054 - "Community 1054"
-Cohesion: 0.14
-Nodes (14): 二、实施计划, 4.1 后端 Session API, 4.1 后端 Session API, 4.2 前端 Session 管理, 4.2 前端 Session 管理, 4.3 AgentChat UI 增强, 4.3 AgentChat UI 增强, 5.1 AgentChat 布局优化 (+6 more)
+Cohesion: 0.22
+Nodes (9): 4.1 后端 Session API, 4.1 后端 Session API, 4.2 前端 Session 管理, 4.2 前端 Session 管理, 4.3 AgentChat UI 增强, 4.3 AgentChat UI 增强, code:typescript (// 新增), Phase 4: Session 管理 (+1 more)
 
 ### Community 1055 - "Community 1055"
 Cohesion: 0.22
@@ -3856,8 +3858,8 @@ Cohesion: 0.28
 Nodes (9): 3. 具体改动, 3.1 `api/services/agent_service.py` — send_message(), 3.2 `api/services/agent_service.py` — stream_message(), 3.3 `api/services/agent_service.py` — get_history() / list_sessions(), 3.4 `QuantNodes/agent/core/loop.py` — 无需修改, 3.4 `QuantNodes/agent/core/loop.py` — 无需修改, 3. 具体改动, code:python (# 修改前) (+1 more)
 
 ### Community 1057 - "Community 1057"
-Cohesion: 0.22
-Nodes (8): code:block11 (LiteLLM 调用), Fallback 降级流程, LiteLLM SDK 集成方案, 与旧代码的兼容性, 保留的组件, 参考资料, 弃用的部分, 概述
+Cohesion: 0.17
+Nodes (11): code:block11 (LiteLLM 调用), Fallback 降级流程, LiteLLM SDK 集成方案, Phase 2 (可选), Phase 3 (可选), 与旧代码的兼容性, 保留的组件, 参考资料 (+3 more)
 
 ### Community 1058 - "Community 1058"
 Cohesion: 0.22
@@ -3884,16 +3886,16 @@ Cohesion: 0.17
 Nodes (11): AgentChat 页面重构方案, code:block1 (AgentChat/index.vue (389行)), code:block2 (views/AgentChat/), Commit 计划, 不变的文件, 各组件职责, 现状, 目标 (+3 more)
 
 ### Community 1064 - "Community 1064"
-Cohesion: 0.29
-Nodes (6): Return parameter schema, Any, Execute correlation analysis, Return parameter schema, SkillResult, str
+Cohesion: 0.24
+Nodes (8): Return parameter schema, Any, CorrelationSkill, Factor Correlation Analysis Skill, Execute correlation analysis, Return parameter schema, SkillResult, str
 
 ### Community 1065 - "Community 1065"
 Cohesion: 0.38
 Nodes (5): _make_key(), Any, ChatCompletion, Message, str
 
 ### Community 1066 - "Community 1066"
-Cohesion: 0.08
-Nodes (8): list_composite_ops(), 列出所有 composite ops (可选按 category 过滤)., TestComposite, TestExistsKind, TestListAll, TestBuiltinRegistration, list_composite_ops 应返回所有已注册的 (含 PR-QN-3b 注入的 20 个)., TestCompositeRegistry
+Cohesion: 0.04
+Nodes (29): _compile_template_string(), _extract_free_vars(), has_errors(), is_composite_op(), list_composite_ops(), 判断 op 是否是 composite.      PR-QN-3a 设计: composite 完全隔离存放, 不污染主 ``_OPERATOR_REGIST, 判断 op 是否是 composite.      Args:         name: 算子名         engine: "any" (default, 列出所有 composite ops (可选按 category 过滤). (+21 more)
 
 ### Community 1068 - "Community 1068"
 Cohesion: 0.17
@@ -3968,8 +3970,8 @@ Cohesion: 0.43
 Nodes (6): Any, float, int, chat(), _enforce_role_alternation(), str
 
 ### Community 1086 - "Community 1086"
-Cohesion: 0.13
-Nodes (13): bool, int, Skill, SkillCategory, Skill Registry (Singleton + Thread-Safe), Get a skill by name or alias, List all skills in a category, List all registered skills (+5 more)
+Cohesion: 0.31
+Nodes (7): Any, bool, str, description(), name(), parameters(), read_only()
 
 ### Community 1089 - "Community 1089"
 Cohesion: 0.29
@@ -3980,12 +3982,12 @@ Cohesion: 0.29
 Nodes (7): expanding_std(), expanding_var(), _expanding_var_expr(), TA-Lib 平方根 (Square Root), 扩展窗口方差核心公式（expanding_var 和 expanding_std 共用）, sqrt(), talib_sqrt()
 
 ### Community 1091 - "Community 1091"
-Cohesion: 0.20
-Nodes (7): 相关 doc 在 k 之后 → miss。, 相关 doc 在 k 之后 → miss。, TestHitRate, test_combinations(), test_k_edge_values(), hit_rate_at_k(), 检索 Top-K 中是否含至少 1 个 relevant entry。      Args:         retrieved_ids: 检索器返回的 ent
+Cohesion: 0.18
+Nodes (8): 相关 doc 在 k 之后 → miss。, 相关 doc 在 k 之后 → miss。, TestHitRate, test_combinations(), test_k_edge_values(), hit_rate_at_k(), 检索 Top-K 中是否含至少 1 个 relevant entry。      Args:         retrieved_ids: 检索器返回的 ent, test_hit_rate_at_k()
 
 ### Community 1092 - "Community 1092"
-Cohesion: 0.14
-Nodes (11): TestTextDisplayNode, DisplayNode, DisplayType, _prepare_data(), 文本显示节点      将文本内容转换为文本可视化格式。, 文本显示节点      将文本内容转换为 Streamlit 文本组件可用的格式。, 数据可视化节点基类      提供统一的数据可视化接口，将处理后的数据转换为可视化格式。      Subclasses must implement:, 执行 UI 数据准备          Args:             input_data: 输入数据             **kwargs: 额外参 (+3 more)
+Cohesion: 0.16
+Nodes (9): TestTextDisplayNode, DisplayNode, 文本显示节点      将文本内容转换为文本可视化格式。, 文本显示节点      将文本内容转换为 Streamlit 文本组件可用的格式。, 数据可视化节点基类      提供统一的数据可视化接口，将处理后的数据转换为可视化格式。      Subclasses must implement:, 执行 UI 数据准备          Args:             input_data: 输入数据             **kwargs: 额外参, TextDisplayNode, UINode (+1 more)
 
 ### Community 1093 - "Community 1093"
 Cohesion: 0.32
@@ -4060,8 +4062,8 @@ Cohesion: 0.29
 Nodes (7): 4.3.1 对话输入, 4.3.2 Agent 预期回复, 4.3 案例三：多因子组合策略, code:block10, code:block11 (创建一个动量 + 波动率的等权组合因子，其中波动率使用 20 日 rolling std 计算), code:block12 (我为你生成一个双因子组合策略：), 计算收益
 
 ### Community 1111 - "Community 1111"
-Cohesion: 0.18
-Nodes (21): Knowledge RAG — 因子知识库 + RAG prompt + 谱系展开 (Week 8) + 谱系压缩 (Week 9) + 评估指标 (Week, test_dcg_bounds(), test_ndcg_ranges(), test_ndcg_various_k(), QueryResult, RAGEvaluator — 汇总 5 个指标, 输出统一报告。, RAG 评估指标 (Week 10)。  公开 API:     - 5 个核心指标函数:         hit_rate_at_k / mean_hit_r, dcg_at_k() (+13 more)
+Cohesion: 0.25
+Nodes (17): Knowledge RAG — 因子知识库 + RAG prompt + 谱系展开 (Week 8) + 谱系压缩 (Week 9) + 评估指标 (Week, RAGEvaluator — 汇总 5 个指标, 输出统一报告。, RAG 评估指标 (Week 10)。  公开 API:     - 5 个核心指标函数:         hit_rate_at_k / mean_hit_r, dcg_at_k(), mean_hit_rate_at_k(), mean_lineage_coverage(), mean_ndcg_at_k(), mean_reciprocal_rank() (+9 more)
 
 ### Community 1112 - "Community 1112"
 Cohesion: 0.28
@@ -4164,20 +4166,20 @@ Cohesion: 0.29
 Nodes (7): 7.1 初始化, 7.2 运行后持久化, 7.3 实验隔离, 7. 集成到 PipelineRunner, code:python (class PipelineRunner:), code:python (def run(self, candidate: dict = None) -> dict:), code:block15 (output/)
 
 ### Community 1137 - "Community 1137"
-Cohesion: 0.22
-Nodes (7): TestMRR, test_reciprocal_rank(), 首个 relevant entry 的倒数排名 (0 表示未命中)。, reciprocal_rank(), MRR: 首个相关 entry 的倒数排名。, MRR: 首个相关 entry 的倒数排名。, test_mrr()
+Cohesion: 0.31
+Nodes (4): RAG 评估指标 + RAGEvaluator 边界测试 (20 tests)。  聚焦:     - HitRate@K: 命中/未命中/k 边界/多 que, TestMRR, 首个 relevant entry 的倒数排名 (0 表示未命中)。, reciprocal_rank()
 
 ### Community 1138 - "Community 1138"
-Cohesion: 0.08
-Nodes (25): [2.7.0] - 2026-06-21, Added, Added, Added, Added, Added, Added, Added (+17 more)
+Cohesion: 0.07
+Nodes (32): [2.7.0] - 2026-06-21, [2.8.0] - 2026-06-22, Added, Added, Added, Added, Added, Added (+24 more)
 
 ### Community 1139 - "Community 1139"
 Cohesion: 0.38
 Nodes (7): Any, bool, microcompact(), 裁剪历史消息，返回 (保留的消息, 被丢弃的消息), truncate_history(), int, str
 
 ### Community 1140 - "Community 1140"
-Cohesion: 0.29
-Nodes (6): Return parameter schema, Any, Execute group backtest, Return parameter schema, SkillResult, str
+Cohesion: 0.24
+Nodes (8): Return parameter schema, Any, GroupBacktestSkill, Group Backtest by Factor Quantiles, Execute group backtest, Return parameter schema, SkillResult, str
 
 ### Community 1141 - "Community 1141"
 Cohesion: 0.12
@@ -4288,8 +4290,8 @@ Cohesion: 0.33
 Nodes (6): code:bash (# 运行全部 agent 测试), code:python (# 验证请求间隔), 单元测试, 回归测试, 测试计划, 速率限制测试
 
 ### Community 1168 - "Community 1168"
-Cohesion: 0.19
-Nodes (5): Any, VisualizationData 数据类测试, TestVisualizationData, 执行可视化数据准备          Args:             input_data: 输入数据             **kwargs: 额外参数, VisualizationData
+Cohesion: 0.25
+Nodes (4): Any, _prepare_data(), 执行可视化数据准备          Args:             input_data: 输入数据             **kwargs: 额外参数, VisualizationData
 
 ### Community 1169 - "Community 1169"
 Cohesion: 0.33
@@ -4544,8 +4546,8 @@ Cohesion: 0.50
 Nodes (4): 触发条件, 后端实现, 前端处理, 五、P1-1: Auto Compact 自动压缩
 
 ### Community 1233 - "Community 1233"
-Cohesion: 0.28
-Nodes (7): Any, SkillResult, str, BollingerSkill, Bollinger Bands Strategy, Execute Bollinger bands strategy generation, Return parameter schema
+Cohesion: 0.33
+Nodes (5): Any, SkillResult, str, Execute Bollinger bands strategy generation, Return parameter schema
 
 ### Community 1234 - "Community 1234"
 Cohesion: 0.50
@@ -4600,12 +4602,12 @@ Cohesion: 0.50
 Nodes (4): aroon(), aroondown(), aroonup(), 阿隆指标 — 返回 (aroondown, aroonup)
 
 ### Community 1248 - "Community 1248"
-Cohesion: 0.28
-Nodes (7): Any, SkillResult, str, DualMaSkill, Dual Moving Average Crossover Strategy, Execute dual MA strategy generation, Return parameter schema
+Cohesion: 0.33
+Nodes (5): Any, SkillResult, str, Execute dual MA strategy generation, Return parameter schema
 
 ### Community 1249 - "Community 1249"
-Cohesion: 0.09
-Nodes (19): TestCalNetSimple, cal_net_simple(), _make_dates(), IC 在算子层验证 (DataFrame.corrwith 直接调用)., 生成 n 个 yyyymmdd int 日期 (工作日)., test_accum_rt_matches_endpoints(), test_mdd_in_unit_interval(), test_monotone_input_zero_mdd() (+11 more)
+Cohesion: 0.17
+Nodes (13): _make_dates(), IC 在算子层验证 (DataFrame.corrwith 直接调用)., 生成 n 个 yyyymmdd int 日期 (工作日)., test_accum_rt_matches_endpoints(), test_mdd_in_unit_interval(), test_monotone_input_zero_mdd(), test_output_no_inf(), test_scale_invariance() (+5 more)
 
 ### Community 1250 - "Community 1250"
 Cohesion: 0.67
@@ -4624,8 +4626,8 @@ Cohesion: 0.67
 Nodes (3): 风险分级, 文件变更, 七、P2-1: 工具调用权限确认
 
 ### Community 1254 - "Community 1254"
-Cohesion: 0.17
-Nodes (11): 14.1 当前状态, 14.2 迁移已完成, 14.3 新算子开发流程, 4.1 标准参数名表, 4.2 禁止非标准缩写, 一、系统架构概览, 十二、文件变更清单, 十五、测试计划 (+3 more)
+Cohesion: 0.11
+Nodes (17): 11.1 单元测试, 11.2 测试覆盖要求, 11.3 运行测试, 14.1 当前状态, 14.2 迁移已完成, 14.3 新算子开发流程, 4.1 标准参数名表, 4.2 禁止非标准缩写 (+9 more)
 
 ### Community 1255 - "Community 1255"
 Cohesion: 0.15
@@ -4645,7 +4647,7 @@ Nodes (3): 11.1 archive/ (一次性冻结), 11.2 deprecated/ (早期遗留), 11.
 
 ### Community 1259 - "Community 1259"
 Cohesion: 0.09
-Nodes (18): DataFrame, int, date_utils.py 边界条件测试 (20 tests)。  覆盖: all 7 public functions + internal edge cas, TestChgIdx, TestDatenumConversion, chg_idx_to_datestr(), datenum_to_datetime(), datetime_to_datenum() (+10 more)
+Nodes (17): DataFrame, int, TestChgIdx, TestDatenumConversion, chg_idx_to_datestr(), datenum_to_datetime(), datetime_to_datenum(), 将 yyyymmdd int 转换为 datetime (+9 more)
 
 ### Community 1260 - "Community 1260"
 Cohesion: 0.67
@@ -4696,24 +4698,24 @@ Cohesion: 0.22
 Nodes (9): 7.1 docker-compose.yml, 7.2 Nginx 配置, 7.3 Dockerfile.frontend, 7.4 Dockerfile.api, 7. Docker 部署, code:yaml (version: '3.8'), code:nginx (# docker/nginx/nginx.conf), code:dockerfile (# docker/Dockerfile.frontend) (+1 more)
 
 ### Community 1275 - "Community 1275"
-Cohesion: 0.16
-Nodes (12): BacktestTemplate, get_result(), get_templates(), Run a backtest with given configuration, Get backtest templates, Get backtest result by ID, run_backtest(), BacktestRequest (+4 more)
+Cohesion: 0.27
+Nodes (7): Any, bool, str, description(), name(), parameters(), read_only()
 
 ### Community 1276 - "Community 1276"
-Cohesion: 0.12
-Nodes (11): 给 directions → round 0 生成 N candidates。, 给 directions → round 0 生成 N candidates。, 直接传 candidates → 不调 Hypothesizer。, 直接传 candidates → 不调 Hypothesizer。, evaluate_fn=None 应抛 ValueError。, evaluate_fn=None 应抛 ValueError。, max_rounds=0 → 只跑 round 0。, max_rounds=0 → 只跑 round 0。 (+3 more)
+Cohesion: 0.31
+Nodes (4): 风险因子中性化: 把加载的 risk_data 横向 concat 为 X.      输出 X 形状: index=股票代码, columns=risk_fa, RiskNeutralizer, date 不在某个 risk factor.index → 跳过该 factor。, TestRiskNeutralizer
 
 ### Community 1277 - "Community 1277"
-Cohesion: 0.07
-Nodes (19): _compute_statistics(), 从回测统计结果采集绩效指标          Args:             strategy_name: 策略名称             statist, 从权益曲线LazyFrame采集绩效指标          Args:             strategy_name: 策略名称, mock_repository(), monitor_db(), Monitor 临时数据库（已连接并初始化 schema）      返回 DatabaseManager 实例, Monitor 临时数据库（已连接并初始化 schema）      返回 DatabaseManager 实例, sample_performance_snapshots() (+11 more)
+Cohesion: 0.24
+Nodes (9): _compute_statistics(), 从回测统计结果采集绩效指标          Args:             strategy_name: 策略名称             statist, 从权益曲线LazyFrame采集绩效指标          Args:             strategy_name: 策略名称, Any, float, int, LazyFrame, PerformanceSnapshot (+1 more)
 
 ### Community 1278 - "Community 1278"
 Cohesion: 0.50
 Nodes (4): 10.1 完成后状态, 10.2 使用示例, code:python (# Agent 内部), 十、预期成果
 
 ### Community 1279 - "Community 1279"
-Cohesion: 0.32
-Nodes (6): Any, SkillResult, str, MomentumSkill, Execute momentum strategy generation, Return parameter schema
+Cohesion: 0.33
+Nodes (5): Any, SkillResult, str, Execute momentum strategy generation, Return parameter schema
 
 ### Community 1280 - "Community 1280"
 Cohesion: 0.20
@@ -4732,8 +4734,8 @@ Cohesion: 0.13
 Nodes (10): parser(), 默认 ancestor_depth = 2, 默认 ancestor_depth = 2, 默认 descendant_depth = 2, 默认 descendant_depth = 2, 默认启用压缩 (no_compress=False → use_compress=True), 默认启用压缩 (no_compress=False → use_compress=True), test_ancestor_depth_default() (+2 more)
 
 ### Community 1289 - "Community 1289"
-Cohesion: 0.28
-Nodes (7): Any, SkillResult, str, RSI Mean Reversion Strategy, Execute RSI mean reversion strategy generation, Return parameter schema, RSIReversalSkill
+Cohesion: 0.33
+Nodes (5): Any, SkillResult, str, Execute RSI mean reversion strategy generation, Return parameter schema
 
 ### Community 1290 - "Community 1290"
 Cohesion: 0.25
@@ -4752,8 +4754,8 @@ Cohesion: 0.29
 Nodes (7): 6.1 registry.py 修改, 6.2 配置文件扩展, 6.3 配置加载优先级, code:python (from QuantNodes.agent.tools.wiki import WikiTool), code:yaml (# quantnodes.yaml 或环境变量), code:block20 (环境变量 QUANTNODES_WIKI_PATH), 六、工具注册集成
 
 ### Community 1354 - "Community 1354"
-Cohesion: 0.16
-Nodes (7): Check if a skill is loaded, Progressive Skill Loader, Discover all skills in the skills directory, Load a single skill from path, Load all discovered skills, Progressive load: only load requested skills, SkillLoader
+Cohesion: 0.22
+Nodes (5): T=0.1 几乎总是选最高分 entry。, T=0.1 几乎总是选最高分 entry。, T=0 (除零保护) → 用 1e-9 等价 T→0。, T=0 (除零保护) → 用 1e-9 等价 T→0。, TestSelectorTemperature
 
 ### Community 1355 - "Community 1355"
 Cohesion: 0.33
@@ -4808,8 +4810,8 @@ Cohesion: 0.20
 Nodes (10): 12.1 用户场景, 12.2 核心能力, 12.3 提取内容类型, 12.4 数据流, 12.5 使用方式, 12.6 目录结构, code:block13 (研报PDF → llmwikify.extract() → 文本/表格/公式), code:python (from QuantNodes.research import ResearchReportReproducer) (+2 more)
 
 ### Community 1368 - "Community 1368"
-Cohesion: 0.06
-Nodes (27): IFindFetcherStub, 测试用 stub - 不调用真实 API, 返回预设数据, 测试用 stub - 不调用真实 API, 返回预设数据, 测试用 stub - 不调用真实 API, 返回预设数据, M10: batch_size 可自定义，默认 50, M10: batch_size 可自定义，默认 50, TestBatchSizeParameter, get_apikeys() 返回 list copy (防止外部修改影响内部) (+19 more)
+Cohesion: 0.07
+Nodes (21): IFindFetcherStub, 测试用 stub - 不调用真实 API, 返回预设数据, 测试用 stub - 不调用真实 API, 返回预设数据, 测试用 stub - 不调用真实 API, 返回预设数据, M10: batch_size 可自定义，默认 50, M10: batch_size 可自定义，默认 50, TestBatchSizeParameter, get_apikeys() 返回 list copy (防止外部修改影响内部) (+13 more)
 
 ### Community 1369 - "Community 1369"
 Cohesion: 0.20
@@ -4825,11 +4827,11 @@ Nodes (13): fillNaNByFun(), fillNaNByRegress(), fillNaNByValue(), orthogonalize(
 
 ### Community 1372 - "Community 1372"
 Cohesion: 0.09
-Nodes (19): _from_dict_impl(), 节点初始化          Args:             name: 节点名称，默认为类名             config: 配置字典, 子类实现：返回需要序列化的额外字段          默认实现返回空字典。复合节点需要重写此方法。          Returns:, 导出运行时信息（用于监控/调试）          包含 node_id, state, stats 等运行时数据，         不适合用于序列化重建。, 发送聊天请求          Args:             messages: 对话消息列表             model: 模型名称, 发送聊天请求          Args:             messages: 对话消息列表             model: 模型名称, 发送聊天请求（流式）          Args:             messages: 对话消息列表             model: 模型名称, 发送聊天请求（流式）          Args:             messages: 对话消息列表             model: 模型名称 (+11 more)
+Nodes (20): _from_dict_impl(), 节点初始化          Args:             name: 节点名称，默认为类名             config: 配置字典, 子类实现：返回需要序列化的额外字段          默认实现返回空字典。复合节点需要重写此方法。          Returns:, 导出运行时信息（用于监控/调试）          包含 node_id, state, stats 等运行时数据，         不适合用于序列化重建。, 发送聊天请求          Args:             messages: 对话消息列表             model: 模型名称, 发送聊天请求          Args:             messages: 对话消息列表             model: 模型名称, 发送聊天请求（流式）          Args:             messages: 对话消息列表             model: 模型名称, 发送聊天请求（流式）          Args:             messages: 对话消息列表             model: 模型名称 (+12 more)
 
 ### Community 1373 - "Community 1373"
-Cohesion: 0.12
-Nodes (15): RAG 评估指标 (Week 10) 测试 — 10 tests。  覆盖:     - 5 指标函数 (5)     - RAGEvaluator 汇总 (2, per_query 字段保存每个 query 的明细。, per_query 字段保存每个 query 的明细。, RAGEvaluator.save() 写 JSON。, RAGEvaluator.save() 写 JSON。, lineage_coverage: 检索覆盖的谱系比例。, lineage_coverage: 检索覆盖的谱系比例。, intra_list_diversity: 1 - 平均 pairwise jaccard。 (+7 more)
+Cohesion: 0.09
+Nodes (22): RAGEvaluator, RAG 评估器 — 接受多 query 结果, 汇总 5 个指标。      Args:         k_values: HitRate/NDCG 评估的, RAG 评估器 — 接受多 query 结果, 汇总 5 个指标。      Args:         k_values: HitRate/NDCG 评估的, RAG 评估器 — 接受多 query 结果, 汇总 5 个指标。      Args:         k_values: HitRate/NDCG 评估的, RAG 评估指标 (Week 10) 测试 — 10 tests。  覆盖:     - 5 指标函数 (5)     - RAGEvaluator 汇总 (2, RAGEvaluator 汇总多 query 指标。, RAGEvaluator 汇总多 query 指标。, per_query 字段保存每个 query 的明细。 (+14 more)
 
 ### Community 1374 - "Community 1374"
 Cohesion: 0.20
@@ -4840,20 +4842,20 @@ Cohesion: 0.20
 Nodes (10): 8.1 YAML 配置格式, 8.2 自定义算子文件格式, 8.3 加载流程, 8.4 分类映射, 8.5 程序化自定义算子 API（Feature 3D）, code:yaml (# 简单格式（向后兼容，默认分类 point）), code:python (# /path/to/my_custom_ops.py), code:python (def _load_custom_operators(self, custom_operators):) (+2 more)
 
 ### Community 1376 - "Community 1376"
-Cohesion: 0.15
-Nodes (7): 验证 hash / 种子在多次启动中稳定。, 同一 expression 多次 ast_hash 必返回相同 int。, 结构略不同的 expression 应 hash 不同。, _heavy_evaluate 同 expression 同 seed → 同 sharpe。, 真子进程跑 _heavy_evaluate, 结果与主进程一致。, 真子进程跑 contains, 与主进程一致。, TestCrossProcessDeterminism
+Cohesion: 0.29
+Nodes (4): Neutralizer, 中性化器抽象基类 (Chain of Responsibility 的一环).      子类实现 build_design_matrix() 返回指定日期的, Neutralizer 是 ABC, 不能直接实例化。, TestNeutralizerABC
 
 ### Community 1377 - "Community 1377"
-Cohesion: 0.19
-Nodes (9): _group_continuous(), _group_low_tie(), 连续因子: 保持原 pd.qcut 行为, 零回归。, 轻度 ties (3 <= n_unique < n_groups): rank('first') 破 tie + qcut。      修复原 pd.qcut, int, Series, rank(method='first') 决定性 → 同输入多次结果一致。, 3 unique × 50 行, 原 pd.qcut 抛 ValueError, 新分支通过。 (+1 more)
+Cohesion: 0.05
+Nodes (38): _group_continuous(), _group_low_tie(), _group_ranked(), 通用 rank('first') + qcut: 处理连续和轻度 ties 因子。      修复 pd.qcut(duplicates='drop') 在 t, 连续因子: 保持原 pd.qcut 行为, 零回归。, 轻度 ties (3 <= n_unique < n_groups): rank('first') 破 tie + qcut。      修复原 pd.qcut, int, Series (+30 more)
 
-### Community 1379 - "Community 1379"
-Cohesion: 0.21
-Nodes (10): Any, bool, description(), execute(), get_parameters_schema(), name(), Return example prompts, Convert to nanobot Tool Schema (+2 more)
+### Community 1378 - "Community 1378"
+Cohesion: 0.14
+Nodes (3): SlowEchoTool, TestParallelToolExecution, WriteTool
 
 ### Community 1380 - "Community 1380"
-Cohesion: 0.13
-Nodes (13): TestLineageCov, RAG metrics 全参数覆盖测试 (~40 tests, @pytest.mark.parametrize)。  遍历 hit_rate/ndcg/mrr, test_coverage(), test_intra_diversity(), test_jaccard(), test_mean_mrr(), TestDCGNDCGParams, TestHitRateAtKParams (+5 more)
+Cohesion: 0.15
+Nodes (11): RAG metrics 全参数覆盖测试 (~40 tests, @pytest.mark.parametrize)。  遍历 hit_rate/ndcg/mrr, test_dcg_bounds(), test_mean_mrr(), test_ndcg_ranges(), test_ndcg_various_k(), test_reciprocal_rank(), TestDCGNDCGParams, TestHitRateAtKParams (+3 more)
 
 ### Community 1381 - "Community 1381"
 Cohesion: 0.24
@@ -4880,8 +4882,8 @@ Cohesion: 0.18
 Nodes (11): 16.1 背景, 16.2 新签名, 16.3 用法 (llmwikify 侧典型), 16.4 风险评估, 16.5 后续扩展 (不在本 PR 范围), 16.5 节点级设计模式应用 (2026-06 增量), 16.6 后续扩展 (不在本 PR 范围), code:python (class PipelineRunner:) (+3 more)
 
 ### Community 1388 - "Community 1388"
-Cohesion: 0.22
-Nodes (8): Any, CorrelationSkill, Factor Correlation Analysis Skill, Execute correlation analysis, Return parameter schema, SkillResult, str, Return parameter schema
+Cohesion: 0.25
+Nodes (6): Any, Execute correlation analysis, Return parameter schema, SkillResult, str, Return parameter schema
 
 ### Community 1389 - "Community 1389"
 Cohesion: 0.25
@@ -4892,16 +4894,16 @@ Cohesion: 0.25
 Nodes (8): 5.1 背景, 5.2 新增文件, 5.3 完整 20 个内置 op, 5.4 测试用例, 5.5 风险评估, 5. PR-QN-3b: Composite DAG 20 个内置 op, code:python ("""20 个内置 Composite DAG 算子 - 覆盖 quant 研究常见算法.), code:python (# QuantNodes/tests/test_composite_dag_ops.py)
 
 ### Community 1392 - "Community 1392"
-Cohesion: 0.33
-Nodes (4): RAG 评估指标 + RAGEvaluator 边界测试 (20 tests)。  聚焦:     - HitRate@K: 命中/未命中/k 边界/多 que, TestJaccard, jaccard_similarity(), Jaccard 相似度 = |A ∩ B| / |A ∪ B|。
+Cohesion: 0.36
+Nodes (4): TestJaccard, test_jaccard(), jaccard_similarity(), Jaccard 相似度 = |A ∩ B| / |A ∪ B|。
 
 ### Community 1394 - "Community 1394"
 Cohesion: 0.22
 Nodes (5): Strategy Service - Strategy validation and management, Validate strategy YAML configuration, Parse strategy YAML into structured format, Strategy service for validation and management, StrategyService
 
 ### Community 1395 - "Community 1395"
-Cohesion: 0.31
-Nodes (8): BacktestResult, _extract_code(), Extract code from markdown code blocks if present., Extract code from markdown code blocks if present., Run a backtest with the given pipeline code.      Args:         pipeline_code: S, run_backtest(), float, str
+Cohesion: 0.06
+Nodes (28): BrokerNode, 经纪商节点基类      提供统一的订单执行接口。      Subclasses must implement:         _execute_order, 经纪商节点基类      提供统一的订单执行接口。      Subclasses must implement:         _execute_order, SimulatedBrokerNode, polars_backtest_data(), Polars LazyFrame 回测数据, Polars LazyFrame 回测数据, sample_orders() (+20 more)
 
 ### Community 1398 - "Community 1398"
 Cohesion: 0.33
@@ -4928,12 +4930,12 @@ Cohesion: 0.40
 Nodes (5): 9.1 当前问题, 9.2 目标, 9.3 架构设计, code:block5 (MarketDataCacheNode), 九、MarketDataCacheNode 缓存规划
 
 ### Community 1418 - "Community 1418"
-Cohesion: 0.02
-Nodes (142): ArgumentParser, BaseModel, _build_config(), _build_loader(), _build_parser(), _inject_prepared_data(), main(), 预填 _context['LoadData'], 跳过 LoadDataNode 真实 H5 读取。      名称: 从已 prepare 好的 H5 数据 (+134 more)
+Cohesion: 0.03
+Nodes (83): BaseModel, PipelineRunner.run_evolution(workers=4) 端到端: H5 → snapshot → ProcessPool → traje, PipelineRunner.run_evolution(workers=4) 端到端: H5 → snapshot → ProcessPool → traje, PipelineRunner.run_evolution(workers=4) 端到端: H5 → snapshot → ProcessPool → traje, test_pipeline_runner_processpool_evolution_e2e(), AnalysisSetting, 聚合并构造 SingleFactorTestConfig (触发 pydantic 校验)。          Raises:             Valu, EvolutionConfig (+75 more)
 
 ### Community 1419 - "Community 1419"
-Cohesion: 0.22
-Nodes (8): Any, GroupBacktestSkill, Group Backtest by Factor Quantiles, Execute group backtest, Return parameter schema, SkillResult, str, Return parameter schema
+Cohesion: 0.25
+Nodes (6): Any, Execute group backtest, Return parameter schema, SkillResult, str, Return parameter schema
 
 ### Community 1420 - "Community 1420"
 Cohesion: 0.40
@@ -4955,25 +4957,25 @@ Nodes (3): 沪深300成分股面板 (dates × stocks), 值为 0/1, 沪深300成�
 Cohesion: 0.29
 Nodes (7): 7.1 背景, 7.2 架构, 7.3 通用 Fallback, 7.4 优先级规则, code:block10 (ConfigExecutor._apply_operator(op)), code:python (def _apply_operator(self, op):), 七、算子扩展机制
 
+### Community 1427 - "Community 1427"
+Cohesion: 0.04
+Nodes (18): _CondBuilder, input(), Cond 入口构建器 - 只在入口处提供特殊语法, Cond('column_name') - 按列/变量名访问, Cond.attr('metrics') - 按属性名访问, 支持 Cond.metrics 形式的属性访问, ExpressionBuilder, InputExpr (+10 more)
+
 ### Community 1428 - "Community 1428"
 Cohesion: 0.50
 Nodes (4): 0.1 现状, 0.2 llmwikify Loop v4 主路径需求, 0.3 业界对标, 0. 背景与动机
 
 ### Community 1429 - "Community 1429"
-Cohesion: 0.33
-Nodes (6): 11.1 单元测试, 11.2 测试覆盖要求, 11.3 运行测试, code:python (class TestTimeOperators:), code:bash (# 运行所有 agent 测试), 十一、测试规范
+Cohesion: 0.29
+Nodes (7): 12.1 问题, 12.2 方案, 12.3 实施范围, 12.4 风险, 12.5 版本策略, 12.6 Commit 计划, 12. PR-QN-4: Dual-Engine Composite (Polars + Pandas, 2026-06-22)
 
 ### Community 1431 - "Community 1431"
 Cohesion: 0.33
 Nodes (6): 9.1 operations 块写法, 9.2 type 与 registry category 对应表, 9.3 params 映射规则, code:yaml (operations:), code:yaml (params:), 九、YAML 配置规范
 
 ### Community 1432 - "Community 1432"
-Cohesion: 0.27
-Nodes (4): TestDiversity, TestDiversityParams, intra_list_diversity(), 检索结果内部多样性: 1 - 平均 pairwise jaccard 相似度。      Args:         items: 多 query 的 toke
-
-### Community 1440 - "Community 1440"
-Cohesion: 0.29
-Nodes (6): Any, SkillResult, str, Execute dream insight query, Return parameter schema, Return parameter schema
+Cohesion: 0.24
+Nodes (5): TestDiversity, test_intra_diversity(), TestDiversityParams, intra_list_diversity(), 检索结果内部多样性: 1 - 平均 pairwise jaccard 相似度。      Args:         items: 多 query 的 toke
 
 ### Community 1441 - "Community 1441"
 Cohesion: 0.29
@@ -4988,20 +4990,20 @@ Cohesion: 0.32
 Nodes (6): Any, ICAnalysisSkill, IC (Information Coefficient) Analysis Skill, Return parameter schema, SkillResult, str
 
 ### Community 1454 - "Community 1454"
-Cohesion: 0.29
-Nodes (3): VisualizationData 数据类测试, TestUIDisplayResult, UIDisplayResult
+Cohesion: 0.18
+Nodes (5): VisualizationData 数据类测试, VisualizationData 数据类测试, TestUIDisplayResult, TestVisualizationData, UIDisplayResult
 
 ### Community 1455 - "Community 1455"
-Cohesion: 0.29
-Nodes (6): IFinDDatabase empty date-beg → one year ago, date-end → today (H1 fixed), IFinDDatabase empty date-beg → one year ago, date-end → today (H1 fixed), _build_config uses dynamic dates one year ago → one month ago (H4 fixed), _build_config uses dynamic dates one year ago → one month ago (H4 fixed), test_ifind_dynamic_defaults(), test_run_evolution_e2e_dynamic_dates()
+Cohesion: 0.60
+Nodes (3): build_design_matrix(), DataFrame, Timestamp
 
 ### Community 1456 - "Community 1456"
-Cohesion: 0.14
-Nodes (12): DriftAlert, int, PerformanceSnapshot, str, StrategyVersion, Row, _average_snapshots(), _row_to_alert() (+4 more)
+Cohesion: 0.06
+Nodes (38): mock_repository(), monitor_db(), Monitor 临时数据库（已连接并初始化 schema）      返回 DatabaseManager 实例, Monitor 临时数据库（已连接并初始化 schema）      返回 DatabaseManager 实例, sample_performance_snapshots(), sample_strategy_runs(), TestDriftDetector, alert_repo() (+30 more)
 
-### Community 1457 - "Community 1457"
-Cohesion: 0.50
-Nodes (4): 五、P1-1: Auto Compact 自动压缩, 前端处理, 后端实现, 触发条件
+### Community 1459 - "Community 1459"
+Cohesion: 0.10
+Nodes (16): TestSectionOperators, group_norm(), group_winsorize(), ic(), neutralize(), neutralize_market(), percentile(), rank() (+8 more)
 
 ### Community 1463 - "Community 1463"
 Cohesion: 0.40
@@ -5023,10 +5025,6 @@ Nodes (4): 8.1 各阶段耗时分布 (5397 只股票, 1.36M 行), 8.2 性能瓶�
 Cohesion: 0.67
 Nodes (3): 一、现状分析, 已有能力, 缺失环节（OpenCode 有而 QuantNodes 没有）
 
-### Community 1472 - "Community 1472"
-Cohesion: 0.33
-Nodes (4): P-4: 默认 10 Barra 风格风险因子, 默认 get_apikeys 返回 10 个 Barra 风格因子, 默认 key 保持 '/xxx' 格式 (与 iFinD API 一致), TestRiskRegistryDefault
-
 ### Community 1474 - "Community 1474"
 Cohesion: 0.47
 Nodes (4): Any, str, 执行策略并记录结果          Args:             strategy_name: 策略名称             config_path, 执行策略并记录结果          Args:             strategy_name: 策略名称             config_path
@@ -5041,11 +5039,11 @@ Nodes (3): VisualizationData 元数据测试, VisualizationData 元数据测试,
 
 ### Community 1478 - "Community 1478"
 Cohesion: 0.70
-Nodes (3): ChatMessage, ChatResponse, ToolCallInfo
+Nodes (3): init_session(), main(), main()
 
 ### Community 1479 - "Community 1479"
-Cohesion: 0.40
-Nodes (4): Any, Return parameter schema, SkillResult, str
+Cohesion: 0.32
+Nodes (6): Any, ICAnalysisSkill, IC (Information Coefficient) Analysis Skill, Return parameter schema, SkillResult, str
 
 ### Community 1480 - "Community 1480"
 Cohesion: 0.40
@@ -5071,21 +5069,17 @@ Nodes (3): Reset settings to defaults, Reset settings to defaults, reset_setting
 Cohesion: 0.50
 Nodes (5): 自定义算子 API, code:python (from QuantNodes.core.node import BaseNode, Pipeline), 因子计算示例, 基本使用, 快速开始
 
+### Community 1492 - "Community 1492"
+Cohesion: 0.50
+Nodes (3): 风险因子注册表 (P-4: 改为读 self._risk_registry, 可外部注入), 风险因子注册表 (P-4: 改为读 self._risk_registry, 可外部注入), 风险因子注册表 (P-4: 改为读 self._risk_registry, 可外部注入)
+
 ### Community 1496 - "Community 1496"
 Cohesion: 0.50
-Nodes (3): 流通市值面板 (dates × stocks), 流通市值面板 (dates × stocks), 流通市值面板 (dates × stocks)
+Nodes (3): 中证500成分股面板 (dates × stocks), 值为 0/1, 中证500成分股面板 (dates × stocks), 值为 0/1, 中证500成分股面板 (dates × stocks), 值为 0/1
 
 ### Community 1497 - "Community 1497"
 Cohesion: 0.50
 Nodes (3): VisualizationType 枚举测试, VisualizationType 枚举测试, TestVisualizationType
-
-### Community 1500 - "Community 1500"
-Cohesion: 0.50
-Nodes (3): 清空内存 + 删除所有持久化文件 (entries/ 子目录 + Parquet)。, 清空内存 + 删除所有持久化文件 (entries/ 子目录 + Parquet)。, 清空内存 + 删除所有持久化文件 (entries/ 子目录 + Parquet)。
-
-### Community 1502 - "Community 1502"
-Cohesion: 0.67
-Nodes (3): Phase 2 (可选), Phase 3 (可选), 未来规划
 
 ### Community 1504 - "Community 1504"
 Cohesion: 0.67
@@ -5093,26 +5087,30 @@ Nodes (3): 3.6 CSVNode 实现, 3.6 CSVNode 实现, code:python (# -*- coding: ut
 
 ### Community 1506 - "Community 1506"
 Cohesion: 0.67
-Nodes (3): 一、现状分析, 已有能力, 缺失环节
+Nodes (3): 七、P2-1: 工具调用权限确认, 文件变更, 风险分级
 
 ### Community 1507 - "Community 1507"
 Cohesion: 0.67
-Nodes (3): get_wiki_status(), Get wiki system status, Get wiki system status
+Nodes (3): 九、文件变更总清单, 修改文件（5 个）, 新增文件（6 个）
+
+### Community 1515 - "Community 1515"
+Cohesion: 0.67
+Nodes (3): 三、文件变更清单, 修改文件, 新增文件
 
 ## Knowledge Gaps
-- **3724 isolated node(s):** `git_auto_commit.sh script`, `composite`, `skipLibCheck`, `module`, `moduleResolution` (+3719 more)
+- **3754 isolated node(s):** `git_auto_commit.sh script`, `composite`, `skipLibCheck`, `module`, `moduleResolution` (+3749 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **527 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **530 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `range()` connect `Community 15` to `Community 4`, `Community 5`, `Community 6`, `Community 520`, `Community 10`, `Community 12`, `Community 14`, `Community 527`, `Community 18`, `Community 531`, `Community 21`, `Community 25`, `Community 36`, `Community 549`, `Community 38`, `Community 548`, `Community 40`, `Community 1065`, `Community 43`, `Community 50`, `Community 53`, `Community 56`, `Community 58`, `Community 63`, `Community 69`, `Community 72`, `Community 73`, `Community 74`, `Community 76`, `Community 78`, `Community 1111`, `Community 87`, `Community 89`, `Community 98`, `Community 101`, `Community 106`, `Community 112`, `Community 118`, `Community 1143`, `Community 121`, `Community 125`, `Community 126`, `Community 129`, `Community 136`, `Community 139`, `Community 145`, `Community 160`, `Community 161`, `Community 676`, `Community 166`, `Community 693`, `Community 184`, `Community 186`, `Community 187`, `Community 192`, `Community 193`, `Community 208`, `Community 1249`, `Community 225`, `Community 228`, `Community 229`, `Community 235`, `Community 242`, `Community 1277`, `Community 253`, `Community 261`, `Community 263`, `Community 272`, `Community 283`, `Community 303`, `Community 308`, `Community 328`, `Community 331`, `Community 1368`, `Community 1371`, `Community 1376`, `Community 1377`, `Community 353`, `Community 1386`, `Community 383`, `Community 1418`, `Community 402`, `Community 1432`, `Community 1452`, `Community 448`, `Community 455`, `Community 487`?**
-  _High betweenness centrality (0.160) - this node is a cross-community bridge._
-- **Why does `BaseNode` connect `Community 49` to `Community 128`, `Community 6`, `Community 8`, `Community 136`, `Community 12`, `Community 1421`, `Community 1168`, `Community 20`, `Community 22`, `Community 158`, `Community 159`, `Community 40`, `Community 173`, `Community 1454`, `Community 690`, `Community 187`, `Community 189`, `Community 1092`, `Community 70`, `Community 77`, `Community 1235`, `Community 89`, `Community 1372`, `Community 226`, `Community 1255`, `Community 113`, `Community 114`, `Community 1397`?**
+- **Why does `range()` connect `Community 15` to `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 520`, `Community 10`, `Community 12`, `Community 14`, `Community 527`, `Community 18`, `Community 531`, `Community 21`, `Community 25`, `Community 26`, `Community 29`, `Community 36`, `Community 549`, `Community 38`, `Community 548`, `Community 550`, `Community 1065`, `Community 43`, `Community 53`, `Community 56`, `Community 58`, `Community 69`, `Community 73`, `Community 74`, `Community 76`, `Community 78`, `Community 89`, `Community 98`, `Community 101`, `Community 112`, `Community 118`, `Community 1143`, `Community 121`, `Community 129`, `Community 136`, `Community 139`, `Community 143`, `Community 145`, `Community 149`, `Community 155`, `Community 160`, `Community 178`, `Community 693`, `Community 184`, `Community 186`, `Community 187`, `Community 192`, `Community 193`, `Community 208`, `Community 228`, `Community 229`, `Community 235`, `Community 242`, `Community 771`, `Community 261`, `Community 262`, `Community 263`, `Community 283`, `Community 303`, `Community 328`, `Community 1354`, `Community 331`, `Community 1371`, `Community 1377`, `Community 353`, `Community 1380`, `Community 357`, `Community 1386`, `Community 383`, `Community 402`, `Community 1432`, `Community 1452`, `Community 448`, `Community 455`, `Community 487`?**
+  _High betweenness centrality (0.151) - this node is a cross-community bridge._
+- **Why does `ensure_dir()` connect `Community 269` to `Community 4`, `Community 262`, `Community 7`, `Community 145`, `Community 149`, `Community 31`, `Community 163`, `Community 303`, `Community 176`, `Community 184`, `Community 187`, `Community 192`, `Community 67`, `Community 326`, `Community 199`, `Community 722`, `Community 87`, `Community 89`, `Community 112`?**
+  _High betweenness centrality (0.045) - this node is a cross-community bridge._
+- **Why does `BaseNode` connect `Community 49` to `Community 128`, `Community 6`, `Community 136`, `Community 8`, `Community 12`, `Community 1421`, `Community 1168`, `Community 20`, `Community 22`, `Community 158`, `Community 159`, `Community 40`, `Community 173`, `Community 1454`, `Community 690`, `Community 178`, `Community 187`, `Community 189`, `Community 1092`, `Community 70`, `Community 77`, `Community 1235`, `Community 89`, `Community 1372`, `Community 226`, `Community 1255`, `Community 113`, `Community 242`, `Community 114`, `Community 1395`, `Community 1397`?**
   _High betweenness centrality (0.043) - this node is a cross-community bridge._
-- **Why does `range()` connect `Community 15` to `Community 129`, `Community 5`, `Community 6`, `Community 136`, `Community 10`, `Community 139`, `Community 12`, `Community 272`, `Community 400`, `Community 160`, `Community 40`, `Community 43`, `Community 47`, `Community 50`, `Community 53`, `Community 56`, `Community 58`, `Community 187`, `Community 63`, `Community 69`, `Community 455`, `Community 74`, `Community 214`, `Community 87`, `Community 1371`, `Community 483`, `Community 106`, `Community 1261`, `Community 242`, `Community 121`, `Community 1277`, `Community 126`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
 - **Are the 314 inferred relationships involving `range()` (e.g. with `_apply_weights()` and `_rolling_arg_op()`) actually correct?**
   _`range()` has 314 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 5 inferred relationships involving `str` (e.g. with `TimeSeriesOperators` and `SectionOperators`) actually correct?**

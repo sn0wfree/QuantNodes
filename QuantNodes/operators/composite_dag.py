@@ -71,15 +71,17 @@ class CompositeSpec:
 
     Attributes:
         name: 唯一标识 (如 "industry_neutralize")
-        template: 接收 **params, 返回 polars.Expr 的函数
+        template: 接收 **params, 返回 polars.Expr 或 pd.Series 的函数
         category: 复用 QuantNodes 的 5 类之一 (默认 multi_section)
+        engine: 引擎类型 ("polars" | "pandas"), 同名 op 分引擎注册
         params: 参数 schema 字典
         doc: 文档 (用于 LLM prompt)
         examples: LLM few-shot 例子
     """
     name: str
-    template: Callable[..., "Expr"]
+    template: Callable[..., Any]
     category: str = "multi_section"
+    engine: str = "polars"
     params: Dict[str, ParamSpec] = field(default_factory=dict)
     doc: str = ""
     examples: List[dict] = field(default_factory=list)
@@ -173,6 +175,8 @@ class _CompositeRegistry:
 
 
 _COMPOSITE_REGISTRY = _CompositeRegistry()
+_COMPOSITE_REGISTRY_POLARS = _COMPOSITE_REGISTRY  # alias for clarity
+_COMPOSITE_REGISTRY_PANDAS = _CompositeRegistry()
 
 
 # ============== 装饰器 ==============
@@ -183,6 +187,7 @@ def composite_operator(
     params: Optional[Dict[str, dict]] = None,
     doc: str = "",
     examples: Optional[List[dict]] = None,
+    engine: str = "polars",
 ):
     """注册 DAG 模板复合算子.
 
@@ -192,6 +197,7 @@ def composite_operator(
         params: {pname: {type, default, required, description}}
         doc: 文档 (LLM prompt 用)
         examples: LLM few-shot 例子
+        engine: 引擎类型 ("polars" | "pandas"), 同名 op 分引擎注册
 
     Returns:
         装饰器函数
@@ -214,11 +220,15 @@ def composite_operator(
             name=name,
             template=func,
             category=category,
+            engine=engine,
             params=param_specs,
             doc=doc or (func.__doc__ or ""),
             examples=examples or [],
         )
-        _COMPOSITE_REGISTRY.register(spec)
+        if engine == "pandas":
+            _COMPOSITE_REGISTRY_PANDAS.register(spec)
+        else:
+            _COMPOSITE_REGISTRY.register(spec)
 
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> "Expr":
@@ -232,32 +242,83 @@ def composite_operator(
 
 # ============== 查询接口 ==============
 
-def is_composite_op(name: str) -> bool:
+def is_composite_op(name: str, engine: str = "any") -> bool:
     """判断 op 是否是 composite.
 
-    PR-QN-3a 设计: composite 完全隔离存放, 不污染主 ``_OPERATOR_REGISTRY``.
-    因此本函数仅查 ``_COMPOSITE_REGISTRY``.
+    Args:
+        name: 算子名
+        engine: "any" (default, union) | "polars" | "pandas"
+
+    PR-QN-3a: composite 完全隔离存放, 不污染主 ``_OPERATOR_REGISTRY``.
+    PR-QN-4: engine="any" 查双 registry (union), engine="polars"/"pandas" 分查.
     """
-    return name in _COMPOSITE_REGISTRY.list()
+    if engine == "polars":
+        return name in _COMPOSITE_REGISTRY_POLARS.list()
+    if engine == "pandas":
+        return name in _COMPOSITE_REGISTRY_PANDAS.list()
+    # engine == "any"
+    return name in _COMPOSITE_REGISTRY.list() or name in _COMPOSITE_REGISTRY_PANDAS.list()
 
 
-def get_composite_spec(name: str) -> Optional[CompositeSpec]:
-    """获取 composite spec (用于 LLM 编译时的 schema 查询)."""
-    return _COMPOSITE_REGISTRY.get(name)
+def get_composite_spec(name: str, engine: str = "any") -> Optional[CompositeSpec]:
+    """获取 composite spec (用于 LLM 编译时的 schema 查询).
+
+    Args:
+        name: 算子名
+        engine: "any" (default, first found) | "polars" | "pandas"
+    """
+    if engine == "polars":
+        return _COMPOSITE_REGISTRY_POLARS.get(name)
+    if engine == "pandas":
+        return _COMPOSITE_REGISTRY_PANDAS.get(name)
+    # engine == "any": prefer polars, fallback pandas
+    return _COMPOSITE_REGISTRY.get(name) or _COMPOSITE_REGISTRY_PANDAS.get(name)
 
 
-def list_composite_ops(category: Optional[str] = None) -> List[str]:
-    """列出所有 composite ops (可选按 category 过滤)."""
-    return _COMPOSITE_REGISTRY.list(category=category)
+def list_composite_ops(category: Optional[str] = None, engine: str = "any") -> List[str]:
+    """列出所有 composite ops (可选按 category + engine 过滤).
+
+    Args:
+        category: 按类别过滤
+        engine: "any" (default, union) | "polars" | "pandas"
+    """
+    if engine == "polars":
+        return _COMPOSITE_REGISTRY_POLARS.list(category=category)
+    if engine == "pandas":
+        return _COMPOSITE_REGISTRY_PANDAS.list(category=category)
+    # engine == "any": union
+    polars_ops = set(_COMPOSITE_REGISTRY_POLARS.list(category=category))
+    pandas_ops = set(_COMPOSITE_REGISTRY_PANDAS.list(category=category))
+    return list(polars_ops | pandas_ops)
 
 
-def get_composite_doc_for_llm() -> str:
+def get_composite_doc_for_llm(engine: str = "any") -> str:
     """生成给 LLM prompt 的 composite 文档 (markdown 格式).
+
+    Args:
+        engine: "any" (default, all ops) | "polars" | "pandas"
 
     Phase 1.5: 内部委托 LLMDocVisitor, 保持向后兼容的输出格式。
     """
     visitor = LLMDocVisitor()
-    for spec in _COMPOSITE_REGISTRY.all_specs():
+    if engine == "polars":
+        specs = _COMPOSITE_REGISTRY_POLARS.all_specs()
+    elif engine == "pandas":
+        specs = _COMPOSITE_REGISTRY_PANDAS.all_specs()
+    else:
+        # engine == "any": polars first, then pandas (dedup by name)
+        seen: set = set()
+        specs_list = []
+        for spec in _COMPOSITE_REGISTRY_POLARS.all_specs():
+            if spec.name not in seen:
+                seen.add(spec.name)
+                specs_list.append(spec)
+        for spec in _COMPOSITE_REGISTRY_PANDAS.all_specs():
+            if spec.name not in seen:
+                seen.add(spec.name)
+                specs_list.append(spec)
+        specs = iter(specs_list)
+    for spec in specs:
         visitor.visit_spec(spec)
     return visitor.result
 
@@ -448,15 +509,20 @@ def load_composites_from_yaml(yaml_path: str) -> int:
         param_specs = _COMPOSITE_REGISTRY._build_param_specs(
             entry.get("params", {})
         )
+        engine = entry.get("engine", "polars")  # 缺省 = "polars" (向后兼容)
         spec = CompositeSpec(
             name=entry["name"],
             template=template,
             category=entry.get("category", "multi_section"),
+            engine=engine,
             params=param_specs,
             doc=entry.get("doc", ""),
             examples=entry.get("examples", []),
         )
-        _COMPOSITE_REGISTRY.register(spec)
+        if engine == "pandas":
+            _COMPOSITE_REGISTRY_PANDAS.register(spec)
+        else:
+            _COMPOSITE_REGISTRY.register(spec)
         count += 1
     return count
 
