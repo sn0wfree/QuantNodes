@@ -58,9 +58,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Phase B (v2.9+): 旧类变 thin wrapper
 - Phase C (v3.0): 旧实现归档到 `_legacy_3c/`
 
-## [3.0.0] - 2026-06-23 (in progress)
+## [3.0.0] - 2026-06-23
 
 v3.0.0 — 上游 nanobot 迁移：从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。
+
+**关键变更**：
+- 核心运行时从自写 `loop/runner/memory/...` 改为包装 `Nanobot.from_config()`
+- `nanobot-ai` 改为 `[agent]` optional extra（量化库独立可用）
+- 单进程架构：FastAPI uvicorn + nanobot gateway 共存于同一 Python 进程
+- 完整 Phase 5 功能（5 个 stage，11 个 commit）：subagent / MCP / WebUI / 渠道 / Cron
 
 ### Stage 1 — Architecture (commit 2584462)
 
