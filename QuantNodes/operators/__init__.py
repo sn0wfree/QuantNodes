@@ -48,6 +48,9 @@ from .composite_dag import (
 # PR-QN-3b (2026-06-21): 20 个内置 composite op (注册副作用)
 from . import composite_dag_ops  # noqa: F401 — 模块导入即注册
 
+# Phase 3.2 (2026-06-22): 3 层注册表统一只读门面 (Facade)
+from .facade import OperatorFacade, operator_facade
+
 # 统一导出
 ts = _ts()
 sec = _sec()
@@ -71,4 +74,6 @@ __all__ = [
     "composite_operator", "CompositeSpec", "ParamSpec",
     "is_composite_op", "get_composite_spec", "list_composite_ops",
     "get_composite_doc_for_llm", "load_composites_from_yaml",
+    # Phase 3.2 (2026-06-22): Operator Facade
+    "OperatorFacade", "operator_facade",
 ]

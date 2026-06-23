@@ -109,6 +109,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     Registry / 模块 registry 内容 / _build_parser / main dispatch /
     BackwardCompat)，25 个测试。
 
+- **算子查询改 Facade pattern (Phase 3.2)**
+  (`QuantNodes/operators/facade.py`)
+  - QuantNodes 有 3 个并列算子注册表 (docs/26 §3.3)：L0 内置
+    `_OPERATOR_REGISTRY` (factor_functions) / L1 复合 DAG
+    `_COMPOSITE_REGISTRY` / L2 自定义 `_CustomOperatorRegistry`。调用方
+    (agent executor / loader) 此前需分别 import `get_operator` /
+    `is_composite_op`+`get_composite_spec` / `CustomOperator.get` 三套不同
+    入口才能完成"按名查算子"。
+  - 新增 `operators/facade.py`：
+    - `OperatorFacade`：统一**只读**门面，方法 `resolve` (L0+L2 级联
+      callable) / `info` / `get_composite` + `is_composite` (L1 隔离) /
+      `exists` / `kind` (返回 custom/builtin/composite/None) /
+      `list_all` (三层去重合并) / `documentation` / `composite_doc_for_llm`
+    - 模块级单例 `operator_facade`，无状态缓存 → 运行时新注册的 custom /
+      composite 算子实时可见
+  - **只委托不改行为**：全部转调既有函数 (`get_operator` /
+    `operator_info` / `get_composite_spec` / `list_operators` /
+    `generate_documentation` 等)，与旧 API bitwise 一致；查询级联优先级
+    (custom → builtin → composite) 与旧逻辑完全相同。
+  - **只读边界**：注册仍走各自的 `@register_operator` /
+    `@composite_operator` / `CustomOperator`，写路径不收敛，保持 L1 严格
+    隔离语义 (见 composite_dag.py:137-146)。
+  - `operators/__init__.py` 导出 `OperatorFacade` + `operator_facade`。
+  - 新增 `tests/operators/test_facade.py` 覆盖 7 类 (import / resolve /
+    composite / exists+kind / list_all / documentation / 自定义实时可见)，
+    26 个测试。
+
 ### Added
 - **端到端集成测试 (Option D 巩固)**
   (`tests/research/factor_test/e2e/test_pipeline_bool_factor.py`)
