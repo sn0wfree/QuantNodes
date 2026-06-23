@@ -1335,7 +1335,7 @@ result = spec.instantiate(x=col("close"))
 
 ---
 
-## 12. PR-QN-4: Dual-Engine Composite (Polars + Pandas, 2026-06-22)
+## 12. PR-QN-4: Dual-Engine Composite (Polars + Pandas, 2026-06-22, ✅ 2026-06-22 已发布)
 
 LLM 训练数据中 pandas 占 95%+，生成 polars 代码时频繁出错。Polars 1.x API 频繁 breaking change，教程/文档滞后，LLM 生成代码出错率高。
 

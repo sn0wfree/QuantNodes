@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantnodes"
-version = "2.7.0"
+version = "2.8.0"
 description = "AI-native quantitative research framework with symbolic computation and SQL pushdown"
 readme = "README.md"
 requires-python = ">=3.9"

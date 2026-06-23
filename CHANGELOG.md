@@ -362,5 +362,6 @@ Earlier version history available via `git log`. This project adopted
 structured CHANGELOG from May 2026; versions before 2.7.0 lack structured
 entries.
 
-[Unreleased]: https://github.com/sn0wfree/QuantNodes/compare/v2.7.0...HEAD
+[Unreleased]: https://github.com/sn0wfree/QuantNodes/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/sn0wfree/QuantNodes/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/sn0wfree/QuantNodes/compare/v2.6.0...v2.7.0
