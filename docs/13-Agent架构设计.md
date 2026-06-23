@@ -1,9 +1,10 @@
 # Agent 系统架构设计
 
 > 合并自: 12-Agent业界调研与设计模式.md + 13-Agent系统架构设计.md + 14-Agent实施计划.md + 15-Config-Driven方案.md  
-> 架构模式: nanobot极简核心 + llmwikify知识沉淀 + QuantNodes量化引擎  
+> 架构模式: **HKUDS nanobot 0.2.1 上游核心** + QuantNodes 量化工具集 + quant_dream 扩展  
 > 通信协议: MCP (Model Context Protocol)  
-> 状态: 已完成 ✅
+> 上游依赖: `nanobot-ai>=0.2.1,<0.3.0` (本地源码 `/tmp/nanobot`)  
+> 状态: **v3.0.0 重构进行中** (上游迁移 + 量化增强)
 
 ---
 
@@ -57,12 +58,14 @@
 
 | 原则 | 说明 |
 |------|------|
-| **极简核心** | Agent核心基于nanobot，<1000行代码，易理解、易维护 |
-| **松耦合** | 通过MCP协议桥接各子系统，各层独立演进 |
-| **知识驱动** | 所有研究结果自动沉淀到llmwikify，形成知识飞轮 |
-| **安全优先** | 所有代码执行经过CodeSandbox，三级权限控制 |
+| **上游复用** | Agent 核心运行时直接采用 HKUDS nanobot 0.2.1 (`Nanobot.from_config` + `AgentLoop` + `MemoryStore/Dream`)，零自写 |
+| **量化定制** | 保留 15 个 quant 工具 + QuantDreamHook + quant 专属 skill，挂在 nanobot 的 hook/registry 上 |
+| **松耦合** | 通过 MCP 协议桥接各子系统，各层独立演进 |
+| **知识驱动** | 研究结果沉淀到 `.agent/memory/MEMORY.md` + llmwikify，形成知识飞轮 |
+| **安全优先** | 所有代码执行经过 CodeSandbox，三级权限控制 |
 | **可复现** | 完整的研究过程记录，所有结果可追溯、可复现 |
 | **渐进式** | 技能按需加载，Token高效，优雅降级 |
+| **可升级** | 上游 alpha 期锁次版本号 `<0.3.0`，通过 facade 隔离，季度 sync upstream |
 
 ---
 
@@ -72,11 +75,13 @@
 
 | 项目 | 核心优势 | 量化场景适配度 |
 |------|----------|----------------|
-| **nanobot** | 极简设计、零数据库依赖、纯文件系统、5000行核心代码 | 5星 |
+| **HKUDS nanobot** ⭐ | 极简设计、零数据库依赖、纯文件系统、5000行核心代码、subagent+MCP+webui+12 channel+Dream | 5星 |
 | **opencode** | .agent/可移植规范、四层记忆架构、渐进式技能披露 | 5星 |
 | **CrewAI** | 角色化团队、装饰器驱动、YAML配置 | 4星 |
 | **LangGraph** | 状态机图计算、持久化执行断点续跑 | 4星 |
 | **OpenAI Agents** | Handoff委托模式、Sandbox隔离 | 3星 |
+
+> **v3.0.0 决策**：从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。源码 `/tmp/nanobot`（PyPI 包名 `nanobot-ai`）。
 
 ### 2.2 量化专属设计模式
 
@@ -132,21 +137,19 @@ ResearchDirector → FactorAnalyst / BacktestEngineer / RiskManager → ReportWr
 
 ## 三、目录结构
 
-### 3.1 Agent子系统
+### 3.1 Agent子系统（v3.0.0 新版）
 
 ```
 agent/
-├── __init__.py                    # Agent 对外 API
-├── core/                          # nanobot核心
-│   ├── loop.py                    # Agent主消息循环
-│   ├── runner.py                  # 工具执行循环
-│   ├── context.py                 # 上下文/Prompt构建
-│   ├── memory.py                  # 记忆存储
-│   ├── hook.py                    # 执行钩子系统
-│   └── autocompact.py             # 会话历史压缩
-├── tools/                         # 工具系统（15个工具）
-│   ├── base.py                    # Tool基类
-│   ├── registry.py                # 工具注册表
+├── __init__.py                    # 向后兼容导出 (Agent → Nanobot bridge)
+├── nanobot_bridge.py              # ⭐ NEW: Nanobot.from_config 包装门面 (~100 行)
+├── config_mapper.py               # ⭐ NEW: .env → nanobot_config.json (~120 行)
+├── core/
+│   ├── quant_dream.py             # ⭐ 量化专属 Dream 钩子 (moved from dream.py)
+│   └── dream.py                   # 向后兼容 shim (re-export quant_dream)
+├── tools/                         # 量化工具集 (15 个，改父类为 nanobot.agent.tools.base.Tool)
+│   ├── base.py                    # 保留参数验证/cast 工具方法
+│   ├── registry.py                # 注册到 nanobot ToolRegistry
 │   ├── sandbox.py                 # CodeSandbox封装
 │   ├── pipeline.py                # Pipeline构建验证
 │   ├── strategy.py                # StrategyGenerator封装
@@ -161,28 +164,39 @@ agent/
 │   ├── web_search.py              # 网络搜索
 │   ├── task.py                    # 任务管理
 │   └── echo.py                    # 测试工具
-├── bus/                           # 消息总线
-│   ├── events.py                  # Inbound/Outbound消息
-│   └── queue.py                   # 异步队列
-├── session/                       # 会话管理
-│   └── manager.py                 # 会话持久化
-├── providers/                     # LLM Provider适配层
+├── skills_quant/                  # ⭐ NEW: 量化专属 SKILL.md
+│   ├── factor-research/SKILL.md
+│   ├── strategy-design/SKILL.md
+│   ├── backtest-analyze/SKILL.md
+│   ├── risk-management/SKILL.md
+│   ├── quant-dream/SKILL.md
+│   └── config-driven/SKILL.md
+├── providers/                     # Provider 工厂 (输出 nanobot.llmProviders 配置)
 │   ├── base.py                    # Provider基类
-│   └── quantnodes.py              # 适配现有LLMClientBase
-├── config/                        # 配置驱动系统
-│   ├── types.py                   # 类型定义
-│   ├── loader.py                  # YAML配置解析器
-│   ├── executor.py                # 配置执行器
-│   └── templates/                 # 策略模板
-├── templates/                     # Prompt模板
-│   └── agent/
-│       ├── identity.md
-│       ├── system_prompt.md
-│       └── tools_description.md
-└── utils/                         # 工具函数
-    ├── helpers.py
-    └── prompt_templates.py
+│   └── quantnodes.py              # .env → dialect 推断
+├── cron_jobs.py                   # ⭐ NEW: 周期任务 (日终/周度/月度)
+└── utils/
+    └── helpers.py
+
+mcp_server/                        # ⭐ NEW: 把 quant 能力暴露为 MCP server (stdio)
+├── __init__.py
+├── server.py                      # FastMCP("quant") 注册 8 个核心 tool
+└── tools/                         # backtest/factor/strategy/pipeline/wiki/sandbox/config_backtest/data_query
+
+.agent/                            # ⭐ NEW workspace (上游 nanobot 默认)
+├── agents/                        # Multi-agent 团队 (subagent)
+│   ├── main.md                    # ResearchDirector
+│   ├── factor-analyst.md
+│   ├── backtest-engineer.md
+│   └── risk-manager.md
+├── skills/                        # 用户自定义 skill + skills_quant/ 自动 link
+├── memory/                        # MEMORY.md / SOUL.md / USER.md / history.jsonl
+├── SOUL.md                        # 个性化指令
+├── USER.md                        # 用户偏好
+└── nanobot_config.json            # llmProviders / mcpServers / cron / channels
 ```
+
+> **删除模块**（v3.0.0）：`agent/core/{loop,runner,memory,compaction,autocompact,context,hook}.py`、`agent/bus/`、`agent/session/`、`agent/templates/agent/`、`agent/config/{loader,executor,types}.py`、`agent/cli/main.py`、`agent/web/` — 全部由上游 nanobot 替代。
 
 ### 3.2 研究工作区
 
@@ -282,70 +296,34 @@ QUANT_RELATION_TYPES = {
 
 ## 六、实施计划
 
-### 6.1 Phase 1: 核心框架复刻（✅ 已完成）
+### 6.0 v3.0.0 — 上游 nanobot 迁移（**当前进行中**）
 
-**目标**: 最小可运行Agent，支持对话 + 工具调用
+**目标**: 直接消费 HKUDS/nanobot 0.2.1 上游，删除自写 core，量化工具 hook 化
 
-| 任务 | 文件 | 代码量 | 状态 |
-|------|------|--------|------|
-| 消息总线 | `bus/events.py` + `queue.py` | ~100行 | ✅ |
-| 会话管理 | `session/manager.py` | ~200行 | ✅ |
-| 工具基类 | `tools/base.py` + `registry.py` | ~500行 | ✅ |
-| Provider适配 | `providers/base.py` + `quantnodes.py` | ~400行 | ✅ |
-| 上下文构建 | `core/context.py` + `hook.py` | ~300行 | ✅ |
-| 执行循环 | `core/runner.py` | ~800行 | ✅ |
-| 主循环 | `core/loop.py` + `autocompact.py` | ~600行 | ✅ |
-| 记忆系统 | `core/memory.py` | ~200行 | ✅ |
-| CLI入口 | `cli/main.py` | ~150行 | ✅ |
-| 单元测试 | `tests/agent/test_*.py` | ~300行 | ✅ |
+| Stage | 内容 | Commit | 状态 |
+|-------|------|--------|------|
+| **0** | 装依赖 + 跑基线 | `feat(nanobot): 安装 nanobot-ai 0.2.1 依赖` | ⏳ |
+| **1** | 核心重构（bridge + tools 改父类 + dream 保留） | `refactor(agent): 迁移到 HKUDS nanobot 上游` | ⬜ |
+| **2** | API 解耦 `api/services/*` | `refactor(api): 解耦 services 对 QuantNodes.agent 的依赖` | ⬜ |
+| **3** | workspace 迁移 `.quant_agent/` → `.agent/` | `refactor(workspace): 迁移到 .agent/ 命名空间` | ⬜ |
+| **4** | 测试 + 文档 | `docs+test: 升级到 nanobot 0.2.1` | ⬜ |
+| **5.1** | Subagent 多 Agent 团队（main/factor-analyst/backtest-engineer/risk-manager） | `feat(agent): 启用 nanobot subagent 多 Agent 团队` | ⬜ |
+| **5.2** | MCP server（quant 能力 stdio 暴露） | `feat(mcp): 暴露 quant 能力为 MCP server` | ⬜ |
+| **5.3** | 上游 WebUI（端口 18080） | `feat(webui): 切换到 nanobot 上游 WebUI` | ⬜ |
+| **5.4** | 渠道接入（飞书 + WebSocket） | `feat(channels): 接入飞书 + WebSocket 渠道` | ⬜ |
+| **5.5** | Cron 调度（日终/周度/月度） | `feat(cron): 启用 nanobot cron 周期任务` | ⬜ |
 
-**总计**: ~3900行
+### 6.1-6.5 历史阶段（已归档）
 
-### 6.2 Phase 2: QuantNodes工具集（✅ 已完成）
+v3.0.0 之前的 Phase 1-5 已全部完成但**自写 core 已废弃**，作为历史归档。详见 git log。
 
-**目标**: 策略生成 → 验证 → 回测 完整闭环
-
-| 任务 | 文件 | 代码量 | 状态 |
-|------|------|--------|------|
-| 沙箱工具 | `tools/sandbox.py` | ~100行 | ✅ |
-| Pipeline工具 | `tools/pipeline.py` | ~150行 | ✅ |
-| 策略生成工具 | `tools/strategy.py` | ~150行 | ✅ |
-| 回测运行工具 | `tools/backtest.py` | ~200行 | ✅ |
-| 因子分析工具 | `tools/factor.py` | ~150行 | ✅ |
-| 端到端测试 | `tests/agent/test_e2e.py` | ~100行 | ✅ |
-| Web界面 | `web/app.py` | ~300行 | ✅ |
-
-**总计**: ~1150行
-
-### 6.3 Phase 3: llmwikify + Polars v2.0（部分完成）
-
-**目标**: 知识沉淀 + 配置驱动回测
-
-| 任务 | 文件 | 状态 |
-|------|------|------|
-| MCP工具桥 | `tools/mcp.py` | ⬜ 待开始 |
-| Wiki客户端 | `wiki/client.py` | ⬜ 待开始 |
-| Polars算子库 | `factor_node/factor_functions/` | ✅ |
-| Config加载器 | `agent/config/loader.py` | ✅ |
-| Config执行器 | `agent/config/executor.py` | ✅ |
-| 算子注册表 | `factor_node/factor_functions/__init__.py` | ✅ |
-| TA-Lib集成 | `factor_node/factor_functions/talib_ops.py` | ✅ |
-| 回测运行器 | `backtest/config_runner.py` | ✅ |
-
-### 6.4 Phase 4: 技能系统（待开始）
-
-| 任务 | 文件 | 代码量 |
-|------|------|--------|
-| 技能加载器 | `skills/loader.py` | ~200行 |
-| 策略设计技能 | `skills/strategy_design/*.py` | ~300行 |
-| 因子研究技能 | `skills/factor_research/*.py` | ~300行 |
-| Dream系统 | `core/memory.py` 扩展 | ~300行 |
-
-**总计**: ~1400行
-
-### 6.5 Phase 5: FactorNode Polars 统一迁移（✅ 已完成）
-
-详见 `22-算子系统设计与规范.md` 第十六节
+| 历史阶段 | 状态 | 备注 |
+|----------|------|------|
+| 6.1 Phase 1: 核心框架复刻 (3900 行) | ✅ 已完成 → 被上游替代 | `core/{loop,runner,memory}.py` 删除 |
+| 6.2 Phase 2: QuantNodes 工具集 (1150 行) | ✅ 已完成 → 改父类保留 | `tools/*.py` 改继承 `nanobot.agent.tools.base.Tool` |
+| 6.3 Phase 3: llmwikify + Polars | ⚠️ 部分完成 | MCP 桥/Polars 迁移到上游，Wiki 客户端仍 TODO |
+| 6.4 Phase 4: 技能系统 | ⬜ → 改为 SKILL.md 格式 | `skills_quant/*/SKILL.md` |
+| 6.5 Phase 5: Polars 统一迁移 | ✅ 已完成 | 不变 |
 
 ---
 
@@ -508,5 +486,6 @@ backtest:
 
 ---
 
-**文档版本**: v2.0  
-**最后更新**: 2026-05-06
+**文档版本**: v3.0.0  
+**最后更新**: 2026-06-23  
+**变更摘要**: 从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。详见 [docs/14-上游nanobot升级指南.md](14-上游nanobot升级指南.md)。

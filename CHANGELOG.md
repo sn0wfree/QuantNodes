@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-06-23 (in progress)
+
+v3.0.0 — 上游 nanobot 迁移：从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。
+
+### Architecture
+
+- **核心运行时迁移**：删除自写 `QuantNodes/agent/core/{loop,runner,memory,autocompact,context,hook,compaction}.py`、`bus/`、`session/`、`templates/agent/`、`config/{loader,executor}`，改为直接消费上游 `nanobot-ai>=0.2.1,<0.3.0`。
+- **编程式门面**：新增 `QuantNodes/agent/nanobot_bridge.py::Agent`，薄包装 `Nanobot.from_config(config_path, workspace=...)`，旧 `Agent(workspace, config)` 签名不变。
+- **dream.py 保留**：从 `core/dream.py` 迁出为 `core/quant_dream.py`，实现 `QuantDreamHook(AgentHook)` 挂在上游 hook 系统；`core/dream.py` 保留为 re-export shim（DeprecationWarning）。
+- **配置映射**：新增 `QuantNodes/agent/config_mapper.py`，把 `.env` 的 `QUANTNODES__LLM__*` 翻译为 `.agent/nanobot_config.json` 的 `llmProviders` 块（含 `dialect` 自动推断：OpenAI 兼容 → `OpenAIChatCompletions`、Anthropic → `AnthropicMessages`、Ollama → `OpenResponses`）。
+- **workspace 迁移**：`.quant_agent/` → `.agent/`（上游 nanobot 默认约定）。一次性脚本 `scripts/migrate_workspace.py`。
+- **CLI/WebUI**：删除自写 `agent/cli/main.py` 和 `agent/web/`，改为 `python -m nanobot` + `python -m nanobot webui --port 18080`。
+
+### API 解耦
+
+- `api/services/agent_service.py`：改 import 为 `nanobot_bridge.Agent`，事件协议 `token/tool_call/tool_result/done` 向后兼容。
+- `api/services/{backtest,wiki,stats}_service.py`：不再 `from QuantNodes.agent.tools.*`，改调底层 service（`backtest.config_runner` / `QuantNodes.research.wiki`）。
+- `api/services/dream_service.py`：改用 `core/quant_dream.QuantDreamHook`。
+- `api/routers/skill.py`：用上游 `nanobot.skills` SKILL.md 解析器。
+- `api/routers/settings.py`：`reload_agent()` → `reload_bot()`。
+
+### Skills
+
+- 新增 `QuantNodes/agent/skills_quant/` 6 个 SKILL.md（factor-research / strategy-design / backtest-analyze / risk-management / quant-dream / config-driven），格式对齐上游 `nanobot/skills/*/SKILL.md`（YAML front-matter + 指令体）。
+- `scripts/migrate_skills.py` 把旧 `skills/*.py` 自动转换为 SKILL.md。
+
+### Dependencies
+
+- 增 `nanobot-ai>=0.2.1,<0.3.0`（alpha 期锁次版本号）。
+- 本地开发期 `pip install -e /tmp/nanobot`（HKUDS/nanobot v0.2.1 源码克隆）。
+
+### Breaking Changes
+
+- 删 `QuantNodes/agent/core/{loop,runner,memory,compaction}.py` —— 直接 import 路径报错，必须改用 `Agent.run()` / `Nanobot.from_config()` facade。
+- 删 `QuantNodes/agent/bus/`、`session/`、`config/{loader,executor}.py` —— 同上。
+- workspace 从 `.quant_agent/` 迁 `.agent/` —— 见 `scripts/migrate_workspace.py`。
+- 旧 `agent/templates/agent/*.md` 改名为 `.agent/SOUL.md` —— 见 `scripts/migrate_workspace.py`。
+
+### Migration
+
+详见 [`docs/14-上游nanobot升级指南.md`](docs/14-上游nanobot升级指南.md)。
+
+### Pending (Phase 5)
+
+- [ ] 5.1 Subagent 多 Agent 团队（main/factor-analyst/backtest-engineer/risk-manager）
+- [ ] 5.2 MCP server（quant 能力 stdio 暴露）
+- [ ] 5.3 上游 WebUI（端口 18080）
+- [ ] 5.4 渠道接入（飞书 + WebSocket）
+- [ ] 5.5 Cron 调度（日终/周度/月度）
+
 ## [2.8.0] - 2026-06-22
 
 Dual-Engine Composite — allows LLM to write pandas or polars code
