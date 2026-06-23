@@ -12,6 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 
 
+import pytest
+
 from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.core.monitoring import (
     EvolutionMetrics,
@@ -30,6 +32,17 @@ from QuantNodes.core.visualization import (
     metric_distribution_figure,
     metric_per_round_figure,
     operation_breakdown_figure,
+)
+
+
+# v3.0.0 graceful degradation helper: figure functions return None
+# when plotly is not installed, so tests asserting `fig is not None`
+# or building HTML/JSON dashboards are not meaningful in that env.
+# ``TestLineageLayout`` only exercises pure-Python layout dicts and
+# stays active.
+_plotly_required = pytest.mark.skipif(
+    pytest.importorskip("plotly", reason="plotly not installed") is None,
+    reason="plotly not installed; figure/dashboard tests skipped",
 )
 
 
@@ -104,6 +117,7 @@ class TestLineageLayout:
 # 2. 5 个 figure 函数 (5 tests)
 # ============================================================================
 
+@_plotly_required
 class TestFigureFunctions:
     def test_lineage_dag_figure_empty(self):
         fig = lineage_dag_figure([])
@@ -147,6 +161,7 @@ class TestFigureFunctions:
 # 3. generate_report / generate_html (3 tests)
 # ============================================================================
 
+@_plotly_required
 class TestGenerateReport:
     def test_generate_report_5_figures(self):
         e1 = _entry("e1", round_idx=0, sharpe=1.0)
@@ -185,6 +200,7 @@ class TestGenerateReport:
 # 4. generate_dashboard_html (3 tests)
 # ============================================================================
 
+@_plotly_required
 class TestDashboardHtml:
     def test_no_streaming_no_live(self):
         c = MetricCollector()

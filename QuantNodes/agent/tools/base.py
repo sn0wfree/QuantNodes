@@ -80,23 +80,37 @@ else:
         is the lightest possible stand-in: just enough to allow
         ``from .base import Tool`` and the ``_dispatch`` helper.
 
-        Calls to ``to_openai_schema`` raise a clear error guiding the
-        user to install the [agent] extra. Tool registration with
-        nanobot's ToolRegistry is also unavailable — agents that need
-        registration must install ``quantnodes[agent]``.
+        ``to_openai_schema`` is implemented locally by synthesising the
+        standard OpenAI function-calling schema from ``name`` /
+        ``description`` / ``parameters``. This keeps monitor/MCP tools
+        introspectable in quant-only environments (e.g. dashboard,
+        docs) where the upstream nanobot ``Tool.to_schema`` is not
+        available. Tool registration with nanobot's ``ToolRegistry`` and
+        dispatch through ``AgentLoop`` still require the [agent] extra.
         """
 
         name: str = ""
         description: str = ""
         parameters: Dict[str, Any] = {}
 
-        @property
-        def to_openai_schema(self) -> Any:
-            """Raises — only available with ``nanobot-ai`` installed."""
-            raise RuntimeError(
-                "to_openai_schema requires nanobot-ai. "
-                "Install: pip install 'quantnodes[agent]'"
-            )
+        def to_openai_schema(self) -> Dict[str, Any]:
+            """OpenAI function-calling schema synthesised from attrs.
+
+            Mirrors the call signature of nanobot's ``Tool.to_schema``
+            (a method, not a property) so callers can do
+            ``tool.to_openai_schema()`` uniformly across both code paths.
+
+            Returns:
+                ``{"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}``
+            """
+            return {
+                "type": "function",
+                "function": {
+                    "name": self.name,
+                    "description": self.description,
+                    "parameters": self.parameters,
+                },
+            }
 
         async def execute(self, **kwargs: Any) -> Any:  # pragma: no cover
             raise RuntimeError(

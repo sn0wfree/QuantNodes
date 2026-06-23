@@ -10,10 +10,17 @@ from datetime import datetime
 
 
 def valid_date(trade_dts) -> bool:
-    """验证日期格式, 必须为 yyyymmdd 数值型"""
+    """验证日期格式, 必须为 yyyymmdd 数值型
+
+    v3.0.0 fix: use ``.iloc[0]`` instead of ``[0]`` for indexing the
+    ``dtypes`` Series. The previous code assumed integer column labels
+    (e.g. ``pd.DataFrame(dates, columns=[0])``), but after
+    ``resample_trade_date`` renames columns to strings the index
+    becomes string-keyed, and ``dtypes[0]`` raises ``KeyError: 0``.
+    """
     if isinstance(trade_dts, pd.DataFrame):
         num_lens = len(str(trade_dts.iloc[0, 0]))
-        data_type = trade_dts.dtypes[0]
+        data_type = trade_dts.dtypes.iloc[0]
     elif isinstance(trade_dts, pd.Series):
         num_lens = len(str(trade_dts.iloc[0]))
         data_type = trade_dts.dtypes
@@ -27,13 +34,15 @@ def datenum_to_datetime(trade_dt: pd.DataFrame) -> pd.DataFrame:
     trade_dt = trade_dt.copy()
     if isinstance(trade_dt, pd.Series):
         trade_dt = trade_dt.to_frame()
-    return trade_dt.applymap(lambda x: datetime.strptime(str(int(x)), '%Y%m%d'))
+    # v3.0.0 fix: ``DataFrame.applymap`` was removed in pandas 3.0; use ``.map``.
+    return trade_dt.map(lambda x: datetime.strptime(str(int(x)), '%Y%m%d'))
 
 
 def datetime_to_datenum(trade_dt: pd.DataFrame) -> pd.DataFrame:
     """将 datetime 转换为 yyyymmdd int"""
     trade_dt = trade_dt.copy()
-    return trade_dt.applymap(lambda x: int(datetime.strftime(x, '%Y%m%d')))
+    # v3.0.0 fix: ``DataFrame.applymap`` was removed in pandas 3.0; use ``.map``.
+    return trade_dt.map(lambda x: int(datetime.strftime(x, '%Y%m%d')))
 
 
 def chg_idx_to_datestr(data):

@@ -136,15 +136,22 @@ class TestConfigBacktestRunnerComputeStatistics(unittest.TestCase):
         self.config.backtest.initial_cash = 100000
 
     def test_with_empty_trades(self):
-        # NOTE: _compute_statistics has a bug when equity_curve is empty:
-        # equity_curve["equity"].pct_change() raises ValueError on empty Series
-        # This test documents the bug
+        # v3.0.0: ``_compute_statistics`` now gracefully handles an empty
+        # equity curve (returns zero metrics). Earlier versions raised
+        # ValueError on ``equity_curve["equity"].pct_change()`` of an
+        # empty Series; that bug has since been fixed by short-circuit
+        # branches on ``len(equity_curve)`` / ``len(daily_returns)``.
         r = ConfigBacktestRunner()
         trade_result = TradeResult()
         trade_result.cash = 100000
         df = pd.DataFrame({'date': [], 'Code': [], 'Close': []})
-        with self.assertRaises(ValueError):
-            r._compute_statistics(trade_result, df, self.config)
+        result = r._compute_statistics(trade_result, df, self.config)
+        # All risk metrics default to 0 on an empty input.
+        assert result.total_return == 0.0
+        assert result.sharpe_ratio == 0.0
+        assert result.max_drawdown == 0.0
+        assert result.equity_curve.empty
+        assert result.trades.empty
 
     def test_basic_statistics(self):
         r = ConfigBacktestRunner()

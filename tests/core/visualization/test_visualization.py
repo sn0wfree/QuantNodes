@@ -11,6 +11,12 @@ from __future__ import annotations
 
 import pytest
 
+# v3.0.0 graceful degradation: all figure-based tests require plotly
+# to be installed. When plotly is missing, the QuantNodes visualization
+# module returns None for figure functions (see dashboard.py etc.),
+# so these tests are not meaningful and are skipped.
+pytest.importorskip("plotly", reason="plotly not installed; figure tests skipped")
+
 from QuantNodes.core.feedback import (
     ChannelFeedback,
     FactorFeedback,

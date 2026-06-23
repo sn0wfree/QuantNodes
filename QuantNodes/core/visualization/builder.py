@@ -37,7 +37,17 @@ class Section:
 
         div_id: 传给 payload.to_html() 的 div id; 传 None 时用默认
                  f"fig_{title.lower().replace(' ', '_')}" (与旧实现兼容)。
+
+        v3.0.0 graceful degradation: when ``payload`` is None (e.g. plotly
+        not installed), we emit a friendly install hint instead of
+        crashing. ``to_dict`` still records the None value so callers
+        can introspect the report structure.
         """
+        if self.payload is None:
+            return (
+                "<p><em>(plotly not installed — install with "
+                "<code>pip install plotly</code> to render this chart)</em></p>"
+            )
         if hasattr(self.payload, "to_html"):
             kwargs = {"full_html": False, "include_plotlyjs": include_plotlyjs}
             if div_id is None:

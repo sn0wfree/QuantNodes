@@ -75,7 +75,11 @@ class TestNumericConversion:
 
     def test_mostly_text_keeps_original(self, fake_fetcher):
         s = fake_fetcher._try_convert_numeric(pd.Series(["abc", "def", "123"]))
-        assert s.dtype == object
+        # v3.0.0 / pandas 3.0: string inference now produces
+        # ``StringDtype(na_value=nan)`` instead of ``object``. Both
+        # are non-numeric; assert the column is *not* a numeric dtype
+        # and that the text value round-trips.
+        assert not pd.api.types.is_numeric_dtype(s.dtype)
         assert s.iloc[0] == "abc"
 
 

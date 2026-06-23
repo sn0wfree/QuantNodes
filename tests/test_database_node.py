@@ -415,6 +415,10 @@ class TestMySQLNode:
 
 
 @pytest.mark.integration
+@pytest.mark.skipif(
+    __import__("importlib.util").util.find_spec("pymysql") is None,
+    reason="pymysql not installed; MySQL integration test skipped",
+)
 class TestMySQLNodeIntegration:
     """MySQL 集成测试（需要真实 MySQL 连接）"""
 

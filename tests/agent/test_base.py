@@ -264,12 +264,19 @@ class TestToolWithoutNanobot:
         assert t.name == "local"
         assert t.description == "local desc"
 
-    def test_to_openai_schema_raises_install_hint(self):
-        """The error message tells the user how to install ``[agent]`` extra."""
+    def test_to_openai_schema_synthesises_function_schema(self):
+        """v3.0.0: stand-alone Tool (no nanobot) synthesises the
+        OpenAI function-calling schema from ``name`` / ``description``
+        / ``parameters`` so monitor/MCP tools remain introspectable
+        in quant-only deployments.
+        """
         t = _DummyTool()
-        with pytest.raises(RuntimeError) as exc_info:
-            t.to_openai_schema
-        msg = str(exc_info.value)
-        assert "quantnodes[agent]" in msg, (
-            f"error message should mention install command, got: {msg!r}"
-        )
+        schema = t.to_openai_schema()
+        assert schema["type"] == "function"
+        assert schema["function"]["name"] == "dummy"
+        # _DummyTool's description is a class docstring literal.
+        assert "dummy" in schema["function"]["description"].lower()
+        # ``parameters`` is forwarded verbatim from the tool's
+        # ``parameters`` attribute.
+        assert schema["function"]["parameters"] == t.parameters
+        assert schema["function"]["parameters"]["type"] == "object"

@@ -117,8 +117,11 @@ class TestICAnalyzerNode:
     def test_constant_factor_ic_is_nan(self, synthetic_data):
         """常数因子的 IC 应为 NaN (std=0, corr undefined)."""
         ctx = _build_analysis_context(synthetic_data)
+        # v3.0.0 fix: ``DataFrame.values`` is read-only in pandas 3.0
+        # when the frame has a single dtype. Use ``mask``/``where`` to
+        # mutate the underlying buffer safely.
         factor = ctx['FactorPreprocess'].copy()
-        factor.values[~np.isnan(factor.values)] = 1.0
+        factor = factor.where(factor.isna(), 1.0)
         ctx['FactorPreprocess'] = factor
         ctx['FactorNeutralize'] = factor
         result = ICAnalyzerNode(config={'min_group_size': 5}).execute(context=ctx)
