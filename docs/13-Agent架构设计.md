@@ -716,3 +716,92 @@ stop():
 | WebSocket token 过期（5 min） | nanobot 自动 `nbwt_...` 续签；前端 reconnect() 重新 bootstrap |
 | 多 channel 同时收到消息 | MessageBus 统一处理，每个 channel 的 `chat_id` 隔离 session |
 
+## 十三、Stage 5.5 — 量化专属 Cron 调度
+
+### 13.1 三套 quant 系统任务
+
+v3.0.0 在 nanobot CronService 上注册 3 个 quant 系统任务（默认 Asia/Shanghai 时区）：
+
+| 任务 ID | cron 表达式 | 时机 | 用途 |
+|---------|------------|------|------|
+| `quant-quant-daily-recap` | `30 16 * * 1-5` | 工作日 16:30 | 因子 IC 重算 + 回测归档 + 日终摘要 |
+| `quant-quant-weekly-review` | `0 22 * * 0` | 周日 22:00 | 因子周报 + 风险归因 + Wiki 周报 |
+| `quant-quant-monthly-strategy-pool` | `0 2 1 * *` | 每月 1日 02:00 | Wiki 增量 + 策略池月度评审 |
+
+设计要点：
+- **payload.kind = `system_event`** — 用 `register_system_job()` 注册（idempotent，重启不重复）
+- **payload.deliver = True** — 完成后结果送到配置的 channel（默认 Feishu 群）
+- **message = agent prompt** — 任务内容是给 agent 的 prompt（agent 用 factor/backtest/wiki 工具生成报告）
+- **session_key = `cron:<job>`** — 每个任务独立 session，便于追踪
+
+### 13.2 注册流程
+
+```python
+# QuantNodes/agent/cron_jobs.py
+from QuantNodes.agent.cron_jobs import register_quant_cron_jobs
+
+# In NanobotRuntime._build_components (after CronService 构造)
+try:
+    register_quant_cron_jobs(self._cron)
+except ImportError:
+    logger.warning("Could not register quant cron jobs: nanobot not available")
+```
+
+`register_quant_cron_jobs`：
+1. 读 `DEFAULT_QUANT_CRON_JOBS` (3 个)
+2. 应用 env var 覆盖（`QUANTNODES__CRON__<NAME>__ENABLED/CRON_EXPR/MESSAGE/DELIVER/CHANNEL`）
+3. 过滤 `enabled=False` 的
+4. 对每个 job 构造 `CronJob(id='quant-<name>', schedule=CronSchedule(kind='cron', expr, tz), payload=CronPayload(kind='system_event', message, deliver, channel, session_key))`
+5. 调 `cron.register_system_job(cron_job)` —— 自动去重同 id
+
+### 13.3 env var 覆盖
+
+```bash
+# 完全禁用
+QUANTNODES__CRON__QUANT_DAILY_RECAP__ENABLED=false
+
+# 修改 cron 表达式
+QUANTNODES__CRON__QUANT_WEEKLY_REVIEW__CRON_EXPR="0 20 * * 0"
+
+# 自定义 prompt
+QUANTNODES__CRON__QUANT_DAILY_RECAP__MESSAGE="只看 IC > 0.05 的因子"
+
+# 关闭结果推送（只跑不送）
+QUANTNODES__CRON__QUANT_MONTHLY_STRATEGY_POOL__DELIVER=false
+```
+
+### 13.4 API 端点
+
+| 端点 | 用途 |
+|------|------|
+| `GET /api/agent/cron` | 列出所有 cron jobs（含 quant 系统任务） |
+| `GET /api/agent/cron/{id}/run-now` | 立即触发某个任务（手动 override） |
+
+返回结构：
+```json
+{
+  "available": true,
+  "state": "running",
+  "count": 3,
+  "jobs": [
+    {
+      "id": "quant-quant-daily-recap",
+      "name": "quant-daily-recap",
+      "enabled": true,
+      "schedule": {"kind": "cron", "expr": "30 16 * * 1-5", "tz": "Asia/Shanghai"},
+      "payload": {"kind": "system_event", "message_preview": "...", "deliver": true},
+      "state": {"next_run_at_ms": 1234567890, "last_status": "ok", "run_count": 42}
+    }
+  ]
+}
+```
+
+### 13.5 失败模式
+
+| 场景 | 行为 |
+|------|------|
+| cron 表达式语法错误 | nanobot CronService 拒绝注册，`run_history` 留空 |
+| agent 任务超时 | `last_status=error` + `last_error` 写入，下次仍按 schedule 触发 |
+| jobs.json 损坏 | `_load_jobs` 自动备份为 `.corrupt-<ts>`，**拒绝以空 store 启动**（防数据丢失） |
+| 多个 quant 任务同时触发 | nanobot 串行执行（`await self._execute_job(job)`），互不干扰 |
+

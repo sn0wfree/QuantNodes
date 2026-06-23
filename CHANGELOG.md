@@ -200,7 +200,90 @@ pip install 'quantnodes[agent]'   # ← 这一步必做，否则失去 agent 功
 - [x] 5.2 MCP server（quant 能力 stdio 暴露）
 - [x] 5.3 单进程 WebUI + 可选依赖
 - [x] 5.4 渠道接入（飞书 + WebSocket）
-- [ ] 5.5 Cron 调度（日终/周度/月度）
+- [x] 5.5 Cron 调度（日终/周度/月度）
+
+### Stage 5.5 — 量化专属 Cron 调度 (commit pending)
+
+#### 新增
+
+- **`QuantNodes/agent/cron_jobs.py`** (新, ~270 行) — 3 个 quant 系统任务的定义 + 注册逻辑：
+  - `QuantCronJob` dataclass：纯 Python 数据类（无 nanobot 依赖）
+  - 3 个默认任务：
+    - `quant-daily-recap` — 工作日 16:30 因子 IC 重算 + 回测归档
+    - `quant-weekly-review` — 周日 22:00 因子周报 + 风险归因
+    - `quant-monthly-strategy-pool` — 每月 1日 02:00 Wiki 增量 + 策略池评审
+  - `DEFAULT_TZ = "Asia/Shanghai"`
+  - `build_quant_cron_jobs_from_env()` — 应用 env 覆盖并过滤 disabled
+  - `register_quant_cron_jobs(cron_service)` — 调 `CronService.register_system_job()`
+  - `NanobotNotInstalledForCron` 异常（ImportError 子类）
+- **`api/services/nanobot_runtime.py`** — 在 `_build_components` 中调 `register_quant_cron_jobs(self._cron)`，try/except ImportError 容错
+- **`api/routers/agent.py`** — 新增 2 个端点：
+  - `GET /api/agent/cron` — 列出所有 cron jobs
+  - `GET /api/agent/cron/{job_id}/run-now` — 立即触发某个任务
+- **`.env.template`** — 新增 `QUANTNODES__CRON__<NAME>__<FIELD>` env 覆盖说明
+- **`docs/13-Agent架构设计.md`** §13 新增：cron 三套任务 + 注册流程 + env 覆盖 + API 端点 + 失败模式
+
+#### env 覆盖
+
+```bash
+# 禁用单个任务
+QUANTNODES__CRON__QUANT_DAILY_RECAP__ENABLED=false
+
+# 修改 cron 表达式
+QUANTNODES__CRON__QUANT_WEEKLY_REVIEW__CRON_EXPR="0 20 * * 0"
+
+# 自定义 prompt
+QUANTNODES__CRON__QUANT_DAILY_RECAP__MESSAGE="自定义 prompt..."
+
+# 关闭结果推送
+QUANTNODES__CRON__QUANT_MONTHLY_STRATEGY_POOL__DELIVER=false
+
+# 修改 channel
+QUANTNODES__CRON__QUANT_DAILY_RECAP__CHANNEL=feishu
+```
+
+#### 测试（17 new tests, 14 pass + 3 skip）
+
+- `tests/agent/test_cron_jobs.py` (17):
+  - `test_three_default_jobs_exist` — 3 默认任务齐全
+  - `test_default_jobs_have_distinct_schedules` — cron 表达式去重
+  - `test_default_jobs_have_valid_cron_expressions` — 5 字段格式
+  - `test_default_jobs_use_default_timezone_reference` — TZ 常量
+  - `test_default_jobs_have_non_empty_messages` — prompt ≥ 50 字符
+  - `test_default_jobs_are_enabled` — 默认 enabled + deliver
+  - `test_default_jobs_have_descriptions`
+  - `test_build_from_env_returns_defaults_when_no_env`
+  - `test_env_can_disable_individual_job`
+  - `test_env_can_disable_all_jobs`
+  - `test_env_can_override_cron_expression`
+  - `test_env_can_override_message`
+  - `test_env_can_override_deliver_flag`
+  - `test_env_truthy_values_accepted`
+  - `test_register_quant_cron_jobs_with_mock` (skip if nanobot missing)
+  - `test_register_is_idempotent_on_reregistration` (skip)
+  - `test_register_respects_env_disable` (skip)
+
+3 个注册相关测试需要 `nanobot.cron.types`，未装 nanobot-ai 时优雅跳过。
+
+#### 用户启用
+
+```bash
+# 1. 装 [agent] extra
+pip install 'quantnodes[agent]'
+
+# 2. 重启 FastAPI，3 个任务自动注册（查看 /api/agent/cron 确认）
+
+# 3. 默认行为：
+#    - 工作日 16:30 自动跑日终复盘，结果送到 Feishu 群
+#    - 周日 22:00 自动跑周度复盘
+#    - 每月 1日 02:00 自动跑月度策略池评审
+
+# 4. 手动触发（调试用）：
+curl http://localhost:8000/api/agent/cron/quant-quant-daily-recap/run-now
+
+# 5. 调整时间：
+echo 'QUANTNODES__CRON__QUANT_DAILY_RECAP__CRON_EXPR="0 17 * * 1-5"' >> .env
+```
 
 ### Stage 5.4 — 渠道接入 (commit pending)
 

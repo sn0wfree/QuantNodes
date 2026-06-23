@@ -358,6 +358,24 @@ class NanobotRuntime:
         # 4. Register our 14 quant tools on the agent's ToolRegistry
         register_all_quant_tools(self._agent.tools, workspace=self.workspace)
 
+        # 4b. Register quant-domain cron jobs (daily recap / weekly review /
+        # monthly strategy-pool). These are idempotent: ``register_system_job``
+        # replaces any job with the same id on restart. The cron service was
+        # constructed in step 3 (above) so we can pass it here.
+        try:
+            from QuantNodes.agent.cron_jobs import register_quant_cron_jobs
+            registered_ids = register_quant_cron_jobs(self._cron)
+            logger.info(
+                "Registered %d quant cron jobs: %s",
+                len(registered_ids),
+                ", ".join(registered_ids),
+            )
+        except ImportError as e:
+            # nanobot cron types not available — graceful skip. This branch
+            # is exercised when nanobot-ai is partially installed or when
+            # an older nanobot version is in use.
+            logger.warning("Could not register quant cron jobs: %s", e)
+
         # 5. ChannelManager with webui_static_dist=True (serves SPA + WS API).
         # Channels that were enabled in the JSON config (websocket by
         # default; feishu when FEISHU_APP_ID/SECRET are set) will start

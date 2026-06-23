@@ -266,3 +266,89 @@ async def delete_session(key: str, request: Request) -> Dict[str, Any]:
     except Exception as e:
         logger.exception("delete_session(%s) failed", key)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/cron")
+async def list_cron_jobs(request: Request) -> Dict[str, Any]:
+    """List registered cron jobs (system + user).
+
+    Stage 5.5: quant-domain cron jobs (daily-recap / weekly-review /
+    monthly-strategy-pool) are visible here. The endpoint returns the
+    job name, schedule, payload kind, and last-run state.
+    """
+    if not NANOBOT_AVAILABLE:
+        return _unavailable_response()
+
+    rt = _runtime(request)
+    if rt.state.state != "running" or rt._cron is None:
+        return {
+            "available": True,
+            "state": rt.state.state,
+            "jobs": [],
+            "note": f"nanobot runtime state={rt.state.state}, cron service not running",
+        }
+
+    try:
+        from dataclasses import asdict
+        jobs = []
+        for job in rt._cron.list_jobs(include_disabled=True):
+            jobs.append({
+                "id": job.id,
+                "name": job.name,
+                "enabled": job.enabled,
+                "schedule": {
+                    "kind": job.schedule.kind,
+                    "at_ms": job.schedule.at_ms,
+                    "every_ms": job.schedule.every_ms,
+                    "expr": job.schedule.expr,
+                    "tz": job.schedule.tz,
+                },
+                "payload": {
+                    "kind": job.payload.kind,
+                    "message_preview": (job.payload.message[:120] + "...")
+                    if len(job.payload.message) > 120 else job.payload.message,
+                    "deliver": job.payload.deliver,
+                    "channel": job.payload.channel,
+                    "session_key": job.payload.session_key,
+                },
+                "state": {
+                    "next_run_at_ms": job.state.next_run_at_ms,
+                    "last_run_at_ms": job.state.last_run_at_ms,
+                    "last_status": job.state.last_status,
+                    "last_error": job.state.last_error,
+                    "run_count": len(job.state.run_history),
+                },
+            })
+        return {
+            "available": True,
+            "state": rt.state.state,
+            "count": len(jobs),
+            "jobs": jobs,
+        }
+    except Exception as e:
+        logger.exception("list_cron_jobs failed")
+        return {"available": True, "state": rt.state.state, "jobs": [], "error": str(e)}
+
+
+@router.get("/cron/{job_id}/run-now")
+async def run_cron_job_now(job_id: str, request: Request) -> Dict[str, Any]:
+    """Trigger a cron job to run immediately (for testing / manual override).
+
+    The job runs in the nanobot event loop and blocks until completion.
+    Use ``/api/agent/cron`` first to see available job IDs.
+    """
+    if not NANOBOT_AVAILABLE:
+        return _unavailable_response()
+
+    rt = _runtime(request)
+    if rt.state.state != "running" or rt._cron is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"available": False, "state": rt.state.state},
+        )
+    try:
+        ran = await rt._cron.run_job(job_id, force=True)
+        return {"available": True, "job_id": job_id, "ran": ran}
+    except Exception as e:
+        logger.exception("run_cron_job_now(%s) failed", job_id)
+        raise HTTPException(status_code=500, detail=str(e))
