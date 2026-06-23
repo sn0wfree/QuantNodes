@@ -4,15 +4,37 @@ AutoResearcher - 自动因子研究系统
 
 编排因子挖掘、评估、去重、存储的完整流程。
 支持3个阶段: 模板枚举 → MCTS搜索 → LLM增强
+
+⚠️ DeprecationWarning (v2.7.0+, since 2026-06-23):
+    本模块进入 deprecation 周期。新代码请迁移到
+    `QuantNodes.research.quant_alpha.AutoResearcher` (M5+ PR)。
+
+    迁移理由：
+    - 完整 OperatorVocab 集成
+    - 跨路线整合（Alpha 101/158 + MCTS + LLM）
+    - 完整元数据 + 谱系追踪
+
+    Phase 时间表：
+    - Phase A (current): 本文件仍可用，行为完全兼容
+    - Phase B (M5+): 本类变 thin wrapper
+    - Phase C (v3.0): 归档到 _legacy_3c/
 """
 
 from __future__ import annotations
 
 import time
+import warnings
 from dataclasses import dataclass, field
 from typing import List
 
 import polars as pl
+
+warnings.warn(
+    "QuantNodes.research.auto_researcher 已弃用 (DeprecationWarning)。"
+    "M5+ PR 将提供新实现 QuantNodes.research.quant_alpha.AutoResearcher。",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from QuantNodes.research.factor_miner import FactorMiner
 from QuantNodes.research.factor_evaluator import (

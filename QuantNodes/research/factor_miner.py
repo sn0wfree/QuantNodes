@@ -4,16 +4,38 @@
 
 基于预定义模板库，系统性生成候选因子公式。
 支持4大类因子族：动量、均值回归、波动率、量价。
+
+⚠️ DeprecationWarning (v2.7.0+, since 2026-06-23):
+    本模块进入 deprecation 周期。新代码请迁移到
+    `QuantNodes.research.quant_alpha.operator_vocab.OperatorVocab`。
+
+    迁移理由：
+    - 模板硬编码 10 个算子 → 162 算子动态查询
+    - 公式生成器与评估器解耦更清晰
+    - 支持 LLM 友好的元数据（Alpha-GPT 路线需要）
+
+    Phase 时间表：
+    - Phase A (current): 本文件仍可用，行为完全兼容
+    - Phase B (v2.9+): 本类变 thin wrapper
+    - Phase C (v3.0): 归档到 _legacy_3c/
 """
 
 from __future__ import annotations
 
 import hashlib
 import random
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from QuantNodes.research.wiki import FactorCategory
+
+warnings.warn(
+    "QuantNodes.research.factor_miner 已弃用 (DeprecationWarning)。"
+    "请迁移到 QuantNodes.research.quant_alpha.operator_vocab.OperatorVocab。",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 @dataclass

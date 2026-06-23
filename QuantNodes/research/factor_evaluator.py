@@ -3,11 +3,27 @@
 因子评估器 - 6维度评估 + 相关性去重
 
 维度: 收益、稳定性、分散度、换手率、单调性、覆盖率
+
+⚠️ DeprecationWarning (v2.7.0+, since 2026-06-23):
+    本模块进入 deprecation 周期。新代码请迁移到
+    `QuantNodes.research.quant_alpha.operator_vocab.OperatorVocab`。
+
+    迁移理由：
+    - 12-lambda 硬编码 namespace 替换为 162 算子
+    - 修复 3 个 latent bug（ts_corr/ts_cov/rank/zscore）
+    - per-date over() 语义正确
+    - 完整元数据（difficulty / category_tags / examples / composes_with）
+
+    Phase 时间表：
+    - Phase A (current): 本文件仍可用，行为完全兼容
+    - Phase B (v2.9+): 本类变 thin wrapper，内部调新子包
+    - Phase C (v3.0): 归档到 _legacy_3c/，破坏性变更
 """
 
 from __future__ import annotations
 
 import math
+import warnings
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -15,6 +31,15 @@ import numpy as np
 import polars as pl
 
 from QuantNodes.research.factor_miner import FactorCandidate
+
+_DEPRECATION_MSG = (
+    "QuantNodes.research.factor_evaluator 已弃用 (DeprecationWarning)。"
+    "请迁移到 QuantNodes.research.quant_alpha.operator_vocab.OperatorVocab "
+    "(162 算子 + 修复 3 个 latent bug + 完整元数据)。"
+    "Phase B (v2.9+): 本类变 thin wrapper。"
+    "Phase C (v3.0): 归档到 _legacy_3c/。"
+)
+warnings.warn(_DEPRECATION_MSG, DeprecationWarning, stacklevel=2)
 
 
 @dataclass

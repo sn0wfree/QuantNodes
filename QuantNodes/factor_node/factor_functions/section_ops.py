@@ -263,3 +263,28 @@ def weightStandardize(f: Union[Expr, str], weight: Union[Expr, str] = None,
         return (e - weighted_mean) / (weighted_std + 1e-8)
     else:
         return standardizeZScore(e)
+
+
+# ==============================================================================
+# QuantAlpha M1 新增别名（Alpha 101 IndNeutralize 命名约定）
+# ==============================================================================
+# IndNeutralize 是 Alpha 101 的命名约定。
+# 直接用 polars 的 over() 实现，避免与 composite_dag_ops 的循环导入。
+
+
+@register_operator(OperatorCategory.SECTION, "IndNeutralize")
+def IndNeutralize(
+    f: Union[Expr, str],
+    ind_class: str = "citic_1",
+    **kwargs,
+) -> Expr:
+    """行业中性化（Alpha 101 命名约定）
+
+    IndNeutralize(x, ind_class) = x - mean(x) grouped by ind_class
+
+    Args:
+        f: 输入表达式
+        ind_class: 行业分类列名（默认 'citic_1' 一级行业）
+    """
+    e = _ensure_expr(f)
+    return e - e.mean().over(ind_class)

@@ -8,16 +8,38 @@ MCTS 搜索树 - 蒙特卡洛树搜索因子挖掘
 - UCB1 选择策略
 - 维度化反馈指导扩展方向
 - 频繁子树规避
+
+⚠️ DeprecationWarning (v2.7.0+, since 2026-06-23):
+    本模块进入 deprecation 周期。新代码请迁移到
+    `QuantNodes.research.quant_alpha.mcts.MCTSSearch` (M2 PR)。
+
+    迁移理由：
+    - 7 硬编码扩展操作 → 从 OperatorVocab 动态生成
+    - 加 5 通道反馈（execution/shape/code/value/llm）
+    - 加谱系追踪（parent_id → entry_id）
+
+    Phase 时间表：
+    - Phase A (current): 本文件仍可用，行为完全兼容
+    - Phase B (M2+): 本类变 thin wrapper
+    - Phase C (v3.0): 归档到 _legacy_3c/
 """
 
 from __future__ import annotations
 
 import math
 import random
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import polars as pl
+
+warnings.warn(
+    "QuantNodes.research.mcts_search 已弃用 (DeprecationWarning)。"
+    "M2 PR 将提供新实现 QuantNodes.research.quant_alpha.mcts.MCTSSearch。",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 from QuantNodes.research.factor_evaluator import (
     EvalConfig,

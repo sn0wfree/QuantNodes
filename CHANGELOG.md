@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **QuantAlpha 子包**（`QuantNodes/research/quant_alpha/`）：自动化因子挖掘引擎，参考 4 大因子库演进链（Alpha 101/158/360/AutoAlpha）
+  - **OperatorVocab** (`quant_alpha.operator_vocab.OperatorVocab`)：统一算子查询/调用/元数据化接口
+  - **5 个新算子**：`signedpower` / `ts_decay_linear` / `IndNeutralize` / `ts_skew` / `ts_kurt`（修复 Alpha 101 关键缺口）
+  - **算子元数据 schema 扩展**：从 5 字段到 12 字段（新增 7 个 LLM 友好字段）
+  - **per-date over() 修复**：rank/zscore/winsorize 默认 per-date 截面（修复 12-lambda namespace 的 BUG 2）
+  - **完整调研 + 规划文档**：`docs/quant_alpha/PROJECT_PLAN.md`（991 行）
+
+### Fixed
+
+- `QuantNodes.research.factor_evaluator._compute_factor` 三大隐性 bug：
+  1. `ts_corr` / `ts_cov` 用 `Series.rolling_corr`（Series 上不存在）→ 改用 L0 注册表 `rolling_corr` (Expr API)
+  2. `rank` / `zscore` 全局计算而非 per-date 截面 → 默认 `cross_sectional=True` per-date over(date)
+  3. 异常被 `except Exception: return None` 静默吞掉 → 完整错误抛出
+
+### Deprecated
+
+- `QuantNodes.research.factor_evaluator` → 迁移到 `quant_alpha.operator_vocab.OperatorVocab`
+- `QuantNodes.research.factor_miner` → 迁移到 `quant_alpha.operator_vocab`（M2+）
+- `QuantNodes.research.mcts_search` → 迁移到 `quant_alpha.mcts.MCTSSearch`（M2 PR）
+- `QuantNodes.research.auto_researcher` → 迁移到 `quant_alpha.AutoResearcher`（M5+ PR）
+
+### Migration
+
+- 详见 [`docs/quant_alpha/migration.md`](docs/quant_alpha/migration.md)
+- Phase A: 旧代码仍可用，DeprecationWarning 仅提示
+- Phase B (v2.9+): 旧类变 thin wrapper
+- Phase C (v3.0): 旧实现归档到 `_legacy_3c/`
+
 ## [3.0.0] - 2026-06-23 (in progress)
 
 v3.0.0 — 上游 nanobot 迁移：从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。

@@ -59,6 +59,20 @@ def sign(f: Union[Expr, str], **kwargs) -> Expr:
     return _ensure_expr(f).sign()
 
 
+@register_operator(OperatorCategory.POINT, "signedpower")
+def signedpower(f: Union[Expr, str], exponent: float = 2.0, **kwargs) -> Expr:
+    """保留符号的幂运算（Alpha 101 关键算子）
+
+    signedpower(x, a) = sign(x) * abs(x) ** a
+
+    Examples:
+        - signedpower(close, 2)  → 保留正负号的 close²
+        - signedpower(returns, 0.5)  → 保留正负号的 sqrt(|returns|)
+    """
+    e = _ensure_expr(f)
+    return e.sign() * e.abs() ** exponent
+
+
 @register_operator(OperatorCategory.POINT)
 def sqrt(f: Union[Expr, str], **kwargs) -> Expr:
     """平方根"""
