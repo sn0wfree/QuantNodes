@@ -1,5 +1,11 @@
 """
-Backtest Service - Bridge between FastAPI and ConfigBacktestTool
+Backtest Service - Bridge between FastAPI and ConfigBacktestTool.
+
+v3.0.0 TODO: decouple from ``QuantNodes.agent.tools`` by writing a
+``QuantNodes.backtest.api_adapter.BacktestApiAdapter`` that converts
+(config_yaml str) → (StrategyConfig + polars.LazyFrame) and calls
+``ConfigBacktestRunner.run()`` directly. For now we still use
+``ConfigBacktestTool`` (which is kept under ``agent/tools/``).
 """
 
 import json

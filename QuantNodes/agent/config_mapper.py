@@ -2,27 +2,49 @@
 """Translate ``.env`` QUANTNODES__* vars into HKUDS nanobot config.json.
 
 Nanobot 0.2.1 reads a JSON config (``.agent/nanobot_config.json`` by
-convention) with shape::
+convention) with shape (verified against ``nanobot.config.schema.Config``)::
 
     {
-      "agents": {"defaults": {"workspace": "<path>", "model": "..."}},
-      "llmProviders": {"<name>": {"dialect": "...", "apiKey": "...", "baseURL": "..."}},
-      "mcpServers": {...},
-      "cron": {...},
-      "channels": {...}
+      "agents": {"defaults": {"workspace": "<path>", "model": "...", "provider": "openai"}},
+      "providers": {
+        "<slot_name>": {
+          "api_key": "sk-...",
+          "api_base": "https://api.openai.com/v1",
+          "api_type": "chat_completions" | "responses" | "auto"
+        },
+        ...
+      }
     }
 
-We map:
-- ``QUANTNODES__LLM__API_KEY`` -> ``llmProviders.openai.apiKey`` (or anthropic if
-  the key prefix suggests Anthropic, or azureAnthropic if base URL is Azure).
-- ``QUANTNODES__LLM__BASE_URL`` -> ``llmProviders.<name>.baseURL``
-- ``QUANTNODES__LLM__MODEL`` -> ``agents.defaults.model``
+Provider slots (defined in ProvidersConfig schema):
+- ``openai``            — OpenAI direct
+- ``anthropic``         — Anthropic direct
+- ``azure_openai``      — Azure OpenAI
+- ``bedrock``           — AWS Bedrock
+- ``custom``            — Generic OpenAI-compatible endpoint
+- ``ollama``            — Ollama local (api_base=http://localhost:11434/v1)
+- ``lm_studio``         — LM Studio local
+- ``vllm``              — vLLM local
+- ``openrouter``        — OpenRouter aggregator
+- ``deepseek``          — DeepSeek direct
+- ``groq``              — Groq
+- ``gemini``            — Google Gemini
+- ``minimax``           — MiniMax (provider model aliases)
+- ... (30+ total)
 
-Dialect inference:
-- base URL contains ``anthropic`` -> ``AnthropicMessages``
-- base URL contains ``azure``    -> ``OpenAIResponses`` (Azure OpenAI)
-- base URL contains ``ollama``  -> ``OpenResponses``
-- otherwise (incl. local OpenAI-compatible) -> ``OpenAIChatCompletions``
+We map:
+- ``QUANTNODES__LLM__API_KEY``  ->  ``providers.<slot>.api_key``
+- ``QUANTNODES__LLM__BASE_URL`` ->  ``providers.<slot>.api_base``
+- ``QUANTNODES__LLM__MODEL``    ->  ``agents.defaults.model`` (+ provider slot)
+
+Slot resolution (URL-based heuristics):
+- base URL contains ``anthropic`` -> ``anthropic`` (or ``minimax_anthropic`` if MiniMax endpoint)
+- base URL contains ``azure``    -> ``azure_openai``
+- base URL contains ``ollama``   -> ``ollama``
+- otherwise (incl. local OpenAI-compatible) -> ``custom``
+
+``agents.defaults.provider`` is set to the resolved slot name so that the
+upstream ``_match_provider`` helper finds the right provider config.
 """
 
 from __future__ import annotations
@@ -39,20 +61,28 @@ logger = logging.getLogger(__name__)
 CONFIG_FILENAME = "nanobot_config.json"
 
 
-def _infer_dialect(base_url: str, api_key: str) -> tuple[str, str]:
-    """Return (dialect, provider_name) inferred from URL/key hints."""
+def _resolve_slot(base_url: str, api_key: str) -> tuple[str, str]:
+    """Return (slot_name, api_type) inferred from URL/key hints.
+
+    ``slot_name`` matches one of the predefined slots in ProvidersConfig
+    schema (e.g. ``openai``, ``anthropic``, ``azure_openai``, ``custom``).
+    ``api_type`` is the request API surface (``chat_completions``,
+    ``responses``, or ``auto``).
+    """
     u = (base_url or "").lower()
     if "anthropic" in u:
-        if "azure" in u:
-            return "AnthropicMessages", "azureAnthropic"
-        return "AnthropicMessages", "anthropic"
+        if "minimax" in u or "MiniMax" in u:
+            return "minimax_anthropic", "auto"
+        return "anthropic", "auto"
     if "azure" in u:
-        return "OpenAIResponses", "azureOpenAI"
+        return "azure_openai", "responses"
     if "ollama" in u or ":11434" in u:
-        return "OpenResponses", "ollama"
+        return "ollama", "auto"
     if api_key and api_key.startswith("sk-ant-"):
-        return "AnthropicMessages", "anthropic"
-    return "OpenAIChatCompletions", "openai"
+        return "anthropic", "auto"
+    # Default: OpenAI-compatible endpoint goes to ``custom`` slot
+    # (which is the documented fallback for OpenAI-compatible URLs).
+    return "custom", "chat_completions"
 
 
 def build_nanobot_config(workspace: Path, user_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -62,29 +92,33 @@ def build_nanobot_config(workspace: Path, user_config: Optional[Dict[str, Any]] 
     base_url = user_config.get("api_base") or os.environ.get("QUANTNODES__LLM__BASE_URL", "")
     model = user_config.get("model") or os.environ.get("QUANTNODES__LLM__MODEL", "gpt-4o")
 
-    dialect, provider_name = _infer_dialect(base_url, api_key)
+    slot, api_type = _resolve_slot(base_url, api_key)
 
-    provider_block: Dict[str, Any] = {
-        "dialect": dialect,
-        "apiKey": api_key,
-    }
+    provider_block: Dict[str, Any] = {}
+    # ``api_type`` is only allowed on the ``openai`` slot (upstream schema
+    # validation); other slots always use the provider-default API surface.
+    if slot == "openai":
+        provider_block["api_type"] = api_type
+    if api_key:
+        provider_block["api_key"] = api_key
     if base_url:
-        provider_block["baseURL"] = base_url
+        provider_block["api_base"] = base_url
 
-    config = {
+    config: Dict[str, Any] = {
         "agents": {
             "defaults": {
                 "workspace": str(workspace),
                 "model": model,
+                "provider": slot,
             },
         },
-        "llmProviders": {
-            provider_name: provider_block,
+        "providers": {
+            slot: provider_block,
         },
     }
 
     if "max_tokens" in user_config:
-        config["agents"]["defaults"]["maxTokens"] = int(user_config["max_tokens"])
+        config["agents"]["defaults"]["max_tokens"] = int(user_config["max_tokens"])
 
     return config
 

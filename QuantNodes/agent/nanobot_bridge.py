@@ -57,13 +57,13 @@ class Agent:
         self._bot: Nanobot = Nanobot.from_config(self.config_path, workspace=self.workspace)
         self._loop = self._bot._loop
 
-        quant_count = register_all_quant_tools(self._loop.tool_registry)
+        quant_count = register_all_quant_tools(self._loop.tools, workspace=self.workspace)
         logger.info(
             "QuantNodes Agent ready (workspace=%s, quant_tools=%d, "
             "upstream_tools=%d)",
             self.workspace,
             quant_count,
-            len(self._loop.tool_registry._tools) - quant_count,
+            len(self._loop.tools._tools) - quant_count,
         )
 
     @property

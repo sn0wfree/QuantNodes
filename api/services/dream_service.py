@@ -16,24 +16,24 @@ class DreamService:
         self._dream_engine = None
 
     def _get_dream_store(self):
-        """Get or create DreamStore instance"""
+        """Get or create QuantDreamHook instance (replaces legacy DreamStore)."""
         if self._dream_store is None:
             try:
-                from QuantNodes.agent.core.memory import DreamStore
-                self._dream_store = DreamStore(Path(self.data_dir))
+                from QuantNodes.agent.core.quant_dream import QuantDreamHook
+                self._dream_store = QuantDreamHook(Path(self.data_dir))
             except Exception as e:
-                print(f"Failed to initialize DreamStore: {e}")
+                print(f"Failed to initialize QuantDreamHook: {e}")
                 return None
         return self._dream_store
 
     def _get_dream_engine(self):
-        """Get or create DreamEngine instance"""
+        """Get or create DreamEngine instance."""
         if self._dream_engine is None:
             try:
-                from QuantNodes.agent.core.dream import DreamEngine
-                store = self._get_dream_store()
-                if store:
-                    self._dream_engine = DreamEngine(dream_store=store)
+                from QuantNodes.agent.core.quant_dream import DreamEngine
+                hook = self._get_dream_store()
+                if hook:
+                    self._dream_engine = DreamEngine(workspace=Path(self.data_dir))
             except Exception as e:
                 print(f"Failed to initialize DreamEngine: {e}")
                 return None
