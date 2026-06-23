@@ -34,17 +34,29 @@ class BacktestPrompt:
 - `num_groups`: 分组数量 (默认5组)
 
 ## result 数据格式
-result 必须是 Polars DataFrame，包含：
+result 必须是 DataFrame (Polars 或 Pandas 均可)，包含：
 - date: 日期
 - code: 标的代码
 - factor_value: 因子值
 - forward_return: 未来收益
 
-## 参考代码框架
+## 参考代码 (Polars)
 ```python
 import polars as pl
 
 result = pl.DataFrame({
+    "date": ["2024-01-01", "2024-01-01", "2024-01-02", "2024-01-02"],
+    "code": ["A", "B", "A", "B"],
+    "factor_value": [0.1, 0.2, 0.3, 0.4],
+    "forward_return": [0.05, 0.03, 0.02, 0.01],
+})
+```
+
+## 参考代码 (Pandas)
+```python
+import pandas as pd
+
+result = pd.DataFrame({
     "date": ["2024-01-01", "2024-01-01", "2024-01-02", "2024-01-02"],
     "code": ["A", "B", "A", "B"],
     "factor_value": [0.1, 0.2, 0.3, 0.4],

@@ -31,7 +31,29 @@ class FactorPrompt:
 - `correlation_threshold`: 相关性阈值 (默认0.8)
 
 ## result 数据格式
-result 必须是 Polars DataFrame，包含多列因子值
+result 必须是 DataFrame (Polars 或 Pandas 均可)，包含多列因子值
+
+## 参考代码 (Polars)
+```python
+import polars as pl
+
+result = pl.DataFrame({
+    "date": ["2024-01-01", "2024-01-01", "2024-01-02"],
+    "factor_a": [0.1, 0.2, 0.3],
+    "factor_b": [0.15, 0.25, 0.35],
+})
+```
+
+## 参考代码 (Pandas)
+```python
+import pandas as pd
+
+result = pd.DataFrame({
+    "date": ["2024-01-01", "2024-01-01", "2024-01-02"],
+    "factor_a": [0.1, 0.2, 0.3],
+    "factor_b": [0.15, 0.25, 0.35],
+})
+```
 """
 
     @property
@@ -46,7 +68,7 @@ result 必须是 Polars DataFrame，包含多列因子值
     def validation_rules(self) -> Dict[str, Any]:
         return {
             "max_lines": 200,
-            "allowed_imports": ["polars", "numpy"],
+            "allowed_imports": ["polars", "numpy", "pandas"],
             "forbidden_patterns": ["os.", "subprocess", "eval", "exec"],
             "required_variables": ["result"]
         }
