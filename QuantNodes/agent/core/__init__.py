@@ -1,28 +1,19 @@
 # coding=utf-8
 """
-核心引擎模块
+核心引擎模块 (v3.0.0 精简版)
 
-消息循环 / 执行引擎 / 上下文构建 / 记忆系统
+v3.0.0 之前本目录包含自写的 loop/runner/memory/dream/...，已全部由
+HKUDS/nanobot 0.2.1 上游替代。
+
+当前保留：
+- quant_dream.py - 量化专属 Dream 钩子（QuantDreamHook）
+- dream.py - 向后兼容 shim
 """
 
-from .context import ContextBuilder
-from .hook import AgentHook, CompositeHook
-from .runner import AgentRunner, AgentRunSpec, AgentRunResult
-from .loop import AgentLoop
-from .memory import MemoryStore
-from .compaction import ContextCompactor, CompactionConfig, CompactionResult, compact_messages
+from .quant_dream import DreamEngine, QuantDreamHook, QuantDreamInsight
 
 __all__ = [
-    "ContextBuilder",
-    "AgentHook",
-    "CompositeHook",
-    "AgentRunner",
-    "AgentRunSpec",
-    "AgentRunResult",
-    "AgentLoop",
-    "MemoryStore",
-    "ContextCompactor",
-    "CompactionConfig",
-    "CompactionResult",
-    "compact_messages",
+    "DreamEngine",
+    "QuantDreamHook",
+    "QuantDreamInsight",
 ]
