@@ -115,6 +115,14 @@ def build_nanobot_config(workspace: Path, user_config: Optional[Dict[str, Any]] 
         "providers": {
             slot: provider_block,
         },
+        "mcpServers": {
+            "quant": {
+                "command": "python",
+                "args": ["-m", "QuantNodes.mcp_server"],
+                "transport": "stdio",
+                "description": "QuantNodes quant tools (backtest/factor/strategy/wiki/sandbox/data_query)",
+            },
+        },
     }
 
     if "max_tokens" in user_config:

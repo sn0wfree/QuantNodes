@@ -31,6 +31,7 @@ Homepage = "https://github.com/sn0wfree/QuantNodes"
 
 [project.optional-dependencies]
 streamlit-ui = ["streamlit>=1.28.0"]
+mcp = ["fastmcp>=3.0", "mcp[cli]>=1.0"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
