@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 class DreamService:
     """Dream service for API layer"""
 
-    def __init__(self, data_dir: str = ".quant_agent"):
+    def __init__(self, data_dir: str = ".agent"):
         self.data_dir = data_dir
         self._dream_store = None
         self._dream_engine = None

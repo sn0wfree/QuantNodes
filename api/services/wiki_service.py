@@ -19,7 +19,7 @@ from QuantNodes.research.wiki import (
 class WikiService:
     """Wiki service for API layer - thin wrapper around WikiFactorProxy."""
 
-    def __init__(self, data_dir: str = ".quant_agent"):
+    def __init__(self, data_dir: str = ".agent"):
         self.data_dir = data_dir
         self._proxy: Optional[WikiFactorProxy] = None
 

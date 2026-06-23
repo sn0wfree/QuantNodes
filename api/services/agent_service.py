@@ -17,7 +17,7 @@ MAX_SESSION_MESSAGES = 100
 class AgentService:
     """Agent service for API layer"""
 
-    def __init__(self, workspace: str = ".quant_agent"):
+    def __init__(self, workspace: str = ".agent"):
         self.workspace = workspace
         self._agent: Optional[Agent] = None
 

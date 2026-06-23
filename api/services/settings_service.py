@@ -10,7 +10,7 @@ from pathlib import Path
 class SettingsService:
     """Settings service for API layer"""
 
-    def __init__(self, data_dir: str = ".quant_agent"):
+    def __init__(self, data_dir: str = ".agent"):
         self.data_dir = Path(data_dir)
         self.settings_file = self.data_dir / "settings.json"
         self._settings: Optional[Dict[str, Any]] = None

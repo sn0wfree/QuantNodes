@@ -18,7 +18,7 @@ from pathlib import Path
 class BacktestService:
     """Backtest service for API layer"""
 
-    def __init__(self, data_dir: str = ".quant_agent"):
+    def __init__(self, data_dir: str = ".agent"):
         self.data_dir = data_dir
         self._backtest_tool = None
         self._results: Dict[str, Dict[str, Any]] = {}

@@ -6,8 +6,8 @@ from pathlib import Path
 
 
 def _load_agent_from_settings() -> dict:
-    """Load agent config from .quant_agent/settings.json (single source of truth)"""
-    settings_file = Path(".quant_agent/settings.json")
+    """Load agent config from .agent/settings.json (single source of truth)"""
+    settings_file = Path(".agent/settings.json")
     if settings_file.exists():
         try:
             data = json.loads(settings_file.read_text(encoding="utf-8"))
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     AGENT_MODEL: str = "gpt-4"
     
     # Wiki
-    WIKI_DATA_DIR: str = ".quant_agent"
+    WIKI_DATA_DIR: str = ".agent"
     
     class Config:
         env_file = ".env"

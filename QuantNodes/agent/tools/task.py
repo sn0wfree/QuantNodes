@@ -27,7 +27,7 @@ class TaskTool(WorkspaceTool, Tool):
 
     def __init__(self, workspace: str | Path):
         super().__init__(workspace)
-        self._tasks_file = self.workspace / ".quant_agent" / "tasks.json"
+        self._tasks_file = self.workspace / ".agent" / "tasks.json"
 
     @property
     def name(self) -> str:

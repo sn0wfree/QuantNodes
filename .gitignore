@@ -139,8 +139,9 @@ frontend/node_modules/
 frontend/dist/
 frontend/.env.development
 
-# Agent workspace
+# Agent workspace (v3.0.0: .quant_agent/ → .agent/, both gitignored)
 .quant_agent/
+.agent/
 
 # Test screenshots
 tests/screenshots/

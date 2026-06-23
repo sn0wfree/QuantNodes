@@ -6,7 +6,7 @@ Stats Service - Aggregate data from Wiki (直接调用 research.wiki，v3.0.0+)
 class StatsService:
     """Stats service for dashboard metrics."""
 
-    def __init__(self, data_dir: str = ".quant_agent"):
+    def __init__(self, data_dir: str = ".agent"):
         self.data_dir = data_dir
         self._proxy = None
 
