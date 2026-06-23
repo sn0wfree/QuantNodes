@@ -85,8 +85,8 @@ class TestDualRegistry:
     def test_polars_registry_has_existing_ops(self):
         assert "industry_neutralize" in _COMPOSITE_REGISTRY_POLARS.list()
 
-    def test_pandas_registry_empty_by_default(self):
-        assert len(_COMPOSITE_REGISTRY_PANDAS.list()) == 0
+    def test_pandas_registry_has_20_ops(self):
+        assert len(_COMPOSITE_REGISTRY_PANDAS.list()) == 20
 
     def test_is_composite_op_any(self):
         assert is_composite_op("industry_neutralize", engine="any")
@@ -94,25 +94,27 @@ class TestDualRegistry:
     def test_is_composite_op_polars(self):
         assert is_composite_op("industry_neutralize", engine="polars")
 
-    def test_is_composite_op_pandas_not_found(self):
-        assert not is_composite_op("industry_neutralize", engine="pandas")
+    def test_is_composite_op_pandas(self):
+        assert is_composite_op("industry_neutralize", engine="pandas")
 
     def test_get_composite_spec_polars(self):
         spec = get_composite_spec("industry_neutralize", engine="polars")
         assert spec is not None
         assert spec.engine == "polars"
 
-    def test_get_composite_spec_pandas_returns_none(self):
+    def test_get_composite_spec_pandas(self):
         spec = get_composite_spec("industry_neutralize", engine="pandas")
-        assert spec is None
+        assert spec is not None
+        assert spec.engine == "pandas"
 
     def test_list_composite_ops_polars(self):
         ops = list_composite_ops(engine="polars")
         assert "industry_neutralize" in ops
 
-    def test_list_composite_ops_pandas_empty(self):
+    def test_list_composite_ops_pandas(self):
         ops = list_composite_ops(engine="pandas")
-        assert len(ops) == 0
+        assert "industry_neutralize" in ops
+        assert len(ops) == 20
 
     def test_list_composite_ops_any_union(self):
         ops = list_composite_ops(engine="any")

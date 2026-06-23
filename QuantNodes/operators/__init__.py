@@ -50,6 +50,9 @@ from .composite_dag import (
 # PR-QN-3b (2026-06-21): 20 个内置 composite op (注册副作用)
 from . import composite_dag_ops  # noqa: F401 — 模块导入即注册
 
+# PR-QN-4 (2026-06-22): 20 个 pandas 镜像 composite op (注册副作用)
+from . import composite_dag_pandas_ops  # noqa: F401 — 模块导入即注册
+
 # PR-QN-4 (2026-06-22): Dual-Engine support
 from ._engine import Engine, detect_engine
 
