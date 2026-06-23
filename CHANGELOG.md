@@ -199,8 +199,65 @@ pip install 'quantnodes[agent]'   # ← 这一步必做，否则失去 agent 功
 - [x] 5.1 Subagent 多 Agent 团队（main/factor-analyst/backtest-engineer/risk-manager）
 - [x] 5.2 MCP server（quant 能力 stdio 暴露）
 - [x] 5.3 单进程 WebUI + 可选依赖
-- [ ] 5.4 渠道接入（飞书 + WebSocket）
+- [x] 5.4 渠道接入（飞书 + WebSocket）
 - [ ] 5.5 Cron 调度（日终/周度/月度）
+
+### Stage 5.4 — 渠道接入 (commit pending)
+
+#### 新增
+
+- **`config_mapper.py`** — 新增 `channels` 块到生成的 nanobot 配置：
+  - `_build_websocket_config()`：默认启用，端口 `8765`，SPA 由 `webui_static_dist=True` 提供
+  - `_build_feishu_config()`：仅当 `FEISHU_APP_ID` + `FEISHU_APP_SECRET` 同时设置时启用
+  - `channel_overrides` 参数：让 FastAPI runtime 注入 gateway host/port
+- **`api/services/nanobot_runtime.py`** — `_build_components` 通过 `channel_overrides` 把 `NANOBOT_GATEWAY_HOST/PORT` 注入 websocket 块
+- **`frontend/src/composables/useNanobotWebSocket.ts`** (新) — 完整的 nanobot wire protocol 客户端：
+  - `fetchBootstrap()`：GET `/webui/bootstrap` 取短期 token
+  - `WebSocket(wsUrl)`：携带 `?token=...&client_id=...`
+  - 类型化的事件类型：`attached` / `user` / `message` / `tool_call` / `tool_result` / `tool_hint` / `tool_status` / `goal_status` / `error`
+  - 发送：`{type: 'message', content, chat_id}` JSON envelope
+  - 指数退避重连（默认 1.5×，最多无限重连）
+  - `onUnmounted` 自动 disconnect
+- **`.env.template`** — 新增 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_DOMAIN` / `FEISHU_GROUP_POLICY` / `FEISHU_REPLY_TO_MESSAGE` / `FEISHU_ALLOW_FROM` 等环境变量
+- **`frontend/.env.development`** — `VITE_NANOBOT_BOOTSTRAP_PATH=/webui/bootstrap`
+- **`docs/13-Agent架构设计.md`** §12 新增：渠道架构 + 配置注入 + wire 协议 + 飞书 channel + ChannelManager 生命周期 + 失败模式
+
+#### 测试（12 new tests）
+
+- `tests/agent/test_channel_config.py` (9) — channels 块配置：
+  - websocket 默认启用 + 端口/host 默认值
+  - feishu 缺失 env 时禁用
+  - feishu 完整 env 时启用 + app_id/secret 正确
+  - feishu 部分 env（仅 APP_ID）禁用
+  - feishu 可选 knobs（domain / group_policy / reply / encrypt / verify / allow_from）
+  - channel_overrides.propagate 到 websocket
+  - channel_overrides 可强制禁用 websocket
+  - mcpServers 块与 channels 共存
+  - 顶层 keys 完整性
+- `tests/agent/test_nanobot_websocket_protocol.py` (8) — 前端 wire 协议契约：
+  - 文件存在
+  - `useNanobotWebSocket` 是 named function
+  - 调用 `/webui/bootstrap`
+  - 发送 `type/content/chat_id` envelope
+  - 引用全部 7 个核心事件类型
+  - 指数退避
+  - onUnmounted 自动 disconnect
+  - env 包含 bootstrap path
+
+#### 用户启用飞书
+
+```bash
+# 1. 在飞书开放平台创建应用，获取 APP_ID / APP_SECRET
+# 2. 启用"机器人"能力 + 事件订阅 im.message.receive_v1
+# 3. 装 SDK
+pip install lark-oapi
+# 4. 配置 .env
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=secret_xxx
+# 可选：
+# FEISHU_GROUP_POLICY=open   # 接收所有群消息（默认 mention）
+# 5. 重启 FastAPI，feishu channel 自动启动
+```
 
 ## [2.8.0] - 2026-06-22
 

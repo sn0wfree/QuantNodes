@@ -308,9 +308,22 @@ class NanobotRuntime:
         )
         from QuantNodes.agent.tools import register_all_quant_tools
 
-        # 1. Ensure workspace exists with config.json
+        # 1. Ensure workspace exists with config.json.
+        # Channel overrides let the runtime inject NANOBOT_GATEWAY_HOST/PORT
+        # so the websocket channel binds to the correct address.
         self.workspace.mkdir(parents=True, exist_ok=True)
-        settings = build_nanobot_config(self.workspace, {})
+        channel_overrides = {
+            "websocket": {
+                "enabled": True,
+                "host": self.gateway_host,
+                # The websocket channel lives on the gateway port (default 18080).
+                # It serves both the WebSocket API and the SPA static files.
+                "port": self.gateway_port,
+            },
+        }
+        settings = build_nanobot_config(
+            self.workspace, {}, channel_overrides=channel_overrides
+        )
         self.config_path = write_nanobot_config(self.workspace, settings)
 
         # 2. Build runtime Config from the JSON we just wrote
@@ -345,7 +358,10 @@ class NanobotRuntime:
         # 4. Register our 14 quant tools on the agent's ToolRegistry
         register_all_quant_tools(self._agent.tools, workspace=self.workspace)
 
-        # 5. ChannelManager with webui_static_dist=True (serves SPA + WS API)
+        # 5. ChannelManager with webui_static_dist=True (serves SPA + WS API).
+        # Channels that were enabled in the JSON config (websocket by
+        # default; feishu when FEISHU_APP_ID/SECRET are set) will start
+        # their background tasks via channels.start_all().
         self._channels = ChannelManager(
             cfg,
             self._bus,

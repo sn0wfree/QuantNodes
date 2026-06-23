@@ -616,3 +616,103 @@ if NANOBOT_AVAILABLE:
 | WebUI SPA 缺 `nanobot/web/dist/` | WS API 仍可用，iframe 显示空白 | — |
 | nanobot gateway port 占用 | `state=error` | 503 + 错误日志 |
 
+## 十二、Stage 5.4 — 渠道接入（WebSocket + 飞书）
+
+### 12.1 渠道架构
+
+nanobot 0.2.1 通过 `ChannelManager` 统一管理多个 chat channel：
+- **WebSocket**（默认启用）：同进程 `:18080` 上跑 WebSocket server + 静态 SPA
+- **Feishu**（条件启用）：`FEISHU_APP_ID` + `FEISHU_APP_SECRET` 同时设置时启动
+- 未来可加：Telegram / Slack / Discord / Email / DingTalk（上游均已实现）
+
+### 12.2 配置注入
+
+`config_mapper.py::build_nanobot_config` 把环境变量翻译成 nanobot 配置：
+
+```python
+{
+  "channels": {
+    "websocket": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 18080,        # 复用 NANOBOT_GATEWAY_PORT
+      "path": "/",
+      "tokenIssuePath": "/webui/token",
+      "websocketRequiresToken": true,
+      "allowFrom": ["*"],
+      "streaming": true,
+    },
+    "feishu": {
+      "enabled": true,      # FEISHU_APP_ID + SECRET 同时存在
+      "appId": "...",
+      "appSecret": "...",
+      "domain": "feishu",   # 或 "lark" 国际版
+      "groupPolicy": "mention",  # "open" = 接收所有群消息
+      "replyToMessage": false,
+      "streaming": true,
+    },
+  },
+}
+```
+
+`api/services/nanobot_runtime.py::_build_components` 通过 `channel_overrides` 把 `NANOBOT_GATEWAY_HOST`/`PORT` 注入到 websocket 块。
+
+### 12.3 WebSocket wire 协议（前端 useNanobotWebSocket.ts）
+
+nanobot 的 WebSocket channel 需要先获取短期 token：
+
+```
+1. Client → GET http://gateway:18080/webui/bootstrap
+   Server → {"token": "nbwt_...", "ws_path": "/", "model_name": "gpt-4o", ...}
+
+2. Client → WebSocket ws://gateway:18080/?token=nbwt_...&client_id=quantnodes-webui
+   Server → {"event": "attached", "chat_id": "default", "client_id": "..."}
+
+3. Client → {"type": "message", "content": "你好", "chat_id": "default"}
+   Server → {"event": "message", "chat_id": "default", "text": "...streamed..."}
+        → {"event": "tool_call", "name": "wiki_get", "arguments": {...}}
+        → {"event": "tool_result", "name": "wiki_get", "success": true, "content": {...}}
+        → {"event": "message", "chat_id": "default", "text": "..."}
+```
+
+`frontend/src/composables/useNanobotWebSocket.ts` 封装了这套握手：
+1. `fetchBootstrap()` 拿到 token
+2. `WebSocket(wsUrl)` 携带 `?token=...&client_id=...`
+3. 解析事件 → `onEvent(payload)`
+4. 发送：`ws.send(JSON.stringify({type: 'message', content, chat_id}))`
+
+### 12.4 飞书 channel（WebSocket 长连接）
+
+- **SDK**：`pip install lark-oapi`（独立可选依赖）
+- **触发**：`FEISHU_APP_ID` + `FEISHU_APP_SECRET` 同时设置才启动
+- **网络**：用 lark-oapi 的 WebSocket 长连接，**无需公网 IP 或 webhook**
+- **群策略**：`mention`（仅响应 @机器人）或 `open`（接收所有）
+- **认证**：可选 `FEISHU_ENCRYPT_KEY` / `FEISHU_VERIFICATION_TOKEN`
+- **白名单**：可选 `FEISHU_ALLOW_FROM=ou_aaa,ou_bbb`（open_id 列表）
+
+### 12.5 ChannelManager 生命周期
+
+```
+start():
+  1. config_mapper 生成 channels dict
+  2. Config.model_validate() → cfg.channels.<name> 是 dict
+  3. ChannelManager(cfg, bus, session_manager, webui_static_dist=True)
+     - websocket: enabled → 启动 ws.Server + static SPA mount
+     - feishu: enabled + lark_oapi → 启动 ws.Client 线程
+  4. asyncio.create_task(channels.start_all())
+  
+stop():
+  1. cron.stop() → agent.stop() → channels.stop_all() → agent.close_mcp()
+  2. WebSocket server.close() + Feishu ws.Client._running = False
+```
+
+### 12.6 失败模式
+
+| 场景 | 行为 |
+|------|------|
+| `FEISHU_APP_SECRET` 缺失 | feishu 频道不启动（log warning） |
+| 未装 `lark-oapi` | FeishuChannel.start() 拒绝启动，log "SDK not installed" |
+| Feishu app_id 错误 | lark SDK 在首次连接时失败，log 详细错误 |
+| WebSocket token 过期（5 min） | nanobot 自动 `nbwt_...` 续签；前端 reconnect() 重新 bootstrap |
+| 多 channel 同时收到消息 | MessageBus 统一处理，每个 channel 的 `chat_id` 隔离 session |
+
