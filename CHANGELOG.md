@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
       execution / shape / code / value / llm
     - `MCTSSearch`：UCB1 选择 + 5 通道反馈驱动 + 谱系持久化
   - **CLI 命令**：`quantnodes alpha-mcts`（M2）
+  - **Alpha 101 设计借鉴**（`quant_alpha.alpha101_design`，M3）：
+    - 8 条设计原则（P1-P8：数学即代码、动量反转、截面 rank、ts_argmax 提取极值位置、
+      signedpower 保留符号、decay_linear 加权、三元条件、IndNeutralize 行业中性化）
+    - 16 个核心算子（含经济意义 + Alpha 101 公式示例）
+    - 8 个 A 股可移植性记录（4 个 Delay-0 不可移植 + 4 个可移植）
+    - 10 个 few-shot 示例（覆盖 4 类：momentum / reversal / volume_price / intraday）
+  - **Alpha 158/360 设计借鉴**（`quant_alpha.alpha158_design`，M3）：
+    - 4 类特征模板：KBAR (9) / Price (20) / Volume (5) / Rolling (124) = 158 特征
+    - Alpha 360 模板：6 字段 × 60 lookback = 360 特征
+    - 10 个 few-shot 示例（覆盖 4 类）
   - **完整调研 + 规划文档**：`docs/quant_alpha/PROJECT_PLAN.md`（991 行）
 
 ### Changed
