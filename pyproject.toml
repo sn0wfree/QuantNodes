@@ -7,7 +7,7 @@ name = "quantnodes"
 version = "2.8.0"
 description = "AI-native quantitative research framework with symbolic computation and SQL pushdown"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 authors = [{name = "sn0wfree", email = "snowfreedom0815@gmail.com"}]
 license = {text = "MIT"}
 keywords = ["Node", "Databases", "Quantitative"]
@@ -17,10 +17,9 @@ classifiers = [
     "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 [project.urls]
@@ -59,7 +58,7 @@ markers = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]
@@ -88,4 +87,4 @@ ignore = [
 
 [tool.black]
 line-length = 100
-target-version = ["py39"]
+target-version = ["py311", "py312", "py313"]
