@@ -120,11 +120,85 @@ v3.0.0 — 上游 nanobot 迁移：从"复刻 nanobot 架构"升级为"直接消
 
 详见 [`docs/14-上游nanobot升级指南.md`](docs/14-上游nanobot升级指南.md)。
 
+### Stage 5.1 — Subagent 多 Agent 团队 (commit f7ac409)
+
+- 启用 nanobot subagent 多 Agent 团队：在 nanobot 0.2.1 的 `spawn`/`read_file` 基础上，通过 `SOUL.md` + `.agent/agents/*.md` 实现角色化子智能体。
+- 新增 `.agent/SOUL.md`：ResearchDirector 主体人格 + delegation matrix（"factor research" → factor-analyst，"backtest" → backtest-engineer，"risk" → risk-manager）。
+- 新增 `.agent/agents/{factor-analyst,backtest-engineer,risk-manager}.md`：3 个专家子智能体的系统提示词。
+- `.gitignore` 加 `!.agent/SOUL.md` / `!.agent/USER.md` / `!.agent/agents` / `!.agent/agents/*.md` re-include 规则（共享团队定义，忽略敏感 settings.json）。
+
+### Stage 5.2 — MCP server (commit a37ef30)
+
+- 新增 `QuantNodes/mcp_server/server.py` (~270 行)：FastMCP 3.4.2 + Pydantic per-tool 模型，暴露 9 个 MCP tools：
+  - `call_backtest` / `call_config_backtest` / `call_factor` / `call_strategy` / `call_pipeline` / `call_sandbox` / `call_wiki`（7 个 quant 工具 dispatcher）
+  - `list_quant_tools`（元数据 + JSON Schema 发现）
+  - `data_query`（DuckDB SQL，v0）
+- 设计：每 `call_*` 是 dispatcher（统一 `arguments` 形参），FastMCP 不支持 `**kwargs` 动态 schema。
+- `QuantNodes/agent/config_mapper.py` 自动注入 `mcpServers.quant` 块到 `nanobot_config.json`。
+- 新增 `pyproject.toml::[mcp]` optional-dependency。
+- 新增 `tests/agent/test_mcp_server.py` (8 tests)：导入 / 注册 / 调用 / schema。
+
+### Stage 5.3 — 单进程 WebUI 集成 + 可选依赖 (commit pending)
+
+#### 🎯 核心变更
+
+- **可选依赖**：``nanobot-ai`` 从强制依赖移到 `[agent]` extras。`pip install quantnodes` 即可获得纯量化库；`pip install 'quantnodes[agent]'` 启用完整 agent / WebUI / MCP。
+- **单进程架构**：FastAPI lifespan 内手动拉起 nanobot 的 `AgentLoop` + `ChannelManager` + `CronService` 为 `asyncio.create_task`（不用 `asyncio.run`）。WebUI SPA + WebSocket 在 18080 端口（同一 Python 进程）。
+
+#### 新增
+
+- `api/services/nanobot_runtime.py` (~370 行)：单进程 lifespan 包装器
+  - `NanobotRuntime` 类：手动连接 `MessageBus` / `SessionManager` / `CronService` / `AgentLoop.from_config()` / `ChannelManager(webui_static_dist=True)` / 注册 14 个 quant 工具
+  - `init_runtime()` / `shutdown_runtime()` 进程级单例
+  - 状态机：`uninitialized` → `starting` → `running` → `stopping` → `stopped` / `error` / `unavailable`
+  - graceful 降级：未装 nanobot → `state=unavailable` + install hint
+- `api/routers/agent.py` (~150 行)：6 个端点
+  - `GET /api/agent/status`：200 + 运行时状态（永远返回 200，前端可读）
+  - `GET /api/agent/health`：200/503 readiness probe
+  - `POST /api/agent/restart`：销毁 + 重建（环境变量变更后用）
+  - `POST /api/agent/chat/send`：非流式 chat
+  - `GET /api/agent/sessions`：列 websocket sessions
+  - `DELETE /api/agent/sessions/{key}`：删除 session
+- `frontend/src/views/AgentChat.vue` (~110 行)：iframe + 状态机渲染
+  - 加载中：spin
+  - `unavailable`：`a-result` install 提示页
+  - `starting`：spin + 提示
+  - `error`：错误 + 重试按钮
+  - `running`：`<iframe src="VITE_NANOBOT_GATEWAY_URL" sandbox="...">`
+  - 5 秒 polling 监测状态
+- `frontend/src/components/Layout/AppSidebar.vue`：`v-if="agentEnabled"` 控制 Agent Chat 入口（默认显示）
+- `frontend/src/router/index.ts`：`/agent-chat` 路由
+- `frontend/.env.development`：`VITE_AGENT_ENABLED=true` + `VITE_NANOBOT_GATEWAY_URL=http://127.0.0.1:18080/`
+- `docs/15-可选依赖安装指南.md` (新)：三档安装说明 + 升级指南 + FAQ
+
+#### 优雅降级（关键）
+
+- `QuantNodes/agent/__init__.py`：PEP 562 `__getattr__` proxy + `NANOBOT_AVAILABLE` 标志
+  - `from QuantNodes.agent import Agent` 永远成功（不抛 ImportError）
+  - `Agent(...)` / `Agent.attr` 抛 `NanobotNotInstalled` 含 install hint
+- `QuantNodes/agent/tools/base.py`：`Tool` 父类在未装 nanobot 时降级为最小 ABC
+- `QuantNodes/agent/nanobot_bridge.py`：延后 `from nanobot import Nanobot` 到 `__init__`
+
+#### 测试
+
+- `tests/agent/test_optional_dependency.py` (8 tests)：未装 nanobot 时所有 import 路径、HTTP 端点
+- `tests/agent/test_nanobot_runtime.py` (9 tests)：singleton、start/stop 单进程、状态机
+- `tests/agent/test_webui_integration.py` (10 tests)：router / sidebar / iframe 路由 / env 契约 / pyproject extras
+
+#### Breaking Changes
+
+⚠️ **用户必须升级后显式装回 [agent] extra**：
+
+```bash
+pip install --upgrade quantnodes
+pip install 'quantnodes[agent]'   # ← 这一步必做，否则失去 agent 功能
+```
+
 ### Pending (Phase 5)
 
-- [ ] 5.1 Subagent 多 Agent 团队（main/factor-analyst/backtest-engineer/risk-manager）
-- [ ] 5.2 MCP server（quant 能力 stdio 暴露）
-- [ ] 5.3 上游 WebUI（端口 18080）
+- [x] 5.1 Subagent 多 Agent 团队（main/factor-analyst/backtest-engineer/risk-manager）
+- [x] 5.2 MCP server（quant 能力 stdio 暴露）
+- [x] 5.3 单进程 WebUI + 可选依赖
 - [ ] 5.4 渠道接入（飞书 + WebSocket）
 - [ ] 5.5 Cron 调度（日终/周度/月度）
 

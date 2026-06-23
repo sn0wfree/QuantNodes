@@ -24,9 +24,20 @@ import os
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from nanobot import Nanobot
-from nanobot.agent.tools.base import Tool
-from nanobot.agent.tools.registry import ToolRegistry
+# v3.0.0 Stage 5.3: nanobot-ai is now an optional dep. We delay the import
+# until ``Agent.__init__`` is called so that ``from QuantNodes.agent import
+# Agent`` works even when the [agent] extra is not installed (the import path
+# returns a proxy that raises ``NanobotNotInstalled`` on actual use).
+try:
+    from nanobot import Nanobot  # type: ignore[import-not-found]
+    from nanobot.agent.tools.base import Tool  # type: ignore[import-not-found]
+    from nanobot.agent.tools.registry import ToolRegistry  # type: ignore[import-not-found]
+    _NANOBOT_OK = True
+except ImportError:  # pragma: no cover - exercised in nanobot-less envs
+    Nanobot = None  # type: ignore[assignment,misc]
+    Tool = None  # type: ignore[assignment,misc]
+    ToolRegistry = None  # type: ignore[assignment,misc]
+    _NANOBOT_OK = False
 
 from .config_mapper import build_nanobot_config, write_nanobot_config
 from .tools import register_all_quant_tools
@@ -47,6 +58,9 @@ class Agent:
         workspace: str = DEFAULT_WORKSPACE,
         config: Optional[Dict[str, Any]] = None,
     ):
+        if not _NANOBOT_OK:
+            from . import NanobotNotInstalled
+            raise NanobotNotInstalled("Agent")
         config = config or {}
         self.workspace = Path(workspace).expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)

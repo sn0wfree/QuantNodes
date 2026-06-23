@@ -514,3 +514,105 @@ v3.0.0+ 默认 workspace 为 `.agent/`（HKUDS nanobot 上游约定），从 v2.
 ├── sessions/              # 会话持久化
 └── cron/                  # 周期任务状态
 ```
+
+## 十一、Stage 5.3 — 单进程集成 + 可选依赖
+
+### 11.1 核心约束（用户决策）
+
+1. **可选依赖**：`nanobot-ai` 不应是强制依赖——很多用户只想要量化工具库（Wiki / Factor / Backtest / Strategy），不需要 agent。
+2. **单进程**：用户明确反对多进程。WebUI、agent、量化 API 应在同一个 uvicorn 进程内。
+
+### 11.2 单进程架构
+
+```
+QuantNodes 进程（uvicorn 启动）
+├─ FastAPI :8000           ← 量化 REST API
+│   ├─ /api/wiki /factor /backtest /strategy /...
+│   ├─ /api/agent/status /health /restart /chat/send
+│   └─ /agent-chat → iframe → :18080
+├─ nanobot gateway :18080  ← WebUI SPA + WebSocket（同进程 asyncio.create_task）
+│   ├─ AgentLoop           ← asyncio.Task (agent.run)
+│   ├─ ChannelManager      ← 启动 WebSocketChannel + 静态 SPA mount
+│   ├─ CronService         ← asyncio.Task (cron.start)
+│   └─ QuantDream hook     ← AgentHook on agent.dream
+└─ MCP server (stdio)      ← 由 nanobot config.mcpServers 自动拉起
+```
+
+### 11.3 为什么不用 `_run_gateway()`？
+
+nanobot 上游的 `cli/commands.py::_run_gateway()` 用 `asyncio.run()` 抢占事件循环。这与 uvicorn 已有的事件循环**冲突**。我们绕过它：
+
+- 直接调用 `AgentLoop.from_config()` / `ChannelManager(...)` / `CronService(...)` 的 public API
+- 用 `asyncio.create_task()` 启动后台任务（不 `asyncio.run`）
+- 在 FastAPI lifespan 的 `try/finally` 中 `agent.stop()` + `cron.stop()` + `channels.stop_all()` + `agent.close_mcp()`
+
+### 11.4 优雅降级（PEP 562）
+
+```python
+# QuantNodes/agent/__init__.py
+try:
+    from nanobot.agent.tools.base import Tool as _ProbeTool
+    NANOBOT_AVAILABLE = True
+    del _ProbeTool
+except ImportError:
+    NANOBOT_AVAILABLE = False
+
+
+class NanobotNotInstalled(ImportError):
+    """Raised when user code touches a nanobot-only symbol without [agent] extra."""
+
+
+# Re-exports: when NANOBOT_AVAILABLE, normal; otherwise, a proxy that
+# raises on every attribute access.
+if NANOBOT_AVAILABLE:
+    from .nanobot_bridge import Agent
+    from .tools import register_all_quant_tools
+else:
+    class _NanobotUnavailableProxy:
+        def __getattr__(self, name):
+            raise NanobotNotInstalled(name)
+        def __call__(self, *args, **kwargs):
+            raise NanobotNotInstalled("Agent")
+    Agent = _NanobotUnavailableProxy()
+    register_all_quant_tools = _NanobotUnavailableProxy()
+```
+
+**关键设计**：
+- `from QuantNodes.agent import Agent` 永远成功
+- `Agent(...)` / `Agent.attr` / `register_all_quant_tools(...)` 抛 `NanobotNotInstalled`
+- 14 个 quant tool 类可独立 import（`Tool` 父类在未装 nanobot 时退化为最小 ABC）
+- API 端点 `/api/agent/*` 返回 503 + install hint，前端 AgentChat.vue 显示提示页
+
+### 11.5 日志桥接
+
+```python
+# api/main.py lifespan
+if NANOBOT_AVAILABLE:
+    from nanobot.utils.logging_bridge import redirect_lib_logging
+    redirect_lib_logging("uvicorn", level="INFO")
+    redirect_lib_logging("uvicorn.access", level="INFO")
+    redirect_lib_logging("fastapi", level="INFO")
+```
+
+`redirect_lib_logging`（`nanobot.utils.logging_bridge`）把 stdlib `logging` 路由到 loguru，达成日志统一。
+
+### 11.6 端口分配
+
+| 端口 | 用途 | 配置 |
+|------|------|------|
+| 8000 | FastAPI 量化 REST API | uvicorn `--port`（与上游解耦） |
+| 18080 | nanobot WebUI + WebSocket | `NANOBOT_GATEWAY_PORT`（默认 18080） |
+| 8765 | （可选）独立 WebSocket channel | `NANOBOT_WEBSOCKET_PORT` |
+
+前端 `VITE_NANOBOT_GATEWAY_URL` 必须指向 `:18080`，让 `/agent-chat` iframe 加载上游 SPA。
+
+### 11.7 失败模式
+
+| 场景 | 行为 | 端点响应 |
+|------|------|---------|
+| 未装 nanobot-ai | `state=unavailable` | 503 + install hint |
+| LLM provider 配置错误 | `state=error` | 503 + error message |
+| Component 启动失败 | `state=error` + 不会停 FastAPI | 503 |
+| WebUI SPA 缺 `nanobot/web/dist/` | WS API 仍可用，iframe 显示空白 | — |
+| nanobot gateway port 占用 | `state=error` | 503 + 错误日志 |
+

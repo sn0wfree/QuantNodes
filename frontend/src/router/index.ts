@@ -13,6 +13,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Dashboard' },
       },
       {
+        path: 'agent-chat',
+        name: 'AgentChat',
+        component: () => import('@/views/AgentChat.vue'),
+        meta: { title: 'Agent Chat', agent: true },
+      },
+      {
         path: 'wiki/factors',
         name: 'FactorList',
         component: () => import('@/views/Wiki/FactorList.vue'),

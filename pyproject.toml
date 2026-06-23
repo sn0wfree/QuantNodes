@@ -22,16 +22,22 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 
-dependencies = [
-    "nanobot-ai>=0.2.1,<0.3.0",
-]
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/sn0wfree/QuantNodes"
 
 [project.optional-dependencies]
-streamlit-ui = ["streamlit>=1.28.0"]
+# 启用 nanobot agent / WebUI / MCP / 飞书 等完整功能
+agent = [
+    "nanobot-ai>=0.2.1,<0.3.0",
+]
+# 暴露 quant 工具库为 MCP server（无需 nanobot 也能跑，但与 agent 组合时
+# 可让 nanobot 子智能体通过 stdio 调用 quant 工具）
 mcp = ["fastmcp>=3.0", "mcp[cli]>=1.0"]
+# 一键装齐 agent + mcp
+all = ["quantnodes[agent,mcp]"]
+streamlit-ui = ["streamlit>=1.28.0"]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
