@@ -38,13 +38,42 @@ class ToolRegistry:
         return list(self._tools.values())
 
     def get_tool_schemas(self) -> List[Dict[str, Any]]:
-        """获取所有工具的OpenAI Schema（带缓存）"""
+        """Return OpenAI function-calling schemas for all tools (cached).
+
+        v3.0.0 contract: if a tool cannot produce a schema (e.g. the
+        local ``Tool`` ABC when ``nanobot-ai`` is not installed), we
+        fall back to a minimal ``{"type": "function", "function": {"name": ..., "description": ..., "parameters": {"type": "object", "properties": {}}}}``
+        shape so the registry's schema list is always usable.
+        """
         if self._cached_schemas is None:
-            self._cached_schemas = [tool.to_openai_schema() for tool in self._tools.values()]
+            schemas: List[Dict[str, Any]] = []
+            for tool in self._tools.values():
+                try:
+                    schemas.append(tool.to_openai_schema())
+                except Exception:
+                    # Fallback: minimal schema from raw fields
+                    schemas.append({
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.parameters,
+                        },
+                    })
+            self._cached_schemas = schemas
         return self._cached_schemas
 
     async def execute_tool(self, name: str, **kwargs: Any) -> ToolExecutionResult:
-        """执行单个工具"""
+        """Execute a single tool by name.
+
+        v3.0.0 contract: we attempt to call ``tool.cast_params(kwargs)`` and
+        ``tool.validate_params(params)`` for forward-compat with the
+        upstream nanobot Tool API. If those methods don't exist on the
+        tool (e.g. local ``Tool`` ABC when ``nanobot-ai`` is not
+        installed, or third-party tools that don't implement them), we
+        gracefully fall back to passing the raw ``kwargs`` to
+        ``tool.execute()``.
+        """
         tool = self._tools.get(name)
         if not tool:
             return ToolExecutionResult(
@@ -55,15 +84,22 @@ class ToolRegistry:
             )
 
         try:
-            params = tool.cast_params(kwargs)
-            errors = tool.validate_params(params)
-            if errors:
-                return ToolExecutionResult(
-                    tool_name=name,
-                    success=False,
-                    content=None,
-                    error=f"Parameter validation failed: {', '.join(errors)}"
-                )
+            # Optional pre-processing hooks. Missing methods are OK —
+            # the bare v3.0.0 ``Tool`` ABC doesn't define them.
+            params: Dict[str, Any] = kwargs
+            cast = getattr(tool, "cast_params", None)
+            if callable(cast):
+                params = cast(kwargs)
+            validate = getattr(tool, "validate_params", None)
+            if callable(validate):
+                errors = validate(params)
+                if errors:
+                    return ToolExecutionResult(
+                        tool_name=name,
+                        success=False,
+                        content=None,
+                        error=f"Parameter validation failed: {', '.join(errors)}"
+                    )
 
             result = await tool.execute(**params)
             return ToolExecutionResult(
