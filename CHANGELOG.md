@@ -10,11 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **QuantAlpha 子包**（`QuantNodes/research/quant_alpha/`）：自动化因子挖掘引擎，参考 4 大因子库演进链（Alpha 101/158/360/AutoAlpha）
-  - **OperatorVocab** (`quant_alpha.operator_vocab.OperatorVocab`)：统一算子查询/调用/元数据化接口
-  - **5 个新算子**：`signedpower` / `ts_decay_linear` / `IndNeutralize` / `ts_skew` / `ts_kurt`（修复 Alpha 101 关键缺口）
-  - **算子元数据 schema 扩展**：从 5 字段到 12 字段（新增 7 个 LLM 友好字段）
-  - **per-date over() 修复**：rank/zscore/winsorize 默认 per-date 截面（修复 12-lambda namespace 的 BUG 2）
+  - **OperatorVocab** (`quant_alpha.operator_vocab.OperatorVocab`)：统一算子查询/调用/元数据化接口（M1）
+  - **5 个新算子**：`signedpower` / `ts_decay_linear` / `IndNeutralize` / `ts_skew` / `ts_kurt`（修复 Alpha 101 关键缺口，M1）
+  - **算子元数据 schema 扩展**：从 5 字段到 12 字段（新增 7 个 LLM 友好字段，M1）
+  - **per-date over() 修复**：rank/zscore/winsorize 默认 per-date 截面（修复 12-lambda namespace 的 BUG 2，M1）
+  - **MCTS 子包**（`quant_alpha.mcts`，M2）：
+    - `ExtensionOpPool`：从 OperatorVocab 动态生成 26 个扩展操作（vs 旧 7 硬编码）
+    - `MCTSNode` / `MCTSTree`：完整谱系追踪（entry_id + parent_id + ancestors + lineage_depth）
+    - 5 通道反馈框架（`MCTSFeedbackConfig` + 5 个 channel collector）：
+      execution / shape / code / value / llm
+    - `MCTSSearch`：UCB1 选择 + 5 通道反馈驱动 + 谱系持久化
+  - **CLI 命令**：`quantnodes alpha-mcts`（M2）
   - **完整调研 + 规划文档**：`docs/quant_alpha/PROJECT_PLAN.md`（991 行）
+
+### Changed
+
+- **MCTS 操作池**：从 7 硬编码 → 26 动态生成（按 6 个 category：wrap/window/window_binary/unary/diff/ratio）
 
 ### Fixed
 
