@@ -51,19 +51,13 @@ class TestAdapters:
         p = tmp_path / "f.h5"
         with pd.HDFStore(str(p), mode="w") as store:
             store.put("data", pd.DataFrame({"a": [1, 2, 3]}), format="table")
-        stores = {}
 
-        def getter(path):
-            s = stores.get(path)
-            if s is None:
-                s = pd.HDFStore(path, mode="r")
-                stores[path] = s
-            return s
-
-        df = H5Loader().load(str(p), key="data", store_getter=getter)
-        assert df.shape == (3, 1)
-        for s in stores.values():
-            s.close()
+        opened = pd.HDFStore(str(p), mode="r")
+        try:
+            df = H5Loader().load(str(p), key="data", store_getter=lambda _p: opened)
+            assert df.shape == (3, 1)
+        finally:
+            opened.close()
 
     def test_h5_loader_requires_store_getter(self, tmp_path):
         with pytest.raises(ValueError, match="store_getter"):
@@ -75,13 +69,11 @@ class TestAdapters:
             store.put("data", pd.DataFrame({"a": [1]}), format="table")
 
         opened = pd.HDFStore(str(p), mode="r")
-
-        def getter(path):
-            return opened
-
         try:
             with pytest.raises(KeyError, match="not found"):
-                H5Loader().load(str(p), key="missing", store_getter=getter)
+                H5Loader().load(
+                    str(p), key="missing", store_getter=lambda _p: opened
+                )
         finally:
             opened.close()
 
