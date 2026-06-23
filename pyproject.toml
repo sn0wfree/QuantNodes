@@ -22,6 +22,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 
+dependencies = [
+    "nanobot-ai>=0.2.1,<0.3.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/sn0wfree/QuantNodes"
 
