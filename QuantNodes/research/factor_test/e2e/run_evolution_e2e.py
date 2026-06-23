@@ -46,15 +46,9 @@ from QuantNodes.core.knowledge import (
 )
 from QuantNodes.core.path_utils import ensure_dir
 from QuantNodes.core.visualization import generate_html
-from QuantNodes.research.factor_test.config import (
-    AnalysisSetting,
-    EvolutionConfig,
-    FactorSetting,
-    FeedbackSetting,
-    OutputSetting,
-    PreprocessSetting,
-    QualityGateConfig,
-    SingleFactorTestConfig,
+from QuantNodes.research.factor_test.config import SingleFactorTestConfig
+from QuantNodes.research.factor_test.config_builder import (
+    SingleFactorTestConfigBuilder,
 )
 from QuantNodes.research.factor_test.pipeline_runner import PipelineRunner
 
@@ -68,47 +62,51 @@ def _build_config(
     max_rounds: int = 3,
     enable_quality_gate: bool = True,
 ) -> SingleFactorTestConfig:
-    """构造 SingleFactorTestConfig (M6: 移除未用的 enable_kb 参数)。"""
+    """构造 SingleFactorTestConfig (M6: 移除未用的 enable_kb 参数)。
+
+    Phase 3.4: 改用 SingleFactorTestConfigBuilder 流式构造 (bitwise 等价)。
+    """
     # H12: 不再硬编码 20260101/20260630, 默认 1 年前到 1 个月前 (滚动)
     one_year_ago = int((datetime.now() - timedelta(days=365)).strftime('%Y%m%d'))
     one_month_ago = int((datetime.now() - timedelta(days=30)).strftime('%Y%m%d'))
-    return SingleFactorTestConfig(
-        factor=FactorSetting(
-            name=factor_name, factor_dir=factor_dir,
+    return (
+        SingleFactorTestConfigBuilder()
+        .factor(
+            factor_name, factor_dir,
             hypothesis=directions[0] if directions else "momentum",
             description=f"e2e test factor: {factor_name}",
-        ),
-        preprocess=PreprocessSetting(
-            adj_date_beg=one_year_ago, adj_date_end=one_month_ago,
-            adj_mode=["M", "end"],
-            sample_index="all", sample_industry="all",
-            tradable={
-                "no_st": True, "no_suspended": True, "no_up_down_limit": False,
-                "min_ipo_days": 360,
-            },
-            missing="", extreme="median", norm="zscore",
-            industry_neutral=False, risk_neutral=False, risk_factors=[],
-        ),
-        analysis=AnalysisSetting(
-            ic={"min_group_size": 5},
-            group={"groups": 5, "factor_direction": 1, "floor_mode": "group", "hedge": "equal"},
-            longshort={"factor_direction": 1},
-            score={"enabled": True},
-            risk_corr={"factors": ""},
-        ),
-        output=OutputSetting(dir=output_dir, format=["json"]),
-        feedback=FeedbackSetting(enabled=False),
-        quality_gate=QualityGateConfig(enabled=enable_quality_gate),
-        evolution=EvolutionConfig(
+        )
+        .dates(one_year_ago, one_month_ago)
+        .adj_mode(["M", "end"])
+        .sample("all", "all")
+        .tradable(
+            no_st=True, no_suspended=True, no_up_down_limit=False,
+            min_ipo_days=360,
+        )
+        .preprocess(missing="", extreme="median", norm="zscore")
+        .neutralize(industry=False, risk=False, risk_factors=[])
+        .ic(min_group_size=5)
+        .groups(5, direction=1, floor_mode="group", hedge="equal")
+        .longshort(direction=1)
+        .score(enabled=True)
+        .risk_corr("")
+        .output(output_dir, fmt=["json"])
+        .feedback(enabled=False)
+        .quality_gate(enabled=enable_quality_gate)
+        .evolution(
             enabled=True, max_rounds=max_rounds,
             parent_selection_strategy="top_percent_plus_random",
             top_percent_threshold=0.5,
             metric="sharpe",
             early_stop_patience=0,
-        ),
-        data_path=data_path,
-        load_keys=["cp", "id_citic1", "mv_float", "st", "suspend", "ud_limit", "ipo_days"],
+        )
+        .data_path(data_path)
+        .load_keys(
+            ["cp", "id_citic1", "mv_float", "st", "suspend", "ud_limit", "ipo_days"]
+        )
+        .build()
     )
+
 
 
 def _inject_prepared_data(runner: PipelineRunner, data_path: Path) -> None:

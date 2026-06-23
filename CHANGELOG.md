@@ -150,6 +150,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     26 个测试。
 
 ### Added
+- **`SingleFactorTestConfig` 流式构造器 (Phase 3.4 Builder)**
+  (`QuantNodes/research/factor_test/config_builder.py`, 新增)
+  - `SingleFactorTestConfigBuilder` 提供链式 setter: `.factor() /
+    .dates() / .sample() / .preprocess() / .neutralize() / .tradable() /
+    .ic() / .groups() / .longshort() / .score() / .risk_corr() /
+    .output() / .feedback() / .quality_gate() / .evolution() /
+    .data_path() / .load_keys()`, 终接 `.build()` 触发 pydantic 校验。
+  - 默认值全部委托各 `*Setting` 的 pydantic 默认 (单一真值源, 不重复)。
+  - 缺 `factor` (唯一必填) 时 `.build()` 抛 `ValueError`。
+  - 不改 `SingleFactorTestConfig` / `config.py`; 现有直接构造方式不变,
+    全新增量。
+  - **真实样例**: `run_evolution_e2e.py::_build_config` 从 37 行嵌套
+    构造改写为 35 行流式 builder (净增 6 行因为加注释, 但去掉 7 个
+    `*Setting` import)。
+  - 新增 `tests/research/factor_test/test_config_builder.py` (21 tests):
+    链式返回值、最小/必填/缺必填报错、默认值来自 pydantic、setter 字段
+    透传、pydantic ValidationError 触发、与等价直接构造 bitwise 一致。
 - **顶层 `DataSource` ABC + DB 节点工厂 + 文件格式 Adapter (Phase 3.3)**
   - **`DataSource` 顶层抽象基类** (`QuantNodes/core/data_source.py`, 新增)
     - 最小化标记基类: 统一 `close()` 生命周期 + `__enter__/__exit__`
