@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **`DataLoader` parquet 分发修复 (孤儿方法接入)**
+  (`QuantNodes/research/factor_test/utils/data_loader.py:72`)
+  - `load_parquet` 自定义以来已定义，但 `load_factor` / `load_custom`
+    的扩展名分发从未接入 `.parquet` 分支 → 传 `.parquet` 路径会落到
+    else（`load_factor` → `load_custom` → `raise ValueError`），方法不可达。
+  - `load_factor` 新增 `.parquet` → `load_parquet(factor_dir)` 分支。
+  - `load_custom` 新增 `.parquet` 分支，沿用 csv 的 dir 尾斜杠语义
+    （尾斜杠 → `dir + filename`，否则 `filename` 视为完整路径）。
+  - 新增 3 个测试 (`tests/research/test_data_loader_edges.py`):
+    `TestLoadFactor.test_parquet` + `TestLoadCustom.test_parquet_dir`
+    / `test_parquet_fullpath`。
+  - 行为变化：parquet 从"不可用 (抛 ValueError)"变为"可用"，其余分支
+    (h5/csv/npy) bitwise 不变。
 - **`GroupAnalyzerNode` 支持 bool / 离散 / 轻度 ties 因子**
   (`QuantNodes/research/factor_test/nodes/group_analyzer_node.py:55`)
   - 原 `_calc_group_return` 在 n_unique < n_groups 时（如 `pl.when(cond)

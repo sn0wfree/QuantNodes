@@ -90,6 +90,13 @@ class TestLoadFactor:
         df = loader.load_factor(str(csv), "")
         assert df.shape == (3, 1)
 
+    def test_parquet(self, tmp_path):
+        pq = tmp_path / "f.parquet"
+        pd.DataFrame({"a": [1, 2, 3]}).to_parquet(pq)
+        loader = DataLoader(str(tmp_path) + "/")
+        df = loader.load_factor(str(pq), "")
+        assert df.shape == (3, 1)
+
     def test_unsupported_format(self, data_dir):
         loader = DataLoader(str(data_dir) + "/")
         with pytest.raises(ValueError):
@@ -134,6 +141,20 @@ class TestLoadCustom:
         pd.DataFrame({0: [1]}).to_csv(csv)
         loader = DataLoader(str(tmp_path) + "/")
         df = loader.load_custom((str(tmp_path) + "/", "f.csv"))
+        assert df.shape == (1, 1)
+
+    def test_parquet_dir(self, tmp_path):
+        pq = tmp_path / "f.parquet"
+        pd.DataFrame({"a": [1]}).to_parquet(pq)
+        loader = DataLoader(str(tmp_path) + "/")
+        df = loader.load_custom((str(tmp_path) + "/", "f.parquet"))
+        assert df.shape == (1, 1)
+
+    def test_parquet_fullpath(self, tmp_path):
+        pq = tmp_path / "f.parquet"
+        pd.DataFrame({"a": [1]}).to_parquet(pq)
+        loader = DataLoader(str(tmp_path) + "/")
+        df = loader.load_custom(("ignored_dir", str(pq)))
         assert df.shape == (1, 1)
 
     def test_unsupported_format(self, data_dir):

@@ -84,6 +84,12 @@ class DataLoader:
                 return self.load_csv(filename)
         elif filename.endswith('.npy'):
             return self.load_npy(dir_path + filename)
+        elif filename.endswith('.parquet'):
+            if dir_path.endswith('/') or dir_path.endswith('\\'):
+                return self.load_parquet(dir_path + filename)
+            else:
+                # filename itself is a full path
+                return self.load_parquet(filename)
         elif dir_path.endswith('.h5'):
             store = self._get_store(dir_path)
             return store.get(filename)
@@ -98,6 +104,8 @@ class DataLoader:
             return self.load_csv(factor_dir)
         elif factor_dir.endswith('.npy'):
             return self.load_npy(factor_dir)
+        elif factor_dir.endswith('.parquet'):
+            return self.load_parquet(factor_dir)
         else:
             return self.load_custom((factor_dir, factor_name))
 
