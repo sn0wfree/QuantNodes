@@ -489,3 +489,28 @@ backtest:
 **文档版本**: v3.0.0  
 **最后更新**: 2026-06-23  
 **变更摘要**: 从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。详见 [docs/14-上游nanobot升级指南.md](14-上游nanobot升级指南.md)。
+
+## 工作区约定
+
+v3.0.0+ 默认 workspace 为 `.agent/`（HKUDS nanobot 上游约定），从 v2.x 的 `.quant_agent/` 迁移而来：
+
+- 迁移脚本：`scripts/migrate_workspace.py`（`--src .quant_agent --dst .agent`）
+- v2.x MEMORY.md 自动分割为 `.agent/SOUL.md`（personality）+ `.agent/memory/MEMORY.md`（facts）
+- `.agent/` 在 `.gitignore` 中（含 settings.json 里的 API key）
+- 旧的 `.quant_agent/` 不自动删除，需手动确认后清理
+
+上游 nanobot 在 `.agent/` 下的关键文件：
+
+```
+.agent/
+├── nanobot_config.json    # llmProviders / agents.defaults 配置
+├── SOUL.md                # 人格 / persona（每个 turn 都会读）
+├── USER.md                # 用户偏好
+├── memory/
+│   ├── MEMORY.md          # 长期记忆（DREAM 整合产出）
+│   └── history.jsonl      # 原始会话历史
+├── skills/                # 用户自定义 SKILL.md
+├── agents/                # 多 Agent 团队（main.md / factor-analyst.md / ...）
+├── sessions/              # 会话持久化
+└── cron/                  # 周期任务状态
+```

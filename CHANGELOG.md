@@ -62,39 +62,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 v3.0.0 — 上游 nanobot 迁移：从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。
 
-### Architecture
+### Stage 1 — Architecture (commit 2584462)
 
-- **核心运行时迁移**：删除自写 `QuantNodes/agent/core/{loop,runner,memory,autocompact,context,hook,compaction}.py`、`bus/`、`session/`、`templates/agent/`、`config/{loader,executor}`，改为直接消费上游 `nanobot-ai>=0.2.1,<0.3.0`。
+- **核心运行时迁移**：删除自写 `QuantNodes/agent/core/{loop,runner,memory,autocompact,context,hook,compaction}.py`、`bus/`、`session/`、`templates/agent/`、`config/{loader,executor}.py`、`cli/main.py`、`web/`。
 - **编程式门面**：新增 `QuantNodes/agent/nanobot_bridge.py::Agent`，薄包装 `Nanobot.from_config(config_path, workspace=...)`，旧 `Agent(workspace, config)` 签名不变。
 - **dream.py 保留**：从 `core/dream.py` 迁出为 `core/quant_dream.py`，实现 `QuantDreamHook(AgentHook)` 挂在上游 hook 系统；`core/dream.py` 保留为 re-export shim（DeprecationWarning）。
-- **配置映射**：新增 `QuantNodes/agent/config_mapper.py`，把 `.env` 的 `QUANTNODES__LLM__*` 翻译为 `.agent/nanobot_config.json` 的 `llmProviders` 块（含 `dialect` 自动推断：OpenAI 兼容 → `OpenAIChatCompletions`、Anthropic → `AnthropicMessages`、Ollama → `OpenResponses`）。
-- **workspace 迁移**：`.quant_agent/` → `.agent/`（上游 nanobot 默认约定）。一次性脚本 `scripts/migrate_workspace.py`。
+- **配置映射**：新增 `QuantNodes/agent/config_mapper.py`，把 `.env` 的 `QUANTNODES__LLM__*` 翻译为 `.agent/nanobot_config.json` 的 `providers` 块（含 slot 自动推断：OpenAI 兼容 → `custom`、Anthropic → `anthropic`、Ollama → `ollama`、Azure → `azure_openai`）。
+- **Skills**：新增 `QuantNodes/agent/skills_quant/` 6 个 SKILL.md（factor-research / strategy-design / backtest-analyze / risk-management / quant-dream / config-driven），格式对齐上游 `nanobot/skills/*/SKILL.md`（YAML front-matter + 指令体）。
 - **CLI/WebUI**：删除自写 `agent/cli/main.py` 和 `agent/web/`，改为 `python -m nanobot` + `python -m nanobot webui --port 18080`。
+- **量化工具继承 nanobot Tool**：`QuantNodes/agent/tools/base.py::Tool` 改为继承 `nanobot.agent.tools.base.Tool`，15 个 quant 工具父类自动升级。`register_all_quant_tools(registry, workspace)` 把 14 个 tool 注入上游 `ToolRegistry`。
 
-### API 解耦
+### Stage 2 — API 解耦 (commit 9e5999a)
 
-- `api/services/agent_service.py`：改 import 为 `nanobot_bridge.Agent`，事件协议 `token/tool_call/tool_result/done` 向后兼容。
-- `api/services/{backtest,wiki,stats}_service.py`：不再 `from QuantNodes.agent.tools.*`，改调底层 service（`backtest.config_runner` / `QuantNodes.research.wiki`）。
-- `api/services/dream_service.py`：改用 `core/quant_dream.QuantDreamHook`。
-- `api/routers/skill.py`：用上游 `nanobot.skills` SKILL.md 解析器。
-- `api/routers/settings.py`：`reload_agent()` → `reload_bot()`。
+- `api/services/agent_service.py`：改 import 为 `nanobot_bridge.Agent`，事件协议 `token/tool_call/tool_result/done` 向后兼容；新增 `reload_bot()`，保留 `reload_agent()` 别名。
+- `api/services/wiki_service.py` (重写)：去除 `WikiTool`，直接用 `QuantNodes.research.wiki.WikiFactorProxy`。
+- `api/services/stats_service.py` (重写)：同样去除 `WikiTool`。
+- `api/services/dream_service.py`：改用 `core/quant_dream.QuantDreamHook` + `DreamEngine(workspace=...)`。
+- `api/services/backtest_service.py`：注释说明仍用 `ConfigBacktestTool`，未来 TODO 用 `ConfigBacktestRunner` 替代。
+- `api/routers/settings.py`：6 处 `reload_agent()` → `reload_bot()`。
+- `api/routers/skill.py`：保持本地 `SkillRegistry`（上游 SKILL.md 解析器在 Stage 5.x 引入）。
 
-### Skills
+### Stage 3 — Workspace 迁移 (commit 4b7560e)
 
-- 新增 `QuantNodes/agent/skills_quant/` 6 个 SKILL.md（factor-research / strategy-design / backtest-analyze / risk-management / quant-dream / config-driven），格式对齐上游 `nanobot/skills/*/SKILL.md`（YAML front-matter + 指令体）。
-- `scripts/migrate_skills.py` 把旧 `skills/*.py` 自动转换为 SKILL.md。
+- `.quant_agent/` → `.agent/`（HKUDS nanobot 上游默认约定）。
+- 一次性迁移脚本 `scripts/migrate_workspace.py`：自动分割 v2 MEMORY.md 为 SOUL.md + memory/MEMORY.md；保留 sessions / settings.json；写 `.migration_manifest.json` 记录元数据。
+- 16 处默认 workspace 改 `.agent/`：`QuantNodes/core/config.py`、`QuantNodes/cli/_helpers.py`、`QuantNodes/agent/tools/task.py`、`api/config.py`、`api/services/{agent,backtest,dream,settings,stats,wiki}_service.py`。
+- `.gitignore` 加 `.agent/`（含 API key 等敏感配置）。
+
+### Stage 4 — Tests + Docs (commit pending)
+
+- 新增 `tests/agent/test_quant_dream_hook.py` (16 tests) — 覆盖 QuantDreamHook / DreamEngine shim / get_recent_dreams round-trip。
+- 新增 `tests/agent/test_quant_tools.py` (10 tests) — 工具 schema / to_schema / register_all_quant_tools idempotent。
+- 新增 `tests/agent/test_nanobot_integration.py` (10 tests) — 端到端 Agent(workspace) + 14 量化工具注册 + config_mapper 路由。
+- 删除 11 个 broken-collect 测试文件（`test_{loop,runner,memory,memory_persistence,bus,session,chat,context,hook,autocompact,agent_loop_p1}.py`）—— 上游 nanobot 已覆盖这些功能。
+- 更新 `docs/13-Agent架构设计.md`：新增"工作区约定"节。
+- 更新 `AGENTS.md`：`.agent/` 路径说明 + 迁移脚本。
 
 ### Dependencies
 
 - 增 `nanobot-ai>=0.2.1,<0.3.0`（alpha 期锁次版本号）。
+- `pyproject.toml::requires-python` 升 `>=3.11`（upstream 最低要求）。
 - 本地开发期 `pip install -e /tmp/nanobot`（HKUDS/nanobot v0.2.1 源码克隆）。
 
 ### Breaking Changes
 
-- 删 `QuantNodes/agent/core/{loop,runner,memory,compaction}.py` —— 直接 import 路径报错，必须改用 `Agent.run()` / `Nanobot.from_config()` facade。
-- 删 `QuantNodes/agent/bus/`、`session/`、`config/{loader,executor}.py` —— 同上。
+- 删 `QuantNodes/agent/core/{loop,runner,memory,compaction,autocompact,context,hook}.py` —— 直接 import 路径报错，必须改用 `Agent.run()` / `Nanobot.from_config()` facade。
+- 删 `QuantNodes/agent/bus/`、`session/`、`config/{loader,executor}.py`、`templates/agent/`、`cli/main.py`、`web/` —— 同上。
 - workspace 从 `.quant_agent/` 迁 `.agent/` —— 见 `scripts/migrate_workspace.py`。
 - 旧 `agent/templates/agent/*.md` 改名为 `.agent/SOUL.md` —— 见 `scripts/migrate_workspace.py`。
+
+### Baseline (Python 3.11, Stage 4)
+
+- 非 agent 测试：4143 passed / 336 failed / 28 errors / 6 skipped
+- tests/agent/：661 passed / 35 failed（pre-existing 网络测试 + TestAgentLoop session tests）
 
 ### Migration
 

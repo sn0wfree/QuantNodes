@@ -98,12 +98,18 @@ class QuantDreamHook:
         self._counter: Dict[str, int] = {}
 
     def should_analyze(self, user_content: str, assistant_content: str) -> bool:
-        """Return True iff the conversation touches any quant topic."""
+        """Return True iff the conversation touches any quant topic.
+
+        Uses word-boundary regex matching to avoid false positives like
+        ``"ic" in "nice"`` or ``"day" in "today"``.
+        """
+        import re
+
         combined = (user_content + " " + assistant_content).lower()
-        return any(
-            kw in combined
-            for kw in FACTOR_KEYWORDS + BACKTEST_KEYWORDS + STRATEGY_KEYWORDS
-        )
+        for kw in FACTOR_KEYWORDS + BACKTEST_KEYWORDS + STRATEGY_KEYWORDS:
+            if re.search(rf"\b{re.escape(kw)}\b", combined):
+                return True
+        return False
 
     def analyze_session(
         self,

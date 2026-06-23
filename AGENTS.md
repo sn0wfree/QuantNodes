@@ -25,7 +25,9 @@ pip install -e /tmp/nanobot
 - `QuantNodes/agent/nanobot_bridge.py` — `Agent` 门面（包装 `Nanobot.from_config`）
 - `QuantNodes/agent/core/quant_dream.py` — 量化专属 Dream 钩子（保留自 v2.x，向后兼容）
 - `QuantNodes/agent/tools/*.py` — 15 个量化工具（父类已改为 `nanobot.agent.tools.base.Tool`）
-- `.agent/` — workspace 根（上游 nanobot 默认约定，迁移自 `.quant_agent/`）
+- `.agent/` — workspace 根（上游 nanobot 默认约定，从 v2.x 的 `.quant_agent/` 迁移而来）
+  - 迁移脚本：`scripts/migrate_workspace.py`
+  - 在 `.gitignore` 中（含 API key）
 - `.agent/nanobot_config.json` — 主配置（由 `agent/config_mapper.py` 从 `.env` 生成）
 
 升级指南见 [`docs/14-上游nanobot升级指南.md`](docs/14-上游nanobot升级指南.md)。
