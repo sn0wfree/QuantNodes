@@ -105,6 +105,8 @@ class CodeSandbox:
         # ===== PR-QN-1 (2026-06-21): 实例级可配置白/黑名单 =====
         allowed_imports: Optional[List[str]] = None,
         blocked_imports: Optional[List[str]] = None,
+        # ===== PR-QN-4 (2026-06-22): 默认引擎 =====
+        default_engine: str = "polars",
         **kwargs
     ):
         """
@@ -118,6 +120,9 @@ class CodeSandbox:
                 PR-QN-1 新增, 之前需 monkey-patch 类属性.
             blocked_imports: 追加到黑名单的 import pattern (regex/字面量列表), 默认 None.
                 实例级配置. 增强默认黑名单 (60+ 危险模块).
+            default_engine: 默认引擎 ("polars" | "pandas" | "auto").
+                PR-QN-4 新增. "polars" (默认) 保持向后兼容;
+                "auto" 启用 import 扫描自动检测.
 
         Note:
             默认参数 (allowed_imports/blocked_imports 均为 None) 时, 行为与 PR-QN-1
@@ -132,7 +137,39 @@ class CodeSandbox:
         self._blocked_imports: Set[str] = set(self.DANGEROUS_IMPORTS) | set(
             blocked_imports or []
         )
+        # PR-QN-4: 默认引擎
+        self.default_engine: str = default_engine
         self.logger = logging.getLogger(f"sandbox.{self.__class__.__name__}")
+
+    def _detect_engine(self, code: str) -> str:
+        """Detect engine from code (PR-QN-4).
+
+        Scans import statements to determine polars or pandas.
+        Returns self.default_engine when no imports detected or when
+        default_engine is not "auto".
+        """
+        if self.default_engine != "auto":
+            return self.default_engine
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            return "polars"
+        has_pl = has_pd = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "polars" or alias.name.startswith("polars."):
+                        has_pl = True
+                    elif alias.name == "pandas" or alias.name.startswith("pandas."):
+                        has_pd = True
+            elif isinstance(node, ast.ImportFrom):
+                if node.module and (node.module == "polars" or node.module.startswith("polars.")):
+                    has_pl = True
+                elif node.module and (node.module == "pandas" or node.module.startswith("pandas.")):
+                    has_pd = True
+        if has_pd and not has_pl:
+            return "pandas"
+        return "polars"
 
     def validate(self, code: str) -> CodeValidationResult:
         """
@@ -200,7 +237,8 @@ class CodeSandbox:
     def validate_and_execute(
         self,
         code: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        engine: Optional[str] = None,
     ) -> Any:
         """
         验证并执行代码
@@ -208,6 +246,7 @@ class CodeSandbox:
         Args:
             code: 待执行的代码
             context: 执行上下文
+            engine: 引擎覆盖 ("polars"|"pandas"|None). None = use default_engine.
 
         Returns:
             执行结果
@@ -217,6 +256,9 @@ class CodeSandbox:
             SyntaxError: 代码语法错误
         """
         result = self.validate(code)
+
+        # PR-QN-4: detect engine (if not explicitly overridden)
+        detected_engine = engine or self._detect_engine(code)
 
         if not result.is_safe:
             if result.warnings_only:
@@ -279,6 +321,8 @@ class CodeSandbox:
         try:
             compiled = compile(code, '<string>', 'exec')
             exec_globals = {**safe_builtins, **context}
+            # PR-QN-4: inject detected engine info
+            exec_globals["__engine__"] = detected_engine
             exec(compiled, exec_globals)
             return exec_globals
         except SyntaxError as e:
