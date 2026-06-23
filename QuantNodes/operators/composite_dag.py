@@ -505,11 +505,11 @@ def load_composites_from_yaml(yaml_path: str) -> int:
         template_str = entry.get("template")
         if not template_str:
             continue
-        template = _compile_template_string(template_str)
+        engine = entry.get("engine", "polars")  # 缺省 = "polars" (向后兼容)
+        template = _compile_template_string(template_str, engine=engine)
         param_specs = _COMPOSITE_REGISTRY._build_param_specs(
             entry.get("params", {})
         )
-        engine = entry.get("engine", "polars")  # 缺省 = "polars" (向后兼容)
         spec = CompositeSpec(
             name=entry["name"],
             template=template,
@@ -527,7 +527,7 @@ def load_composites_from_yaml(yaml_path: str) -> int:
     return count
 
 
-# 允许的 Expr / 函数名白名单 (YAML template 解析用)
+# 允许的 Expr / 函数名白名单 (YAML template 解析用, polars 引擎)
 _ALLOWED_FUNC_NAMES: set = {
     "col", "lit", "when", "otherwise", "then",
     "abs", "log", "sqrt", "pow", "exp",
@@ -553,7 +553,7 @@ _DENIED_BASE_NAMES: set = {
 }
 
 
-def _compile_template_string(template_str: str) -> Callable[..., "Expr"]:
+def _compile_template_string(template_str: str, engine: str = "polars") -> Callable[..., Any]:
     """把字符串模板编译为 callable (AST 解析 + 白名单校验).
 
     模板形式: 单个表达式, 引用 params dict 中的 key, 如 ``x + k`` 或
@@ -563,6 +563,7 @@ def _compile_template_string(template_str: str) -> Callable[..., "Expr"]:
     与 CodeSandbox 配合: 这里**只**解析 Expr 调用链, 不执行任意 Python.
     PR-QN-3a 修复: 文档原版用裸 exec, 会被 CodeSandbox 拒绝, 改用 ast.parse
     + 节点类型白名单.
+    PR-QN-4: engine 参数选择正确的白名单 (polars vs pandas, 严格分流).
     """
     try:
         tree = ast.parse(template_str, mode="eval")
@@ -571,8 +572,14 @@ def _compile_template_string(template_str: str) -> Callable[..., "Expr"]:
 
     # 提取表达式中所有自由变量作为函数参数
     free_vars = _extract_free_vars(tree.body)
+    # PR-QN-4: 严格分流白名单
+    if engine == "pandas":
+        from ._engine import ALLOWED_FUNC_NAMES_PANDAS
+        allowed_funcs = ALLOWED_FUNC_NAMES_PANDAS
+    else:
+        allowed_funcs = _ALLOWED_FUNC_NAMES
     # 白名单校验: 仅允许 Name / Call / Attribute / Constant / BinOp
-    _validate_ast_nodes(tree.body, allowed_funcs=_ALLOWED_FUNC_NAMES)
+    _validate_ast_nodes(tree.body, allowed_funcs=allowed_funcs)
 
     # 编译为函数
     func_name = "_composite_template"
@@ -594,12 +601,51 @@ def _extract_free_vars(node: ast.AST) -> List[str]:
     return out
 
 
+def _validate_chain_base(attr: ast.Attribute, allowed_funcs: set) -> None:
+    """校验链式调用的 base 节点 (PR-QN-4).
+
+    链式调用可以是:
+      - polars: x.method() — base is Name
+      - pandas: x.groupby('a').mean() — base is Call (groupby returns a GroupBy)
+      - deep chain: x.rolling(10).mean() — base is Call
+
+    校验逻辑: 每个 Attribute.attr 都必须在白名单中, 递归验证整个链.
+    """
+    # 当前层方法名必须在白名单
+    if attr.attr not in allowed_funcs:
+        raise ValueError(
+            f"YAML template 调用了不允许的方法: {attr.attr!r}. "
+            f"允许: {sorted(allowed_funcs)[:10]}..."
+        )
+    # 递归验证 base
+    if isinstance(attr.value, ast.Name):
+        if attr.value.id in _DENIED_BASE_NAMES:
+            raise ValueError(
+                f"YAML template 调用了禁止的 base: "
+                f"{attr.value.id!r}.{attr.attr}"
+            )
+    elif isinstance(attr.value, ast.Call):
+        if isinstance(attr.value.func, ast.Attribute):
+            _validate_chain_base(attr.value.func, allowed_funcs)
+        elif isinstance(attr.value.func, ast.Name):
+            if attr.value.func.id not in allowed_funcs:
+                raise ValueError(
+                    f"YAML template 调用了不允许的函数: {attr.value.func.id!r}. "
+                    f"允许: {sorted(allowed_funcs)[:10]}..."
+                )
+    else:
+        raise ValueError(
+            f"YAML template 不支持的链式属性: {ast.dump(attr)[:80]}"
+        )
+
+
 def _validate_ast_nodes(node: ast.AST, allowed_funcs: set) -> None:
     """递归校验 AST 节点, 仅允许白名单内的函数名.
 
     Name 节点 = 自由变量 (作函数参数, 不在白名单中) 或白名单内的函数.
     Call 节点的 func 必须是白名单内的.
-    Attribute 访问: 仅允许链式方法调用 (base 必须是 Name, 不允许 module access).
+    Attribute 访问: 支持链式方法调用 (x.method() 或 x.method().method2()).
+    PR-QN-4: 支持 pandas 风格链式调用 (x.groupby('a').mean()).
     """
     for child in ast.walk(node):
         if isinstance(child, ast.Call):
@@ -609,26 +655,11 @@ def _validate_ast_nodes(node: ast.AST, allowed_funcs: set) -> None:
                     f"允许: {sorted(allowed_funcs)[:10]}..."
                 )
             elif isinstance(child.func, ast.Attribute):
-                # 链式方法调用: x.method() — base 必须是 Name (自由变量, 非 module)
-                if not isinstance(child.func.value, ast.Name):
-                    raise ValueError(
-                        f"YAML template 不允许链式属性: {ast.dump(child.func)[:80]}"
-                    )
-                if child.func.value.id in _DENIED_BASE_NAMES:
-                    raise ValueError(
-                        f"YAML template 调用了禁止的 base: "
-                        f"{child.func.value.id!r}.{child.func.attr}"
-                    )
+                # 链式方法调用: x.method() 或 x.method().method2()
+                # PR-QN-4: base 可以是 Name (polars) 或 Call (pandas chain)
+                _validate_chain_base(child.func, allowed_funcs)
         elif isinstance(child, ast.Attribute):
-            # Attribute 访问: 验证 base 是 Name (不允许 module.x)
-            if not isinstance(child.value, ast.Name):
-                raise ValueError(
-                    f"YAML template 不允许非 Name 基的 Attribute: "
-                    f"{ast.dump(child)[:80]}"
-                )
-            if child.value.id in _DENIED_BASE_NAMES:
-                raise ValueError(
-                    f"YAML template 访问了禁止的 module 属性: {child.value.id!r}.{child.attr}"
-                )
+            # Attribute 访问: base 是 Name (变量) 或 Call (链式)
+            _validate_chain_base(child, allowed_funcs)
         elif isinstance(child, (ast.Import, ast.ImportFrom, ast.Lambda, ast.FunctionDef)):
             raise ValueError(f"YAML template 不允许: {type(child).__name__}")
