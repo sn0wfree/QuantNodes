@@ -279,7 +279,7 @@ composites:
   - name: bad_op
     template: "os.system('rm -rf /')"
 """)
-        with pytest.raises(ValueError, match="禁止"):
+        with pytest.raises(ValueError, match="不允许"):
             load_composites_from_yaml(str(yaml_file))
 
     def test_load_syntax_error_raises(self, tmp_path):
