@@ -141,7 +141,16 @@ frontend/.env.development
 
 # Agent workspace (v3.0.0: .quant_agent/ → .agent/, both gitignored)
 .quant_agent/
-.agent/
+
+# .agent/ contains a mix of:
+#   - Tracked (committed):  SOUL.md, USER.md, agents/*.md (team config)
+#   - Ignored:              everything else (sessions/, memory/, settings.json,
+#                           nanobot_config.json) — contain API keys, history, etc.
+.agent/*
+!.agent/SOUL.md
+!.agent/USER.md
+!.agent/agents
+!.agent/agents/*.md
 
 # Test screenshots
 tests/screenshots/
