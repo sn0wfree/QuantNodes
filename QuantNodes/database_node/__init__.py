@@ -49,6 +49,11 @@ from QuantNodes.database_node.mysql_node import MySQLNode
 from QuantNodes.database_node.clickhouse_node import ClickHouseNode
 from QuantNodes.database_node.csv_node import CSVNode
 from QuantNodes.database_node.parquet_node import ParquetNode
+from QuantNodes.database_node.factory import (
+    create_db_node,
+    register_db_node,
+    available_sources,
+)
 
 __all__ = [
     'BaseDBNode',
@@ -58,4 +63,7 @@ __all__ = [
     'ClickHouseNode',
     'CSVNode',
     'ParquetNode',
+    'create_db_node',
+    'register_db_node',
+    'available_sources',
 ]

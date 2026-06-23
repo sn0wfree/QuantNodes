@@ -150,6 +150,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     26 个测试。
 
 ### Added
+- **顶层 `DataSource` ABC + DB 节点工厂 + 文件格式 Adapter (Phase 3.3)**
+  - **`DataSource` 顶层抽象基类** (`QuantNodes/core/data_source.py`, 新增)
+    - 最小化标记基类: 统一 `close()` 生命周期 + `__enter__/__exit__`
+      上下文管理器 + "产出 pd.DataFrame" 语义约定。
+    - 不强套 SQL 语义 (DB) 或面板矩阵语义 (文件), 两个数据接入子树
+      各自保留专用接口, 避免泄漏抽象。
+  - **DB 节点工厂** (`QuantNodes/database_node/factory.py`, 新增)
+    - `create_db_node(source, **params)` 按字符串注册表创建 6 个后端
+      (sqlite/duckdb/mysql/clickhouse/csv/parquet); 未知 source 抛
+      `ValueError`。
+    - `register_db_node(source, builder)` / `available_sources()` 供扩展。
+    - `BaseDBNode` 改为继承 `DataSource`, 新增 `close()` 默认委托
+      `disconnect()` (纯增量, 6 个子类无需改动)。
+    - `database_node/__init__.py` 导出 `create_db_node` /
+      `register_db_node` / `available_sources`。
+    - `agent/tools/config_backtest.py` 的 `_build_db_node` /
+      `_build_embedded_node` 保留方法名, 内部改为委托工厂 (conn.ini /
+      path 解析仍留在调用方), 行为等价。
+  - **文件格式 Adapter** (`QuantNodes/research/factor_test/utils/file_loaders.py`, 新增)
+    - `FileFormatLoader(DataSource, ABC)` + 4 个适配器
+      (`H5Loader/CSVLoader/NPYLoader/ParquetLoader`) + `build_file_loader(ext)`
+      / `register_file_loader` / `available_extensions` 注册表。
+    - `DataLoader` 的 `load_h5/csv/npy/parquet` + `load_factor` 分发改为
+      委托 adapter; 公共方法签名/输出 bitwise 不变; H5 经 `store_getter`
+      回调复用 `_h5_stores` 缓存 (保 Phase H3 优化)。
+    - `load_custom` 的扩展名分支保持不变 (含 csv/parquet 尾斜杠语义)。
+  - **新增测试** (+39):
+    - `tests/core/test_data_source.py` (8): ABC 不可实例化 / close /
+      上下文管理器 / 子类关系。
+    - `tests/test_database_node_factory.py` (14): 6 后端构造 / 未知抛错 /
+      register / available_sources / `isinstance(node, DataSource)`。
+    - `tests/research/test_file_loaders.py` (17): 4 adapter 加载 / registry
+      分发 / H5 store_getter 缓存复用 / `isinstance(loader, DataSource)`。
 - **端到端集成测试 (Option D 巩固)**
   (`tests/research/factor_test/e2e/test_pipeline_bool_factor.py`)
   - 15 个 e2e 测试验证 Phase 1+2 重构后的 3 个节点

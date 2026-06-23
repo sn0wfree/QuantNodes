@@ -7,8 +7,10 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 import pandas as pd
 
+from QuantNodes.core.data_source import DataSource
 
-class BaseDBNode(ABC):
+
+class BaseDBNode(DataSource, ABC):
     """数据库节点基类
 
     所有数据库节点必须实现以下接口：
@@ -20,6 +22,10 @@ class BaseDBNode(ABC):
         insert_df(df, table, if_exists): 插入 DataFrame
         disconnect(): 关闭连接
         health_check(): 健康检查
+
+    Note:
+        继承 ``DataSource`` (Phase 3.3) 统一生命周期; ``close()`` 默认
+        委托 ``disconnect()``, 子类无需改动。
     """
 
     _conn: Any = None
@@ -74,6 +80,10 @@ class BaseDBNode(ABC):
     def disconnect(self) -> None:
         """关闭数据库连接"""
         raise NotImplementedError
+
+    def close(self) -> None:
+        """释放资源 (DataSource 协议)。默认委托 ``disconnect()``。"""
+        self.disconnect()
 
     def health_check(self) -> bool:
         """健康检查

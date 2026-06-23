@@ -14,7 +14,8 @@ Phase H3 (2026-06-20):
 """
 
 import pandas as pd
-import numpy as np
+
+from QuantNodes.research.factor_test.utils.file_loaders import _FILE_LOADERS
 
 
 class DataLoader:
@@ -52,29 +53,24 @@ class DataLoader:
     def load_h5(self, filename: str, key: str) -> pd.DataFrame:
         """从 H5 文件加载数据 (H3: 复用 cached HDFStore)"""
         path = self.api + filename
-        store = self._get_store(path)
-        # 标准化 key: HDFStore 自动加 / 前缀
-        norm_key = key if key.startswith('/') else '/' + key
-        if norm_key in store.keys():
-            return store.get(norm_key)
-        if key in store.keys():
-            return store.get(key)
-        raise KeyError(f"Key '{key}' not found in {path}. Available: {store.keys()}")
+        return _FILE_LOADERS['.h5'].load(
+            path, key=key, store_getter=self._get_store
+        )
 
     def load_csv(self, path: str) -> pd.DataFrame:
         """从 CSV 加载数据"""
-        return pd.read_csv(path, index_col=0)
+        return _FILE_LOADERS['.csv'].load(path)
 
     def load_npy(self, path: str) -> pd.DataFrame:
         """从 NPY 加载数据"""
-        return pd.DataFrame(np.load(path, allow_pickle=True))
+        return _FILE_LOADERS['.npy'].load(path)
 
     def load_parquet(self, path: str) -> pd.DataFrame:
         """从 Parquet 加载数据"""
-        return pd.read_parquet(path)
+        return _FILE_LOADERS['.parquet'].load(path)
 
     def load_custom(self, data_dir: tuple) -> pd.DataFrame:
-        """从自定义路径加载因子 (H5/CSV/NPY)"""
+        """从自定义路径加载因子 (H5/CSV/NPY/Parquet)"""
         dir_path, filename = data_dir
         if filename.endswith('.csv'):
             if dir_path.endswith('/') or dir_path.endswith('\\'):
@@ -100,14 +96,10 @@ class DataLoader:
         """加载因子数据 (统一入口)"""
         if factor_dir.endswith('.h5'):
             return self.load_h5(factor_dir, factor_name)
-        elif factor_dir.endswith('.csv'):
-            return self.load_csv(factor_dir)
-        elif factor_dir.endswith('.npy'):
-            return self.load_npy(factor_dir)
-        elif factor_dir.endswith('.parquet'):
-            return self.load_parquet(factor_dir)
-        else:
-            return self.load_custom((factor_dir, factor_name))
+        ext = '.' + factor_dir.rsplit('.', 1)[-1] if '.' in factor_dir else ''
+        if ext in _FILE_LOADERS and ext != '.h5':
+            return _FILE_LOADERS[ext].load(factor_dir)
+        return self.load_custom((factor_dir, factor_name))
 
     def get_stock_axis(self) -> tuple:
         """获取股票列表和交易日序列"""

@@ -305,9 +305,10 @@ class ConfigBacktestTool(Tool):
         return df
 
     def _build_db_node(self, source, data_cfg):
-        """构建 database_node 实例"""
+        """构建 database_node 实例 (委托 database_node.create_db_node 工厂)"""
         from pathlib import Path
         from QuantNodes.conf_node.ini_config import IniConfigNode
+        from QuantNodes.database_node import create_db_node
 
         if source in ("sqlite", "duckdb"):
             return self._build_embedded_node(source, data_cfg)
@@ -324,8 +325,8 @@ class ConfigBacktestTool(Tool):
         conn_params = ini.execute()
 
         if source == "clickhouse":
-            from QuantNodes.database_node import ClickHouseNode
-            return ClickHouseNode(
+            return create_db_node(
+                "clickhouse",
                 host=conn_params.get("host", "localhost"),
                 port=int(conn_params.get("port", 8123)),
                 user=conn_params.get("user", "default"),
@@ -333,8 +334,8 @@ class ConfigBacktestTool(Tool):
                 database=conn_params.get("db", "default"),
             )
         elif source == "mysql":
-            from QuantNodes.database_node import MySQLNode
-            return MySQLNode(
+            return create_db_node(
+                "mysql",
                 host=conn_params.get("host", "localhost"),
                 port=int(conn_params.get("port", 3306)),
                 user=conn_params.get("user", "root"),
@@ -343,17 +344,17 @@ class ConfigBacktestTool(Tool):
             )
 
     def _build_embedded_node(self, source, data_cfg):
-        """构建嵌入式数据库 Node (sqlite/duckdb)"""
+        """构建嵌入式数据库 Node (sqlite/duckdb, 委托 create_db_node 工厂)"""
+        from QuantNodes.database_node import create_db_node
+
         path = data_cfg.path
         if not path:
             raise ValueError(f"source='{source}' requires config.data.path")
 
         if source == "sqlite":
-            from QuantNodes.database_node import SQLiteNode
-            return SQLiteNode(database=path)
+            return create_db_node("sqlite", database=path)
         elif source == "duckdb":
-            from QuantNodes.database_node import DuckDBNode
-            return DuckDBNode(database=path)
+            return create_db_node("duckdb", database=path)
 
     def _build_query(self, data_cfg):
         """从 DataConfig 构建 SQL 查询
