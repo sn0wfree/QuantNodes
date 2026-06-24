@@ -108,7 +108,7 @@ v3.0.0 — 上游 nanobot 迁移：从"复刻 nanobot 架构"升级为"直接消
 
 - 增 `nanobot-ai>=0.2.1,<0.3.0`（alpha 期锁次版本号）。
 - `pyproject.toml::requires-python` 升 `>=3.11`（upstream 最低要求）。
-- 本地开发期 `pip install -e /tmp/nanobot`（HKUDS/nanobot v0.2.1 源码克隆）。
+- 本地开发期 `pip install -e ~/Public/nanobot`（HKUDS/nanobot v0.2.1 源码克隆）。若 GitHub 不可达，可从 PyPI 安装 `nanobot-ai==0.2.1`。
 
 ### Breaking Changes
 

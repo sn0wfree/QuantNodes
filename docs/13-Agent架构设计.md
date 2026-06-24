@@ -3,7 +3,7 @@
 > 合并自: 12-Agent业界调研与设计模式.md + 13-Agent系统架构设计.md + 14-Agent实施计划.md + 15-Config-Driven方案.md  
 > 架构模式: **HKUDS nanobot 0.2.1 上游核心** + QuantNodes 量化工具集 + quant_dream 扩展  
 > 通信协议: MCP (Model Context Protocol)  
-> 上游依赖: `nanobot-ai>=0.2.1,<0.3.0`（`[agent]` 可选依赖；本地开发期源码 `/tmp/nanobot`）  
+> 上游依赖: `nanobot-ai>=0.2.1,<0.3.0`（`[agent]` 可选依赖；本地开发期源码 `~/Public/nanobot`）  
 > 状态: **v3.0.0 已完成**（上游迁移 + 量化增强，已发 tag `v3.0.0`）
 
 ---
@@ -81,7 +81,7 @@
 | **LangGraph** | 状态机图计算、持久化执行断点续跑 | 4星 |
 | **OpenAI Agents** | Handoff委托模式、Sandbox隔离 | 3星 |
 
-> **v3.0.0 决策**：从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。源码 `/tmp/nanobot`（PyPI 包名 `nanobot-ai`）。
+> **v3.0.0 决策**：从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。源码 `~/Public/nanobot`（PyPI 包名 `nanobot-ai`）。
 
 ### 2.2 量化专属设计模式
 

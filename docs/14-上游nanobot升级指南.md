@@ -27,13 +27,13 @@
 ### 2.1 本地源码安装（开发期）
 
 ```bash
-# /tmp/nanobot 是 HKUDS/nanobot 的本地克隆
-cd /tmp/nanobot
+# ~/Public/nanobot 是 HKUDS/nanobot 的本地克隆
+cd ~/Public/nanobot
 git fetch origin
 git checkout v0.2.1   # 或特定 commit hash
 
 # 安装到 QuantNodes 环境
-pip install -e /tmp/nanobot
+pip install -e ~/Public/nanobot
 ```
 
 ### 2.2 PyPI 安装（生产期）
@@ -155,7 +155,7 @@ result = await bot.run("hello", session_key="default")
 
 ```bash
 # 1. 看 upstream 变更
-cd /tmp/nanobot
+cd ~/Public/nanobot
 git fetch origin
 git log --oneline main..origin/main | head -20
 
@@ -166,11 +166,11 @@ git diff origin/main -- nanobot/config/schema.py | head -50
 rg "from nanobot" QuantNodes/agent/
 
 # 4. 升级测试
-pip install -e /tmp/nanobot
+pip install -e ~/Public/nanobot
 pytest tests/agent/ -x
 
-# 5. 跑核心行数自检（应 <5000）
-bash /tmp/nanobot/core_agent_lines.sh
+# 5. 跑核心行数自检（应 <5000；仅完整 GitHub clone 含此脚本，PyPI sdist 不含）
+bash ~/Public/nanobot/core_agent_lines.sh
 
 # 6. 若 diff 大，分 PR（branch: chore/sync-nanobot-0.x.y）
 git checkout -b chore/sync-nanobot-0.2.2

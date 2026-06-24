@@ -22,11 +22,13 @@ pip install quantnodes            # 纯量化库
 pip install 'quantnodes[agent]'   # + nanobot agent / WebUI / MCP
 pip install 'quantnodes[all]'     # 一键装齐 agent + mcp
 ```
+本地开发期从 `~/Public/nanobot` 装：
 
-本地开发期从 `/tmp/nanobot` 装：
 ```bash
-pip install -e /tmp/nanobot
+pip install -e ~/Public/nanobot
 ```
+
+> **注意**：若 GitHub 不可达，可直接从 PyPI 安装：`python3.11 -m pip install nanobot-ai==0.2.1`
 
 关键路径（v3.0.0）：
 - `QuantNodes/agent/__init__.py` — `NANOBOT_AVAILABLE` 标志 + PEP 562 proxy + `NanobotNotInstalled` 异常
