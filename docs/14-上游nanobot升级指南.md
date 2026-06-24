@@ -86,7 +86,7 @@ python -c "import nanobot; print(nanobot.__version__)"
 | `agent/core/quant_dream.py` | 量化专属 Dream 钩子 | 从 `dream.py` 迁出，实现 `AgentHook` |
 | `agent/core/dream.py` | 向后兼容 shim | re-export quant_dream |
 | `agent/tools/*.py` (15个) | 量化工具 | 改父类为 `nanobot.agent.tools.base.Tool` |
-| `agent/providers/quantnodes.py` | Provider 工厂 | 输出 `nanobot.llmProviders` 配置 |
+| `agent/providers/quantnodes.py` | Provider 工厂 | 输出 `nanobot.providers` 配置 |
 | `agent/skills_quant/` (NEW) | 6 个 SKILL.md | 新建 |
 | `mcp_server/server.py` (NEW) | MCP server | FastMCP 暴露 8 个 tool |
 
