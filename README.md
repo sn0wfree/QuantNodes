@@ -2,7 +2,7 @@
 
 > 量化研究节点架构 - 基于 Pipeline 组合原语的统一量化分析平台
 
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ## 项目简介
@@ -235,6 +235,8 @@ op = get_operator("my_double")  # 先查自定义，再查内置
 ```
 
 ## 测试
+
+> 要求 Python 3.11+。全量测试需先装系统级/可选依赖：`pip install ta-lib tables plotly`（`ta-lib` 需先装 TA-Lib C 库）。缺失时相关测试会优雅降级或跳过。基线：非 agent `5163 passed / 21 skipped / 0 failed`，`tests/agent` `574 passed / 13 skipped`。详见 [可选依赖安装指南](docs/15-可选依赖安装指南.md)。
 
 ```bash
 # 运行所有测试

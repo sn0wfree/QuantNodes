@@ -49,3 +49,20 @@ pip install -e /tmp/nanobot
 
 升级指南见 [`docs/14-上游nanobot升级指南.md`](docs/14-上游nanobot升级指南.md)。
 可选依赖 + 单进程集成指南见 [`docs/15-可选依赖安装指南.md`](docs/15-可选依赖安装指南.md)。
+
+## 测试（Python 3.11 + pandas 3.0）
+
+全量测试基线（v3.0.0 Stage 6 起）：
+
+```bash
+pip install ta-lib tables plotly   # 全量测试所需系统级/可选依赖
+python3.11 -m pytest tests/        # 非 agent: 5163 passed / 21 skipped / 0 failed
+python3.11 -m pytest tests/agent   # 574 passed / 13 skipped
+```
+
+规则：
+- **不要依赖测试执行顺序**。改动了全局状态的测试必须还原：用 `monkeypatch.setenv` 而非裸 `os.environ[...] = ...`；对全局注册表（如 `_COMPOSITE_REGISTRY`）用快照/还原 autouse fixture。
+- 可选依赖缺失时代码应**优雅降级**（plotly→`None` + 安装提示、sklearn→`IdentityRetriever`、nanobot→`NanobotNotInstalled`），对应测试用 `pytest.importorskip` 跳过而非删除。
+- pandas 3.0：`DataFrame.applymap` 已移除（用 `.map`）；`df.values` 单 dtype 下只读（用 `.where()`）；字符串列推断为 `StringDtype` 而非 `object`。
+
+详见 CHANGELOG [3.0.0] *Stage 6 — 测试稳定化与依赖兼容*。

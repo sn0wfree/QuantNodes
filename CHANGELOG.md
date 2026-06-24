@@ -122,6 +122,8 @@ v3.0.0 — 上游 nanobot 迁移：从"复刻 nanobot 架构"升级为"直接消
 - 非 agent 测试：4143 passed / 336 failed / 28 errors / 6 skipped
 - tests/agent/：661 passed / 35 failed（pre-existing 网络测试 + TestAgentLoop session tests）
 
+> **最终（Stage 6 完成后）**：非 agent 测试 5163 passed / 21 skipped / **0 failed / 0 errors**（顺序 + 并行均通过）；tests/agent 574 passed / 13 skipped。详见下方 *Stage 6 — 测试稳定化与依赖兼容*。
+
 ### Migration
 
 详见 [`docs/14-上游nanobot升级指南.md`](docs/14-上游nanobot升级指南.md)。
@@ -347,6 +349,60 @@ FEISHU_APP_SECRET=secret_xxx
 # FEISHU_GROUP_POLICY=open   # 接收所有群消息（默认 mention）
 # 5. 重启 FastAPI，feishu channel 自动启动
 ```
+
+### Stage 6 — 测试稳定化与依赖兼容 (commits c5a7e3c / 0ec6fe0 / 30a0352 / f30f9b8)
+
+Python 3.11 + pandas 3.0 升级后，对全量测试套件做根因级修复。**最终全量
+非 agent 测试：5163 passed / 21 skipped / 0 failed / 0 errors（顺序 + 并行
+两种模式均通过）；tests/agent：574 passed / 13 skipped。**
+
+#### v2.x 遗留测试清理与重写 (commits c5a7e3c / 0ec6fe0)
+
+- 删除 13 个测试 v2.x 已删代码路径的文件（约 2700 行）。
+- 重写 6 个测试文件以验证 v3.0.0 等价功能（共约 112 tests）：
+  - `tests/agent/test_base.py` — `Tool` + `ToolExecutionResult`
+  - `tests/agent/test_tools.py` — `ToolRegistry` + 14 quant 工具
+  - `tests/agent/test_tools_parallel.py` — 并行执行
+  - `tests/agent/test_tools_all.py` — Mock `AgentLoop`/`AgentRunner`（无 nanobot 时 skip）
+  - `tests/agent/test_agent_service.py` — `AgentService` + `MockAgent`
+  - `tests/agent/test_skills_phase4.py` — Bridge + `DreamEngine` shim
+- 策略：需要上游 nanobot 的测试用 skip-when-missing 装饰器，**不删除**。
+
+#### pandas 3.0 兼容 (commit 30a0352)
+
+- `DataFrame.applymap` 在 pandas 3.0 移除 → 改用 `DataFrame.map`：
+  - `research/factor_test/utils/date_utils.py`（`datenum_to_datetime` / `datetime_to_datenum`）
+  - `research/factor_test/ifind_db/ifind_database.py`（行业 / ST / 停牌 / 涨跌停 4 个面板转换）
+- `dtypes[0]` 在列名为混合类型（int `0` → str `'trade_dt'`）时抛 `KeyError` → 改用 `dtypes.iloc[0]`（`date_utils.py::valid_date`）。
+- `DataFrame.values` 在单一 dtype 下变只读 → 测试改用 `DataFrame.where()` 而非原地 `.values[...]` 赋值。
+- 字符串列推断为 `StringDtype(na_value=nan)`（非 `object`）→ 测试断言改为 `not is_numeric_dtype(...)`。
+
+#### 可选依赖优雅降级 (commit 30a0352)
+
+- `core/knowledge/retriever.py::TFIDFRetriever`：sklearn 缺失时回退到 `IdentityRetriever`（`RuntimeWarning` + `getattr` 委托）。
+- `core/monitoring/dashboard.py` + `core/visualization/{gate_breakdown,lineage_dag,metric_distribution}.py`：plotly 缺失时 figure 函数返回 `None`，HTML 渲染输出友好安装提示而非崩溃。
+- `agent/tools/base.py`：未装 `[agent]` extra 时，独立 `Tool.to_openai_schema()` 从 `name`/`description`/`parameters` 合成 OpenAI function schema（不再 raise），与 nanobot 的「方法调用」契约一致。
+- 测试侧用 `pytest.importorskip("plotly")` 跳过纯 plotly 渲染测试（保留纯 Python 的 `TestLineageLayout`）；`pymysql` 缺失时跳过 MySQL 集成测试。
+
+#### 系统级测试依赖（开发环境）
+
+为让全部测试在本地通过，需安装以下（Python 3.11）：
+
+```bash
+pip install ta-lib tables plotly   # talib 需先装 TA-Lib C 库
+```
+
+- `ta-lib`：66 个 talib 算子测试（依赖 TA-Lib C 库）。
+- `tables`（PyTables）：HDF5 读写测试。
+- `plotly`：可视化 / dashboard / e2e HTML 报告测试（e2e 报告 >5KB 校验需真实 figure）。
+
+#### 跨测试污染根因修复 (commit f30f9b8)
+
+8 个「只在全量运行时失败、单独跑通过」的测试，根因为真实状态泄漏（非 flakiness）：
+
+- **HOME 环境变量污染**（修 5 errors + 3 fails）：`tests/core/test_path_utils.py::test_expanduser` 用裸 `os.environ["HOME"] = <TemporaryDirectory>` 且未还原；临时目录在 context 退出后被删，残留悬空 `HOME`。后续基于 subprocess 的 e2e 测试（`data_prep` / `run_evolution_e2e`）继承坏 `HOME`，在 `~/.quantnodes` 写入时非零退出。→ 改用 `monkeypatch.setenv`（自动还原）。
+- **composite registry 泄漏**（修 `test_op_names_match_polars`）：`test_composite_dag_pandas_engine.py` 经 `load_composites_from_yaml` 注册 YAML op 到全局 `_COMPOSITE_REGISTRY` 无清理；`test_composite_dag.py` 旧 fixture 仅删本模块注册的 op。→ 两文件均改为全量快照/还原 autouse fixture。
+- **防御性加固**：e2e subprocess 超时 30s→180s / 60s→300s；两处缺失 `timeout` 的 `subprocess.run` 补 `timeout=60`。
 
 ## [2.8.0] - 2026-06-22
 
