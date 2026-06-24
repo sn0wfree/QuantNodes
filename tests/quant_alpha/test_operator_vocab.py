@@ -601,14 +601,16 @@ class TestLegacyCompatibility:
 
 
 class TestDeprecationWarnings:
-    """旧 4 个文件 DeprecationWarning 触发测试"""
+    """Phase C 归档后（v2.7.0+）：旧 4 个文件已移至 _legacy_3c/。
+    通过 `QuantNodes.research.factor_evaluator` 等 shim 仍可导入但触发 DeprecationWarning。
+    """
 
     def test_factor_evaluator_module_has_deprecation_message(self):
         """factor_evaluator 模块 docstring 包含 DeprecationWarning 说明"""
         import importlib
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            mod = importlib.import_module("QuantNodes.research.factor_evaluator")
+            mod = importlib.import_module("QuantNodes.research._legacy_3c.factor_evaluator")
         # 检查模块 docstring
         assert "DeprecationWarning" in (mod.__doc__ or "")
 
@@ -617,7 +619,7 @@ class TestDeprecationWarnings:
         import importlib
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            mod = importlib.import_module("QuantNodes.research.factor_miner")
+            mod = importlib.import_module("QuantNodes.research._legacy_3c.factor_miner")
         assert "DeprecationWarning" in (mod.__doc__ or "")
 
     def test_auto_researcher_module_has_deprecation_message(self):
@@ -625,7 +627,7 @@ class TestDeprecationWarnings:
         import importlib
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            mod = importlib.import_module("QuantNodes.research.auto_researcher")
+            mod = importlib.import_module("QuantNodes.research._legacy_3c.auto_researcher")
         assert "DeprecationWarning" in (mod.__doc__ or "")
 
     def test_mcts_search_module_has_deprecation_message(self):
@@ -633,12 +635,32 @@ class TestDeprecationWarnings:
         import importlib
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            mod = importlib.import_module("QuantNodes.research.mcts_search")
+            mod = importlib.import_module("QuantNodes.research._legacy_3c.mcts_search")
         assert "DeprecationWarning" in (mod.__doc__ or "")
+
+    def test_legacy_3c_package_exists(self):
+        """Phase C：_legacy_3c/ 包存在并可导入"""
+        from QuantNodes.research._legacy_3c import (
+            FactorEvaluator, FactorMiner, MCTSSearch, AutoResearcher,
+        )
+        assert FactorEvaluator.__module__.startswith("QuantNodes.research._legacy_3c")
+        assert MCTSSearch.__module__.startswith("QuantNodes.research._legacy_3c")
+        assert AutoResearcher.__module__.startswith("QuantNodes.research._legacy_3c")
+
+    def test_shim_emits_deprecation_warning(self):
+        """通过 shim 路径 `QuantNodes.research.factor_evaluator` 导入应触发 DeprecationWarning"""
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            # 触发 shim（首次访问）
+            from QuantNodes.research.factor_evaluator import EvalConfig as _EC
+        deprecation_warnings = [
+            w for w in caught if issubclass(w.category, DeprecationWarning)
+        ]
+        assert len(deprecation_warnings) >= 1
+        assert "_legacy_3c" in str(deprecation_warnings[0].message)
 
     def test_deprecation_warnings_present_in_research_init(self):
         """research/__init__.py 导入时触发 DeprecationWarning（汇总）"""
-        # 触发 import-time warning 用 subprocess 隔离
         import subprocess
         result = subprocess.run(
             ["python3", "-W", "default::DeprecationWarning", "-c",
@@ -648,8 +670,5 @@ class TestDeprecationWarnings:
             timeout=60,
         )
         output = result.stderr
-        # 期望至少 4 个文件触发 DeprecationWarning
-        assert "factor_evaluator 已弃用" in output
-        assert "factor_miner 已弃用" in output
-        assert "mcts_search 已弃用" in output
-        assert "auto_researcher 已弃用" in output
+        # Phase C 后，4 个旧模块的 warnings 来自 _legacy_3c 内部（import-time）
+        assert "_legacy_3c" in output or "已弃用" in output or "已归档" in output

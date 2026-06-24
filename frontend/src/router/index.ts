@@ -67,6 +67,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Factor Analysis' },
       },
       {
+        path: 'alpha-gpt',
+        name: 'AlphaGpt',
+        component: () => import('@/views/AlphaGpt/index.vue'),
+        meta: { title: 'Alpha-GPT', agent: true },
+      },
+      {
         path: 'dream',
         name: 'DreamInsights',
         component: () => import('@/views/Dream/index.vue'),

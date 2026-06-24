@@ -30,7 +30,7 @@ from typing import Dict, List, Optional
 import numpy as np
 import polars as pl
 
-from QuantNodes.research.factor_miner import FactorCandidate
+from QuantNodes.research._legacy_3c.factor_miner import FactorCandidate
 
 _DEPRECATION_MSG = (
     "QuantNodes.research.factor_evaluator 已弃用 (DeprecationWarning)。"

@@ -36,13 +36,13 @@ warnings.warn(
     stacklevel=2,
 )
 
-from QuantNodes.research.factor_miner import FactorMiner
-from QuantNodes.research.factor_evaluator import (
+from QuantNodes.research._legacy_3c.factor_miner import FactorMiner
+from QuantNodes.research._legacy_3c.factor_evaluator import (
     EvalConfig,
     FactorEvaluationResult,
     FactorEvaluator,
 )
-from QuantNodes.research.mcts_search import MCTSSearch
+from QuantNodes.research._legacy_3c.mcts_search import MCTSSearch
 from QuantNodes.research.wiki import (
     FactorCategory,
     FactorSource,

@@ -1,24 +1,32 @@
 # coding=utf-8
 """
-alpha_gpt router - Alpha-GPT 5 端点 REST API
+alpha_gpt router - Alpha-GPT 6 端点 REST API + 1 WebSocket
 
+REST:
 - POST /api/alpha/alpha-gpt/generate  启动工作流
 - GET  /api/alpha/alpha-gpt/status/{sid}  查询进度
 - GET  /api/alpha/alpha-gpt/results/{sid}  获取结果
 - POST /api/alpha/alpha-gpt/stop/{sid}  停止
 - GET  /api/alpha/alpha-gpt/list  历史会话列表
+
+WebSocket:
+- WS /api/alpha/alpha-gpt/stream/{sid}  实时事件流
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from ..services.alpha_gpt_service import alpha_gpt_service
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class AlphaGptGenerateRequest(BaseModel):
@@ -82,3 +90,75 @@ async def stop(session_id: str) -> Dict[str, Any]:
 async def list_sessions() -> Dict[str, Any]:
     """历史会话列表"""
     return {"sessions": alpha_gpt_service.list_sessions()}
+
+
+# ==============================================================================
+# WebSocket 流式端点
+# ==============================================================================
+
+
+@router.websocket("/stream/{session_id}")
+async def stream(websocket: WebSocket, session_id: str) -> None:
+    """实时事件流（WebSocket）
+
+    协议：
+    - Client opens: ws://host/api/alpha/alpha-gpt/stream/{sid}
+    - Server 立即发送 buffered events（包含历史 events）
+    - Server 持续推送新 events 直到 session 完成
+    - Server 发送 {"type": "done"} 后关闭连接
+
+    Events:
+    - round_started: 一轮开始（含 total_rounds）
+    - round_completed: 一轮结束（含 formulas_evaluated, best_ir）
+    - final_pool_ready: 最终 top-K 就绪
+    - error: 出错（含 message）
+    - done: 工作流结束
+    """
+    await websocket.accept()
+    session = alpha_gpt_service.get_session(session_id)
+    if session is None:
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": f"session not found: {session_id}",
+        }))
+        await websocket.close()
+        return
+
+    queue = alpha_gpt_service.subscribe(session_id)
+    if queue is None:
+        await websocket.close()
+        return
+
+    try:
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=30.0)
+            except asyncio.TimeoutError:
+                # 30s 无事件：发心跳
+                await websocket.send_text(json.dumps({
+                    "type": "heartbeat",
+                    "ts": asyncio.get_event_loop().time(),
+                }))
+                continue
+
+            await websocket.send_text(json.dumps(event, default=str))
+
+            if event.get("type") in {"done", "error"}:
+                break
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.exception("WebSocket stream error")
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": str(exc),
+            }))
+        except Exception:
+            pass
+    finally:
+        alpha_gpt_service.unsubscribe(session_id, queue)
+        try:
+            await websocket.close()
+        except Exception:
+            pass

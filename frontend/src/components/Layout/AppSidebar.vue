@@ -35,6 +35,10 @@
         <bar-chart-outlined />
         <span>Factor Analysis</span>
       </a-menu-item>
+      <a-menu-item key="/alpha-gpt" v-if="agentEnabled">
+        <experiment-outlined />
+        <span>Alpha-GPT</span>
+      </a-menu-item>
       <a-menu-item key="/dream">
         <bulb-outlined />
         <span>Dream Insights</span>
@@ -59,6 +63,7 @@ import {
   BulbOutlined,
   SettingOutlined,
   CodeOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons-vue'
 
 const router = useRouter()

@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Alpha-GPT WebSocket 流式输出 + 前端可视化 + Phase C 归档**（M7 PR）：
+  - **WebSocket 端点**：`/api/alpha/alpha-gpt/stream/{sid}` 实时事件流（6 事件类型：round_started/round_completed/formulas_evaluated/final_pool_ready/done/error/heartbeat）
+  - **事件总线**：`AlphaGptService.subscribe()` / `_emit()`，支持 buffer replay + 多订阅者
+  - **跨线程事件注入**：`asyncio.run_coroutine_threadsafe` 把 sync workflow 的事件安全投递到主事件循环
+  - **前端 Vue 页面**：`/alpha-gpt` 路由 + `AlphaGpt/index.vue`（Ant Design Vue 3 + 实时进度条 + IC 演化图 + 公式表）
+  - **侧边栏入口**：`AppSidebar.vue` 加 `Alpha-GPT` 菜单项（仅 agent 启用时显示）
+  - **Phase C 归档**：4 个旧模块（factor_evaluator/factor_miner/auto_researcher/mcts_search）移至 `QuantNodes/research/_legacy_3c/`
+  - **向后兼容 shim**：`QuantNodes.research.factor_evaluator` 等通过 `_LegacyShim` 仍可导入但触发 DeprecationWarning
+  - 6 个新 WebSocket 测试 + 1 个 Phase C 测试
 - **Alpha-GPT CLI / API / v2.7.0 release**（M6 PR）：
   - CLI `quantnodes alpha-gpt`（`AlphaGptCommand`，18 个 argparse 参数）
   - API 5 端点（`/api/alpha/alpha-gpt/{generate,status/{sid},results/{sid},stop/{sid},list}`）

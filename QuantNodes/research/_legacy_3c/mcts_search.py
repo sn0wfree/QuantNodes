@@ -41,12 +41,12 @@ warnings.warn(
     stacklevel=2,
 )
 
-from QuantNodes.research.factor_evaluator import (
+from QuantNodes.research._legacy_3c.factor_evaluator import (
     EvalConfig,
     FactorEvaluationResult,
     FactorEvaluator,
 )
-from QuantNodes.research.factor_miner import FactorCandidate
+from QuantNodes.research._legacy_3c.factor_miner import FactorCandidate
 
 
 @dataclass

@@ -8,19 +8,37 @@ alpha_gpt_service.py - Alpha-GPT 工作流服务层
 - get_results: 获取结果
 - stop: 停止会话
 - list_sessions: 历史会话列表
+- subscribe_events: 订阅 WebSocket 流式事件（v2.7.0+）
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
+
+
+# ==============================================================================
+# Event types (WebSocket 流式协议)
+# ==============================================================================
+
+ALPHA_GPT_EVENT_TYPES = {
+    "round_started",
+    "subagent_started",
+    "subagent_done",
+    "formulas_evaluated",
+    "round_completed",
+    "final_pool_ready",
+    "error",
+    "done",
+}
 
 
 @dataclass
@@ -38,10 +56,12 @@ class AlphaGptSession:
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     progress: Dict[str, Any] = field(default_factory=dict)
+    events: List[Dict[str, Any]] = field(default_factory=list)
+    subscribers: Set[asyncio.Queue] = field(default_factory=set)
 
 
 class AlphaGptService:
-    """Alpha-GPT 工作流服务（内存 session store）"""
+    """Alpha-GPT 工作流服务（内存 session store + 事件总线）"""
 
     def __init__(self, max_concurrent: int = 3):
         self._sessions: Dict[str, AlphaGptSession] = {}
@@ -161,7 +181,18 @@ class AlphaGptService:
                     enable_backtest=cfg.get("enable_backtest", False),
                 )
                 workflow = AlphaGptWorkflow(config=config, data=df)
-                result = await asyncio.to_thread(workflow.run)
+
+                await self._emit(session, {
+                    "type": "round_started",
+                    "total_rounds": cfg["iterations"],
+                    "round": 0,
+                })
+
+                # 在 outer async 上下文中捕获 running loop，传给 to_thread
+                main_loop = asyncio.get_running_loop()
+                result = await asyncio.to_thread(
+                    self._run_workflow_with_events, workflow, session, main_loop,
+                )
 
                 session.result = {
                     "objective": result.objective,
@@ -171,19 +202,117 @@ class AlphaGptService:
                     "summary": result.summary,
                     "elapsed_seconds": result.elapsed_seconds,
                 }
+
+                await self._emit(session, {
+                    "type": "final_pool_ready",
+                    "pool": [f.to_dict() for f in result.final_pool],
+                    "summary": result.summary,
+                })
+                await self._emit(session, {"type": "done"})
                 session.status = "completed"
             except asyncio.CancelledError:
                 session.status = "stopped"
+                await self._emit(session, {"type": "error", "message": "stopped"})
                 raise
             except Exception as exc:
                 logger.exception("Alpha-GPT session %s failed", session.session_id)
                 session.error = str(exc)
                 session.status = "failed"
+                await self._emit(session, {"type": "error", "message": str(exc)})
             finally:
                 session.completed_at = time.time()
                 if session.started_at:
                     session.elapsed_seconds = session.completed_at - session.started_at
                 self._tasks.pop(session.session_id, None)
+
+    def _run_workflow_with_events(
+        self,
+        workflow: Any,
+        session: AlphaGptSession,
+        main_loop: Optional[asyncio.AbstractEventLoop] = None,
+    ) -> Any:
+        """同步跑 workflow，期间通过 main_loop 异步发事件"""
+        from QuantNodes.research.quant_alpha.workflow import (
+            AlphaGptWorkflow,
+        )
+
+        # 简化：直接调用 workflow.run()，每个 round 后 emit round_completed
+        original_run_one_round = AlphaGptWorkflow._run_one_round
+
+        def _schedule(coro: Any) -> None:
+            if main_loop is not None:
+                asyncio.run_coroutine_threadsafe(coro, main_loop)
+
+        def patched_run_one_round(self: Any, round_idx: int) -> None:
+            _schedule(self._service_emit(session, {
+                "type": "round_started",
+                "round": round_idx,
+                "total_rounds": self.config.iterations,
+            }))
+            original_run_one_round(self, round_idx)
+            evals = self.state.all_evaluations
+            recent: List[Dict[str, Any]] = []
+            if evals:
+                try:
+                    recent = [
+                        e.to_dict() for e in evals
+                        if int(e.formula_id.split("-")[1]) == round_idx
+                    ]
+                    if not recent:
+                        recent = [e.to_dict() for e in evals[-self.config.pool_size:]]
+                except Exception:
+                    recent = [e.to_dict() for e in evals[-self.config.pool_size:]]
+            _schedule(self._service_emit(session, {
+                "type": "round_completed",
+                "round": round_idx,
+                "total_rounds": self.config.iterations,
+                "formulas_evaluated": len(recent),
+                "best_ir": max(
+                    (e["ir"] for e in recent if e["status"] == "success"),
+                    default=0.0,
+                ),
+            }))
+
+        AlphaGptWorkflow._service_emit = self._emit  # type: ignore[attr-defined]
+        AlphaGptWorkflow._run_one_round = patched_run_one_round  # type: ignore[method-assign]
+        try:
+            return workflow.run()
+        finally:
+            AlphaGptWorkflow._run_one_round = original_run_one_round  # type: ignore[method-assign]
+            if hasattr(AlphaGptWorkflow, "_service_emit"):
+                delattr(AlphaGptWorkflow, "_service_emit")
+
+    async def _emit(self, session: AlphaGptSession, event: Dict[str, Any]) -> None:
+        """异步发事件到所有订阅者（WebSocket + 历史 buffer）"""
+        event.setdefault("session_id", session.session_id)
+        event.setdefault("ts", time.time())
+        session.events.append(event)
+        dead = set()
+        for queue in session.subscribers:
+            try:
+                queue.put_nowait(event)
+            except asyncio.QueueFull:
+                dead.add(queue)
+        session.subscribers -= dead
+
+    def subscribe(self, session_id: str) -> Optional[asyncio.Queue]:
+        """订阅一个 session 的事件流（返回 queue，需要用 unsubscribe 清理）"""
+        s = self.get_session(session_id)
+        if s is None:
+            return None
+        queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
+        s.subscribers.add(queue)
+        for evt in s.events:
+            try:
+                queue.put_nowait(evt)
+            except asyncio.QueueFull:
+                break
+        return queue
+
+    def unsubscribe(self, session_id: str, queue: asyncio.Queue) -> None:
+        s = self.get_session(session_id)
+        if s is not None:
+            s.subscribers.discard(queue)
 
     @staticmethod
     def _load_data(data_path: Optional[str]) -> Any:
