@@ -94,10 +94,10 @@ class Settings(BaseSettings):
         return data
 
     def load_from_settings(self) -> None:
-        """Load LLM and backtest settings from .quant_agent/settings.json
+        """Load LLM and backtest settings from .agent/settings.json
         (single source of truth)
         """
-        settings_file = Path(".quant_agent/settings.json")
+        settings_file = Path(".agent/settings.json")
         if not settings_file.exists():
             return
         try:

@@ -36,20 +36,49 @@ class TFIDFRetriever:
 
     Args:
         token_pattern: sklearn 分词正则 (默认支持 alnum + 下划线)
+
+    v3.0.0 graceful degradation: if ``sklearn`` is not installed,
+    ``TFIDFRetriever`` falls back to :class:`IdentityRetriever`
+    (pure-Python TF-IDF) instead of raising ``ModuleNotFoundError``.
+    A ``RuntimeWarning`` is emitted so users can install sklearn
+    explicitly: ``pip install scikit-learn``.
     """
 
     def __init__(self, token_pattern: str | None = None):
-        from sklearn.feature_extraction.text import TfidfVectorizer
-        self._vectorizer = TfidfVectorizer(
-            token_pattern=token_pattern or r"(?u)\b\w+\b",
-            lowercase=True,
-        )
+        try:
+            from sklearn.feature_extraction.text import TfidfVectorizer
+            self._vectorizer = TfidfVectorizer(
+                token_pattern=token_pattern or r"(?u)\b\w+\b",
+                lowercase=True,
+            )
+            self._sklearn = True
+        except ImportError:
+            import warnings
+            warnings.warn(
+                "scikit-learn not installed; TFIDFRetriever falling back to "
+                "IdentityRetriever (pure-Python). Install scikit-learn for "
+                "the full sklearn-backed retrieval: pip install scikit-learn",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            # Delegate to IdentityRetriever (we'll forward add/query through
+            # the same interface by storing an internal instance)
+            self._fallback = IdentityRetriever()
+            self._sklearn = False
+            self._vectorizer = None
+            self._doc_ids = None  # sentinel; not used in fallback mode
+            self._matrix = None
+            return
+
         self._doc_ids: list[str] = []
         self._texts: list[str] = []
         self._matrix = None  # 懒构建
 
     def add(self, doc_id: str, text: str) -> None:
         """添加一条文档, 标记 matrix 失效。"""
+        if not self._sklearn:
+            # Fallback to IdentityRetriever (pure-Python TF-IDF)
+            return self._fallback.add(doc_id, text)
         if doc_id in self._doc_ids:
             # 更新: 移除旧的
             idx = self._doc_ids.index(doc_id)
@@ -65,6 +94,8 @@ class TFIDFRetriever:
 
     def query(self, text: str, top_k: int = 5) -> list[tuple[str, float]]:
         """返回 top_k 文档, 列表 [(doc_id, score)] 降序。"""
+        if not self._sklearn:
+            return self._fallback.query(text, top_k)
         if not self._doc_ids:
             return []
         self._ensure_matrix()
@@ -77,6 +108,8 @@ class TFIDFRetriever:
         return [(self._doc_ids[i], float(s)) for i, s in ranked if s > 0]
 
     def __len__(self) -> int:
+        if not self._sklearn:
+            return len(self._fallback)
         return len(self._doc_ids)
 
 

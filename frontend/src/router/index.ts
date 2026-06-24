@@ -13,6 +13,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Dashboard' },
       },
       {
+        path: 'agent-chat',
+        name: 'AgentChat',
+        component: () => import('@/views/AgentChat.vue'),
+        meta: { title: 'Agent Chat', agent: true },
+      },
+      {
         path: 'wiki/factors',
         name: 'FactorList',
         component: () => import('@/views/Wiki/FactorList.vue'),
@@ -59,6 +65,12 @@ const routes: RouteRecordRaw[] = [
         name: 'FactorAnalysis',
         component: () => import('@/views/FactorAnalysis/index.vue'),
         meta: { title: 'Factor Analysis' },
+      },
+      {
+        path: 'alpha-gpt',
+        name: 'AlphaGpt',
+        component: () => import('@/views/AlphaGpt/index.vue'),
+        meta: { title: 'Alpha-GPT', agent: true },
       },
       {
         path: 'dream',

@@ -21,10 +21,44 @@ import pandas as pd
 from .collector import MetricCollector
 from QuantNodes.core.path_utils import ensure_parent
 
+# Module-level lazy import for plotly. We try once at import time; if
+# plotly is not installed, ``_PLOTLY_GO`` is None and the figure
+# functions below return None. The HTML generators downstream skip
+# None figures gracefully.
+try:
+    import plotly.graph_objects as _PLOTLY_GO  # noqa: F401
+except ImportError:
+    _PLOTLY_GO = None
+
+    import warnings
+    warnings.warn(
+        "plotly not installed; visualization dashboard figures will be "
+        "skipped. Install plotly for full dashboard rendering: "
+        "pip install plotly",
+        ImportWarning,
+        stacklevel=1,
+    )
+
+
+def _require_plotly_go():
+    """Return plotly's graph_objects or raise a clear ImportError.
+
+    Use this inside figure functions to give a friendly error message
+    when the user tries to render figures without plotly installed.
+    """
+    if _PLOTLY_GO is None:
+        raise ImportError(
+            "plotly is required for figure rendering. "
+            "Install with: pip install plotly"
+        )
+    return _PLOTLY_GO
+
 
 def _fig_rag_lines(c: MetricCollector) -> Any:
     """RAG 指标折线: HR/NDCG/MRR/Diversity 随 round。"""
-    import plotly.graph_objects as go
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
     if not c.rag_history:
         fig = go.Figure()
         fig.update_layout(title="RAG 指标 (无数据)")
@@ -52,7 +86,9 @@ def _fig_rag_lines(c: MetricCollector) -> Any:
 
 def _fig_rag_scatter(c: MetricCollector) -> Any:
     """RAG NDCG vs HitRate 散点。"""
-    import plotly.graph_objects as go
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
     if not c.rag_history:
         fig = go.Figure()
         fig.update_layout(title="RAG 散点 (无数据)")
@@ -75,7 +111,9 @@ def _fig_rag_scatter(c: MetricCollector) -> Any:
 
 def _fig_evolution_bar(c: MetricCollector) -> Any:
     """演化统计柱状: total / rejected per round。"""
-    import plotly.graph_objects as go
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
     if not c.evolution_history:
         fig = go.Figure()
         fig.update_layout(title="演化统计 (无数据)")
@@ -96,7 +134,9 @@ def _fig_evolution_bar(c: MetricCollector) -> Any:
 
 def _fig_evolution_line(c: MetricCollector) -> Any:
     """best_metric 折线趋势。"""
-    import plotly.graph_objects as go
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
     if not c.evolution_history:
         fig = go.Figure()
         fig.update_layout(title="Best metric 趋势 (无数据)")
@@ -120,7 +160,9 @@ def _fig_evolution_line(c: MetricCollector) -> Any:
 
 def _fig_quality_stacked(c: MetricCollector) -> Any:
     """Quality Gate 3 通道 pass/fail 堆叠柱。"""
-    import plotly.graph_objects as go
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
     if not c.quality_history:
         fig = go.Figure()
         fig.update_layout(title="Quality Gate (无数据)")
@@ -146,8 +188,10 @@ def _fig_quality_stacked(c: MetricCollector) -> Any:
 
 
 def _fig_quality_rejection(c: MetricCollector) -> Any:
-    """Quality Gate 拦截率折线 (pass / total per channel)。"""
-    import plotly.graph_objects as go
+    """Quality Gate 拦截率折线。"""
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
     if not c.quality_history:
         fig = go.Figure()
         fig.update_layout(title="Quality 拦截率 (无数据)")
@@ -238,6 +282,13 @@ def generate_dashboard_html(
 
     fig_html_parts = []
     for key, name, fig in figures:
+        if fig is None:
+            # plotly not installed — skip the figure but keep the section
+            fig_html_parts.append(
+                f"<h2>{name}</h2>\n<p><em>(plotly not installed — install with "
+                f"<code>pip install plotly</code> to render this chart)</em></p>"
+            )
+            continue
         fig_html = fig.to_html(full_html=False, include_plotlyjs=False, div_id=f"fig_{key}")
         fig_html_parts.append(f"<h2>{name}</h2>\n{fig_html}")
 

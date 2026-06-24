@@ -11,7 +11,7 @@
         <home-outlined />
         <span>Dashboard</span>
       </a-menu-item>
-      <a-menu-item key="/chat">
+      <a-menu-item key="/agent-chat" v-if="agentEnabled">
         <message-outlined />
         <span>Agent Chat</span>
       </a-menu-item>
@@ -34,6 +34,10 @@
       <a-menu-item key="/factor-analysis">
         <bar-chart-outlined />
         <span>Factor Analysis</span>
+      </a-menu-item>
+      <a-menu-item key="/alpha-gpt" v-if="agentEnabled">
+        <experiment-outlined />
+        <span>Alpha-GPT</span>
       </a-menu-item>
       <a-menu-item key="/dream">
         <bulb-outlined />
@@ -59,10 +63,16 @@ import {
   BulbOutlined,
   SettingOutlined,
   CodeOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
+
+// v3.0.0 Stage 5.3: 隐藏 Agent Chat 入口（仅在 VITE_AGENT_ENABLED=true 时显示）。
+// 这是个 build-time flag：让纯量化库部署（未装 [agent] extra）默认不显示该入口，
+// 同时保留 agent 安装的部署里 sidebar 多一项。
+const agentEnabled = import.meta.env.VITE_AGENT_ENABLED !== 'false'
 
 const openKeys = ref<string[]>([])
 

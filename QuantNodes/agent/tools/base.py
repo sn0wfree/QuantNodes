@@ -1,97 +1,133 @@
 # coding=utf-8
-"""
-Tool基类与Schema验证
+"""Tool base class — inherits from HKUDS nanobot 0.2.1 ``Tool``.
+
+v3.0.0 迁移到上游后，quant 工具的父类由本地 ``Tool`` 改为
+``nanobot.agent.tools.base.Tool``。本文件保留薄包装以兼容 14 个 quant
+工具的 ``from .base import Tool`` 导入路径。
+
+**v3.0.0 Stage 5.3** 起，``nanobot-ai`` 为可选依赖。本文件在未装 extras
+时提供本地降级父类 ``Tool``，让 quant 工具可在没有 nanobot 的环境下
+独立使用（CLI、API、Wiki 等场景不需要 agent）。当用户调用 ``Agent(...)``
+或注册工具到 nanobot registry 时才会触发真正的 nanobot import。
 """
 
-from abc import ABC, abstractmethod
+from __future__ import annotations
+
+from abc import ABC
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict
+
+# Note: do NOT ``from QuantNodes.agent import NANOBOT_AVAILABLE`` here — this
+# file is imported as part of ``QuantNodes.agent.__init__`` (via
+# ``nanobot_bridge.py -> tools/__init__.py -> base.py``) and a back-import
+# would create a circular dependency with partially-initialized module state.
+# Instead we probe nanobot here, independently.
+try:
+    from nanobot.agent.tools.base import Tool as _NanobotTool
+
+    _NANOBOT_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised in nanobot-less envs
+    _NanobotTool = ABC  # type: ignore[assignment,misc]
+    _NANOBOT_AVAILABLE = False
 
 
 @dataclass
 class ToolExecutionResult:
-    """工具执行结果"""
+    """工具执行结果（向后兼容）。"""
+
     tool_name: str
     success: bool
     content: Any
     error: str | None = None
 
 
-class Tool(ABC):
-    """所有工具的抽象基类"""
+if _NANOBOT_AVAILABLE:  # pragma: no cover - exercised in [agent] installs
+    class Tool(_NanobotTool, ABC):  # type: ignore[misc]
+        """所有 quant 工具的薄包装父类 — 继承自 nanobot 的 ``Tool``。
 
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """工具名称 (snake_case)"""
-        pass
+        仅补充：
+        - ``to_openai_schema`` 别名（与 ``to_schema`` 同语义，保留旧名）
+        - ``_dispatch`` 辅助方法（量化工具内部 action 分发用）
+        """
 
-    @property
-    @abstractmethod
-    def description(self) -> str:
-        """工具自然语言描述"""
-        pass
+        @property
+        def to_openai_schema(self) -> Any:
+            """向后兼容别名 — 调用上游 ``to_schema``。"""
+            return self.to_schema
 
-    @property
-    @abstractmethod
-    def parameters(self) -> Dict[str, Any]:
-        """JSON Schema参数定义"""
-        pass
+        async def _dispatch(self, action: str, registry: Dict[str, Any], **kwargs: Any) -> Any:
+            """Look up ``action`` in ``registry`` and call it with kwargs.
 
-    @property
-    def read_only(self) -> bool:
-        """是否为只读工具（可并发执行）"""
-        return False
+            Replaces 4-times-repeated::
 
-    @property
-    def concurrency_safe(self) -> bool:
-        """是否并发安全"""
-        return True
+                fn = dispatch.get(action)
+                if not fn: raise ValueError(...)
+                return await fn(**kwargs)
 
-    def cast_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """参数类型转换"""
-        return params
+            Subclasses call ``return await self._dispatch(action, {...})`` from execute().
+            """
+            fn = registry.get(action)
+            if not fn:
+                raise ValueError(f"Unknown action: {action}")
+            return await fn(**kwargs)
+else:
 
-    def validate_params(self, params: Dict[str, Any]) -> List[str]:
-        """验证参数，返回错误列表（空=有效）"""
-        errors: List[str] = []
-        schema = self.parameters
+    class Tool(ABC):  # type: ignore[no-redef]
+        """Stand-alone Tool ABC for quant-only deployments (no nanobot).
 
-        if schema.get("type") == "object":
-            required = schema.get("required", [])
-            for key in required:
-                if key not in params:
-                    errors.append(f"Missing required parameter: {key}")
+        When ``nanobot-ai`` is not installed, quant tools still need a
+        concrete parent class so that ``class MyTool(Tool)`` works. This
+        is the lightest possible stand-in: just enough to allow
+        ``from .base import Tool`` and the ``_dispatch`` helper.
 
-        return errors
+        ``to_openai_schema`` is implemented locally by synthesising the
+        standard OpenAI function-calling schema from ``name`` /
+        ``description`` / ``parameters``. This keeps monitor/MCP tools
+        introspectable in quant-only environments (e.g. dashboard,
+        docs) where the upstream nanobot ``Tool.to_schema`` is not
+        available. Tool registration with nanobot's ``ToolRegistry`` and
+        dispatch through ``AgentLoop`` still require the [agent] extra.
+        """
 
-    def to_openai_schema(self) -> Dict[str, Any]:
-        """转换为OpenAI Function Call格式"""
-        return {
-            "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": self.parameters,
+        name: str = ""
+        description: str = ""
+        parameters: Dict[str, Any] = {}
+
+        def to_openai_schema(self) -> Dict[str, Any]:
+            """OpenAI function-calling schema synthesised from attrs.
+
+            Mirrors the call signature of nanobot's ``Tool.to_schema``
+            (a method, not a property) so callers can do
+            ``tool.to_openai_schema()`` uniformly across both code paths.
+
+            Returns:
+                ``{"type": "function", "function": {"name": ..., "description": ..., "parameters": ...}}``
+            """
+            return {
+                "type": "function",
+                "function": {
+                    "name": self.name,
+                    "description": self.description,
+                    "parameters": self.parameters,
+                },
             }
-        }
 
-    async def _dispatch(self, action: str, registry: Dict[str, Any], **kwargs: Any) -> Any:
-        """Look up `action` in `registry` and call it with kwargs (Phase J2).
+        async def execute(self, **kwargs: Any) -> Any:  # pragma: no cover
+            raise RuntimeError(
+                "Tool.execute() requires nanobot-ai. "
+                "Install: pip install 'quantnodes[agent]'"
+            )
 
-        Replaces the 4-times-repeated:
-            fn = dispatch.get(action)
-            if not fn: raise ValueError(...)
+        async def _dispatch(self, action: str, registry: Dict[str, Any], **kwargs: Any) -> Any:
+            """Look up ``action`` in ``registry`` and call it with kwargs.
+
+            Available even without nanobot, so quant tools' dispatcher
+            patterns work in pure-quant deployments.
+            """
+            fn = registry.get(action)
+            if not fn:
+                raise ValueError(f"Unknown action: {action}")
             return await fn(**kwargs)
 
-        Subclasses call `return await self._dispatch(action, {...})` from execute().
-        """
-        fn = registry.get(action)
-        if not fn:
-            raise ValueError(f"Unknown action: {action}")
-        return await fn(**kwargs)
 
-    @abstractmethod
-    async def execute(self, **kwargs: Any) -> Any:
-        """执行工具，返回字符串或内容块列表"""
-        pass
+__all__ = ["Tool", "ToolExecutionResult"]

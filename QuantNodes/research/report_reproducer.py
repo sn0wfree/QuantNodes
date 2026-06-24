@@ -19,12 +19,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import polars as pl
 
-from QuantNodes.research.factor_evaluator import (
+from QuantNodes.research._legacy_3c.factor_evaluator import (
     EvalConfig,
     FactorEvaluationResult,
     FactorEvaluator,
 )
-from QuantNodes.research.factor_miner import FactorCandidate
+from QuantNodes.research._legacy_3c.factor_miner import FactorCandidate
 from QuantNodes.research.wiki import (
     FactorCategory,
     FactorSource,

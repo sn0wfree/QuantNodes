@@ -45,8 +45,8 @@ def create_directory_structure():
     """
     dirs = [
         "data",
-        ".quant_agent/memory",
-        ".quant_agent/dream",
+        ".agent/memory",
+        ".agent/dream",
         "output",
         "outputs",
         "logs",

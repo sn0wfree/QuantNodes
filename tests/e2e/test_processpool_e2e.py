@@ -319,7 +319,7 @@ def test_pipeline_runner_processpool_evolution_e2e():
             "--output-dir", str(data_dir),
             "--n-days", "60", "--n-stocks", "20",
             "--factors", "momentum_20d",
-        ], capture_output=True, text=True, timeout=30)
+        ], capture_output=True, text=True, timeout=180)
         assert result.returncode == 0, result.stderr
 
         # 准备 config

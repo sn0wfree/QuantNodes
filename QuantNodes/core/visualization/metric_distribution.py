@@ -3,6 +3,21 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+# v3.0.0 graceful degradation: if plotly is not installed, the figure
+# functions return None.
+try:
+    import plotly.graph_objects as _PLOTLY_GO
+except ImportError:
+    _PLOTLY_GO = None
+
+    import warnings
+    warnings.warn(
+        "plotly not installed; metric_distribution_figure will return None. "
+        "Install plotly: pip install plotly",
+        ImportWarning,
+        stacklevel=1,
+    )
+
 
 
 def metric_distribution_figure(
@@ -20,9 +35,11 @@ def metric_distribution_figure(
         n_bins: 直方图桶数
 
     Returns:
-        plotly.graph_objects.Figure
+        plotly.graph_objects.Figure, or None if plotly is not installed.
     """
-    import plotly.graph_objects as go
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
 
     items = list(entries.values() if isinstance(entries, Mapping) else entries)
     # 按 operation 分组
@@ -66,7 +83,9 @@ def metric_per_round_figure(
     title: str | None = None,
 ) -> Any:
     """每轮 best metric 趋势线 (line chart)。"""
-    import plotly.graph_objects as go
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
 
     items = list(entries.values() if isinstance(entries, Mapping) else entries)
     if not items:

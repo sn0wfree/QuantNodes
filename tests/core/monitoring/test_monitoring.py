@@ -14,6 +14,12 @@ from contextlib import redirect_stdout
 
 import pytest
 
+# v3.0.0 graceful degradation: dashboard HTML embeds plotly figures
+# with stable ``id="fig_<key>"`` divs. When plotly is not installed the
+# QuantNodes dashboard emits an install-hint placeholder instead, so
+# tests asserting on those div ids are not meaningful in that env.
+pytest.importorskip("plotly", reason="plotly not installed; dashboard tests skipped")
+
 from QuantNodes.cli import cmd_factor_dashboard
 from QuantNodes.core.feedback import (
     ChannelFeedback,

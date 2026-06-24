@@ -43,10 +43,15 @@ class TestEnsureDir:
         ensure_dir(tmp_path / "x")
         assert (tmp_path / "x").is_dir()
 
-    def test_expanduser(self) -> None:
+    def test_expanduser(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # v3.0.0: use monkeypatch.setenv (auto-restored) instead of a raw
+        # ``os.environ["HOME"] = ...`` assignment. The old code left HOME
+        # pointing at a deleted TemporaryDirectory, which then leaked into
+        # subprocess-based e2e tests (data_prep ~/.quantnodes writes failed
+        # with a non-zero exit under the full-suite run).
         with tempfile.TemporaryDirectory() as td:
             home = Path(td)
-            os.environ["HOME"] = str(home)
+            monkeypatch.setenv("HOME", str(home))
             target = ensure_dir("~/qd")
             assert target.is_dir()
             assert target == home / "qd"

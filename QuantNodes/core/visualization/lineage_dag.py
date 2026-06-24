@@ -111,9 +111,20 @@ def lineage_dag_figure(entries, metric: str = "sharpe", title: str | None = None
         title: 图标题
 
     Returns:
-        plotly.graph_objects.Figure
+        plotly.graph_objects.Figure, or None if plotly is not installed.
     """
-    import plotly.graph_objects as go
+    # v3.0.0 graceful degradation: return None when plotly is unavailable.
+    try:
+        import plotly.graph_objects as go
+    except ImportError:
+        import warnings
+        warnings.warn(
+            "plotly not installed; lineage_dag_figure will return None. "
+            "Install plotly: pip install plotly",
+            ImportWarning,
+            stacklevel=2,
+        )
+        return None
 
     layout = build_lineage_layout(entries, metric=metric)
     if not layout["nodes"]:

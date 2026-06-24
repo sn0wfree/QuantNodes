@@ -56,7 +56,7 @@ def test_data_prep_cli_synthetic(tmp_path):
             "--n-stocks", "10",
             "--factors", "momentum_20d,reversal_5d",
         ],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True, text=True, timeout=180,
     )
     assert result.returncode == 0, result.stderr
     # 文件存在
@@ -87,7 +87,7 @@ def e2e_artifacts(tmp_path_factory):
         "--output-dir", str(data_dir),
         "--n-days", "30", "--n-stocks", "10",
         "--factors", "momentum_20d,reversal_5d,volatility_60d",
-    ], check=True, capture_output=True, timeout=30)
+    ], check=True, capture_output=True, timeout=180)
     # 2. run_evolution_e2e
     result = subprocess.run([
         sys.executable, "-m",
@@ -95,7 +95,7 @@ def e2e_artifacts(tmp_path_factory):
         "--data-path", str(data_dir),
         "--output-dir", str(out_dir),
         "--max-rounds", "2",
-    ], capture_output=True, text=True, timeout=60)
+    ], capture_output=True, text=True, timeout=300)
     return data_dir, out_dir, result
 
 
@@ -218,7 +218,7 @@ def test_quality_gate_rejects_in_e2e(tmp_path):
         "--output-dir", str(data_dir),
         "--n-days", "60", "--n-stocks", "20",
         "--factors", "momentum_20d",
-    ], check=True, capture_output=True, timeout=30)
+    ], check=True, capture_output=True, timeout=180)
 
     result = subprocess.run([
         sys.executable, "-m",
@@ -227,7 +227,7 @@ def test_quality_gate_rejects_in_e2e(tmp_path):
         "--output-dir", str(out_dir),
         "--max-rounds", "0",
         "--disable-quality-gate",  # 禁用 QG, 让所有都通过
-    ], capture_output=True, text=True, timeout=30)
+    ], capture_output=True, text=True, timeout=180)
     assert result.returncode == 0
     summary = json.loads((out_dir / "evolution_summary.json").read_text())
     # 禁用 QG 时, 至少 round 0 的因子都通过

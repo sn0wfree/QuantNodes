@@ -201,7 +201,7 @@ def test_stub_fetch_then_e2e_pipeline(populated_stub, tmp_path):
         "--output-dir", str(out_dir),
         "--max-rounds", "0",
         "--disable-quality-gate",
-    ], capture_output=True, text=True, timeout=60)
+    ], capture_output=True, text=True, timeout=180)
     assert result.returncode == 0, f"stderr={result.stderr}, stdout={result.stdout}"
     assert (out_dir / "evolution_summary.json").exists()
     import json

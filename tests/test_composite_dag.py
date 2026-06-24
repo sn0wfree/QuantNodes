@@ -25,18 +25,18 @@ from QuantNodes.operators.composite_dag import _COMPOSITE_REGISTRY
 
 @pytest.fixture(autouse=True)
 def _isolate_composite_registry():
-    """每个 test 后清空用户测试注册的 composite, 避免污染其他 tests.
+    """每个 test 后还原 composite registry, 避免污染其他 tests.
 
-    仅删除本测试模块注册的 op (通过 ``spec.template.__module__`` 判定).
-    不清理 PR-QN-3b 注入的内置 op.
+    v3.0.0: 改为完整快照/还原。旧实现仅按 ``spec.template.__module__ ==
+    __name__`` 删除本模块注册的 op, 但 ``load_composites_from_yaml`` 构造的
+    op (如 ``yaml_test_op``) 的 ``__module__`` 是 ``composite_dag`` 模块,
+    不匹配本模块名, 因而泄漏到 ``test_composite_dag_pandas_ops`` 的
+    ``test_op_names_match_polars`` 断言中。完整快照可彻底隔离。
     """
+    snapshot = dict(_COMPOSITE_REGISTRY._registry)
     yield
-    to_remove = [
-        n for n, s in _COMPOSITE_REGISTRY._registry.items()
-        if s.template.__module__ == __name__
-    ]
-    for n in to_remove:
-        _COMPOSITE_REGISTRY._registry.pop(n, None)
+    _COMPOSITE_REGISTRY._registry.clear()
+    _COMPOSITE_REGISTRY._registry.update(snapshot)
 
 
 # ============== ParamSpec ==============

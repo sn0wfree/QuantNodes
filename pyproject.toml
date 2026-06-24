@@ -7,7 +7,7 @@ name = "quantnodes"
 version = "2.8.0"
 description = "AI-native quantitative research framework with symbolic computation and SQL pushdown"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 authors = [{name = "sn0wfree", email = "snowfreedom0815@gmail.com"}]
 license = {text = "MIT"}
 keywords = ["Node", "Databases", "Quantitative"]
@@ -17,16 +17,26 @@ classifiers = [
     "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
+
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/sn0wfree/QuantNodes"
 
 [project.optional-dependencies]
+# 启用 nanobot agent / WebUI / MCP / 飞书 等完整功能
+agent = [
+    "nanobot-ai>=0.2.1,<0.3.0",
+]
+# 暴露 quant 工具库为 MCP server（无需 nanobot 也能跑，但与 agent 组合时
+# 可让 nanobot 子智能体通过 stdio 调用 quant 工具）
+mcp = ["fastmcp>=3.0", "mcp[cli]>=1.0"]
+# 一键装齐 agent + mcp
+all = ["quantnodes[agent,mcp]"]
 streamlit-ui = ["streamlit>=1.28.0"]
 dev = [
     "pytest>=7.0",
@@ -59,7 +69,7 @@ markers = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]
@@ -88,4 +98,4 @@ ignore = [
 
 [tool.black]
 line-length = 100
-target-version = ["py39"]
+target-version = ["py311", "py312", "py313"]

@@ -2,270 +2,157 @@
 """
 QuantNodes Agent 系统
 
-基于nanobot架构的量化研究智能体。
+基于 HKUDS/nanobot 0.2.1 上游 (PyPI: ``nanobot-ai>=0.2.1,<0.3.0``) 的量化研究智能体。
 
-Usage:
-    from QuantNodes.agent import Agent
+v3.0.0 架构变更（Path A: 直接消费上游）：
+- 核心运行时由本地复刻 → 改为包装 ``Nanobot.from_config``（见 ``nanobot_bridge.py``）
+- 量化专属 Dream 钩子见 ``QuantNodes.agent.core.quant_dream``
+- 15 个量化工具父类改为 ``nanobot.agent.tools.base.Tool``（见 ``tools/base.py``）
+- workspace 由 ``.quant_agent/`` → ``.agent/``（上游默认约定）
 
-    agent = Agent(workspace="./workspace", config={"model": "gpt-4o"})
-    response = await agent.run("帮我生成一个动量策略")
+**v3.0.0 重要变更（Stage 5.3）**：``nanobot-ai`` 改为 **可选依赖**
+（``pip install 'quantnodes[agent]'``）。未装时：
+- ``NANOBOT_AVAILABLE = False``
+- ``Agent`` 类的属性访问抛 ``NanobotNotInstalled``
+- 量化工具库（Wiki / Factor / Backtest / Strategy）完全可用
+- MCP server、API、CLI 等不依赖 nanobot 的部分正常启动
+
+Usage (向后兼容 v2.x 签名):
+    from QuantNodes.agent import Agent, NANOBOT_AVAILABLE
+
+    if NANOBOT_AVAILABLE:
+        agent = Agent(workspace=".agent", config={"model": "gpt-4o"})
+        response = await agent.run("帮我生成一个动量策略")
+    else:
+        # 量化工具库仍可用
+        from QuantNodes.research.wiki import WikiFactorProxy
+        wiki = WikiFactorProxy()
+        factor = await wiki.get("momentum_20")
 """
+
+from __future__ import annotations
+
+import warnings
+from typing import Any
 
 from QuantNodes.core.path_utils import ensure_dir
 
-from .core.loop import AgentLoop
-from .core.memory import MemoryStore, MemoryManager, DreamStore
-from .core.dream import DreamEngine
-from .core.autocompact import truncate_history, microcompact
+__version__ = "3.0.0"
 
-__version__ = "2.5.0"
+# ----------------------------------------------------------------------------
+# Optional-dependency guard
+# ----------------------------------------------------------------------------
+#
+# v3.0.0 之前，``nanobot-ai`` 是强制依赖。从 Stage 5.3 起改为 ``[agent]`` extras：
+# - ``pip install quantnodes``            → 纯量化工具库
+# - ``pip install 'quantnodes[agent]'``   → + nanobot agent / WebUI / MCP
+# - ``pip install 'quantnodes[all]'``     → 装齐所有 extras
+#
+# 顶层 import 任何 nanobot 符号必须先检查 ``NANOBOT_AVAILABLE``，否则
+# ``from QuantNodes.agent import Agent`` 在未装 extras 时会 ImportError。
+NANOBOT_AVAILABLE: bool = True
+NANOBOT_IMPORT_ERROR: str | None = None
+_NANOBOT_PROBE: Any = None
+
+# Probe: try to import a real nanobot submodule, not just the top-level
+# namespace. The top-level `nanobot` may exist as a namespace package
+# (e.g. with just a `bridge/` subpackage) but the `nanobot.agent` submodule
+# could be missing — in which case the agent runtime is not usable.
+# We probe a known-deep symbol: ``nanobot.agent.tools.base.Tool``.
+try:
+    from nanobot.agent.tools.base import Tool as _ProbeTool  # noqa: F401
+    NANOBOT_AVAILABLE = True
+    del _ProbeTool
+except ImportError as _e:  # pragma: no cover - exercised by the import
+    NANOBOT_AVAILABLE = False
+    NANOBOT_IMPORT_ERROR = str(_e)
 
 
-class Agent:
-    """QuantNodes 量化研究Agent
+class NanobotNotInstalled(ImportError):
+    """Raised when user code touches a nanobot-only symbol without [agent] extra.
 
-    Doc 14 规定的对外API门面。
-    内部组合 AgentLoop + ToolRegistry + LLMProvider。
-
-    Examples:
-        >>> agent = Agent(workspace="./workspace", config={"model": "gpt-4o"})
-        >>> response = await agent.run("生成一个动量因子策略")
+    The error message is tailored to be friendly: it tells the user exactly
+    which pip extra to install.
     """
 
-    def __init__(self, workspace: str, config: dict = None):
-        """初始化Agent
-
-        Args:
-            workspace: 工作目录路径
-            config: 配置字典
-                - model: LLM模型名称
-                - api_key: API密钥
-                - api_base: API基础URL
-        """
-        from pathlib import Path
-        from .core.loop import AgentLoop
-        from .bus.queue import MessageBus
-        from .tools.registry import ToolRegistry
-        from .tools.echo import EchoTool
-        from .tools.sandbox import SandboxTool
-        from .tools.pipeline import PipelineTool
-        from .tools.strategy import StrategyTool
-        from .tools.backtest import BacktestTool
-        from .tools.factor import FactorTool
-        from .tools.config_backtest import ConfigBacktestTool
-        from .tools.wiki import WikiTool
-        from .tools.file_ops import FileOpsTool
-        from .tools.code_search import CodeSearchTool
-        from .tools.git_ops import GitOpsTool
-        from .tools.web_fetch import WebFetchTool
-        from .tools.web_search import WebSearchTool
-        from .tools.task import TaskTool
-        from .skills.registry import SkillRegistry
-        from .skills.loader import SkillLoader
-        from .skills.bridge import SkillToolBridge
-
-        config = config or {}
-        workspace_path = Path(workspace)
-        ensure_dir(workspace_path)
-
-        self._max_tokens = config.get("max_tokens", 102400)
-
-        # Build/Plan dual mode support
-        self._mode_models = config.get("mode_models", {})
-        self._default_mode = config.get("default_mode", "build")
-        # Fallback: if mode_models is empty, derive from single model field
-        if not self._mode_models:
-            model = config.get("model", "")
-            self._mode_models = {
-                "build": {"model": model, "max_tokens": self._max_tokens},
-                "plan": {"model": model, "max_tokens": 16000},
-            }
-
-        bus = MessageBus()
-        tool_registry = ToolRegistry()
-
-        tool_registry.register(EchoTool())
-        tool_registry.register(SandboxTool())
-        tool_registry.register(PipelineTool())
-        tool_registry.register(StrategyTool())
-        tool_registry.register(BacktestTool())
-        tool_registry.register(FactorTool())
-        tool_registry.register(ConfigBacktestTool())
-        tool_registry.register(WikiTool(wiki_path=str(workspace_path / "wiki")))
-        tool_registry.register(FileOpsTool(workspace=workspace_path))
-        tool_registry.register(CodeSearchTool(workspace=workspace_path))
-        tool_registry.register(GitOpsTool(workspace=workspace_path))
-        tool_registry.register(WebFetchTool())
-        tool_registry.register(WebSearchTool())
-        tool_registry.register(TaskTool(workspace=workspace_path))
-
-        skill_registry = SkillRegistry()
-        self._skill_loader = SkillLoader(skill_registry)
-        self._skill_bridge = SkillToolBridge(skill_registry, tool_registry)
-
-        provider = self._create_provider(config)
-
-        self._loop = AgentLoop(
-            bus=bus,
-            provider=provider,
-            workspace=workspace_path,
-            tool_registry=tool_registry,
-            model=config.get("model"),
-            max_tokens=self._max_tokens,
-            mode_models=self._mode_models,
+    def __init__(self, symbol: str = "Agent"):
+        msg = (
+            f"{symbol} requires the optional 'agent' extra. "
+            "Install it with:  pip install 'quantnodes[agent]'  (or  'quantnodes[all]')"
         )
+        if NANOBOT_IMPORT_ERROR:
+            msg += f"\nUnderlying error: {NANOBOT_IMPORT_ERROR}"
+        super().__init__(msg)
 
-    def _create_provider(self, config: dict):
-        """根据配置创建 LLM Provider
 
-        支持两种模式：
-        1. 多Provider模式：config中包含providers字典，使用ProviderRegistry动态路由
-        2. 单Provider模式（向后兼容）：仅api_key + api_base，绑定单个client
+# ----------------------------------------------------------------------------
+# Re-exports (lazy where nanobot is required)
+# ----------------------------------------------------------------------------
+if NANOBOT_AVAILABLE:
+    from .nanobot_bridge import Agent  # noqa: E402
+    from .core.quant_dream import (  # noqa: E402
+        QuantDreamHook,
+        QuantDreamInsight,
+        DreamEngine,
+    )
+    from .tools import register_all_quant_tools  # noqa: E402
+else:
+    # Provide a stub for ``Agent`` so ``from QuantNodes.agent import Agent`` does
+    # not raise at import time. The stub raises ``NanobotNotInstalled`` only when
+    # the user actually tries to *instantiate* or *attribute-access* it.
+    class _NanobotUnavailableProxy:
+        """Proxy that raises ``NanobotNotInstalled`` on any access.
+
+        Implemented via ``__getattr__`` (PEP 562) so that the import itself
+        succeeds — only attribute access triggers the error. This keeps
+        ``from QuantNodes.agent import Agent`` working everywhere; the user's
+        first real call (``Agent(...)`` or ``Agent.some_attr``) gets the
+        friendly error message.
         """
-        try:
-            from .providers.quantnodes import QuantNodesLLMProvider
-            from .providers.registry import ProviderRegistry
 
-            providers_data = config.get("providers", {})
-            model = config.get("model", "gpt-4o")
-            max_tokens = config.get("max_tokens", 102400)
-            fallback = config.get("fallback_providers", [])
+        _PROXY_SYMBOLS = {
+            "Agent",
+            "QuantDreamHook",
+            "QuantDreamInsight",
+            "DreamEngine",
+            "register_all_quant_tools",
+        }
 
-            if providers_data:
-                # 多Provider模式：使用ProviderRegistry
-                registry = ProviderRegistry.from_settings(config)
-                return QuantNodesLLMProvider(
-                    registry=registry,
-                    default_model=model,
-                    default_max_tokens=max_tokens,
-                    fallback_providers=fallback,
-                )
-
-            # 单Provider模式（向后兼容）
-            from QuantNodes.ai.llm.openai import OpenAIClient, AzureOpenAIClient
-
-            provider_type = config.get("provider", "openai")
-            api_key = config.get("api_key")
-            api_base = config.get("api_base")
-            use_litellm = config.get("use_litellm", True)
-            rate_limit_rps = config.get("rate_limit_rps", 0.5)
-            timeout = config.get("llm_timeout", 60)
-            max_retries = config.get("llm_max_retries", 3)
-
-            if provider_type == "azure":
-                client = AzureOpenAIClient(
-                    api_key=api_key,
-                    azure_endpoint=api_base,
-                    timeout=timeout,
-                    max_retries=max_retries,
-                )
-            else:
-                base_url = api_base or None
-                client = OpenAIClient(
-                    api_key=api_key,
-                    base_url=base_url,
-                    timeout=timeout,
-                    max_retries=max_retries,
-                )
-
-            litellm_base_url = api_base
-
-            return QuantNodesLLMProvider(
-                api_key=api_key,
-                api_base=litellm_base_url,
-                client=client,
-                default_model=model,
-                default_max_tokens=max_tokens,
-                use_litellm=use_litellm,
-                rate_limit_rps=rate_limit_rps,
-                max_retries=max_retries,
-                timeout=timeout,
+        def __getattr__(self, name: str) -> Any:
+            if name in self._PROXY_SYMBOLS:
+                raise NanobotNotInstalled(name)
+            raise AttributeError(
+                f"module {__name__!r} has no attribute {name!r} (nanobot-ai not installed)"
             )
-        except (ImportError, Exception) as e:
-            import logging
-            logging.getLogger(__name__).warning(
-                "Failed to create LLM provider: %s. "
-                "Chat will not be available until configured.", e
-            )
-            return None
 
-    @property
-    def loop(self):
-        """获取底层 AgentLoop"""
-        return self._loop
+        def __call__(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
+            raise NanobotNotInstalled("Agent")
 
-    async def run(self, prompt: str, session_id: str = "default") -> str:
-        """运行一次对话
+    _proxy = _NanobotUnavailableProxy()
+    Agent = _proxy  # type: ignore[assignment]
+    QuantDreamHook = _proxy  # type: ignore[assignment]
+    QuantDreamInsight = _proxy  # type: ignore[assignment]
+    DreamEngine = _proxy  # type: ignore[assignment]
+    register_all_quant_tools = _proxy  # type: ignore[assignment]
 
-        Args:
-            prompt: 用户输入
-            session_id: 会话ID
-
-        Returns:
-            Agent回复
-        """
-        return await self._loop.chat(prompt, session_id=session_id)
-
-    async def chat(
-        self,
-        message: str,
-        session_id: str = "default",
-        model: str | None = None,
-        max_tokens: int | None = None,
-        mode: str | None = None,
-    ):
-        """流式对话（生成器）
-
-        Args:
-            message: 用户输入
-            session_id: 会话ID
-            model: 可选，覆盖本次对话使用的模型
-            max_tokens: 可选，覆盖本次对话的最大token数
-            mode: 可选，'build' 或 'plan'，从 mode_models 中解析模型
-
-        Yields:
-            dict: 事件字典
-                - {"type": "token", "content": str} - 流式文本token
-                - {"type": "tool_call", "id": str, "name": str, "arguments": dict}
-                - {"type": "tool_result", "id": str, "name": str, "content": str, "success": bool}
-                - {"type": "done", "content": str, "tools_used": list, "stop_reason": str}
-                - {"type": "error", "content": str}
-        """
-        if self._loop.provider is None:
-            yield {
-                "type": "error",
-                "content": "LLM provider not configured. Set QUANTNODES__LLM__API_KEY in .env",
-            }
-            return
-
-        # Resolve model from mode if provided
-        resolved_model = model
-        resolved_max_tokens = max_tokens or getattr(self, '_max_tokens', 102400)
-        mode_models = getattr(self, '_mode_models', {})
-        if mode and mode in mode_models:
-            mode_config = mode_models[mode]
-            if not model:
-                resolved_model = mode_config.get("model") or model
-            if not max_tokens:
-                resolved_max_tokens = mode_config.get("max_tokens", resolved_max_tokens)
-
-        async for event in self._loop.chat_stream(
-            message,
-            session_id=session_id,
-            model=resolved_model,
-            max_tokens=resolved_max_tokens,
-        ):
-            yield event
+    # Emit a one-time DeprecationWarning-ish info on import
+    warnings.warn(
+        "QuantNodes.agent loaded without nanobot-ai (NANOBOT_AVAILABLE=False). "
+        "Agent / WebUI / MCP features are disabled. "
+        "Install with:  pip install 'quantnodes[agent]'",
+        ImportWarning,
+        stacklevel=2,
+    )
 
 
 __all__ = [
     "__version__",
+    "NANOBOT_AVAILABLE",
+    "NANOBOT_IMPORT_ERROR",
+    "NanobotNotInstalled",
     "Agent",
-    "AgentLoop",
-    "MemoryStore",
-    "MemoryManager",
-    "DreamStore",
+    "QuantDreamHook",
+    "QuantDreamInsight",
     "DreamEngine",
-    "truncate_history",
-    "microcompact",
+    "register_all_quant_tools",
 ]

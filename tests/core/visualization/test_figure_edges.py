@@ -10,6 +10,13 @@
 from __future__ import annotations
 
 
+import pytest
+
+# v3.0.0 graceful degradation: figure functions return None when
+# plotly is missing, so these edge-case tests are not meaningful
+# in that environment.
+pytest.importorskip("plotly", reason="plotly not installed; figure tests skipped")
+
 from QuantNodes.core.feedback import (
     ChannelFeedback, FactorFeedback, FeedbackChannel,
 )

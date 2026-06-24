@@ -458,7 +458,7 @@ class IFinDDatabase:
         return self._get_stock_info_panel(
             'id_citic1',
             '{codes}的行业分类(申万一级)'
-        ).applymap(lambda x: self._industry_map.get(str(x), 0) if pd.notna(x) else 0)
+        ).map(lambda x: self._industry_map.get(str(x), 0) if pd.notna(x) else 0)
 
     @register_route("stk_daily.h5", "mv_float")
     def _get_market_value(self) -> pd.DataFrame:
@@ -474,7 +474,7 @@ class IFinDDatabase:
         return self._get_stock_info_panel(
             'st',
             '{codes}是否被ST处理'
-        ).applymap(lambda x: 1 if str(x).strip() in ('是', 'True', '1', 'ST') else 0)
+        ).map(lambda x: 1 if str(x).strip() in ('是', 'True', '1', 'ST') else 0)
 
     @register_route("stk_daily.h5", "suspend")
     def _get_suspension(self) -> pd.DataFrame:
@@ -482,7 +482,7 @@ class IFinDDatabase:
         return self._get_stock_info_panel(
             'suspend',
             '{codes}是否停牌'
-        ).applymap(lambda x: 1 if str(x).strip() in ('是', 'True', '1', '停牌') else 0)
+        ).map(lambda x: 1 if str(x).strip() in ('是', 'True', '1', '停牌') else 0)
 
     @register_route("stk_daily.h5", "ud_limit")
     def _get_limit(self) -> pd.DataFrame:
@@ -490,7 +490,7 @@ class IFinDDatabase:
         return self._get_stock_info_panel(
             'ud_limit',
             '{codes}是否涨跌停'
-        ).applymap(lambda x: 1 if '涨停' in str(x) else (-1 if '跌停' in str(x) else 0))
+        ).map(lambda x: 1 if '涨停' in str(x) else (-1 if '跌停' in str(x) else 0))
 
     @register_route("stk_daily.h5", "ipo_days")
     def _get_ipo_days(self) -> pd.DataFrame:

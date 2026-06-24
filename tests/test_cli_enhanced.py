@@ -14,6 +14,7 @@ class TestChatCommand:
             capture_output=True,
             text=True,
             cwd="/home/ll/Public/QuantNodes",
+            timeout=60,
         )
         assert result.returncode == 0
         assert "Agent" in result.stdout or "chat" in result.stdout.lower()

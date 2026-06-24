@@ -7,6 +7,433 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Alpha-GPT WebSocket 流式输出 + 前端可视化 + Phase C 归档**（M7 PR）：
+  - **WebSocket 端点**：`/api/alpha/alpha-gpt/stream/{sid}` 实时事件流（6 事件类型：round_started/round_completed/formulas_evaluated/final_pool_ready/done/error/heartbeat）
+  - **事件总线**：`AlphaGptService.subscribe()` / `_emit()`，支持 buffer replay + 多订阅者
+  - **跨线程事件注入**：`asyncio.run_coroutine_threadsafe` 把 sync workflow 的事件安全投递到主事件循环
+  - **前端 Vue 页面**：`/alpha-gpt` 路由 + `AlphaGpt/index.vue`（Ant Design Vue 3 + 实时进度条 + IC 演化图 + 公式表）
+  - **侧边栏入口**：`AppSidebar.vue` 加 `Alpha-GPT` 菜单项（仅 agent 启用时显示）
+  - **Phase C 归档**：4 个旧模块（factor_evaluator/factor_miner/auto_researcher/mcts_search）移至 `QuantNodes/research/_legacy_3c/`
+  - **向后兼容 shim**：`QuantNodes.research.factor_evaluator` 等通过 `_LegacyShim` 仍可导入但触发 DeprecationWarning
+  - 6 个新 WebSocket 测试 + 1 个 Phase C 测试
+- **Alpha-GPT CLI / API / v2.7.0 release**（M6 PR）：
+  - CLI `quantnodes alpha-gpt`（`AlphaGptCommand`，18 个 argparse 参数）
+  - API 5 端点（`/api/alpha/alpha-gpt/{generate,status/{sid},results/{sid},stop/{sid},list}`）
+  - `AlphaGptService` 后台 session 管理（async + semaphore 并发限制）
+  - `NanobotLLMWrapper`：把 `QuantNodes.agent.Agent` 包装成 workflow 期望的 client 接口
+  - 14 个新测试（E2E 5 + CLI 5 + workflow 集成 4）
+- **QuantAlpha 子包**（`QuantNodes/research/quant_alpha/`）：自动化因子挖掘引擎，参考 4 大因子库演进链（Alpha 101/158/360/AutoAlpha）
+  - **OperatorVocab** (`quant_alpha.operator_vocab.OperatorVocab`)：统一算子查询/调用/元数据化接口（M1）
+  - **5 个新算子**：`signedpower` / `ts_decay_linear` / `IndNeutralize` / `ts_skew` / `ts_kurt`（修复 Alpha 101 关键缺口，M1）
+  - **算子元数据 schema 扩展**：从 5 字段到 12 字段（新增 7 个 LLM 友好字段，M1）
+  - **per-date over() 修复**：rank/zscore/winsorize 默认 per-date 截面（修复 12-lambda namespace 的 BUG 2，M1）
+  - **MCTS 子包**（`quant_alpha.mcts`，M2）：
+    - `ExtensionOpPool`：从 OperatorVocab 动态生成 26 个扩展操作（vs 旧 7 硬编码）
+    - `MCTSNode` / `MCTSTree`：完整谱系追踪（entry_id + parent_id + ancestors + lineage_depth）
+    - 5 通道反馈框架（`MCTSFeedbackConfig` + 5 个 channel collector）：
+      execution / shape / code / value / llm
+    - `MCTSSearch`：UCB1 选择 + 5 通道反馈驱动 + 谱系持久化
+  - **CLI 命令**：`quantnodes alpha-mcts`（M2）
+  - **Alpha 101 设计借鉴**（`quant_alpha.alpha101_design`，M3）：
+    - 8 条设计原则（P1-P8：数学即代码、动量反转、截面 rank、ts_argmax 提取极值位置、
+      signedpower 保留符号、decay_linear 加权、三元条件、IndNeutralize 行业中性化）
+    - 16 个核心算子（含经济意义 + Alpha 101 公式示例）
+    - 8 个 A 股可移植性记录（4 个 Delay-0 不可移植 + 4 个可移植）
+    - 10 个 few-shot 示例（覆盖 4 类：momentum / reversal / volume_price / intraday）
+  - **Alpha 158/360 设计借鉴**（`quant_alpha.alpha158_design`，M3）：
+    - 4 类特征模板：KBAR (9) / Price (20) / Volume (5) / Rolling (124) = 158 特征
+    - Alpha 360 模板：6 字段 × 60 lookback = 360 特征
+    - 10 个 few-shot 示例（覆盖 4 类）
+  - **Alpha-GPT 5 智能体编排**（`agent.tools.alpha_*` + `quant_alpha.workflow`，M5）：
+    - 2 个新工具：`alpha_evaluate`（包 M4 PolarsAlphaCalculator，批量 IC/IR/ic_decay）+ `alpha_backtest`（top-K 等权 Trading 回测，年化/Sharpe/MaxDD）
+    - 5 个新 subagent：`alpha-gpt-{idea-generator, formula-translator, evaluator, reflector, critic}`（基于 `.agent/agents/alpha-gpt-*.md`）
+    - `AlphaGptWorkflow` 协调器：5 轮主循环 + 多进程 spawn（复用 nanobot upstream）
+    - JSON 三层降级解析器：`parse_{idea_generator, formula_translator, evaluator, reflector, critic}_output`
+    - 算子白名单校验（32 算子）+ 简单 formula parser
+    - 未来所有 RL/LLM 路线接入：**4 天**（vs 全栈 40+）
+  - **AlphaGen RL 适配器**（`quant_alpha.adapters`，M4）：
+    - 极简 Expression AST（11 算子 + Literal）：Feature / Ref / BinaryOp / UnaryOp / RollingOp
+    - `BaseAlphaCalculator` ABC：7 个抽象方法（与 AlphaGen `AlphaCalculator` 接口兼容）
+    - `PolarsAlphaCalculator`：参考实现，用 polars + OperatorVocab
+    - 7 个方法完整实现：single_IC_ret / single_rIC_ret / single_all_ret /
+      mutual_IC / pool_IC_ret / pool_rIC_ret / pool_all_ret
+    - 公式缓存 + 自动按 (code, date) 排序
+    - **未来所有 RL 路线接入只需 4 天**（vs 全栈复刻 40+）
+  - **完整调研 + 规划文档**：`docs/quant_alpha/PROJECT_PLAN.md`（991 行）
+
+### Changed
+
+- **MCTS 操作池**：从 7 硬编码 → 26 动态生成（按 6 个 category：wrap/window/window_binary/unary/diff/ratio）
+
+### Fixed
+
+- `QuantNodes.research.factor_evaluator._compute_factor` 三大隐性 bug：
+  1. `ts_corr` / `ts_cov` 用 `Series.rolling_corr`（Series 上不存在）→ 改用 L0 注册表 `rolling_corr` (Expr API)
+  2. `rank` / `zscore` 全局计算而非 per-date 截面 → 默认 `cross_sectional=True` per-date over(date)
+  3. 异常被 `except Exception: return None` 静默吞掉 → 完整错误抛出
+
+### Deprecated
+
+- `QuantNodes.research.factor_evaluator` → 迁移到 `quant_alpha.operator_vocab.OperatorVocab`
+- `QuantNodes.research.factor_miner` → 迁移到 `quant_alpha.operator_vocab`（M2+）
+- `QuantNodes.research.mcts_search` → 迁移到 `quant_alpha.mcts.MCTSSearch`（M2 PR）
+- `QuantNodes.research.auto_researcher` → 迁移到 `quant_alpha.AutoResearcher`（M5+ PR）
+
+### Migration
+
+- 详见 [`docs/quant_alpha/migration.md`](docs/quant_alpha/migration.md)
+- Phase A: 旧代码仍可用，DeprecationWarning 仅提示
+- Phase B (v2.9+): 旧类变 thin wrapper
+- Phase C (v3.0): 旧实现归档到 `_legacy_3c/`
+
+## [3.0.0] - 2026-06-23
+
+v3.0.0 — 上游 nanobot 迁移：从"复刻 nanobot 架构"升级为"直接消费 HKUDS/nanobot 0.2.1 上游"。
+
+**关键变更**：
+- 核心运行时从自写 `loop/runner/memory/...` 改为包装 `Nanobot.from_config()`
+- `nanobot-ai` 改为 `[agent]` optional extra（量化库独立可用）
+- 单进程架构：FastAPI uvicorn + nanobot gateway 共存于同一 Python 进程
+- 完整 Phase 5 功能（5 个 stage，11 个 commit）：subagent / MCP / WebUI / 渠道 / Cron
+
+### Stage 1 — Architecture (commit 2584462)
+
+- **核心运行时迁移**：删除自写 `QuantNodes/agent/core/{loop,runner,memory,autocompact,context,hook,compaction}.py`、`bus/`、`session/`、`templates/agent/`、`config/{loader,executor}.py`、`cli/main.py`、`web/`。
+- **编程式门面**：新增 `QuantNodes/agent/nanobot_bridge.py::Agent`，薄包装 `Nanobot.from_config(config_path, workspace=...)`，旧 `Agent(workspace, config)` 签名不变。
+- **dream.py 保留**：从 `core/dream.py` 迁出为 `core/quant_dream.py`，实现 `QuantDreamHook(AgentHook)` 挂在上游 hook 系统；`core/dream.py` 保留为 re-export shim（DeprecationWarning）。
+- **配置映射**：新增 `QuantNodes/agent/config_mapper.py`，把 `.env` 的 `QUANTNODES__LLM__*` 翻译为 `.agent/nanobot_config.json` 的 `providers` 块（含 slot 自动推断：OpenAI 兼容 → `custom`、Anthropic → `anthropic`、Ollama → `ollama`、Azure → `azure_openai`）。
+- **Skills**：新增 `QuantNodes/agent/skills_quant/` 6 个 SKILL.md（factor-research / strategy-design / backtest-analyze / risk-management / quant-dream / config-driven），格式对齐上游 `nanobot/skills/*/SKILL.md`（YAML front-matter + 指令体）。
+- **CLI/WebUI**：删除自写 `agent/cli/main.py` 和 `agent/web/`，改为 `python -m nanobot` + `python -m nanobot webui --port 18080`。
+- **量化工具继承 nanobot Tool**：`QuantNodes/agent/tools/base.py::Tool` 改为继承 `nanobot.agent.tools.base.Tool`，15 个 quant 工具父类自动升级。`register_all_quant_tools(registry, workspace)` 把 14 个 tool 注入上游 `ToolRegistry`。
+
+### Stage 2 — API 解耦 (commit 9e5999a)
+
+- `api/services/agent_service.py`：改 import 为 `nanobot_bridge.Agent`，事件协议 `token/tool_call/tool_result/done` 向后兼容；新增 `reload_bot()`，保留 `reload_agent()` 别名。
+- `api/services/wiki_service.py` (重写)：去除 `WikiTool`，直接用 `QuantNodes.research.wiki.WikiFactorProxy`。
+- `api/services/stats_service.py` (重写)：同样去除 `WikiTool`。
+- `api/services/dream_service.py`：改用 `core/quant_dream.QuantDreamHook` + `DreamEngine(workspace=...)`。
+- `api/services/backtest_service.py`：注释说明仍用 `ConfigBacktestTool`，未来 TODO 用 `ConfigBacktestRunner` 替代。
+- `api/routers/settings.py`：6 处 `reload_agent()` → `reload_bot()`。
+- `api/routers/skill.py`：保持本地 `SkillRegistry`（上游 SKILL.md 解析器在 Stage 5.x 引入）。
+
+### Stage 3 — Workspace 迁移 (commit 4b7560e)
+
+- `.quant_agent/` → `.agent/`（HKUDS nanobot 上游默认约定）。
+- 一次性迁移脚本 `scripts/migrate_workspace.py`：自动分割 v2 MEMORY.md 为 SOUL.md + memory/MEMORY.md；保留 sessions / settings.json；写 `.migration_manifest.json` 记录元数据。
+- 16 处默认 workspace 改 `.agent/`：`QuantNodes/core/config.py`、`QuantNodes/cli/_helpers.py`、`QuantNodes/agent/tools/task.py`、`api/config.py`、`api/services/{agent,backtest,dream,settings,stats,wiki}_service.py`。
+- `.gitignore` 加 `.agent/`（含 API key 等敏感配置）。
+
+### Stage 4 — Tests + Docs (commit pending)
+
+- 新增 `tests/agent/test_quant_dream_hook.py` (16 tests) — 覆盖 QuantDreamHook / DreamEngine shim / get_recent_dreams round-trip。
+- 新增 `tests/agent/test_quant_tools.py` (10 tests) — 工具 schema / to_schema / register_all_quant_tools idempotent。
+- 新增 `tests/agent/test_nanobot_integration.py` (10 tests) — 端到端 Agent(workspace) + 14 量化工具注册 + config_mapper 路由。
+- 删除 11 个 broken-collect 测试文件（`test_{loop,runner,memory,memory_persistence,bus,session,chat,context,hook,autocompact,agent_loop_p1}.py`）—— 上游 nanobot 已覆盖这些功能。
+- 更新 `docs/13-Agent架构设计.md`：新增"工作区约定"节。
+- 更新 `AGENTS.md`：`.agent/` 路径说明 + 迁移脚本。
+
+### Dependencies
+
+- 增 `nanobot-ai>=0.2.1,<0.3.0`（alpha 期锁次版本号）。
+- `pyproject.toml::requires-python` 升 `>=3.11`（upstream 最低要求）。
+- 本地开发期 `pip install -e ~/Public/nanobot`（HKUDS/nanobot v0.2.1 源码克隆）。若 GitHub 不可达，可从 PyPI 安装 `nanobot-ai==0.2.1`。
+
+### Breaking Changes
+
+- 删 `QuantNodes/agent/core/{loop,runner,memory,compaction,autocompact,context,hook}.py` —— 直接 import 路径报错，必须改用 `Agent.run()` / `Nanobot.from_config()` facade。
+- 删 `QuantNodes/agent/bus/`、`session/`、`config/{loader,executor}.py`、`templates/agent/`、`cli/main.py`、`web/` —— 同上。
+- workspace 从 `.quant_agent/` 迁 `.agent/` —— 见 `scripts/migrate_workspace.py`。
+- 旧 `agent/templates/agent/*.md` 改名为 `.agent/SOUL.md` —— 见 `scripts/migrate_workspace.py`。
+
+### Baseline (Python 3.11, Stage 4)
+
+- 非 agent 测试：4143 passed / 336 failed / 28 errors / 6 skipped
+- tests/agent/：661 passed / 35 failed（pre-existing 网络测试 + TestAgentLoop session tests）
+
+> **最终（Stage 6 完成后）**：非 agent 测试 5163 passed / 21 skipped / **0 failed / 0 errors**（顺序 + 并行均通过）；tests/agent 574 passed / 13 skipped。详见下方 *Stage 6 — 测试稳定化与依赖兼容*。
+
+### Migration
+
+详见 [`docs/14-上游nanobot升级指南.md`](docs/14-上游nanobot升级指南.md)。
+
+### Stage 5.1 — Subagent 多 Agent 团队 (commit f7ac409)
+
+- 启用 nanobot subagent 多 Agent 团队：在 nanobot 0.2.1 的 `spawn`/`read_file` 基础上，通过 `SOUL.md` + `.agent/agents/*.md` 实现角色化子智能体。
+- 新增 `.agent/SOUL.md`：ResearchDirector 主体人格 + delegation matrix（"factor research" → factor-analyst，"backtest" → backtest-engineer，"risk" → risk-manager）。
+- 新增 `.agent/agents/{factor-analyst,backtest-engineer,risk-manager}.md`：3 个专家子智能体的系统提示词。
+- `.gitignore` 加 `!.agent/SOUL.md` / `!.agent/USER.md` / `!.agent/agents` / `!.agent/agents/*.md` re-include 规则（共享团队定义，忽略敏感 settings.json）。
+
+### Stage 5.2 — MCP server (commit a37ef30)
+
+- 新增 `QuantNodes/mcp_server/server.py` (~270 行)：FastMCP 3.4.2 + Pydantic per-tool 模型，暴露 9 个 MCP tools：
+  - `call_backtest` / `call_config_backtest` / `call_factor` / `call_strategy` / `call_pipeline` / `call_sandbox` / `call_wiki`（7 个 quant 工具 dispatcher）
+  - `list_quant_tools`（元数据 + JSON Schema 发现）
+  - `data_query`（DuckDB SQL，v0）
+- 设计：每 `call_*` 是 dispatcher（统一 `arguments` 形参），FastMCP 不支持 `**kwargs` 动态 schema。
+- `QuantNodes/agent/config_mapper.py` 自动注入 `mcpServers.quant` 块到 `nanobot_config.json`。
+- 新增 `pyproject.toml::[mcp]` optional-dependency。
+- 新增 `tests/agent/test_mcp_server.py` (8 tests)：导入 / 注册 / 调用 / schema。
+
+### Stage 5.3 — 单进程 WebUI 集成 + 可选依赖 (commit pending)
+
+#### 🎯 核心变更
+
+- **可选依赖**：``nanobot-ai`` 从强制依赖移到 `[agent]` extras。`pip install quantnodes` 即可获得纯量化库；`pip install 'quantnodes[agent]'` 启用完整 agent / WebUI / MCP。
+- **单进程架构**：FastAPI lifespan 内手动拉起 nanobot 的 `AgentLoop` + `ChannelManager` + `CronService` 为 `asyncio.create_task`（不用 `asyncio.run`）。WebUI SPA + WebSocket 在 18080 端口（同一 Python 进程）。
+
+#### 新增
+
+- `api/services/nanobot_runtime.py` (~370 行)：单进程 lifespan 包装器
+  - `NanobotRuntime` 类：手动连接 `MessageBus` / `SessionManager` / `CronService` / `AgentLoop.from_config()` / `ChannelManager(webui_static_dist=True)` / 注册 14 个 quant 工具
+  - `init_runtime()` / `shutdown_runtime()` 进程级单例
+  - 状态机：`uninitialized` → `starting` → `running` → `stopping` → `stopped` / `error` / `unavailable`
+  - graceful 降级：未装 nanobot → `state=unavailable` + install hint
+- `api/routers/agent.py` (~150 行)：6 个端点
+  - `GET /api/agent/status`：200 + 运行时状态（永远返回 200，前端可读）
+  - `GET /api/agent/health`：200/503 readiness probe
+  - `POST /api/agent/restart`：销毁 + 重建（环境变量变更后用）
+  - `POST /api/agent/chat/send`：非流式 chat
+  - `GET /api/agent/sessions`：列 websocket sessions
+  - `DELETE /api/agent/sessions/{key}`：删除 session
+- `frontend/src/views/AgentChat.vue` (~110 行)：iframe + 状态机渲染
+  - 加载中：spin
+  - `unavailable`：`a-result` install 提示页
+  - `starting`：spin + 提示
+  - `error`：错误 + 重试按钮
+  - `running`：`<iframe src="VITE_NANOBOT_GATEWAY_URL" sandbox="...">`
+  - 5 秒 polling 监测状态
+- `frontend/src/components/Layout/AppSidebar.vue`：`v-if="agentEnabled"` 控制 Agent Chat 入口（默认显示）
+- `frontend/src/router/index.ts`：`/agent-chat` 路由
+- `frontend/.env.development`：`VITE_AGENT_ENABLED=true` + `VITE_NANOBOT_GATEWAY_URL=http://127.0.0.1:18080/`
+- `docs/15-可选依赖安装指南.md` (新)：三档安装说明 + 升级指南 + FAQ
+
+#### 优雅降级（关键）
+
+- `QuantNodes/agent/__init__.py`：PEP 562 `__getattr__` proxy + `NANOBOT_AVAILABLE` 标志
+  - `from QuantNodes.agent import Agent` 永远成功（不抛 ImportError）
+  - `Agent(...)` / `Agent.attr` 抛 `NanobotNotInstalled` 含 install hint
+- `QuantNodes/agent/tools/base.py`：`Tool` 父类在未装 nanobot 时降级为最小 ABC
+- `QuantNodes/agent/nanobot_bridge.py`：延后 `from nanobot import Nanobot` 到 `__init__`
+
+#### 测试
+
+- `tests/agent/test_optional_dependency.py` (8 tests)：未装 nanobot 时所有 import 路径、HTTP 端点
+- `tests/agent/test_nanobot_runtime.py` (9 tests)：singleton、start/stop 单进程、状态机
+- `tests/agent/test_webui_integration.py` (10 tests)：router / sidebar / iframe 路由 / env 契约 / pyproject extras
+
+#### Breaking Changes
+
+⚠️ **用户必须升级后显式装回 [agent] extra**：
+
+```bash
+pip install --upgrade quantnodes
+pip install 'quantnodes[agent]'   # ← 这一步必做，否则失去 agent 功能
+```
+
+### Pending (Phase 5)
+
+- [x] 5.1 Subagent 多 Agent 团队（main/factor-analyst/backtest-engineer/risk-manager）
+- [x] 5.2 MCP server（quant 能力 stdio 暴露）
+- [x] 5.3 单进程 WebUI + 可选依赖
+- [x] 5.4 渠道接入（飞书 + WebSocket）
+- [x] 5.5 Cron 调度（日终/周度/月度）
+
+### Stage 5.5 — 量化专属 Cron 调度 (commit pending)
+
+#### 新增
+
+- **`QuantNodes/agent/cron_jobs.py`** (新, ~270 行) — 3 个 quant 系统任务的定义 + 注册逻辑：
+  - `QuantCronJob` dataclass：纯 Python 数据类（无 nanobot 依赖）
+  - 3 个默认任务：
+    - `quant-daily-recap` — 工作日 16:30 因子 IC 重算 + 回测归档
+    - `quant-weekly-review` — 周日 22:00 因子周报 + 风险归因
+    - `quant-monthly-strategy-pool` — 每月 1日 02:00 Wiki 增量 + 策略池评审
+  - `DEFAULT_TZ = "Asia/Shanghai"`
+  - `build_quant_cron_jobs_from_env()` — 应用 env 覆盖并过滤 disabled
+  - `register_quant_cron_jobs(cron_service)` — 调 `CronService.register_system_job()`
+  - `NanobotNotInstalledForCron` 异常（ImportError 子类）
+- **`api/services/nanobot_runtime.py`** — 在 `_build_components` 中调 `register_quant_cron_jobs(self._cron)`，try/except ImportError 容错
+- **`api/routers/agent.py`** — 新增 2 个端点：
+  - `GET /api/agent/cron` — 列出所有 cron jobs
+  - `GET /api/agent/cron/{job_id}/run-now` — 立即触发某个任务
+- **`.env.template`** — 新增 `QUANTNODES__CRON__<NAME>__<FIELD>` env 覆盖说明
+- **`docs/13-Agent架构设计.md`** §13 新增：cron 三套任务 + 注册流程 + env 覆盖 + API 端点 + 失败模式
+
+#### env 覆盖
+
+```bash
+# 禁用单个任务
+QUANTNODES__CRON__QUANT_DAILY_RECAP__ENABLED=false
+
+# 修改 cron 表达式
+QUANTNODES__CRON__QUANT_WEEKLY_REVIEW__CRON_EXPR="0 20 * * 0"
+
+# 自定义 prompt
+QUANTNODES__CRON__QUANT_DAILY_RECAP__MESSAGE="自定义 prompt..."
+
+# 关闭结果推送
+QUANTNODES__CRON__QUANT_MONTHLY_STRATEGY_POOL__DELIVER=false
+
+# 修改 channel
+QUANTNODES__CRON__QUANT_DAILY_RECAP__CHANNEL=feishu
+```
+
+#### 测试（17 new tests, 14 pass + 3 skip）
+
+- `tests/agent/test_cron_jobs.py` (17):
+  - `test_three_default_jobs_exist` — 3 默认任务齐全
+  - `test_default_jobs_have_distinct_schedules` — cron 表达式去重
+  - `test_default_jobs_have_valid_cron_expressions` — 5 字段格式
+  - `test_default_jobs_use_default_timezone_reference` — TZ 常量
+  - `test_default_jobs_have_non_empty_messages` — prompt ≥ 50 字符
+  - `test_default_jobs_are_enabled` — 默认 enabled + deliver
+  - `test_default_jobs_have_descriptions`
+  - `test_build_from_env_returns_defaults_when_no_env`
+  - `test_env_can_disable_individual_job`
+  - `test_env_can_disable_all_jobs`
+  - `test_env_can_override_cron_expression`
+  - `test_env_can_override_message`
+  - `test_env_can_override_deliver_flag`
+  - `test_env_truthy_values_accepted`
+  - `test_register_quant_cron_jobs_with_mock` (skip if nanobot missing)
+  - `test_register_is_idempotent_on_reregistration` (skip)
+  - `test_register_respects_env_disable` (skip)
+
+3 个注册相关测试需要 `nanobot.cron.types`，未装 nanobot-ai 时优雅跳过。
+
+#### 用户启用
+
+```bash
+# 1. 装 [agent] extra
+pip install 'quantnodes[agent]'
+
+# 2. 重启 FastAPI，3 个任务自动注册（查看 /api/agent/cron 确认）
+
+# 3. 默认行为：
+#    - 工作日 16:30 自动跑日终复盘，结果送到 Feishu 群
+#    - 周日 22:00 自动跑周度复盘
+#    - 每月 1日 02:00 自动跑月度策略池评审
+
+# 4. 手动触发（调试用）：
+curl http://localhost:8000/api/agent/cron/quant-quant-daily-recap/run-now
+
+# 5. 调整时间：
+echo 'QUANTNODES__CRON__QUANT_DAILY_RECAP__CRON_EXPR="0 17 * * 1-5"' >> .env
+```
+
+### Stage 5.4 — 渠道接入 (commit pending)
+
+#### 新增
+
+- **`config_mapper.py`** — 新增 `channels` 块到生成的 nanobot 配置：
+  - `_build_websocket_config()`：默认启用，端口 `8765`，SPA 由 `webui_static_dist=True` 提供
+  - `_build_feishu_config()`：仅当 `FEISHU_APP_ID` + `FEISHU_APP_SECRET` 同时设置时启用
+  - `channel_overrides` 参数：让 FastAPI runtime 注入 gateway host/port
+- **`api/services/nanobot_runtime.py`** — `_build_components` 通过 `channel_overrides` 把 `NANOBOT_GATEWAY_HOST/PORT` 注入 websocket 块
+- **`frontend/src/composables/useNanobotWebSocket.ts`** (新) — 完整的 nanobot wire protocol 客户端：
+  - `fetchBootstrap()`：GET `/webui/bootstrap` 取短期 token
+  - `WebSocket(wsUrl)`：携带 `?token=...&client_id=...`
+  - 类型化的事件类型：`attached` / `user` / `message` / `tool_call` / `tool_result` / `tool_hint` / `tool_status` / `goal_status` / `error`
+  - 发送：`{type: 'message', content, chat_id}` JSON envelope
+  - 指数退避重连（默认 1.5×，最多无限重连）
+  - `onUnmounted` 自动 disconnect
+- **`.env.template`** — 新增 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` / `FEISHU_DOMAIN` / `FEISHU_GROUP_POLICY` / `FEISHU_REPLY_TO_MESSAGE` / `FEISHU_ALLOW_FROM` 等环境变量
+- **`frontend/.env.development`** — `VITE_NANOBOT_BOOTSTRAP_PATH=/webui/bootstrap`
+- **`docs/13-Agent架构设计.md`** §12 新增：渠道架构 + 配置注入 + wire 协议 + 飞书 channel + ChannelManager 生命周期 + 失败模式
+
+#### 测试（12 new tests）
+
+- `tests/agent/test_channel_config.py` (9) — channels 块配置：
+  - websocket 默认启用 + 端口/host 默认值
+  - feishu 缺失 env 时禁用
+  - feishu 完整 env 时启用 + app_id/secret 正确
+  - feishu 部分 env（仅 APP_ID）禁用
+  - feishu 可选 knobs（domain / group_policy / reply / encrypt / verify / allow_from）
+  - channel_overrides.propagate 到 websocket
+  - channel_overrides 可强制禁用 websocket
+  - mcpServers 块与 channels 共存
+  - 顶层 keys 完整性
+- `tests/agent/test_nanobot_websocket_protocol.py` (8) — 前端 wire 协议契约：
+  - 文件存在
+  - `useNanobotWebSocket` 是 named function
+  - 调用 `/webui/bootstrap`
+  - 发送 `type/content/chat_id` envelope
+  - 引用全部 7 个核心事件类型
+  - 指数退避
+  - onUnmounted 自动 disconnect
+  - env 包含 bootstrap path
+
+#### 用户启用飞书
+
+```bash
+# 1. 在飞书开放平台创建应用，获取 APP_ID / APP_SECRET
+# 2. 启用"机器人"能力 + 事件订阅 im.message.receive_v1
+# 3. 装 SDK
+pip install lark-oapi
+# 4. 配置 .env
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=secret_xxx
+# 可选：
+# FEISHU_GROUP_POLICY=open   # 接收所有群消息（默认 mention）
+# 5. 重启 FastAPI，feishu channel 自动启动
+```
+
+### Stage 6 — 测试稳定化与依赖兼容 (commits c5a7e3c / 0ec6fe0 / 30a0352 / f30f9b8)
+
+Python 3.11 + pandas 3.0 升级后，对全量测试套件做根因级修复。**最终全量
+非 agent 测试：5163 passed / 21 skipped / 0 failed / 0 errors（顺序 + 并行
+两种模式均通过）；tests/agent：574 passed / 13 skipped。**
+
+#### v2.x 遗留测试清理与重写 (commits c5a7e3c / 0ec6fe0)
+
+- 删除 13 个测试 v2.x 已删代码路径的文件（约 2700 行）。
+- 重写 6 个测试文件以验证 v3.0.0 等价功能（共约 112 tests）：
+  - `tests/agent/test_base.py` — `Tool` + `ToolExecutionResult`
+  - `tests/agent/test_tools.py` — `ToolRegistry` + 14 quant 工具
+  - `tests/agent/test_tools_parallel.py` — 并行执行
+  - `tests/agent/test_tools_all.py` — Mock `AgentLoop`/`AgentRunner`（无 nanobot 时 skip）
+  - `tests/agent/test_agent_service.py` — `AgentService` + `MockAgent`
+  - `tests/agent/test_skills_phase4.py` — Bridge + `DreamEngine` shim
+- 策略：需要上游 nanobot 的测试用 skip-when-missing 装饰器，**不删除**。
+
+#### pandas 3.0 兼容 (commit 30a0352)
+
+- `DataFrame.applymap` 在 pandas 3.0 移除 → 改用 `DataFrame.map`：
+  - `research/factor_test/utils/date_utils.py`（`datenum_to_datetime` / `datetime_to_datenum`）
+  - `research/factor_test/ifind_db/ifind_database.py`（行业 / ST / 停牌 / 涨跌停 4 个面板转换）
+- `dtypes[0]` 在列名为混合类型（int `0` → str `'trade_dt'`）时抛 `KeyError` → 改用 `dtypes.iloc[0]`（`date_utils.py::valid_date`）。
+- `DataFrame.values` 在单一 dtype 下变只读 → 测试改用 `DataFrame.where()` 而非原地 `.values[...]` 赋值。
+- 字符串列推断为 `StringDtype(na_value=nan)`（非 `object`）→ 测试断言改为 `not is_numeric_dtype(...)`。
+
+#### 可选依赖优雅降级 (commit 30a0352)
+
+- `core/knowledge/retriever.py::TFIDFRetriever`：sklearn 缺失时回退到 `IdentityRetriever`（`RuntimeWarning` + `getattr` 委托）。
+- `core/monitoring/dashboard.py` + `core/visualization/{gate_breakdown,lineage_dag,metric_distribution}.py`：plotly 缺失时 figure 函数返回 `None`，HTML 渲染输出友好安装提示而非崩溃。
+- `agent/tools/base.py`：未装 `[agent]` extra 时，独立 `Tool.to_openai_schema()` 从 `name`/`description`/`parameters` 合成 OpenAI function schema（不再 raise），与 nanobot 的「方法调用」契约一致。
+- 测试侧用 `pytest.importorskip("plotly")` 跳过纯 plotly 渲染测试（保留纯 Python 的 `TestLineageLayout`）；`pymysql` 缺失时跳过 MySQL 集成测试。
+
+#### 系统级测试依赖（开发环境）
+
+为让全部测试在本地通过，需安装以下（Python 3.11）：
+
+```bash
+pip install ta-lib tables plotly   # talib 需先装 TA-Lib C 库
+```
+
+- `ta-lib`：66 个 talib 算子测试（依赖 TA-Lib C 库）。
+- `tables`（PyTables）：HDF5 读写测试。
+- `plotly`：可视化 / dashboard / e2e HTML 报告测试（e2e 报告 >5KB 校验需真实 figure）。
+
+#### 跨测试污染根因修复 (commit f30f9b8)
+
+8 个「只在全量运行时失败、单独跑通过」的测试，根因为真实状态泄漏（非 flakiness）：
+
+- **HOME 环境变量污染**（修 5 errors + 3 fails）：`tests/core/test_path_utils.py::test_expanduser` 用裸 `os.environ["HOME"] = <TemporaryDirectory>` 且未还原；临时目录在 context 退出后被删，残留悬空 `HOME`。后续基于 subprocess 的 e2e 测试（`data_prep` / `run_evolution_e2e`）继承坏 `HOME`，在 `~/.quantnodes` 写入时非零退出。→ 改用 `monkeypatch.setenv`（自动还原）。
+- **composite registry 泄漏**（修 `test_op_names_match_polars`）：`test_composite_dag_pandas_engine.py` 经 `load_composites_from_yaml` 注册 YAML op 到全局 `_COMPOSITE_REGISTRY` 无清理；`test_composite_dag.py` 旧 fixture 仅删本模块注册的 op。→ 两文件均改为全量快照/还原 autouse fixture。
+- **防御性加固**：e2e subprocess 超时 30s→180s / 60s→300s；两处缺失 `timeout` 的 `subprocess.run` 补 `timeout=60`。
+
 ## [2.8.0] - 2026-06-22
 
 Dual-Engine Composite — allows LLM to write pandas or polars code

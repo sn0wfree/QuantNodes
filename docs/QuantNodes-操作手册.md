@@ -23,8 +23,8 @@
 
 ### 1.3 版本信息
 
-- **当前版本**: v2.4.0 (2026-05-07)
-- **Python 版本**: 3.10+
+- **当前版本**: v3.0.0 (2026-06-23)
+- **Python 版本**: 3.11+（v3.0.0 起，上游 nanobot 要求）
 - **许可证**: MIT
 
 ---
@@ -39,9 +39,9 @@
 | **前端构建** | Vite | 开发服务器 |
 | **后端框架** | FastAPI | ASGI |
 | **后端服务器** | Uvicorn | ASGI 服务器 |
-| **Python** | Python | 3.10+ |
+| **Python** | Python | 3.11+ |
 | **数据处理** | Polars | 高性能 DataFrame |
-| **数据处理** | Pandas | 兼容支持 |
+| **数据处理** | Pandas | 兼容支持（3.0：`applymap` 移除→`.map`、`df.values` 单 dtype 只读） |
 | **数据处理** | NumPy | 数值计算 |
 | **数据库** | ClickHouse | 列式数据库 |
 | **数据库** | DuckDB | 嵌入式分析数据库 |
@@ -433,6 +433,10 @@ pip install -e .
 # Python 依赖会自动安装
 # 首次 import 时前端依赖会自动安装
 
+# 可选：agent / MCP 能力（v3.0.0 起 nanobot-ai 为可选依赖）
+pip install -e '.[agent]'   # + nanobot agent / WebUI / 多 channel
+pip install -e '.[all]'     # agent + mcp 一键装齐
+
 # 4. 复制数据库连接配置（可选，已有模板）
 cp conn.ini.template conn.ini
 # 编辑 conn.ini 填入实际数据库连接信息
@@ -481,6 +485,8 @@ quantnodes version
 - **API 根路径**: http://localhost:8000
 
 ### 5.4 运行测试
+
+> 全量测试需先装系统级/可选依赖：`pip install ta-lib tables plotly`（`ta-lib` 需先装 TA-Lib C 库）。缺失时相关测试会优雅降级或跳过。基线（Python 3.11 + pandas 3.0）：非 agent `5163 passed / 21 skipped / 0 failed`，`tests/agent` `574 passed / 13 skipped`。详见 [可选依赖安装指南](15-可选依赖安装指南.md)。
 
 ```bash
 # 运行所有测试
@@ -1073,6 +1079,8 @@ cd frontend && npx vue-tsc --noEmit
 
 ### 14.1 测试命令
 
+> 全量测试需 Python 3.11+ 并装齐 `pip install ta-lib tables plotly`（`ta-lib` 需先装 TA-Lib C 库）。基线：非 agent `5163 passed / 21 skipped / 0 failed`，`tests/agent` `574 passed / 13 skipped`（顺序 + 并行均通过）。详见 [可选依赖安装指南](15-可选依赖安装指南.md)。
+
 ```bash
 # 运行所有测试
 pytest tests/ -v
@@ -1117,10 +1125,10 @@ markers = [
 | 因子引擎 | ✅ 完成 | 317+ 算子 |
 | 数据库节点 | ✅ 完成 | 6 种数据库 |
 | 回测引擎 | ✅ 完成 | 完整回测流程 |
-| Agent 系统 | ✅ 完成 | 配置驱动 |
+| Agent 系统 | ✅ 完成 | 上游 nanobot 0.2.1（可选依赖） |
 | 前端 | ✅ 完成 | Vue 3 + Ant Design |
 | API | ✅ 完成 | FastAPI |
-| 测试 | ✅ 完成 | 2574+ 测试 |
+| 测试 | ✅ 完成 | 非 agent 5163 + agent 574，0 failed |
 
 ### 15.2 已知问题
 

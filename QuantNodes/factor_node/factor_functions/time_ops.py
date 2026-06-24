@@ -503,3 +503,32 @@ def rolling_change_rate(f: Union[Expr, str], window: int = 20, **kwargs) -> Expr
     rate = numerator / (denominator.abs() + 1e-8)
     same_sign = (numerator * denominator) >= 0
     return pl.when(same_sign).then(rate).when(numerator > 0).then(pl.lit(1.0)).when(numerator < 0).then(pl.lit(-1.0)).otherwise(pl.lit(0.0))
+
+
+# ==============================================================================
+# QuantAlpha M1 新增别名（Alpha 101 算子命名约定）
+# ==============================================================================
+# 这些别名遵循 Alpha 101 论文的 `ts_*` / `*_xs` 命名约定，
+# 使 Alpha 101 公式可以直接用 eval() 执行，详见
+# QuantNodes/research/quant_alpha/operator_vocab/metadata.py
+
+_make_alias(
+    "ts_decay_linear",
+    decay_linear,
+    "线性衰减加权移动平均（Alpha 101 命名约定，等价于 decay_linear）",
+    category=OperatorCategory.TIME,
+)
+
+_make_alias(
+    "ts_skew",
+    rolling_skew,
+    "滚动偏度（Alpha 101 命名约定，等价于 rolling_skew）",
+    category=OperatorCategory.TIME,
+)
+
+_make_alias(
+    "ts_kurt",
+    rolling_kurt,
+    "滚动峰度（Alpha 101 命名约定，等价于 rolling_kurt）",
+    category=OperatorCategory.TIME,
+)

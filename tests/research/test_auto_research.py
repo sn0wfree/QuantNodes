@@ -8,12 +8,12 @@ import tempfile
 import shutil
 from pathlib import Path
 
-from QuantNodes.research.factor_miner import FactorMiner, FactorCandidate, TEMPLATES, DEFAULT_WINDOWS
-from QuantNodes.research.factor_evaluator import (
+from QuantNodes.research._legacy_3c.factor_miner import FactorMiner, FactorCandidate, TEMPLATES, DEFAULT_WINDOWS
+from QuantNodes.research._legacy_3c.factor_evaluator import (
     FactorEvaluator, FactorEvaluationResult, EvalConfig,
 )
-from QuantNodes.research.auto_researcher import AutoResearcher, AutoResearchResult
-from QuantNodes.research.mcts_search import MCTSSearch, MCTSNode
+from QuantNodes.research._legacy_3c.auto_researcher import AutoResearcher, AutoResearchResult
+from QuantNodes.research._legacy_3c.mcts_search import MCTSSearch, MCTSNode
 from QuantNodes.research.wiki import FactorCategory
 
 
@@ -148,7 +148,7 @@ class TestFactorMiner:
         assert len(formulas) == len(set(formulas))
 
     def test_factor_candidate_fields(self):
-        from QuantNodes.research.factor_miner import FactorCandidate
+        from QuantNodes.research._legacy_3c.factor_miner import FactorCandidate
         from QuantNodes.research.wiki import FactorCategory
         cand = FactorCandidate(
             name="test_cand",
@@ -273,7 +273,7 @@ class TestFactorEvaluator:
         assert corr == 0.0
 
     def test_rank_all_same_values(self):
-        from QuantNodes.research.factor_evaluator import _rank
+        from QuantNodes.research._legacy_3c.factor_evaluator import _rank
         ranks = _rank([5.0, 5.0, 5.0])
         assert len(ranks) == 3
         assert ranks[0] == ranks[1] == ranks[2]
@@ -448,7 +448,7 @@ class TestMCTSSearch:
     def test_expand_formula_cached(self, sample_data):
         search = MCTSSearch(seed=42)
         node = MCTSNode(formula="rank(close)")
-        from QuantNodes.research.factor_evaluator import FactorEvaluationResult
+        from QuantNodes.research._legacy_3c.factor_evaluator import FactorEvaluationResult
         cached_result = FactorEvaluationResult(
             candidate=object(), factor_values=None
         )

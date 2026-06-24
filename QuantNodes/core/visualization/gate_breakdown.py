@@ -1,8 +1,24 @@
-"""Quality Gate 拦截率柱状图 — Plotly bar chart。"""
+"""Quality Gate 拦截率柱状图 — Plotly bar chart."""
 from __future__ import annotations
 
 from collections import defaultdict
 from typing import Any, Mapping
+
+# v3.0.0 graceful degradation: if plotly is not installed, the figure
+# functions return None. The HTML generators downstream skip None
+# figures with a friendly install hint.
+try:
+    import plotly.graph_objects as _PLOTLY_GO
+except ImportError:
+    _PLOTLY_GO = None
+
+    import warnings
+    warnings.warn(
+        "plotly not installed; visualization figures will be skipped. "
+        "Install plotly for full rendering: pip install plotly",
+        ImportWarning,
+        stacklevel=1,
+    )
 
 
 
@@ -20,9 +36,11 @@ def gate_breakdown_figure(
         title: 标题
 
     Returns:
-        plotly.graph_objects.Figure
+        plotly.graph_objects.Figure, or None if plotly is not installed.
     """
-    import plotly.graph_objects as go
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
 
     items = list(entries.values() if isinstance(entries, Mapping) else entries)
     if not items:
@@ -79,7 +97,9 @@ def operation_breakdown_figure(
     title: str | None = None,
 ) -> Any:
     """按 operation 分类的成功率柱状图。"""
-    import plotly.graph_objects as go
+    if _PLOTLY_GO is None:
+        return None
+    go = _PLOTLY_GO
 
     items = list(entries.values() if isinstance(entries, Mapping) else entries)
     if not items:

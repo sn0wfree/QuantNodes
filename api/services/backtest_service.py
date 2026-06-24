@@ -1,5 +1,11 @@
 """
-Backtest Service - Bridge between FastAPI and ConfigBacktestTool
+Backtest Service - Bridge between FastAPI and ConfigBacktestTool.
+
+v3.0.0 TODO: decouple from ``QuantNodes.agent.tools`` by writing a
+``QuantNodes.backtest.api_adapter.BacktestApiAdapter`` that converts
+(config_yaml str) → (StrategyConfig + polars.LazyFrame) and calls
+``ConfigBacktestRunner.run()`` directly. For now we still use
+``ConfigBacktestTool`` (which is kept under ``agent/tools/``).
 """
 
 import json
@@ -12,7 +18,7 @@ from pathlib import Path
 class BacktestService:
     """Backtest service for API layer"""
 
-    def __init__(self, data_dir: str = ".quant_agent"):
+    def __init__(self, data_dir: str = ".agent"):
         self.data_dir = data_dir
         self._backtest_tool = None
         self._results: Dict[str, Dict[str, Any]] = {}
