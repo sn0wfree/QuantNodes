@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Stage 1 mock Table 4 复现** (`QuantNodes/research/quant_alpha/evaluation/`)
+  (`scripts/reproduce_table4_mock.py`):
+  - 接口契约 (`contracts.py`)：4 dataclass (`FactorSpec`/`FactorMetrics`/`Table4GroupResult`/`Table4Report`) + 4 ABC (`DataLoader`/`Evaluator`/`Baseline`/`Table4Runner`)
+  - MockDataLoader：500 票 × 500 日 GBM 模拟数据 + 10 行业 + forward return
+  - PolarsAlphaCalculatorEvaluator：包 alpha_evaluate tool（M5），Stage 1/2 共用
+  - G1Handcrafted：从 OperatorVocab 动态生成 100 公式
+  - G2LlmOnly：mock LLM 直接生成 50 公式（含 15% invalid）
+  - G3AlphaGpt：包 AlphaGptWorkflow（M5）+ 兜底 mock 公式
+  - MockTable4Runner：串联 DataLoader + 3 Baseline + Evaluator，输出 JSON + Markdown 报告
+  - CLI `scripts/reproduce_table4_mock.py`：支持 `--quick` / `--full` / 自定义规模
+  - 测试 41 个（4 文件）：`test_table4_contracts.py` (13) + `test_table4_mock_data.py` (9) + `test_table4_evaluator.py` (12) + `test_table4_end_to_end.py` (7)
+  - Stage 2 接口预留（IFinD DataLoader + MiniMax LLM），仅替换实现即可
+  - 文档：`docs/quant_alpha/table4_reproduction.md`（380 行）
+
 ## [2.9.1] - 2026-06-24
 
 Patch release — 2 个 bug 修复，无新增功能。
