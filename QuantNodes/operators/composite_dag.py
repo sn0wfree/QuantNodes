@@ -286,10 +286,12 @@ def list_composite_ops(category: Optional[str] = None, engine: str = "any") -> L
         return _COMPOSITE_REGISTRY_POLARS.list(category=category)
     if engine == "pandas":
         return _COMPOSITE_REGISTRY_PANDAS.list(category=category)
-    # engine == "any": union
+    # engine == "any": union — sorted for deterministic order across runs
+    # (set ordering depends on PYTHONHASHSEED which is randomized by default).
+    # v2.9.1: stable ordering eliminates flake in tests that index list[0].
     polars_ops = set(_COMPOSITE_REGISTRY_POLARS.list(category=category))
     pandas_ops = set(_COMPOSITE_REGISTRY_PANDAS.list(category=category))
-    return list(polars_ops | pandas_ops)
+    return sorted(polars_ops | pandas_ops)
 
 
 def get_composite_doc_for_llm(engine: str = "any") -> str:

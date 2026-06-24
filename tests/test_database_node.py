@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """database_node 单元测试"""
 import os
+import socket
 import configparser
 import pytest
 import pandas as pd
@@ -29,6 +30,19 @@ def _load_conn_ini(section: str, defaults: dict) -> dict:
             result.update(dict(parser.items(section)))
             return result
     return defaults
+
+
+def _server_available(host: str, port: int, timeout: float = 1.0) -> bool:
+    """TCP socket 可达性检查（不验证协议）。
+
+    v2.9.1: 用于集成测试 fixture 中检测 server 是否运行。
+    不可达时 pytest.skip() 避免 OperationalError 失败。
+    """
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (OSError, socket.timeout):
+        return False
 
 
 class TestBaseDBNode:
@@ -424,7 +438,11 @@ class TestMySQLNodeIntegration:
 
     @pytest.fixture
     def mysql_node(self):
-        """MySQL 测试节点 - 优先读 conn.ini，fallback 到环境变量"""
+        """MySQL 测试节点 - 优先读 conn.ini，fallback 到环境变量
+
+        v2.9.1: 先 socket 检测可达性, server 不在时 pytest.skip
+        避免 OperationalError 干扰全测。
+        """
         conn_params = _load_conn_ini("MySQL", {
             "host": "localhost",
             "port": "3306",
@@ -432,6 +450,11 @@ class TestMySQLNodeIntegration:
             "passwd": "",
             "db": "test",
         })
+        if not _server_available(conn_params["host"], int(conn_params["port"])):
+            pytest.skip(
+                f"MySQL server not available at "
+                f"{conn_params['host']}:{conn_params['port']}"
+            )
         node = MySQLNode(
             host=conn_params["host"],
             port=int(conn_params["port"]),
@@ -549,7 +572,11 @@ class TestClickHouseNodeIntegration:
 
     @pytest.fixture
     def clickhouse_node(self):
-        """ClickHouse 测试节点 - 优先读 conn.ini，fallback 到环境变量"""
+        """ClickHouse 测试节点 - 优先读 conn.ini，fallback 到环境变量
+
+        v2.9.1: 先 socket 检测可达性, server 不在时 pytest.skip
+        避免 ConnectionError 干扰全测。
+        """
         conn_params = _load_conn_ini("ClickHouse", {
             "host": "localhost",
             "port": "8123",
@@ -557,6 +584,11 @@ class TestClickHouseNodeIntegration:
             "passwd": "",
             "db": "default",
         })
+        if not _server_available(conn_params["host"], int(conn_params["port"])):
+            pytest.skip(
+                f"ClickHouse server not available at "
+                f"{conn_params['host']}:{conn_params['port']}"
+            )
         node = ClickHouseNode(
             host=conn_params["host"],
             port=int(conn_params["port"]),

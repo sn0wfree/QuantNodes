@@ -102,6 +102,20 @@ class TestComposite:
 # ============================================================================
 
 class TestExistsKind:
+    @pytest.fixture(autouse=True)
+    def _isolate_custom_registry(self):
+        """每个 test 前后清空 custom registry, 防止前序测试的 custom op
+        污染 kind() 优先级 (custom > builtin > composite).
+
+        v2.9.1: 防 list_composite_ops()[0] 因前序测试注册同名 custom op
+        而 kind() 返回 'custom' 而非 'composite' 导致 flake。
+        """
+        from QuantNodes.operators.registry import _CustomOperatorRegistry
+
+        _CustomOperatorRegistry.unregister_all()
+        yield
+        _CustomOperatorRegistry.unregister_all()
+
     def test_exists_builtin(self, ops):
         assert ops.exists("ts_mean") is True
 
