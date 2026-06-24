@@ -18,6 +18,7 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 - **可选 LLM Agent**（v3.0.0）: 直接消费上游 [HKUDS/nanobot](https://github.com/HKUDS/nanobot) 0.2.1，作为 `[agent]` 可选依赖——装则获得 WebUI / WebSocket / cron / subagent / 多 channel，不装则纯量化库完全可用
 - **MCP server**（可选）: 把量化能力暴露为 MCP tools（stdio + HTTP）
 - **方法库 + 提示词库**: 纯 Python 方法 + 内置策略提示词，亦可经 REST API 供外部 Agent 调用
+- **自动化因子挖掘（v2.9.0, QuantAlpha）**: 5 智能体编排（idea-generator → formula-translator → evaluator → reflector → critic），基于 nanobot spawn + OperatorVocab 162 算子 + PolarsAlphaCalculator（AlphaGen 兼容 7 方法）。CLI `quantnodes alpha-gpt` + REST API 5 端点 + WebSocket 实时流 + Vue 3 前端可视化。详见 [`docs/quant_alpha/alpha_gpt_user_guide.md`](docs/quant_alpha/alpha_gpt_user_guide.md)
 
 ## 架构概览
 
