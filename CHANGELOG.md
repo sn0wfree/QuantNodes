@@ -7,9 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-06-24
+
+**QuantAlpha 子包 M1-M7 完整交付** — 从"人工设计因子"到"机器发现因子"的范式升级。
+合并 feat/nanobot-upgrade 分支到 master,无冲突。详细见 docs/quant_alpha/PROJECT_PLAN.md。
+
 ### Added
 
-- **Alpha-GPT WebSocket 流式输出 + 前端可视化 + Phase C 归档**（M7 PR）：
+- **`QuantNodes/research/quant_alpha/` 完整子包** (M1-M7, 26 文件, +3500 行):
+  - **M1 OperatorVocab** (`quant_alpha.operator_vocab`): 162 算子统一接口,
+    12 字段元数据（含 7 个 LLM 友好）, per-date over() 修复 3 个 latent bug。
+    5 个新算子: `signedpower` / `ts_decay_linear` / `IndNeutralize` /
+    `ts_skew` / `ts_kurt`。
+  - **M2 MCTS** (`quant_alpha.mcts`): 从 OperatorVocab 动态生成 26 个扩展操作,
+    完整谱系追踪, 5 通道反馈框架。
+  - **M3 Alpha 101/158/360 设计借鉴**: 8 条设计原则 + 16 个核心算子 +
+    8 个 A 股可移植性矩阵 + 20 个 few-shot 示例。
+  - **M4 PolarsAlphaCalculator** (`quant_alpha.adapters`): AlphaGen 兼容的
+    `BaseAlphaCalculator` ABC + 7 个抽象方法。RL 接入只需 4 天。
+  - **M5 Alpha-GPT 5 智能体编排** (`quant_alpha.workflow` + 2 个新工具):
+    基于 nanobot Agent 体系, 5 个 subagent, JSON 三层降级解析器。
+  - **M6 CLI + API**: `quantnodes alpha-gpt` (18 参数) +
+    `/api/alpha/alpha-gpt/*` (5 REST 端点)。
+  - **M7 WebSocket + Frontend + Phase C**: WebSocket 流式输出 +
+    `frontend/src/views/AlphaGpt/` Vue 可视化 + 4 旧模块移至 `_legacy_3c/`。
+- **`.agent/agents/alpha-gpt-*.md`** (5 subagent specs)。
+- **`docs/quant_alpha/`** (5 markdown, +1753 行): PROJECT_PLAN / architecture /
+  user_guide / migration / M1 description。
+
+### Fixed
+
+- **`ConfigBacktestRunner._compute_statistics` 空 equity curve 抛 `argmax(empty)`
+  ValueError**: short-circuit `len(equity_curve) == 0` 在 `pct_change()` 之前。
+
+### Changed
+
+- **`tests/cli/test_cli_command.py`**: CLI registry 14 → 15 (新增 alpha-gpt)。
+- **`QuantNodes/research/__init__.py`**: 4 个旧模块 import 改为 `_LegacyShim`
+  lazy proxy, 触发 DeprecationWarning 指向 quant_alpha 新实现。
+
+### Testing
+
+- **merge 前**: 5493 passed, 22 failed (含跨测污染)
+- **merge 后**: **5303 passed, 0 failed, 27 skipped** (+220)
+- **QuantAlpha 子包**: 285 passed (M1=60 + M2=45 + M3=39 + M4=48 + M5=76 + M6/7=17)
+- **`tests/api/`**: 6 passed (WebSocket)
+- **修复 6 个失败**: 1 bug + 3 期望值 + 2 环境
+
+### Migration
+
+```python
+# v2.x (弃用, DeprecationWarning)
+from QuantNodes.research.factor_evaluator import FactorEvaluator
+
+# v2.9.0 (推荐)
+from QuantNodes.research.quant_alpha.operator_vocab import OperatorVocab
+```
+
+详见 `docs/quant_alpha/migration.md` + `docs/quant_alpha/alpha_gpt_user_guide.md`。
+
+### Known Limitations
+
+- **Table 4 复现不在 v2.9.0**: Alpha-GPT 论文 Table 4 复现推迟到 v2.10。
+- **`test_kind_composite` 偶发跨测污染**: 顺序敏感, 单测过全测偶发挂。
+  计划 v2.9.1 修复。
+
+---
+
+## [2.8.0] - 2026-06-22
+
+Dual-Engine Composite — allows LLM to write pandas or polars code
   - **WebSocket 端点**：`/api/alpha/alpha-gpt/stream/{sid}` 实时事件流（6 事件类型：round_started/round_completed/formulas_evaluated/final_pool_ready/done/error/heartbeat）
   - **事件总线**：`AlphaGptService.subscribe()` / `_emit()`，支持 buffer replay + 多订阅者
   - **跨线程事件注入**：`asyncio.run_coroutine_threadsafe` 把 sync workflow 的事件安全投递到主事件循环

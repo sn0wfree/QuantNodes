@@ -153,7 +153,12 @@ class ConfigBacktestRunner:
         equity_curve = self._build_equity_curve(trades_df, df, initial_cash)
 
         # ── 2. 日收益率序列 ──────────────────────────────────────────
-        daily_returns = equity_curve["equity"].pct_change().fillna(0.0)
+        # v2.9.0: short-circuit empty equity curve to avoid pandas.pct_change
+        # raising on empty Series (np.argmax(empty) ValueError).
+        if len(equity_curve) == 0:
+            daily_returns = pd.Series([], dtype=float)
+        else:
+            daily_returns = equity_curve["equity"].pct_change().fillna(0.0)
 
         # ── 3. 基础指标 ──────────────────────────────────────────────
         final_equity = equity_curve["equity"].iloc[-1] if len(equity_curve) > 0 else initial_cash

@@ -28,6 +28,7 @@ EXPECTED_COMMANDS = [
     "chat",
     "evolve",
     "alpha-mcts",
+    "alpha-gpt",
     "factor-info",
     "factor-best",
     "factor-visual",
@@ -142,9 +143,10 @@ class TestCommandRegistry:
 # ============================================================================
 
 class TestModuleRegistry:
-    def test_all_14_commands_registered(self):
+    def test_all_15_commands_registered(self):
         # v3.0.0: added ``alpha-mcts`` for MCTS auto-research workflow.
-        assert len(COMMAND_REGISTRY) == 14
+        # v2.9.0: added ``alpha-gpt`` for 5-subagent Alpha-GPT workflow.
+        assert len(COMMAND_REGISTRY) == 15
 
     def test_command_names_and_order(self):
         assert COMMAND_REGISTRY.names() == EXPECTED_COMMANDS
