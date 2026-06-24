@@ -100,7 +100,11 @@ class SamplePoolFilterNode(PydanticConfigNode):
         # 合并筛选
         stock_sample = index_filt * industry_filt
         stock_sample[stock_sample > 0] = 1
-        stock_sample = pd.DataFrame(stock_sample)
+        stock_sample = pd.DataFrame(
+            stock_sample,
+            index=trade_dt.iloc[:, 0].values,
+            columns=stklist.iloc[:, 0].values,
+        )
         stock_sample = stock_sample.replace(0, np.nan)
 
         return stock_sample
