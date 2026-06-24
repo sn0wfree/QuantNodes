@@ -22,7 +22,7 @@ def _register_all() -> None:
     from QuantNodes.cli.commands.run import RunCommand
     from QuantNodes.cli.commands.chat import ChatCommand
     from QuantNodes.cli.commands.evolve import EvolveCommand
-    from QuantNodes.cli.commands.alpha import AlphaMctsCommand
+    from QuantNodes.cli.commands.alpha import AlphaMctsCommand, AlphaGptCommand
     from QuantNodes.cli.commands.factor import (
         FactorInfoCommand,
         FactorBestCommand,
@@ -40,6 +40,7 @@ def _register_all() -> None:
         ChatCommand(),
         EvolveCommand(),
         AlphaMctsCommand(),
+        AlphaGptCommand(),
         FactorInfoCommand(),
         FactorBestCommand(),
         FactorVisualCommand(),

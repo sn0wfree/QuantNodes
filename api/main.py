@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .config import settings as app_settings
-from .routers import wiki, backtest, factor, skill, dream, stats, strategy, settings as settings_router, prompts, code, agent as agent_router
+from .routers import wiki, backtest, factor, skill, dream, stats, strategy, settings as settings_router, prompts, code, agent as agent_router, alpha_gpt
 from .services.nanobot_runtime import init_runtime, shutdown_runtime
 
 
@@ -78,6 +78,7 @@ app.include_router(settings_router.router, prefix="/api/settings", tags=["settin
 app.include_router(prompts.router, prefix="/api", tags=["prompts"])
 app.include_router(code.router, prefix="/api", tags=["code"])
 app.include_router(agent_router.router, prefix="/api/agent", tags=["agent"])
+app.include_router(alpha_gpt.router, prefix="/api/alpha/alpha-gpt", tags=["alpha-gpt"])
 
 
 @app.get("/")

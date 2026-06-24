@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Alpha-GPT CLI / API / v2.7.0 release**（M6 PR）：
+  - CLI `quantnodes alpha-gpt`（`AlphaGptCommand`，18 个 argparse 参数）
+  - API 5 端点（`/api/alpha/alpha-gpt/{generate,status/{sid},results/{sid},stop/{sid},list}`）
+  - `AlphaGptService` 后台 session 管理（async + semaphore 并发限制）
+  - `NanobotLLMWrapper`：把 `QuantNodes.agent.Agent` 包装成 workflow 期望的 client 接口
+  - 14 个新测试（E2E 5 + CLI 5 + workflow 集成 4）
 - **QuantAlpha 子包**（`QuantNodes/research/quant_alpha/`）：自动化因子挖掘引擎，参考 4 大因子库演进链（Alpha 101/158/360/AutoAlpha）
   - **OperatorVocab** (`quant_alpha.operator_vocab.OperatorVocab`)：统一算子查询/调用/元数据化接口（M1）
   - **5 个新算子**：`signedpower` / `ts_decay_linear` / `IndNeutralize` / `ts_skew` / `ts_kurt`（修复 Alpha 101 关键缺口，M1）
