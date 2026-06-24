@@ -1,9 +1,9 @@
 # 自动化因子挖掘增强 — 完整规划与调研文档
 
-> **版本**：v1.0
-> **生成日期**：2026-06-23
+> **版本**：v1.1
+> **生成日期**：2026-06-24
 > **适用项目**：QuantNodes (`/home/ll/Public/QuantNodes`)
-> **状态**：调研 + 规划阶段完成，待用户确认后进入实现
+> **状态**：M1-M4 已完成；M5-M6 规划已确认（基于 nanobot 集成 + 5 智能体 + Trading 回测）
 
 ---
 
@@ -965,27 +965,143 @@ QuantNodes/research/_legacy_3c/                # Phase C 归档
 
 # 文档结束
 
-**当前状态**：规划阶段完成，等待用户确认进入实现阶段。
+## M1-M6 实际进度
 
-**下一步**：
-1. 用户确认排序方案（0→7→1+2→4→6，48-51 天）
-2. 用户确认路线 1 已快完成的具体含义
-3. 用户确认路线 4 是否需要降级到 Phase 2
-4. 退出 plan mode，开始 M1 PR
+| 阶段 | 状态 | 提交 | 累计 |
+|------|------|------|-----:|
+| **M1** OperatorVocab + 5 算子 + per-date over() | ✅ 完成 | `a075483` | 5/51 |
+| **M2** MCTS + 5 通道反馈 + 谱系追踪 | ✅ 完成 | `21fcf85` | 13/51 |
+| **M3** Alpha 101/158/360 借鉴 + few-shot | ✅ 完成 | `091c5c3` | 17/51 |
+| **M4** PolarsAlphaCalculator 适配器 | ✅ 完成 | `b27d9b8` | 21/51 |
+| **M5** Alpha-GPT 核心（基于 nanobot） | 🔜 doc-first | — | 36/51 |
+| **M6** CLI + API + 文档 + v2.7.0 release | 🔜 后续 | — | 51/51 |
 
-## 回归检查清单（下次讨论时）
-
-- [ ] 当前排序方案是否仍合理
-- [ ] 旧 4 文件 DeprecationWarning 是否需要调整
-- [ ] 路线 1 已完成部分的产出物如何与 QuantNodes 集成
-- [ ] 路线 6 复现 Table 4 的具体数值是否需要重测
-- [ ] 路线 4 适配器是否需要扩展
-- [ ] Phase C 归档时机是否需要前移
-- [ ] 算子元数据回填是否已完成
-- [ ] LLM 成本预估是否需要更新
+**测试基线**（M1-M4 完成时）：QuantAlpha 子包 192 passed + 全量回归 2909 passed
 
 ---
 
-> **最后更新**：2026-06-23
-> **版本**：v1.0（初稿）
+## M5-M6 规划（基于 nanobot 集成）
+
+> **架构转向**：M5-M6 **不再单独建 `quant_alpha/llm/` 包**，完全复用现有 nanobot Agent 体系。
+
+### 关键决策（已确认 2026-06-24）
+
+| 决策项 | 选择 |
+|--------|------|
+| 工作流深度 | **完整 5 智能体 + 5 轮迭代** |
+| LLM Provider | **复用 nanobot Agent**（OpenAI/DeepSeek/Qwen via nanobot upstream）|
+| JSON 解析 | **三层降级**（schema → regex → retry，零新依赖）|
+| 评估深度 | **IC + Trading 回测**（`--backtest` flag 可选）|
+| Subagent 调度 | **多进程 spawn**（nanobot `spawn` 工具，每次独立 context）|
+| Table 4 复现 | **不阻塞 v2.7.0**（v2.8 再做）|
+
+### 5 智能体架构
+
+```
+AlphaGptWorkflow (Python 协调器)
+  ↓ spawn (nanobot)
+  ├─ alpha-gpt-idea-generator       (.agent/agents/)
+  ├─ alpha-gpt-formula-translator   (.agent/agents/)
+  ├─ alpha-gpt-evaluator            (.agent/agents/ + 新工具)
+  ├─ alpha-gpt-reflector            (.agent/agents/)
+  └─ alpha-gpt-critic               (.agent/agents/)
+```
+
+每轮迭代：5 spawns → JSON 输出 → state 更新 → 下一轮。
+总 5 轮 × 5 spawn = 25 spawns（约 75s 进程开销 + 240s LLM/eval）。
+
+### M5 交付物清单
+
+**5 subagent spec（`.agent/agents/`）**：
+- `alpha-gpt-idea-generator.md`（0.5d）— 生成 alpha 想法（注入 M3 few-shot）
+- `alpha-gpt-formula-translator.md`（0.5d）— 想法 → polars 公式（注入 OperatorVocab）
+- `alpha-gpt-evaluator.md`（0.5d）— IC + Trading 回测
+- `alpha-gpt-reflector.md`（0.5d）— keep/mutate/drop verdicts + 改进建议
+- `alpha-gpt-critic.md`（0.5d）— 最终 top-K 排序
+
+**2 新工具（`QuantNodes/agent/tools/`）**：
+- `alpha_evaluate.py`（1.0d）— 包 M4 `PolarsAlphaCalculator`
+- `alpha_backtest.py`（1.0d）— Trading 回测（年化/Sharpe/MaxDD）
+
+**1 协调器 + 1 parser（`QuantNodes/research/quant_alpha/`）**：
+- `workflow/alpha_gpt.py`（4.0d）— 5 轮主循环 + spawn 协调
+- `llm/parser.py`（1.0d）— JSON 三层降级
+
+**Agent/Tool 注册**：
+- `definition.py` 扩展（0.3d）— 5 个 AgentDefinition
+- `registry.py` 扩展（0.3d）— 2 个 Tool
+
+**测试（~50 用例）**：
+- `tests/quant_alpha/test_alpha_gpt_workflow.py`（2.5d）
+- `tests/quant_alpha/test_parser.py`（含 M5）
+- `tests/agent/test_alpha_evaluate_tool.py`（1.0d）
+- `tests/agent/test_alpha_backtest_tool.py`（1.0d）
+
+**M5 总工作量**：15 天
+
+### M6 交付物清单
+
+- `CLI: AlphaGptCommand`（1.0d）— `quantnodes alpha-gpt`
+- `API: 5 endpoints`（1.0d）— generate/status/results/stop/list
+- `API service`（0.5d）— thin wrapper
+- `docs: alpha_gpt_user_guide.md`（1.5d）— 300 行
+- `docs: alpha_gpt_architecture.md`（1.0d）— 架构图
+- `tests: e2e + cli`（1.5d）
+- `CHANGELOG + v2.7.0 release`（0.5d）
+
+**M6 总工作量**：7 天
+
+### 总时长：M5 (15d) + M6 (7d) = **22 天**
+
+**对比原计划**：原 M5-M6 = 30 天 → 现 22 天，**节省 8 天**（70% 复用 nanobot）
+
+### 复用率
+
+| 组件 | 复用 |
+|------|------|
+| LLM 调度 | 100%（nanobot upstream）|
+| Agent 框架 | 100% |
+| Tool 抽象 | 100% |
+| IC 评估 | 100%（M4 PolarsAlphaCalculator）|
+| Few-shot | 100%（M3 alpha101/158_design）|
+| 算子清单 | 100%（M1 OperatorVocab）|
+| Trading 回测 | 80%（复用 BacktestTool + FactorNode）|
+| **自建** | **< 30%**（5 .md + 2 tools + 1 workflow + 1 parser）|
+
+### 关键文档（doc-first 已就绪）
+
+- ✅ `.agent/agents/alpha-gpt-idea-generator.md`
+- ✅ `.agent/agents/alpha-gpt-formula-translator.md`
+- ✅ `.agent/agents/alpha-gpt-evaluator.md`
+- ✅ `.agent/agents/alpha-gpt-reflector.md`
+- ✅ `.agent/agents/alpha-gpt-critic.md`
+- ✅ `docs/quant_alpha/alpha_gpt_architecture.md`
+- ✅ `docs/quant_alpha/alpha_gpt_user_guide.md`
+
+---
+
+**当前状态**：M5 doc-first 完成，准备进入实现阶段。
+
+**下一步**：
+1. 实现 2 个新工具（alpha_evaluate + alpha_backtest）
+2. 注册 5 个 AgentDefinition + 2 个 Tool
+3. 实现 AlphaGptWorkflow 协调器 + parser
+4. 写单元 + 集成 + e2e 测试
+5. 实现 CLI + API（v2.7.0 release）
+
+## 回归检查清单（下次讨论时）
+
+- [x] 当前排序方案是否仍合理（已确认 0→7→1+2→4→6）
+- [x] 旧 4 文件 DeprecationWarning 是否需要调整（M1 已加）
+- [x] 路线 1 已完成部分的产出物如何与 QuantNodes 集成（通过 OperatorVocab 注入）
+- [ ] 路线 6 复现 Table 4 的具体数值是否需要重测（v2.8 待做）
+- [x] 路线 4 适配器是否需要扩展（M4 完成）
+- [ ] Phase C 归档时机是否需要前移（v3.0）
+- [x] 算子元数据回填是否已完成（M1 12 字段含 7 LLM 友好）
+- [x] LLM 成本预估是否需要更新（见 alpha_gpt_architecture.md §8）
+
+---
+
+> **最后更新**：2026-06-24
+> **版本**：v1.1（增加 M5-M6 nanobot 集成规划 + 5 subagent spec + 2 文档）
 > **下次更新**：进入实现阶段后根据实际情况修订
