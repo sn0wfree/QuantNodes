@@ -375,15 +375,10 @@ pytest tests/ --cov=QuantNodes --cov-report=html
 
 ## 致谢
 
-本项目的因子计算系统设计深受 **QuantStudio** 启发。
-
-### 开源社区
-
-- [Polars](https://pola.rs/) - 高性能 DataFrame 库
-- [Vue 3](https://vuejs.org/) - 渐进式前端框架
-- [Ant Design Vue](https://antdv.com/) - 企业级 UI 组件库
-- [DuckDB](https://duckdb.org/) - 嵌入式分析型数据库
-- [FastAPI](https://fastapi.tiangolo.com/) - 现代 Python Web 框架
+- [HKUDS/nanobot](https://github.com/HKUDS/nanobot) — Agent 核心运行时（v3.0.0 直接消费上游 0.2.1）
+- [QuantaAlpha](https://arxiv.org/abs/2602.07085) — 演化实验框架设计（CoSTEER 反馈 / TrajectoryPool / QualityGate）
+- [QuantStudio](https://github.com/quantopian/quantstudio) — 因子计算系统设计灵感
+- [TA-Lib](https://ta-lib.org/) — 174 个技术指标算子（C 库 + Python wrapper）
 
 ## 许可证
 
