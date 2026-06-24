@@ -25,6 +25,8 @@ from .git_ops import GitOpsTool
 from .web_fetch import WebFetchTool
 from .web_search import WebSearchTool
 from .task import TaskTool
+from .alpha_evaluate import AlphaEvaluateTool
+from .alpha_backtest import AlphaBacktestTool
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,8 @@ _QUANT_TOOL_FACTORIES = [
     WebFetchTool,
     WebSearchTool,
     TaskTool,
+    AlphaEvaluateTool,
+    AlphaBacktestTool,
 ]
 
 
@@ -112,4 +116,6 @@ __all__ = [
     "WebFetchTool",
     "WebSearchTool",
     "TaskTool",
+    "AlphaEvaluateTool",
+    "AlphaBacktestTool",
 ]

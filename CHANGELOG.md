@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - 4 类特征模板：KBAR (9) / Price (20) / Volume (5) / Rolling (124) = 158 特征
     - Alpha 360 模板：6 字段 × 60 lookback = 360 特征
     - 10 个 few-shot 示例（覆盖 4 类）
+  - **Alpha-GPT 5 智能体编排**（`agent.tools.alpha_*` + `quant_alpha.workflow`，M5）：
+    - 2 个新工具：`alpha_evaluate`（包 M4 PolarsAlphaCalculator，批量 IC/IR/ic_decay）+ `alpha_backtest`（top-K 等权 Trading 回测，年化/Sharpe/MaxDD）
+    - 5 个新 subagent：`alpha-gpt-{idea-generator, formula-translator, evaluator, reflector, critic}`（基于 `.agent/agents/alpha-gpt-*.md`）
+    - `AlphaGptWorkflow` 协调器：5 轮主循环 + 多进程 spawn（复用 nanobot upstream）
+    - JSON 三层降级解析器：`parse_{idea_generator, formula_translator, evaluator, reflector, critic}_output`
+    - 算子白名单校验（32 算子）+ 简单 formula parser
+    - 未来所有 RL/LLM 路线接入：**4 天**（vs 全栈 40+）
   - **AlphaGen RL 适配器**（`quant_alpha.adapters`，M4）：
     - 极简 Expression AST（11 算子 + Literal）：Feature / Ref / BinaryOp / UnaryOp / RollingOp
     - `BaseAlphaCalculator` ABC：7 个抽象方法（与 AlphaGen `AlphaCalculator` 接口兼容）
