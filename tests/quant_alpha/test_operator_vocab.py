@@ -645,6 +645,7 @@ class TestDeprecationWarnings:
              "import QuantNodes.research; print('done')"],
             capture_output=True, text=True,
             cwd="/home/ll/Public/QuantNodes",
+            timeout=60,
         )
         output = result.stderr
         # 期望至少 4 个文件触发 DeprecationWarning

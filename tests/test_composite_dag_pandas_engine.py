@@ -12,6 +12,25 @@ from QuantNodes.operators.composite_dag import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_composite_registries():
+    """快照/还原全局 composite registry, 避免 YAML 注册的 op 泄漏。
+
+    v3.0.0: 本模块通过 ``load_composites_from_yaml`` 向
+    ``_COMPOSITE_REGISTRY`` / ``_COMPOSITE_REGISTRY_PANDAS`` 注册
+    ``test_polars_yaml`` / ``test_default_yaml`` 等 op。若不还原, 会污染
+    ``test_composite_dag_pandas_ops::test_op_names_match_polars`` 的
+    polars/pandas 集合对比。
+    """
+    snap_default = dict(_COMPOSITE_REGISTRY._registry)
+    snap_pandas = dict(_COMPOSITE_REGISTRY_PANDAS._registry)
+    yield
+    _COMPOSITE_REGISTRY._registry.clear()
+    _COMPOSITE_REGISTRY._registry.update(snap_default)
+    _COMPOSITE_REGISTRY_PANDAS._registry.clear()
+    _COMPOSITE_REGISTRY_PANDAS._registry.update(snap_pandas)
+
+
 class TestCompileTemplateStringEngine:
     def test_polars_whitelist_allows_rolling_mean(self):
         fn = _compile_template_string("x.rolling_mean(window_size=10)", engine="polars")
