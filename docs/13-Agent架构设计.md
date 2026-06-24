@@ -3,8 +3,8 @@
 > 合并自: 12-Agent业界调研与设计模式.md + 13-Agent系统架构设计.md + 14-Agent实施计划.md + 15-Config-Driven方案.md  
 > 架构模式: **HKUDS nanobot 0.2.1 上游核心** + QuantNodes 量化工具集 + quant_dream 扩展  
 > 通信协议: MCP (Model Context Protocol)  
-> 上游依赖: `nanobot-ai>=0.2.1,<0.3.0` (本地源码 `/tmp/nanobot`)  
-> 状态: **v3.0.0 重构进行中** (上游迁移 + 量化增强)
+> 上游依赖: `nanobot-ai>=0.2.1,<0.3.0`（`[agent]` 可选依赖；本地开发期源码 `/tmp/nanobot`）  
+> 状态: **v3.0.0 已完成**（上游迁移 + 量化增强，已发 tag `v3.0.0`）
 
 ---
 
@@ -171,7 +171,7 @@ agent/
 │   ├── risk-management/SKILL.md
 │   ├── quant-dream/SKILL.md
 │   └── config-driven/SKILL.md
-├── providers/                     # Provider 工厂 (输出 nanobot.llmProviders 配置)
+├── providers/                     # Provider 工厂 (输出 nanobot.providers 配置)
 │   ├── base.py                    # Provider基类
 │   └── quantnodes.py              # .env → dialect 推断
 ├── cron_jobs.py                   # ⭐ NEW: 周期任务 (日终/周度/月度)
@@ -193,7 +193,7 @@ mcp_server/                        # ⭐ NEW: 把 quant 能力暴露为 MCP serv
 ├── memory/                        # MEMORY.md / SOUL.md / USER.md / history.jsonl
 ├── SOUL.md                        # 个性化指令
 ├── USER.md                        # 用户偏好
-└── nanobot_config.json            # llmProviders / mcpServers / cron / channels
+└── nanobot_config.json            # providers / mcpServers / cron / channels
 ```
 
 > **删除模块**（v3.0.0）：`agent/core/{loop,runner,memory,compaction,autocompact,context,hook}.py`、`agent/bus/`、`agent/session/`、`agent/templates/agent/`、`agent/config/{loader,executor,types}.py`、`agent/cli/main.py`、`agent/web/` — 全部由上游 nanobot 替代。
@@ -296,22 +296,25 @@ QUANT_RELATION_TYPES = {
 
 ## 六、实施计划
 
-### 6.0 v3.0.0 — 上游 nanobot 迁移（**当前进行中**）
+### 6.0 v3.0.0 — 上游 nanobot 迁移（**已完成，已发 tag `v3.0.0`**）
 
 **目标**: 直接消费 HKUDS/nanobot 0.2.1 上游，删除自写 core，量化工具 hook 化
 
 | Stage | 内容 | Commit | 状态 |
 |-------|------|--------|------|
-| **0** | 装依赖 + 跑基线 | `feat(nanobot): 安装 nanobot-ai 0.2.1 依赖` | ⏳ |
-| **1** | 核心重构（bridge + tools 改父类 + dream 保留） | `refactor(agent): 迁移到 HKUDS nanobot 上游` | ⬜ |
-| **2** | API 解耦 `api/services/*` | `refactor(api): 解耦 services 对 QuantNodes.agent 的依赖` | ⬜ |
-| **3** | workspace 迁移 `.quant_agent/` → `.agent/` | `refactor(workspace): 迁移到 .agent/ 命名空间` | ⬜ |
-| **4** | 测试 + 文档 | `docs+test: 升级到 nanobot 0.2.1` | ⬜ |
-| **5.1** | Subagent 多 Agent 团队（main/factor-analyst/backtest-engineer/risk-manager） | `feat(agent): 启用 nanobot subagent 多 Agent 团队` | ⬜ |
-| **5.2** | MCP server（quant 能力 stdio 暴露） | `feat(mcp): 暴露 quant 能力为 MCP server` | ⬜ |
-| **5.3** | 上游 WebUI（端口 18080） | `feat(webui): 切换到 nanobot 上游 WebUI` | ⬜ |
-| **5.4** | 渠道接入（飞书 + WebSocket） | `feat(channels): 接入飞书 + WebSocket 渠道` | ⬜ |
-| **5.5** | Cron 调度（日终/周度/月度） | `feat(cron): 启用 nanobot cron 周期任务` | ⬜ |
+| **0** | 装依赖 + 跑基线 | `bd00030` / `979e611` | ✅ |
+| **1** | 核心重构（bridge + tools 改父类 + dream 保留） | `2584462` | ✅ |
+| **2** | API 解耦 `api/services/*` | `9e5999a` | ✅ |
+| **3** | workspace 迁移 `.quant_agent/` → `.agent/` | `4b7560e` | ✅ |
+| **4** | 测试 + 文档 | `5072ed7` | ✅ |
+| **5.1** | Subagent 多 Agent 团队（main/factor-analyst/backtest-engineer/risk-manager） | `f7ac409` | ✅ |
+| **5.2** | MCP server（quant 能力 stdio + HTTP 暴露，9 tools） | `a37ef30` | ✅ |
+| **5.3** | 单进程 WebUI（端口 18080）+ nanobot-ai 改可选依赖 | `8bd8493` | ✅ |
+| **5.4** | 渠道接入（飞书 + WebSocket wire protocol） | `81623ab` | ✅ |
+| **5.5** | Cron 调度（日终/周度/月度） | `258f4dd` | ✅ |
+| **6** | 测试稳定化 + pandas 3.0 兼容 + 跨测试污染根因修复 | `c5a7e3c` / `0ec6fe0` / `30a0352` / `f30f9b8` | ✅ |
+
+> **最终基线**: 非 agent `5163 passed / 21 skipped / 0 failed`、`tests/agent` `574 passed / 13 skipped`（顺序 + 并行均通过）。详见 [CHANGELOG.md](../CHANGELOG.md) `[3.0.0]` 与 [可选依赖安装指南](15-可选依赖安装指南.md)。
 
 ### 6.1-6.5 历史阶段（已归档）
 
@@ -503,7 +506,7 @@ v3.0.0+ 默认 workspace 为 `.agent/`（HKUDS nanobot 上游约定），从 v2.
 
 ```
 .agent/
-├── nanobot_config.json    # llmProviders / agents.defaults 配置
+├── nanobot_config.json    # providers / agents.defaults 配置
 ├── SOUL.md                # 人格 / persona（每个 turn 都会读）
 ├── USER.md                # 用户偏好
 ├── memory/

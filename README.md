@@ -14,11 +14,10 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 - **统一节点架构**: 万物皆 Node，Pipeline 是唯一组合原语
 - **317+ 内置算子**: 涵盖时间序列、截面运算、多截面聚合等，装饰器注册表模式
 - **多数据库支持**: ClickHouse、DuckDB、MySQL、SQLite、CSV、Parquet
-- **外部 Agent 支持**: 通过 API 为外部 Agent 提供方法调用和提示词
 - **Config-Driven 回测**: YAML 配置文件驱动回测，支持算子扩展
-- **零 LLM 依赖**: QuantNodes 不包含 LLM，外部 Agent 自行提供
-- **提示词库**: 内置完整策略提示词，外部 Agent 可直接使用
-- **方法库**: 纯 Python 方法，外部 Agent 通过 API 调用
+- **可选 LLM Agent**（v3.0.0）: 直接消费上游 [HKUDS/nanobot](https://github.com/HKUDS/nanobot) 0.2.1，作为 `[agent]` 可选依赖——装则获得 WebUI / WebSocket / cron / subagent / 多 channel，不装则纯量化库完全可用
+- **MCP server**（可选）: 把量化能力暴露为 MCP tools（stdio + HTTP）
+- **方法库 + 提示词库**: 纯 Python 方法 + 内置策略提示词，亦可经 REST API 供外部 Agent 调用
 
 ## 架构概览
 
@@ -40,8 +39,7 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 ```
 QuantNodes/
 ├── archive/                          # 统一归档目录
-│   ├── QuantNodes/                   # QuantNodes 包归档
-│   │   ├── agent/                    # Agent 系统归档
+│   ├── QuantNodes/                   # QuantNodes 包归档（v2.x 旧代码）
 │   │   └── test/                     # 测试数据归档
 │   ├── frontend/                    # 前端归档
 │   │   └── src/archive/             # 前端 Chat UI 归档
@@ -50,19 +48,29 @@ QuantNodes/
 │   └── docs/                        # 文档归档
 │       └── archived/                # 历史文档
 ├── QuantNodes/                      # 主包
+│   ├── agent/                       # Agent 系统（v3.0.0: 上游 nanobot + 量化工具）
+│   │   ├── nanobot_bridge.py        # Nanobot.from_config 包装门面
+│   │   ├── config_mapper.py         # .env → nanobot_config.json
+│   │   ├── tools/                   # 14 个量化工具（继承 nanobot Tool）
+│   │   ├── skills_quant/            # 6 个量化 SKILL.md
+│   │   └── cron_jobs.py             # 量化专属 cron 调度
+│   ├── mcp_server/                  # MCP server（9 个量化 tools）
+│   ├── monitor/                     # 监控 agent 工具（策略监控/调度/版本）
 │   ├── methods/                     # 方法库（外部 Agent API）
 │   ├── prompts/                     # 提示词库
-│   ├── factor_node/                 # 因子引擎
-│   ├── core/                        # 核心架构
-│   ├── database_node/               # 数据库节点
+│   ├── factor_node/                 # 因子引擎（317+ 算子）
+│   ├── core/                        # 核心架构（BaseNode / Pipeline / 回测）
+│   ├── database_node/               # 数据库节点（ClickHouse/DuckDB/MySQL/SQLite/CSV/Parquet）
 │   └── ...
-├── api/                             # API 服务器
-│   └── routers/
-├── frontend/src/                    # 前端展示页面
+├── api/                             # FastAPI 服务器
+│   ├── routers/                     # API 路由
+│   └── services/                    # 服务层（含 nanobot_runtime.py 单进程包装器）
+├── frontend/src/                    # Vue 3 + Ant Design 前端
 │   └── views/
-├── tests/                           # 测试套件
+├── tests/                           # 测试套件（5163+ 非 agent / 574 agent）
 ├── examples/                        # 示例代码
 ├── docs/                           # 设计文档
+├── .agent/                          # nanobot workspace（gitignore，含 API key）
 ├── output/                          # factor_test pipeline 节点产物 (运行时)
 └── outputs/                         # 回测引擎结果 (运行时)
 ```
@@ -78,6 +86,9 @@ pip install -e .
 可选附加组件:
 
 ```bash
+pip install -e '.[agent]'          # LLM Agent（上游 nanobot）/ WebUI / 多 channel
+pip install -e '.[mcp]'            # MCP server（把量化能力暴露为 MCP tools）
+pip install -e '.[all]'            # agent + mcp 一键装齐
 pip install -e '.[streamlit-ui]'   # 启用 Streamlit Agent 调试 UI
 ```
 
@@ -109,6 +120,18 @@ quantnodes run --frontend-only
 ### 外部 Agent API
 
 QuantNodes 通过 REST API 为外部 Agent 提供方法调用和提示词。
+
+v3.0.0 新增内置 agent 端点（需 `[agent]` extra，否则返回 503）：
+
+```bash
+# 查询 agent 状态
+curl http://localhost:8000/api/agent/status
+
+# 发送 chat 消息
+curl -X POST http://localhost:8000/api/agent/chat/send \
+  -H "Content-Type: application/json" \
+  -d '{"message": "分析最近的动量因子表现"}'
+```
 
 #### 获取策略提示词
 
@@ -270,6 +293,19 @@ pytest tests/ --cov=QuantNodes --cov-report=html
   - [QualityGate 详细规格](docs/QualityGate.md)
 
 ## 变更日志
+
+> 完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。下面仅列里程碑版本。
+
+### v3.0.0 (2026-06-23)
+
+- ✅ **上游 nanobot 迁移**: Agent 核心从自写 runtime 改为直接消费 [HKUDS/nanobot](https://github.com/HKUDS/nanobot) 0.2.1（`Nanobot.from_config()` 门面）
+- ✅ **nanobot-ai 改为可选依赖**: `pip install 'quantnodes[agent]'`；纯量化库可独立使用
+- ✅ **单进程架构**: FastAPI uvicorn + nanobot gateway 共存于同一进程（`api/services/nanobot_runtime.py`）
+- ✅ **Phase 5 功能**: subagent 多 Agent 团队 / MCP server（9 tools）/ 单进程 WebUI / WebSocket + 飞书 channel / 量化专属 cron 调度
+- ✅ **workspace 迁移**: `.quant_agent/` → `.agent/`（HKUDS nanobot 约定，附迁移脚本）
+- ⚙️ **Python 3.11+**（上游最低要求）；**pandas 3.0 兼容**（`applymap`→`.map` 等）
+- ✅ **测试稳定化**: 非 agent `5163 passed / 21 skipped / 0 failed`、`tests/agent` `574 passed / 13 skipped`（顺序 + 并行均通过）；可选依赖优雅降级
+- 💥 **Breaking**: 删除自写 `agent/core/{loop,runner,memory,...}`，改用 `Agent.run()` / `Nanobot.from_config()` facade
 
 ### v2.6.0 (2026-05-14)
 
