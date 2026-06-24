@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - 4 类特征模板：KBAR (9) / Price (20) / Volume (5) / Rolling (124) = 158 特征
     - Alpha 360 模板：6 字段 × 60 lookback = 360 特征
     - 10 个 few-shot 示例（覆盖 4 类）
+  - **AlphaGen RL 适配器**（`quant_alpha.adapters`，M4）：
+    - 极简 Expression AST（11 算子 + Literal）：Feature / Ref / BinaryOp / UnaryOp / RollingOp
+    - `BaseAlphaCalculator` ABC：7 个抽象方法（与 AlphaGen `AlphaCalculator` 接口兼容）
+    - `PolarsAlphaCalculator`：参考实现，用 polars + OperatorVocab
+    - 7 个方法完整实现：single_IC_ret / single_rIC_ret / single_all_ret /
+      mutual_IC / pool_IC_ret / pool_rIC_ret / pool_all_ret
+    - 公式缓存 + 自动按 (code, date) 排序
+    - **未来所有 RL 路线接入只需 4 天**（vs 全栈复刻 40+）
   - **完整调研 + 规划文档**：`docs/quant_alpha/PROJECT_PLAN.md`（991 行）
 
 ### Changed
