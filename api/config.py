@@ -4,6 +4,8 @@ import os
 import json
 from pathlib import Path
 
+from QuantNodes.constants import DEFAULT_LLM_MODEL
+
 
 def _load_agent_from_settings() -> dict:
     """Load agent config from .agent/settings.json (single source of truth)"""
@@ -34,11 +36,11 @@ class Settings(BaseSettings):
         # Load agent config from settings.json (single source of truth)
         agent_cfg = _load_agent_from_settings()
         self.AGENT_PROVIDER = agent_cfg.get("provider", "openai")
-        self.AGENT_MODEL = agent_cfg.get("model", "gpt-4")
+        self.AGENT_MODEL = agent_cfg.get("model", DEFAULT_LLM_MODEL)
     
     # Agent (defaults overridden by settings.json at init)
     AGENT_PROVIDER: str = "openai"
-    AGENT_MODEL: str = "gpt-4"
+    AGENT_MODEL: str = DEFAULT_LLM_MODEL
     
     # Wiki
     WIKI_DATA_DIR: str = ".agent"

@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     # v3.0.0 Stage 5.3: Single-process nanobot runtime.
     # If nanobot-ai is installed, this starts AgentLoop + ChannelManager +
     # CronService as asyncio.create_task under uvicorn's event loop. The
-    # WebUI SPA + WebSocket are served from cfg.gateway.port (default 18080)
+    # WebUI SPA + WebSocket are served from cfg.gateway.port (default 18090)
     # inside this same Python process.
     # If nanobot-ai is NOT installed, init_runtime() still returns a runtime
     # object but its state stays "unavailable" — /api/agent/* endpoints will

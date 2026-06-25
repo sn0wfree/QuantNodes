@@ -6,7 +6,7 @@ v3.0.0 Stage 5.3 architecture:
 ```
 QuantNodes 进程（单一 Python 进程）
 ├─ uvicorn 8000           ← FastAPI + 量化 REST API
-├─ nanobot 18080          ← WebSocket + WebUI SPA（同一进程内启动）
+├─ nanobot 18090          ← WebSocket + WebUI SPA（同一进程内启动）
 │   ├─ WS /               ← chat 通信
 │   ├─ /api/sessions      ← WebUI 后端 REST
 │   └─ / (index.html)     ← WebUI SPA
@@ -52,8 +52,12 @@ logger = logging.getLogger(__name__)
 # Public configuration
 # ----------------------------------------------------------------------------
 
-DEFAULT_GATEWAY_HOST = "127.0.0.1"
-DEFAULT_GATEWAY_PORT = 18080
+# Re-export from QuantNodes.constants (single source of truth)
+from QuantNodes.constants import (  # noqa: E402
+    DEFAULT_HOST as DEFAULT_GATEWAY_HOST,
+    DEFAULT_GATEWAY_PORT,
+)
+
 DEFAULT_WORKSPACE = ".agent"
 DEFAULT_NANOBOT_CONFIG = "nanobot_config.json"
 
@@ -185,6 +189,14 @@ class NanobotRuntime:
                 "nanobot runtime started (workspace=%s, gateway=%s:%d)",
                 self.workspace, self.gateway_host, self.gateway_port,
             )
+            # Log the gateway tokenIssueSecret so users can access the WebUI
+            try:
+                _cfg = json.loads(self.config_path.read_text())
+                _token = _cfg.get("channels", {}).get("websocket", {}).get("token", "")
+                if _token:
+                    logger.info("Gateway tokenIssueSecret: %s", _token)
+            except Exception:
+                pass
         except ImportError as e:
             # ``NanobotNotInstalled`` is a subclass of ImportError. We
             # surface its message as a hint for the frontend.
@@ -316,7 +328,7 @@ class NanobotRuntime:
             "websocket": {
                 "enabled": True,
                 "host": self.gateway_host,
-                # The websocket channel lives on the gateway port (default 18080).
+                # The websocket channel lives on the gateway port (default 18090).
                 # It serves both the WebSocket API and the SPA static files.
                 "port": self.gateway_port,
             },
@@ -337,7 +349,7 @@ class NanobotRuntime:
         cfg.agents.defaults.workspace = str(self.workspace)
         # v3.0.0: WebSocket channel port must also be updated to match
         # gateway_port (in case env NANOBOT_GATEWAY_PORT differs from the
-        # default 18080 written by config_mapper). ChannelsConfig uses
+        # default 18090 written by config_mapper). ChannelsConfig uses
         # ``extra="allow"``, so ``cfg.channels.websocket`` is a plain dict
         # (each channel parses its own config in __init__).
         if isinstance(cfg.channels.websocket, dict):
@@ -397,6 +409,7 @@ class NanobotRuntime:
             session_manager=self._session_manager,
             webui_static_dist=True,
             webui_runtime_surface="browser",
+            webui_runtime_model_name=lambda: getattr(self._agent, "model", None),
         )
 
     async def _schedule_tasks(self) -> None:
