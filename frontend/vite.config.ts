@@ -21,6 +21,13 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true,
         },
+        // v3.0.0: proxy nanobot gateway APIs (session/settings/mcp/workspace)
+        // so the Vue frontend can call /gateway/api/* without CORS issues.
+        '/gateway': {
+          target: `http://localhost:${env.GATEWAY_PORT || 18090}`,
+          changeOrigin: true,
+          pathRewrite: { '^/gateway': '' },
+        },
       },
     },
     build: {

@@ -79,16 +79,23 @@ def _start_uvicorn(host: str, port: int, gateway_port: int,
     )
 
 
-def _start_frontend(host: str, frontend_port: int, api_port: int) -> subprocess.Popen:
+def _start_frontend(host: str, frontend_port: int, api_port: int,
+                    gateway_port: int = DEFAULT_GATEWAY_PORT) -> subprocess.Popen:
     """Spawn Vite dev server (npm run dev) with HOST/PORT/API_PORT injected.
 
-    Frontend is only started when ``serve --frontend`` is passed.
+    v3.0.0 Stage 7: also inject ``VITE_NANOBOT_GATEWAY_URL`` and ``GATEWAY_PORT``
+    so the Vue frontend's AgentChat.vue can reach the nanobot gateway
+    for WebSocket chat and HTTP APIs (sessions/settings/mcp).
     Stdout/stderr are inherited (frontend's own dev output is useful for the user).
     """
     env = os.environ.copy()
     env["HOST"] = host
     env["PORT"] = str(frontend_port)
     env["API_PORT"] = str(api_port)
+    # v3.0.0: inject gateway port so AgentChat.vue resolves the correct
+    # WebSocket + HTTP API endpoint (avoids hardcoded 18080).
+    env["GATEWAY_PORT"] = str(gateway_port)
+    env["VITE_NANOBOT_GATEWAY_URL"] = f"http://{host}:{gateway_port}/"
     return subprocess.Popen(
         ["npm", "run", "dev"],
         cwd=str(get_project_root() / "frontend"),
@@ -127,7 +134,8 @@ def cmd_serve(args) -> int:
     # 4. 可选前端
     frontend_proc: Optional[subprocess.Popen] = None
     if args.frontend:
-        frontend_proc = _start_frontend(args.host, args.frontend_port, args.port)
+        frontend_proc = _start_frontend(args.host, args.frontend_port, args.port,
+                                             gateway_port=args.gateway_port)
 
     # 5. daemon / 前台 分支
     if args.daemon:

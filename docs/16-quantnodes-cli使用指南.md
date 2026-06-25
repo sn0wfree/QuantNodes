@@ -137,13 +137,23 @@ v3.0.0 调整了默认端口，避免与系统服务（gpustack 18080 / MySQL 33
 
 | 端口 | 服务 | 可通过参数覆盖 |
 |---|---|---|
-| **5173** | Vite dev server（前端） | `--frontend-port` |
-| **19380** | FastAPI REST API | `--port`（serve）/ `--api-port`（run） |
-| **18090** | nanobot WebSocket + WebUI SPA | `--gateway-port` |
+| **5173** | Vite dev server（前端，仅开发模式） | `--frontend-port` |
+| **19380** | FastAPI REST API（`/api/*`） | `--port`（serve）/ `--api-port`（run） |
+| **18090** | nanobot WebSocket + WebUI + HTTP API（`/gateway/*`） | `--gateway-port` |
 | 18080 | ⚠️ gpustack 默认占用（不可用） | — |
 
 > 如果 18090 仍不可用，用 `--gateway-port 18100` 换一个。
 > 确认方式：`ss -tlnp | grep 18090`。
+
+### 前端路由与代理
+
+Vite dev server (5173) 通过 `/vite.config.ts` 的 proxy 转发请求：
+
+- `/api/*` → FastAPI (19380)：量化数据 API（wiki/factor/backtest/stats 等）
+- `/gateway/*` → nanobot (18090)：session/settings/mcp/workspace（去掉 `前缀后转发`）
+
+AgentChat.vue 的 WebSocket 直连 gateway (18090)（通过 `VITE_NANOBOT_GATEWAY_URL` 注入）。
+前端不直接暴露 gateway 端口到浏览器，通过 Vite proxy 统一走 5173。
 
 ---
 
@@ -165,15 +175,17 @@ quantnodes stop               # SIGTERM + 清理 pidfile
 
 ## 5. Agent Chat 双路径对比
 
-| 维度 | `quantnodes chat` | `quantnodes agent chat` |
-|---|---|---|
-| 依赖 | 需 `[agent]` extra（`nanobot-ai`） | 仅需后端在跑 |
-| 通信 | CLI 进程内 `Agent.run()` | HTTP `POST /api/agent/chat/send` |
-| 流式 | 终端 rich 渲染（实时逐字输出） | 单次完整响应 |
-| session | `--workspace` (文件持久化) | `--session` (HTTP session) |
-| 适用 | 交互调试 / 自动化脚本 | 服务化 / 前端 / 无 nanobot 环境 |
+| 维度 | `quantnodes chat` | `quantnodes agent chat` | 浏览器 WebUI |
+|---|---|---|---|
+| 依赖 | 需 `[agent]` extra | 仅需后端在跑 | 仅需后端在跑 |
+| 通信 | CLI 进程内 `Agent.run()` | HTTP POST | 原生 WebSocket |
+| 流式 | 终端 rich 渲染 | 单次完整响应 | 实时 streaming + markdown |
+| session | `--workspace` | `--session` | 侧边栏 session 列表 |
+| settings | — | — | ⚙ 面板（model/temperature/max_tokens） |
+| 适用 | 交互调试 / 脚本 | 服务化 / HTTP 调用 | 日常使用（推荐） |
 
-> **推荐**：快速验证用 `quantnodes chat`，服务化/生产环境用 `quantnodes serve` + 前端 WebUI。
+> **推荐**：日常使用浏览器 `http://localhost:5173/agent-chat`（原生 WebSocket + session 管理 + settings 面板）。
+> 快速验证用 `quantnodes chat`，自动化脚本用 `quantnodes agent chat`。
 
 ---
 

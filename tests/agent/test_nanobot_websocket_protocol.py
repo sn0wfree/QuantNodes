@@ -80,4 +80,5 @@ def test_env_development_references_nanobot_bootstrap():
     """frontend/.env.development must include the bootstrap path variable."""
     env = (REPO_ROOT / "frontend" / ".env.development").read_text(encoding="utf-8")
     assert "VITE_NANOBOT_GATEWAY_URL" in env
-    assert "18080" in env
+    # v3.0.0: gateway port changed from 18080 to 18090 (avoid gpustack conflict)
+    assert "18090" in env
