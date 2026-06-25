@@ -5,23 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.10.0-mock.1] - 2026-06-25
+
+Stage 1 mock Table 4 复现 — 论文 Alpha-GPT 框架 mock 端到端验证。
 
 ### Added
 
 - **Stage 1 mock Table 4 复现** (`QuantNodes/research/quant_alpha/evaluation/`)
   (`scripts/reproduce_table4_mock.py`):
-  - 接口契约 (`contracts.py`)：4 dataclass (`FactorSpec`/`FactorMetrics`/`Table4GroupResult`/`Table4Report`) + 4 ABC (`DataLoader`/`Evaluator`/`Baseline`/`Table4Runner`)
+  - 接口契约 (`contracts.py`)：4 dataclass (`FactorSpec`/`FactorMetrics`/
+    `Table4GroupResult`/`Table4Report`) + 4 ABC (`DataLoader`/`Evaluator`/
+    `Baseline`/`Table4Runner`)
   - MockDataLoader：500 票 × 500 日 GBM 模拟数据 + 10 行业 + forward return
   - PolarsAlphaCalculatorEvaluator：包 alpha_evaluate tool（M5），Stage 1/2 共用
   - G1Handcrafted：从 OperatorVocab 动态生成 100 公式
   - G2LlmOnly：mock LLM 直接生成 50 公式（含 15% invalid）
-  - G3AlphaGpt：包 AlphaGptWorkflow（M5）+ 兜底 mock 公式
-  - MockTable4Runner：串联 DataLoader + 3 Baseline + Evaluator，输出 JSON + Markdown 报告
-  - CLI `scripts/reproduce_table4_mock.py`：支持 `--quick` / `--full` / 自定义规模
-  - 测试 41 个（4 文件）：`test_table4_contracts.py` (13) + `test_table4_mock_data.py` (9) + `test_table4_evaluator.py` (12) + `test_table4_end_to_end.py` (7)
-  - Stage 2 接口预留（IFinD DataLoader + MiniMax LLM），仅替换实现即可
-  - 文档：`docs/quant_alpha/table4_reproduction.md`（380 行）
+  - G3AlphaGpt：包 AlphaGptWorkflow（M5）+ 兜底 mock
+  - MockTable4Runner：串联 DataLoader + 3 Baseline + Evaluator
+  - CLI `scripts/reproduce_table4_mock.py`：支持 `--quick` / `--full`
+  - 测试 8 文件 114 PASSED（97% 覆盖 evaluation/ 子包）
+  - 文档：`docs/quant_alpha/table4_reproduction.md` (380+ 行) +
+    `docs/quant_alpha/stage2_data_requirements.md` (301 行)
+
+### Notes
+
+- Stage 1 mock 完成（8 commit pushed to origin）
+- Stage 2 real 待用户准备 iFinD 数据 + MiniMax API key
+- 预计 Stage 2: ~2.4d
+- 复用 M1-M6 基础设施 85% (OperatorVocab/PolarsAlphaCalculator/alpha_evaluate/AlphaGptWorkflow)
+
+## [Unreleased]
 
 ## [2.9.1] - 2026-06-24
 
@@ -489,6 +502,66 @@ pip install ta-lib tables plotly   # talib 需先装 TA-Lib C 库
 - **HOME 环境变量污染**（修 5 errors + 3 fails）：`tests/core/test_path_utils.py::test_expanduser` 用裸 `os.environ["HOME"] = <TemporaryDirectory>` 且未还原；临时目录在 context 退出后被删，残留悬空 `HOME`。后续基于 subprocess 的 e2e 测试（`data_prep` / `run_evolution_e2e`）继承坏 `HOME`，在 `~/.quantnodes` 写入时非零退出。→ 改用 `monkeypatch.setenv`（自动还原）。
 - **composite registry 泄漏**（修 `test_op_names_match_polars`）：`test_composite_dag_pandas_engine.py` 经 `load_composites_from_yaml` 注册 YAML op 到全局 `_COMPOSITE_REGISTRY` 无清理；`test_composite_dag.py` 旧 fixture 仅删本模块注册的 op。→ 两文件均改为全量快照/还原 autouse fixture。
 - **防御性加固**：e2e subprocess 超时 30s→180s / 60s→300s；两处缺失 `timeout` 的 `subprocess.run` 补 `timeout=60`。
+
+### Stage 7 — CLI 完善 (lifecycle mgmt) (commits 40d80f3 / 86e0acd)
+
+5 个新 lifecycle 子命令，对标 `llmwikify` 简洁接口风格。CLI 子命令总数从 13 升至 20。
+
+| Command | 描述 | 模式 |
+|---|---|---|
+| `quantnodes serve` | 启动 FastAPI + nanobot gateway | 前台 / `--daemon` / `--frontend` / `--check-env` |
+| `quantnodes stop` | 通过 `.quantnodes.pid` 停止 | 写 SIGTERM + 清理 pidfile |
+| `quantnodes status` | 综合状态（pidfile + /api/agent/status） | JSON 输出 + exit code |
+| `quantnodes logs` | `tail -f logs/quantnodes_serve.log` | `-f` 实时滚动 / 默认最后 200 行 |
+| `quantnodes agent status` | `GET /api/agent/status` | HTTP 客户端（无需 CLI 装 nanobot-ai） |
+| `quantnodes agent chat MSG` | `POST /api/agent/chat/send` | 单次问答，含 `--session` |
+| `quantnodes agent restart` | `POST /api/agent/restart` | 重启 nanobot runtime |
+
+新增 helpers（`QuantNodes/cli/_helpers.py`，约 80 行）：
+
+- `load_env_file(env_path)` — dotenv 缺失/.env 缺失均 graceful；供 `api/main.py` 与 `quantnodes serve` 共用（DRY）。
+- `write_pidfile / read_pidfile / remove_pidfile` — 项目根 `.quantnodes.pid`，单 int。
+- `is_port_free(port)` — 启动前端口冲突检测，给出明确报错（避免 nanobot 内部 `OSError [Errno 98]` 才知端口占用）。
+- `wait_for_health(api_url, timeout_s=30)` — 轮询 `/api/agent/status` 直到 `state=running`。
+- `is_nanobot_installed / print_nanobot_install_hint` — `quantnodes init` 末尾给非阻塞友好提示。
+- `DEFAULT_GATEWAY_PORT = 18090`（避开 gpustack 占用的 18080）。
+- `DEFAULT_API_PORT` 由 8000 改为 19380（避免与系统服务冲突）。
+
+`run` 命令兼容增强（`QuantNodes/cli/commands/run.py`）：
+
+- 加 `--gateway-port` 参数，注入子进程 env `NANOBOT_GATEWAY_PORT`。
+- `start_api_server` 新增 `gateway_port` 参数。
+
+`init` 命令末尾提示（`QuantNodes/cli/commands/init.py`）：
+
+- 新 `quantnodes init` 完成信息更新为新接口（`quantnodes serve --daemon` 等）。
+- 末尾调用 `print_nanobot_install_hint()` 提示 `[agent]` extra。
+
+`api/main.py` DRY 化：
+
+- 8 行内联 `load_dotenv` 块替换为 `from QuantNodes.cli._helpers import load_env_file`。
+- 行为不变，但 .env 缺失时多一行 warning log（便于 onboarding 诊断）。
+
+测试覆盖（`tests/cli/test_serve.py` + `tests/cli/test_agent_cli.py`，共 40 tests）：
+
+- argparse 解析（serve 7 flags + agent sub-subparsers）。
+- 端口冲突预检（busy port → 退出 1 + 明确消息）。
+- `--check-env` 模式（缺 API key → 退出 1）。
+- daemon 模式（写 pidfile + 日志路径）。
+- stop 三种场景（无 pidfile / stale pidfile / alive PID → SIGTERM）。
+- status 调用 `/api/agent/status` + exit code 反映 state。
+- logs 文件不存在 / `tail -n 200` fallback。
+- `load_env_file` / `is_port_free` / `is_pid_alive` roundtrip。
+- agent status/chat/restart 全路径（httpx mock + stderr 错误分流）。
+- 兼容修复：`tests/cli/test_cli_command.py::EXPECTED_COMMANDS` 与 count 从 13 升至 20。
+
+**最终全量测试基线**（v3.0.0 Stage 7 后）：
+
+- `tests/cli/`：114 passed（74 已有 + 40 新增）/ 0 failed
+- `tests/agent/`：577 passed / 3 skipped / 0 failed
+- `tests/`（非 agent）：5163 passed / 21 skipped / 0 failed
+
+详细使用文档：`docs/16-quantnodes-cli使用指南.md`（约 180 行）。
 
 ## [2.8.0] - 2026-06-22
 

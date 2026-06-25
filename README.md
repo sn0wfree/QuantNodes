@@ -19,6 +19,7 @@ QuantNodes 是一个面向量化研究的节点架构平台，通过统一的 **
 - **MCP server**（可选）: 把量化能力暴露为 MCP tools（stdio + HTTP）
 - **方法库 + 提示词库**: 纯 Python 方法 + 内置策略提示词，亦可经 REST API 供外部 Agent 调用
 - **自动化因子挖掘（v2.9.0, QuantAlpha）**: 5 智能体编排（idea-generator → formula-translator → evaluator → reflector → critic），基于 nanobot spawn + OperatorVocab 162 算子 + PolarsAlphaCalculator（AlphaGen 兼容 7 方法）。CLI `quantnodes alpha-gpt` + REST API 5 端点 + WebSocket 实时流 + Vue 3 前端可视化。详见 [`docs/quant_alpha/alpha_gpt_user_guide.md`](docs/quant_alpha/alpha_gpt_user_guide.md)
+- **Table 4 复现 v2.10.0-mock.1（QuantAlpha Stage 1 mock）**: 论文 Table 4 端到端 mock 复现。3 baseline (G1 手工 / G2 LLM-Only / G3 Alpha-GPT) + 统一接口契约 + 端到端 mock pipeline。11 文件 + 8 测试（114 PASSED，97% 覆盖 evaluation/ 子包）。CLI `python3.11 scripts/reproduce_table4_mock.py --quick`。详见 [`docs/quant_alpha/table4_reproduction.md`](docs/quant_alpha/table4_reproduction.md) + [`docs/quant_alpha/stage2_data_requirements.md`](docs/quant_alpha/stage2_data_requirements.md)
 
 ## 架构概览
 
