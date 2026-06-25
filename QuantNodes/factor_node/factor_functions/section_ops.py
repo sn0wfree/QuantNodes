@@ -76,7 +76,7 @@ def neutralize(f: Union[Expr, str],
                group: Optional[Union[Expr, str]] = None, **kwargs) -> Expr:
     """行业中性的 (减去行业均值)"""
     e = _ensure_expr(f)
-    if group:
+    if group is not None:
         g = _ensure_expr(group)
         group_mean = e.mean().over(g)
         return e - group_mean
@@ -254,7 +254,7 @@ def weightStandardize(f: Union[Expr, str], weight: Union[Expr, str] = None,
                       **kwargs) -> Expr:
     """加权标准化"""
     e = _ensure_expr(f)
-    if weight:
+    if weight is not None:
         w = _ensure_expr(weight)
         w_sum = w.sum()
         w_norm = w / w_sum
