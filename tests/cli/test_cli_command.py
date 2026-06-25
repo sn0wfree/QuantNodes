@@ -1,10 +1,11 @@
 # coding=utf-8
-"""CLI Command pattern 测试 (Phase 3.1, 2026-06-22).
+"""CLI Command pattern 测试 (Phase 3.1, 2026-06-22; Stage 7 update 2026-06-25).
 
 覆盖:
     - Command ABC: 抽象方法强制 / name / description / repr
     - CommandRegistry: register / get / all / names / clear / 重复注册 / 空 name
-    - COMMAND_REGISTRY: 13 子命令齐全 + 顺序
+    - COMMAND_REGISTRY: 20 子命令齐全 + 顺序
+      (v3.0.0 Stage 7 新增 serve / stop / status / logs / agent)
     - _build_parser: 每个 Command 自注册 argparse, 与旧行为等价
     - main() dispatch: registry.get(command).run(args)
     - backward compat: cmd_* 函数仍可 import + 调用
@@ -24,20 +25,18 @@ from QuantNodes.cli.commands import COMMAND_REGISTRY
 
 EXPECTED_COMMANDS = [
     "init",
+    # v3.0.0 Stage 7: 服务生命周期
+    "serve", "stop", "status", "logs",
     "run",
     "chat",
+    # v3.0.0 Stage 7: HTTP 客户端
+    "agent",
     "evolve",
-    "alpha-mcts",
-    "alpha-gpt",
-    "factor-info",
-    "factor-best",
-    "factor-visual",
-    "factor-rag-show",
-    "factor-rag-eval",
-    "factor-data-fetch",
-    "factor-dashboard",
-    "version",
-    "help",
+    "alpha-mcts", "alpha-gpt",
+    "factor-info", "factor-best", "factor-visual",
+    "factor-rag-show", "factor-rag-eval",
+    "factor-data-fetch", "factor-dashboard",
+    "version", "help",
 ]
 
 
@@ -143,10 +142,10 @@ class TestCommandRegistry:
 # ============================================================================
 
 class TestModuleRegistry:
-    def test_all_15_commands_registered(self):
-        # v3.0.0: added ``alpha-mcts`` for MCTS auto-research workflow.
-        # v2.9.0: added ``alpha-gpt`` for 5-subagent Alpha-GPT workflow.
-        assert len(COMMAND_REGISTRY) == 15
+    def test_all_20_commands_registered(self):
+        # v3.0.0 Stage 7: added ``serve / stop / status / logs / agent``
+        # for backend lifecycle management. Previous count was 15.
+        assert len(COMMAND_REGISTRY) == 20
 
     def test_command_names_and_order(self):
         assert COMMAND_REGISTRY.names() == EXPECTED_COMMANDS
