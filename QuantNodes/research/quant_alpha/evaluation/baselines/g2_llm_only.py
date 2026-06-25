@@ -53,20 +53,103 @@ class G2LlmOnly(Baseline):
     - 一次性输出 N 个公式（含 valid + invalid 混合）
 
     Stage 1：使用 mock 公式生成器（valid + invalid 混合）
-    Stage 2：注入真实 LLM client（NanobotLLMWrapper / MiniMaxClient）
+    Stage 2：注入真实 LLM client（LLMGateway → MiniMax）
     """
 
-    def __init__(self, n: int = 50, seed: int = 7) -> None:
+    def __init__(self, n: int = 50, seed: int = 7, llm_client=None) -> None:
         self.n = n
         self.seed = seed
+        self._llm_client = llm_client
 
     @property
     def group_name(self) -> str:
         return "G2_LlmOnly"
 
     def generate_factors(self, n: Optional[int] = None) -> List[FactorSpec]:
-        """生成 n 个因子（模拟 LLM 一次输出）"""
+        """生成 n 个因子
+
+        Stage 2 (有 llm_client): 用真实 LLM 生成公式
+        Stage 1 (无 llm_client): 用 mock 公式生成器
+        """
         n = n or self.n
+
+        # Stage 2: 真实 LLM 生成
+        if self._llm_client is not None:
+            return self._generate_with_llm(n)
+
+        # Stage 1: mock 公式生成
+        return self._generate_mock(n)
+
+    def _generate_with_llm(self, n: int) -> List[FactorSpec]:
+        """Stage 2: 用真实 LLM 生成公式。"""
+        prompt = (
+            f"Generate {n} unique alpha factor formulas for quantitative trading.\n"
+            f"Each formula must be a valid Polars expression using these base features: "
+            f"open, high, low, close, vol, amount.\n"
+            f"Use these operators: ts_mean, ts_std, ts_rank, ts_max, ts_min, "
+            f"ts_sum, delta, rank, abs, log, sign, power.\n"
+            f"Return ONLY a JSON array of formula strings, e.g.: "
+            f'[\"rank(-ts_mean(returns, 20))\", \"ts_std(close, 10) / close\"]\n'
+            f"No explanation, no markdown, just the JSON array."
+        )
+
+        try:
+            response = self._llm_client(prompt)
+            formulas = self._parse_llm_formulas(response, n)
+        except Exception as e:
+            logger.warning("[G2] LLM generation failed: %s, falling back to mock", e)
+            return self._generate_mock(n)
+
+        factors: List[FactorSpec] = []
+        for i, formula in enumerate(formulas[:n]):
+            factors.append(
+                FactorSpec(
+                    formula_id=f"G2_{i:03d}",
+                    formula=formula,
+                    source="g2_llm_only",
+                    category=self._infer_category(formula),
+                    complexity=formula.count("("),
+                    meta={"llm_generated": True},
+                )
+            )
+
+        logger.info("[G2] LLM generated %d factors", len(factors))
+        return factors
+
+    @staticmethod
+    def _parse_llm_formulas(response: str, expected: int) -> List[str]:
+        """从 LLM 响应中解析公式列表。"""
+        import json
+        import re
+
+        # 尝试直接 JSON 解析
+        try:
+            result = json.loads(response)
+            if isinstance(result, list):
+                return [str(f) for f in result]
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试从 markdown 代码块提取
+        match = re.search(r'```(?:json)?\s*(\[.*?\])\s*```', response, re.DOTALL)
+        if match:
+            try:
+                result = json.loads(match.group(1))
+                if isinstance(result, list):
+                    return [str(f) for f in result]
+            except json.JSONDecodeError:
+                pass
+
+        # 尝试提取所有看起来像公式的内容
+        formulas = re.findall(r'"([^"]+\([^"]+\)[^"]*)"', response)
+        if formulas:
+            return formulas
+
+        logger.warning("[G2] Failed to parse LLM response, using fallback")
+        return []
+
+    def _generate_mock(self, n: int) -> List[FactorSpec]:
+        """Stage 1: mock 公式生成。"""
         rng = random.Random(self.seed)
 
         factors: List[FactorSpec] = []
