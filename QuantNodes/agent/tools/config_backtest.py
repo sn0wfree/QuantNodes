@@ -259,7 +259,12 @@ class ConfigBacktestTool(Tool):
 
         # 3. 列名映射
         if data_cfg.column_mapping:
-            df = df.rename(columns=data_cfg.column_mapping)
+            if hasattr(df, "to_pandas"):
+                # Polars DataFrame — rename() takes positional dict
+                df = df.rename(data_cfg.column_mapping)
+            else:
+                # pandas DataFrame — rename() takes columns= kwarg
+                df = df.rename(columns=data_cfg.column_mapping)
 
         # 4. DateTime → Date 类型转换（使用映射后的 date_column）
         date_col = data_cfg.date_column
