@@ -18,6 +18,7 @@ from QuantNodes.ai.llm import (
     OpenAIClient,
     AzureOpenAIClient,
     LLMGateway,
+    ToolCallResponse,
     get_llm_gateway,
     create_llm_gateway,
     reset_llm_gateway,
@@ -64,6 +65,7 @@ __all__ = [
 
     # Gateway
     'LLMGateway',
+    'ToolCallResponse',
     'get_llm_gateway',
     'create_llm_gateway',
     'reset_llm_gateway',

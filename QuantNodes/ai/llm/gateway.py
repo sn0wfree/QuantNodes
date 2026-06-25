@@ -8,11 +8,17 @@
     - complete(agent_id, prompt) → str          # alpha_gpt 兼容
     - __call__(prompt) → str                    # callable 兼容
     - await run(prompt, session_id) → str       # nanobot 原生
+
+支持工具调用:
+    - tools: 工具名列表 (None=全部, []=无工具)
+    - tool_choice: "auto"/"none"/"required"
+    - with_tool_events: 异步接口返回 ToolCallResponse
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
 from QuantNodes.ai.llm.base import (
@@ -25,6 +31,19 @@ from QuantNodes.ai.llm.base import (
 logger = logging.getLogger("llm.gateway")
 
 
+@dataclass
+class ToolCallResponse:
+    """工具调用响应 (with_tool_events=True 时返回)。"""
+    content: str
+    tools_used: List[str] = field(default_factory=list)
+    stop_reason: str = "stop"
+    events: List[Dict[str, Any]] = field(default_factory=list)
+
+    @property
+    def has_tool_calls(self) -> bool:
+        return len(self.tools_used) > 0
+
+
 class LLMGateway(LLMClientBase):
     """统一 LLM 调用门面 — 所有 LLM 调用的唯一入口。
 
@@ -33,10 +52,17 @@ class LLMGateway(LLMClientBase):
     - __call__(): callable injection 兼容
     - run(): nanobot 原生 async
 
+    支持工具调用:
+    - tools: 工具名列表 (None=全部, []=无工具)
+    - tool_choice: "auto"/"none"/"required"
+    - with_tool_events: 异步接口返回 ToolCallResponse
+
     Examples:
         >>> gateway = LLMGateway()
         >>> response = gateway.chat([Message(role="user", content="Hello")])
         >>> print(response.content)
+        >>> response = gateway.chat(messages, tools=["backtest", "factor"])
+        >>> print(response.tool_calls)
     """
 
     def __init__(
@@ -81,30 +107,58 @@ class LLMGateway(LLMClientBase):
         self,
         messages: List[Message],
         model: Optional[str] = None,
+        tools: Optional[List[str]] = None,
+        tool_choice: Optional[str] = None,
         **kwargs,
     ) -> ChatCompletion:
-        """LLMClientBase 抽象方法实现。"""
+        """LLMClientBase 抽象方法实现。
+
+        Args:
+            messages: 对话消息列表
+            model: 模型名称 (未使用, 由 nanobot 配置决定)
+            tools: 工具名列表 (None=全部, []=无工具)
+            tool_choice: "auto"/"none"/"required"
+
+        Returns:
+            ChatCompletion, 含:
+            - content: 最终文本
+            - tool_calls: [{id, name, arguments}, ...] (若 LLM 调了工具)
+            - finish_reason: "stop" / "tool_calls"
+        """
         prompt = self._messages_to_prompt(messages)
         agent = self._ensure_agent()
 
         if agent is None:
-            # 降级: 使用 NullLLMClient
             return self._fallback._call_api(messages, model, **kwargs)
 
         result = self._run_sync(
-            agent.run(prompt, session_id="default")
+            self._async_chat_collect(
+                agent, prompt,
+                tools=tools, tool_choice=tool_choice,
+            )
         )
         return ChatCompletion(
-            content=result or "",
+            content=result["content"],
             role=MessageRole.ASSISTANT,
+            finish_reason=result["stop_reason"],
+            tool_calls=result["tool_calls"],
         )
 
     # ─── 接口 B: complete 兼容 ───
 
-    def complete(self, agent_id: str = "default", prompt: str = "") -> str:
-        """调用 LLM，返回字符串结果。
+    def complete(
+        self,
+        agent_id: str = "default",
+        prompt: str = "",
+        tools: Optional[List[str]] = None,
+        tool_choice: Optional[str] = None,
+    ) -> str:
+        """同步调用 LLM, 返回字符串结果。
 
         兼容 alpha_gpt.py 的 llm_client.complete(agent_id, prompt) 调用。
+
+        Note: 同步接口返回纯文本 (工具调用已被 LLM 整合到 content 中)。
+        如需工具调用详情, 请使用 chat() 或 run(with_tool_events=True)。
         """
         agent = self._ensure_agent()
 
@@ -113,14 +167,24 @@ class LLMGateway(LLMClientBase):
                 [Message(role=MessageRole.USER, content=prompt)]
             ).content
 
-        return self._run_sync(
-            agent.run(prompt, session_id=agent_id)
-        ) or ""
+        result = self._run_sync(
+            self._async_chat_collect(
+                agent, prompt,
+                session_id=agent_id,
+                tools=tools, tool_choice=tool_choice,
+            )
+        )
+        return result["content"] or ""
 
     # ─── 接口 C: callable 兼容 ───
 
-    def __call__(self, prompt: str) -> str:
-        """ callable 兼容: llm_judge / lineage_compress / operators 使用。"""
+    def __call__(
+        self,
+        prompt: str,
+        tools: Optional[List[str]] = None,
+        tool_choice: Optional[str] = None,
+    ) -> str:
+        """callable 兼容: llm_judge / lineage_compress / operators 使用。"""
         agent = self._ensure_agent()
 
         if agent is None:
@@ -128,25 +192,121 @@ class LLMGateway(LLMClientBase):
                 [Message(role=MessageRole.USER, content=prompt)]
             ).content
 
-        return self._run_sync(
-            agent.run(prompt, session_id="default")
-        ) or ""
+        result = self._run_sync(
+            self._async_chat_collect(
+                agent, prompt,
+                tools=tools, tool_choice=tool_choice,
+            )
+        )
+        return result["content"] or ""
 
     # ─── 接口 D: nanobot 原生 async ───
 
-    async def run(self, prompt: str, session_id: str = "default") -> str:
-        """异步调用 nanobot Agent.run()。"""
+    async def run(
+        self,
+        prompt: str,
+        session_id: str = "default",
+        tools: Optional[List[str]] = None,
+        tool_choice: Optional[str] = None,
+        with_tool_events: bool = False,
+    ) -> Union[str, ToolCallResponse]:
+        """异步调用 nanobot Agent。
+
+        Args:
+            prompt: 用户消息
+            session_id: 会话 ID
+            tools: 工具名列表 (None=全部, []=无工具)
+            tool_choice: "auto"/"none"/"required"
+            with_tool_events: True → 返回 ToolCallResponse (含工具调用详情)
+
+        Returns:
+            str: 默认行为, 仅返回最终文本
+            ToolCallResponse: with_tool_events=True, 包含 tools_used/stop_reason/events
+        """
         agent = self._ensure_agent()
 
         if agent is None:
             result = self._fallback._call_api(
                 [Message(role=MessageRole.USER, content=prompt)]
             )
+            if with_tool_events:
+                return ToolCallResponse(
+                    content=result.content,
+                    stop_reason="stop",
+                )
             return result.content
 
-        return await agent.run(prompt, session_id=session_id) or ""
+        if with_tool_events:
+            return await self._async_chat_collect(
+                agent, prompt,
+                session_id=session_id,
+                tools=tools, tool_choice=tool_choice,
+                collect_events=True,
+            )
+
+        result = await self._async_chat_collect(
+            agent, prompt,
+            session_id=session_id,
+            tools=tools, tool_choice=tool_choice,
+        )
+        return result["content"] or ""
 
     # ─── 内部工具 ───
+
+    async def _async_chat_collect(
+        self,
+        agent,
+        prompt: str,
+        session_id: str = "default",
+        tools: Optional[List[str]] = None,
+        tool_choice: Optional[str] = None,
+        collect_events: bool = False,
+    ) -> Union[Dict[str, Any], ToolCallResponse]:
+        """异步消费 agent.chat() 流, 收集最终结果 + 工具调用。"""
+        final_content = ""
+        tool_calls = []
+        stop_reason = "stop"
+        events = []
+
+        async for event in agent.chat(
+            prompt,
+            session_id=session_id,
+            tools=tools,
+            tool_choice=tool_choice,
+        ):
+            etype = event.get("type")
+
+            if collect_events:
+                events.append(event)
+
+            if etype == "tool_call":
+                tool_calls.append({
+                    "id": event.get("id", ""),
+                    "name": event.get("name", ""),
+                    "arguments": event.get("arguments", {}),
+                })
+            elif etype == "done":
+                final_content = event.get("content", final_content)
+                stop_reason = event.get("stop_reason", "stop")
+                if tool_calls:
+                    stop_reason = "tool_calls"
+            elif etype == "error":
+                final_content = event.get("content", final_content)
+                stop_reason = "error"
+
+        if collect_events:
+            return ToolCallResponse(
+                content=final_content,
+                tools_used=[tc["name"] for tc in tool_calls],
+                stop_reason=stop_reason,
+                events=events,
+            )
+
+        return {
+            "content": final_content,
+            "tool_calls": tool_calls if tool_calls else None,
+            "stop_reason": stop_reason,
+        }
 
     def _messages_to_prompt(self, messages: List[Message]) -> str:
         """将 Message 列表转为单一 prompt 字符串。"""

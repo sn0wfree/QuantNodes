@@ -10,9 +10,10 @@ Covers:
   - get_llm_gateway() / create_llm_gateway() / reset_llm_gateway()
   - Messages-to-prompt conversion
   - Fallback to NullLLMClient when nanobot unavailable
+  - Tool calling: tools, tool_choice, tool_calls, ToolCallResponse
 """
 import asyncio
-from typing import List
+from typing import Any, AsyncGenerator, Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -25,6 +26,7 @@ from QuantNodes.ai.llm.base import (
 )
 from QuantNodes.ai.llm.gateway import (
     LLMGateway,
+    ToolCallResponse,
     get_llm_gateway,
     create_llm_gateway,
     reset_llm_gateway,
@@ -37,15 +39,40 @@ from QuantNodes.ai.llm.null import NullLLMClient
 # ---------------------------------------------------------------------------
 
 class FakeAgent:
-    """模拟 nanobot Agent: 记录 run() 调用并返回预设内容。"""
+    """模拟 nanobot Agent: 记录 run() 和 chat() 调用。"""
 
-    def __init__(self, response: str = "fake agent response"):
+    def __init__(
+        self,
+        response: str = "fake agent response",
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
+    ):
         self.response = response
         self.calls: List[dict] = []
+        self._tool_calls = tool_calls or []
 
     async def run(self, prompt: str, session_id: str = "default") -> str:
         self.calls.append({"prompt": prompt, "session_id": session_id})
         return self.response
+
+    async def chat(
+        self,
+        message: str,
+        session_id: str = "default",
+        model: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        mode: Optional[str] = None,
+        tools: Optional[List[str]] = None,
+        tool_choice: Optional[str] = None,
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        self.calls.append({
+            "prompt": message,
+            "session_id": session_id,
+            "tools": tools,
+            "tool_choice": tool_choice,
+        })
+        for tc in self._tool_calls:
+            yield {"type": "tool_call", **tc}
+        yield {"type": "done", "content": self.response, "stop_reason": "stop"}
 
 
 # ---------------------------------------------------------------------------
@@ -414,3 +441,199 @@ class TestIntegrationScenarios:
         config = AlphaGptConfig(objective="momentum", iterations=1)
         workflow = AlphaGptWorkflow(config=config)
         assert isinstance(workflow.llm_client, LLMGateway)
+
+
+# ---------------------------------------------------------------------------
+# 10. ToolCallResponse 数据类
+# ---------------------------------------------------------------------------
+
+class TestToolCallResponse:
+    def test_has_tool_calls_true(self):
+        """有工具调用时 has_tool_calls=True。"""
+        resp = ToolCallResponse(
+            content="result",
+            tools_used=["backtest"],
+        )
+        assert resp.has_tool_calls is True
+
+    def test_has_tool_calls_false(self):
+        """无工具调用时 has_tool_calls=False。"""
+        resp = ToolCallResponse(content="result")
+        assert resp.has_tool_calls is False
+
+    def test_defaults(self):
+        """默认值检查。"""
+        resp = ToolCallResponse(content="result")
+        assert resp.content == "result"
+        assert resp.tools_used == []
+        assert resp.stop_reason == "stop"
+        assert resp.events == []
+
+
+# ---------------------------------------------------------------------------
+# 11. chat() 工具调用接口
+# ---------------------------------------------------------------------------
+
+class TestChatToolCalling:
+    def test_chat_with_tools_passes_to_agent(self):
+        """chat(tools=[...]) 透传给 agent.chat()。"""
+        agent = FakeAgent(response="ok")
+        g = LLMGateway(agent=agent)
+
+        g.chat(
+            [Message(role=MessageRole.USER, content="run backtest")],
+            tools=["backtest", "factor"],
+        )
+        assert len(agent.calls) == 1
+        assert agent.calls[0]["tools"] == ["backtest", "factor"]
+
+    def test_chat_with_tool_choice_passes_to_agent(self):
+        """chat(tool_choice='required') 透传给 agent.chat()。"""
+        agent = FakeAgent(response="ok")
+        g = LLMGateway(agent=agent)
+
+        g.chat(
+            [Message(role=MessageRole.USER, content="test")],
+            tool_choice="required",
+        )
+        assert agent.calls[0]["tool_choice"] == "required"
+
+    def test_chat_returns_tool_calls(self):
+        """LLM 调工具时 ChatCompletion.tool_calls 填充。"""
+        agent = FakeAgent(
+            response="backtest done",
+            tool_calls=[{"id": "tc1", "name": "backtest", "arguments": {"code": "x"}}],
+        )
+        g = LLMGateway(agent=agent)
+
+        resp = g.chat([Message(role=MessageRole.USER, content="run")])
+        assert resp.content == "backtest done"
+        assert resp.tool_calls is not None
+        assert len(resp.tool_calls) == 1
+        assert resp.tool_calls[0]["name"] == "backtest"
+
+    def test_chat_finish_reason_tool_calls(self):
+        """工具调用后 finish_reason='tool_calls'。"""
+        agent = FakeAgent(
+            response="done",
+            tool_calls=[{"id": "tc1", "name": "alpha_evaluate", "arguments": {}}],
+        )
+        g = LLMGateway(agent=agent)
+
+        resp = g.chat([Message(role=MessageRole.USER, content="eval")])
+        assert resp.finish_reason == "tool_calls"
+
+    def test_chat_no_tool_calls_finish_reason_stop(self):
+        """无工具调用时 finish_reason='stop'。"""
+        agent = FakeAgent(response="text only")
+        g = LLMGateway(agent=agent)
+
+        resp = g.chat([Message(role=MessageRole.USER, content="hi")])
+        assert resp.finish_reason == "stop"
+        assert resp.tool_calls is None
+
+
+# ---------------------------------------------------------------------------
+# 12. complete() 工具调用接口
+# ---------------------------------------------------------------------------
+
+class TestCompleteToolCalling:
+    def test_complete_with_tools_passes_to_agent(self):
+        """complete(tools=[...]) 透传给 agent.chat()。"""
+        agent = FakeAgent(response="ok")
+        g = LLMGateway(agent=agent)
+
+        g.complete(agent_id="test", prompt="gen", tools=["backtest"])
+        assert agent.calls[0]["tools"] == ["backtest"]
+
+    def test_complete_returns_text_only(self):
+        """complete() 返回纯文本 (工具调用整合到 content 中)。"""
+        agent = FakeAgent(
+            response="result with tool data",
+            tool_calls=[{"id": "tc1", "name": "backtest", "arguments": {}}],
+        )
+        g = LLMGateway(agent=agent)
+
+        result = g.complete(prompt="run")
+        assert result == "result with tool data"
+        assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+# 13. __call__() 工具调用接口
+# ---------------------------------------------------------------------------
+
+class TestCallableToolCalling:
+    def test_call_with_tools_passes_to_agent(self):
+        """callable(prompt, tools=[...]) 透传给 agent.chat()。"""
+        agent = FakeAgent(response="ok")
+        g = LLMGateway(agent=agent)
+
+        g("judge", tools=["alpha_evaluate"])
+        assert agent.calls[0]["tools"] == ["alpha_evaluate"]
+
+    def test_call_returns_text_only(self):
+        """callable 返回纯文本。"""
+        agent = FakeAgent(response="judge result", tool_calls=[])
+        g = LLMGateway(agent=agent)
+
+        result = g("judge")
+        assert result == "judge result"
+
+
+# ---------------------------------------------------------------------------
+# 14. run() 工具调用接口
+# ---------------------------------------------------------------------------
+
+class TestRunToolCalling:
+    def test_run_with_tools_passes_to_agent(self):
+        """run(tools=[...]) 透传给 agent.chat()。"""
+        agent = FakeAgent(response="ok")
+        g = LLMGateway(agent=agent)
+
+        asyncio.run(g.run("test", tools=["backtest"]))
+        assert agent.calls[0]["tools"] == ["backtest"]
+
+    def test_run_with_tool_events_returns_tool_call_response(self):
+        """run(with_tool_events=True) 返回 ToolCallResponse。"""
+        agent = FakeAgent(
+            response="done",
+            tool_calls=[{"id": "tc1", "name": "backtest", "arguments": {}}],
+        )
+        g = LLMGateway(agent=agent)
+
+        result = asyncio.run(g.run("run", with_tool_events=True))
+        assert isinstance(result, ToolCallResponse)
+        assert result.content == "done"
+        assert result.has_tool_calls is True
+        assert "backtest" in result.tools_used
+        assert len(result.events) > 0
+
+    def test_run_with_tool_events_no_calls(self):
+        """无工具调用时 ToolCallResponse.has_tool_calls=False。"""
+        agent = FakeAgent(response="text only")
+        g = LLMGateway(agent=agent)
+
+        result = asyncio.run(g.run("test", with_tool_events=True))
+        assert isinstance(result, ToolCallResponse)
+        assert result.has_tool_calls is False
+        assert result.tools_used == []
+
+    def test_run_with_tool_choice_passes_to_agent(self):
+        """run(tool_choice='required') 透传。"""
+        agent = FakeAgent(response="ok")
+        g = LLMGateway(agent=agent)
+
+        asyncio.run(g.run("test", tool_choice="required"))
+        assert agent.calls[0]["tool_choice"] == "required"
+
+    def test_run_with_events_fallback(self):
+        """nanobot 不可用时 run(with_tool_events=True) 降级。"""
+        g = LLMGateway(workspace=".agent")
+        with patch(
+            "QuantNodes.agent.nanobot_bridge.Agent",
+            side_effect=ImportError("nanobot not installed"),
+        ):
+            result = asyncio.run(g.run("test", with_tool_events=True))
+        assert isinstance(result, ToolCallResponse)
+        assert result.has_tool_calls is False

@@ -97,6 +97,8 @@ class Agent:
         model: Optional[str] = None,
         max_tokens: Optional[int] = None,
         mode: Optional[str] = None,
+        tools: Optional[List[str]] = None,
+        tool_choice: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream chat events using the v2.x event protocol.
 
@@ -107,6 +109,10 @@ class Agent:
             {"type": "tool_result", "id": str, "name": str, "content": Any, "success": bool}
             {"type": "done", "content": str, "tools_used": list[str], "stop_reason": str}
             {"type": "error", "content": str}
+
+        Args:
+            tools: 工具名列表 (None=全部, []=无工具)
+            tool_choice: "auto"/"none"/"required"
         """
         from nanobot.agent.hook import SDKCaptureHook
 
@@ -114,10 +120,36 @@ class Agent:
         prev = self._loop._extra_hooks or []
         self._loop._extra_hooks = [capture, *prev]
         try:
-            async for event in self._stream_via_loop(message, session_id, model, max_tokens, mode):
+            async for event in self._stream_via_loop(
+                message, session_id, model, max_tokens, mode,
+                tools=tools, tool_choice=tool_choice,
+            ):
                 yield event
         finally:
             self._loop._extra_hooks = prev
+
+    def _filter_tools(self, tool_names: Optional[List[str]]) -> ToolRegistry:
+        """过滤 nanobot 工具集。
+
+        Args:
+            tool_names: 工具名列表 (None=全部, []=无工具)
+
+        Returns:
+            ToolRegistry (可能是子集)
+        """
+        if tool_names is None:
+            return self._loop.tool_registry
+
+        all_names = set(self._loop.tools._tools.keys())
+        valid = [n for n in tool_names if n in all_names]
+        invalid = [n for n in tool_names if n not in all_names]
+        if invalid:
+            logger.warning("LLMGateway: unknown tools filtered: %s", invalid)
+
+        sub = ToolRegistry()
+        for name in valid:
+            sub.register(self._loop.tools._tools[name])
+        return sub
 
     async def _stream_via_loop(
         self,
@@ -126,13 +158,16 @@ class Agent:
         model: Optional[str],
         max_tokens: Optional[int],
         mode: Optional[str],
+        tools: Optional[List[str]] = None,
+        tool_choice: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Drive the upstream AgentLoop and re-emit events in v2.x protocol."""
         from nanobot.agent.runner import AgentRunSpec
 
+        filtered = self._filter_tools(tools)
         spec = AgentRunSpec(
             initial_messages=[{"role": "user", "content": message}],
-            tools=self._loop.tool_registry,
+            tools=filtered,
             model=model or getattr(self._loop, "model", None),
             max_tokens=max_tokens or getattr(self._loop, "max_tokens", 102400),
             max_iterations=getattr(self._loop, "max_iterations", 5),
