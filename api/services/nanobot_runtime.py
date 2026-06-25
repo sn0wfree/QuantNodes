@@ -141,6 +141,9 @@ class NanobotRuntime:
         # Background asyncio.Task handles
         self._tasks: List[asyncio.Task] = []
 
+        # Config path (set by _build_components, guarded for defensive access)
+        self.config_path: Optional[Path] = None
+
     # -- Public API --------------------------------------------------------
 
     async def start(self) -> None:
@@ -190,13 +193,14 @@ class NanobotRuntime:
                 self.workspace, self.gateway_host, self.gateway_port,
             )
             # Log the gateway tokenIssueSecret so users can access the WebUI
-            try:
-                _cfg = json.loads(self.config_path.read_text())
-                _token = _cfg.get("channels", {}).get("websocket", {}).get("token", "")
-                if _token:
-                    logger.info("Gateway tokenIssueSecret: %s", _token)
-            except Exception:
-                pass
+            if self.config_path is not None:
+                try:
+                    _cfg = json.loads(self.config_path.read_text())
+                    _token = _cfg.get("channels", {}).get("websocket", {}).get("token", "")
+                    if _token:
+                        logger.info("Gateway tokenIssueSecret: %s", _token)
+                except Exception:
+                    logger.debug("Could not read gateway token", exc_info=True)
         except ImportError as e:
             # ``NanobotNotInstalled`` is a subclass of ImportError. We
             # surface its message as a hint for the frontend.

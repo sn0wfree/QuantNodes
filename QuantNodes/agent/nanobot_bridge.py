@@ -18,6 +18,7 @@ Reference: docs/13-Agent架构设计.md (v3.0.0) and docs/14-上游nanobot升级
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -70,6 +71,7 @@ class Agent:
 
         self._bot: Nanobot = Nanobot.from_config(self.config_path, workspace=self.workspace)
         self._loop = self._bot._loop
+        self._hook_lock = asyncio.Lock()
 
         quant_count = register_all_quant_tools(self._loop.tools, workspace=self.workspace)
         logger.info(
@@ -117,8 +119,9 @@ class Agent:
         from nanobot.agent.hook import SDKCaptureHook
 
         capture = SDKCaptureHook()
-        prev = self._loop._extra_hooks or []
-        self._loop._extra_hooks = [capture, *prev]
+        async with self._hook_lock:
+            prev = self._loop._extra_hooks or []
+            self._loop._extra_hooks = [capture, *prev]
         try:
             async for event in self._stream_via_loop(
                 message, session_id, model, max_tokens, mode,
@@ -126,7 +129,8 @@ class Agent:
             ):
                 yield event
         finally:
-            self._loop._extra_hooks = prev
+            async with self._hook_lock:
+                self._loop._extra_hooks = prev
 
     def _filter_tools(self, tool_names: Optional[List[str]]) -> ToolRegistry:
         """过滤 nanobot 工具集。
