@@ -142,7 +142,7 @@ class Agent:
             ToolRegistry (可能是子集)
         """
         if tool_names is None:
-            return self._loop.tool_registry
+            return self._loop.tools
 
         all_names = set(self._loop.tools._tools.keys())
         valid = [n for n in tool_names if n in all_names]
@@ -175,6 +175,7 @@ class Agent:
             model=model or getattr(self._loop, "model", None),
             max_tokens=max_tokens or getattr(self._loop, "max_tokens", 102400),
             max_iterations=getattr(self._loop, "max_iterations", 5),
+            max_tool_result_chars=getattr(self._loop, "max_tool_result_chars", 50000),
         )
 
         tools_used: List[str] = []

@@ -97,13 +97,17 @@ def main() -> None:
     evaluator = PolarsAlphaCalculatorEvaluator()
 
     # 3. Baselines
-    # G2/G3 默认使用 LLMGateway (自动路由到 MiniMax)
+    # G2/G3 使用 LLMGateway (自动路由到 MiniMax)
+    from QuantNodes.ai.llm.gateway import get_llm_gateway
+    llm_gateway = get_llm_gateway()
+
     g1 = G1Handcrafted(n=args.g1_n)
-    g2 = G2LlmOnly(n=args.g2_n)
+    g2 = G2LlmOnly(n=args.g2_n, llm_client=llm_gateway)
     g3 = G3AlphaGpt(
         n=args.g3_n,
         iterations=args.g3_iterations,
         pool_size=args.g3_pool_size,
+        llm_client=llm_gateway,
     )
 
     # 4. Runner
