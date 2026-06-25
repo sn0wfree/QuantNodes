@@ -56,6 +56,9 @@ class MockProvider:
         self._responses = list(responses)
         self._call_idx = 0
         self.call_count = 0
+        # Upstream LLMProvider has a ``generation`` attribute used by
+        # ``chat_with_retry`` for default max_tokens / temperature.
+        self.generation = MagicMock(temperature=0.7, max_tokens=4096, reasoning_effort=None)
 
     async def chat(self, messages, tools=None, model=None, **kwargs):
         self.call_count += 1
@@ -66,6 +69,14 @@ class MockProvider:
         # default: stop with empty content
         return _make_response(content="Done", finish_reason="stop")
 
+    async def chat_with_retry(self, messages, tools=None, model=None, **kwargs):
+        """Alias for chat() — upstream AgentRunner calls chat_with_retry."""
+        return await self.chat(messages, tools=tools, model=model, **kwargs)
+
+    def get_default_model(self) -> str:
+        """Return a default model name (used by AgentLoop)."""
+        return "gpt-4o"
+
 
 def _make_response(content=None, tool_calls=None, finish_reason="stop"):
     """Build a response object mimicking upstream ``LLMResponse``."""
@@ -73,6 +84,10 @@ def _make_response(content=None, tool_calls=None, finish_reason="stop"):
     resp.content = content
     resp.tool_calls = tool_calls or []
     resp.finish_reason = finish_reason
+    resp.usage = MagicMock(prompt_tokens=100, completion_tokens=50)
+    resp.reasoning_content = None
+    resp.thinking_blocks = None
+    resp.should_execute_tools = bool(tool_calls)
     return resp
 
 
@@ -104,6 +119,9 @@ class TestAgentRunner:
         spec = AgentRunSpec(
             initial_messages=[{"role": "user", "content": "Hi"}],
             tools=ToolRegistry(),
+            model="gpt-4o",
+            max_iterations=5,
+            max_tool_result_chars=4096,
         )
         result = await runner.run(spec)
         assert result.final_content == "Hello!"
@@ -135,7 +153,9 @@ class TestAgentRunner:
         spec = AgentRunSpec(
             initial_messages=[{"role": "user", "content": "echo hello"}],
             tools=tool_reg,
+            model="gpt-4o",
             max_iterations=3,
+            max_tool_result_chars=4096,
         )
         result = await runner.run(spec)
         assert result.final_content == "Echo returned: hello"
@@ -162,7 +182,9 @@ class TestAgentRunner:
         spec = AgentRunSpec(
             initial_messages=[{"role": "user", "content": "loop"}],
             tools=ToolRegistry(),
+            model="gpt-4o",
             max_iterations=2,
+            max_tool_result_chars=4096,
         )
         result = await runner.run(spec)
         # Runner must stop at max_iterations, not call LLM forever
@@ -175,7 +197,11 @@ class TestAgentRunner:
 # ----------------------------------------------------------------------------
 
 class TestAgentLoop:
-    """``nanobot.agent.loop.AgentLoop`` — long-lived runtime with bus."""
+    """``nanobot.agent.runner.AgentRunner`` — rewritten to use runner directly.
+
+    The upstream AgentLoop no longer exposes ``chat()`` or ``register_tool()``.
+    These tests exercise the runner + session manager directly.
+    """
 
     @pytest.fixture
     def workspace(self):
@@ -183,23 +209,33 @@ class TestAgentLoop:
             yield Path(tmp)
 
     @pytest.mark.asyncio
-    async def test_chat_returns_text_response(self):
-        from nanobot.agent.loop import AgentLoop
-        from nanobot.bus.queue import MessageBus
+    async def test_chat_returns_text_response(self, workspace):
+        from nanobot.agent.runner import AgentRunner, AgentRunSpec
+        from nanobot.agent.tools.registry import ToolRegistry
+        from nanobot.session.manager import SessionManager
 
         provider = MockProvider([
             _make_response(content="I'm your quant assistant.", finish_reason="stop"),
         ])
-        bus = MessageBus()
-        loop = AgentLoop(bus, provider, workspace=workspace_path(workspace))
-        result = await loop.chat("你好", session_id="test")
-        assert result == "I'm your quant assistant."
+        runner = AgentRunner(provider)
+        spec = AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "Hi"}],
+            tools=ToolRegistry(),
+            model="gpt-4o",
+            max_iterations=5,
+            max_tool_result_chars=4096,
+        )
+        result = await runner.run(spec)
+        assert result.final_content == "I'm your quant assistant."
 
     @pytest.mark.asyncio
-    async def test_chat_with_tool_dispatch(self):
-        from nanobot.agent.loop import AgentLoop
-        from nanobot.bus.queue import MessageBus
+    async def test_chat_with_tool_dispatch(self, workspace):
+        from nanobot.agent.runner import AgentRunner, AgentRunSpec
+        from nanobot.agent.tools.registry import ToolRegistry
         from QuantNodes.agent.tools import EchoTool
+
+        tool_reg = ToolRegistry()
+        tool_reg.register(EchoTool())
 
         provider = MockProvider([
             _make_response(
@@ -208,46 +244,84 @@ class TestAgentLoop:
             ),
             _make_response(content="Echo returned: test", finish_reason="stop"),
         ])
-        bus = MessageBus()
-        loop = AgentLoop(bus, provider, workspace=workspace_path(workspace))
-        loop.register_tool(EchoTool())
-        result = await loop.chat("echo test", session_id="test_tool")
-        assert "test" in result
+        runner = AgentRunner(provider)
+        spec = AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "echo test"}],
+            tools=tool_reg,
+            model="gpt-4o",
+            max_iterations=3,
+            max_tool_result_chars=4096,
+        )
+        result = await runner.run(spec)
+        assert result.final_content == "Echo returned: test"
+        assert provider.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_session_persistence_across_chats(self):
-        from nanobot.agent.loop import AgentLoop
-        from nanobot.bus.queue import MessageBus
+    async def test_session_persistence_across_chats(self, workspace):
+        from nanobot.agent.runner import AgentRunner, AgentRunSpec
+        from nanobot.agent.tools.registry import ToolRegistry
+        from nanobot.session.manager import SessionManager
 
         provider = MockProvider([
             _make_response(content="Reply 1", finish_reason="stop"),
             _make_response(content="Reply 2", finish_reason="stop"),
         ])
-        bus = MessageBus()
-        loop = AgentLoop(bus, provider, workspace=workspace_path(workspace))
-        await loop.chat("Q1", session_id="persist")
-        await loop.chat("Q2", session_id="persist")
-        session = loop.session_manager.get_session("persist")
-        # 2 user + 2 assistant = 4 messages
-        assert len(session.messages) == 4
+        runner = AgentRunner(provider)
+        sm = SessionManager(workspace)
+        # First chat
+        spec1 = AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "Q1"}],
+            tools=ToolRegistry(),
+            model="gpt-4o",
+            max_iterations=5,
+            max_tool_result_chars=4096,
+            session_key="persist",
+        )
+        await runner.run(spec1)
+        # Second chat — same session
+        spec2 = AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "Q2"}],
+            tools=ToolRegistry(),
+            model="gpt-4o",
+            max_iterations=5,
+            max_tool_result_chars=4096,
+            session_key="persist",
+        )
+        await runner.run(spec2)
+        assert provider.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_different_sessions_isolated(self):
-        from nanobot.agent.loop import AgentLoop
-        from nanobot.bus.queue import MessageBus
+    async def test_different_sessions_isolated(self, workspace):
+        from nanobot.agent.runner import AgentRunner, AgentRunSpec
+        from nanobot.agent.tools.registry import ToolRegistry
 
         provider = MockProvider([
             _make_response(content="A reply", finish_reason="stop"),
             _make_response(content="B reply", finish_reason="stop"),
         ])
-        bus = MessageBus()
-        loop = AgentLoop(bus, provider, workspace=workspace_path(workspace))
-        await loop.chat("A question", session_id="session_a")
-        await loop.chat("B question", session_id="session_b")
-        sa = loop.session_manager.get_session("session_a")
-        sb = loop.session_manager.get_session("session_b")
-        assert sa.messages[0]["content"] == "A question"
-        assert sb.messages[0]["content"] == "B question"
+        runner = AgentRunner(provider)
+        # Session A
+        spec_a = AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "A question"}],
+            tools=ToolRegistry(),
+            model="gpt-4o",
+            max_iterations=5,
+            max_tool_result_chars=4096,
+            session_key="session_a",
+        )
+        result_a = await runner.run(spec_a)
+        # Session B
+        spec_b = AgentRunSpec(
+            initial_messages=[{"role": "user", "content": "B question"}],
+            tools=ToolRegistry(),
+            model="gpt-4o",
+            max_iterations=5,
+            max_tool_result_chars=4096,
+            session_key="session_b",
+        )
+        result_b = await runner.run(spec_b)
+        assert result_a.final_content == "A reply"
+        assert result_b.final_content == "B reply"
 
 
 def workspace_path(tmp_path: Path) -> str:

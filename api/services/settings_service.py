@@ -6,6 +6,8 @@ import json
 from typing import Optional, Dict, Any
 from pathlib import Path
 
+from QuantNodes.constants import DEFAULT_API_PORT, DEFAULT_LLM_MODEL
+
 
 class SettingsService:
     """Settings service for API layer"""
@@ -28,13 +30,13 @@ class SettingsService:
                 "compact_mode": False,
             },
             "api": {
-                "base_url": "http://localhost:8000",
-                "ws_url": "ws://localhost:8000",
+                "base_url": f"http://localhost:{DEFAULT_API_PORT}",
+                "ws_url": f"ws://localhost:{DEFAULT_API_PORT}",
                 "timeout": 30000,
             },
             "agent": {
                 "provider": "openai",
-                "model": "gpt-4",
+                "model": DEFAULT_LLM_MODEL,
                 "api_key": "",
                 "api_base": "",
                 "max_iterations": 5,

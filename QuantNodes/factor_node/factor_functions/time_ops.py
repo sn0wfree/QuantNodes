@@ -177,21 +177,22 @@ def rolling_rank(
 
 def _rolling_arg_op(f: Union[Expr, str], window: int, op: str,
                     min_periods: Optional[int] = None) -> Expr:
-    """用 shift 比较链实现 rolling argmax/argmin"""
+    """滚动窗口最大值/最小值索引，用 map_batches + numpy 实现 O(n·window)"""
     e = _ensure_expr(f)
-    max_window = min(window, 30)
+    window = min(window, 30)
     is_max = op == "max"
 
-    best_val = e.shift(0)
-    best_idx = pl.lit(0, dtype=pl.Int32)
+    def _arg_numpy(s: pl.Series) -> pl.Series:
+        arr = s.to_numpy()
+        n = len(arr)
+        result = np.zeros(n, dtype=np.int32)
+        for i in range(n):
+            start = max(0, i - window + 1)
+            idx = np.argmax(arr[start:i + 1]) if is_max else np.argmin(arr[start:i + 1])
+            result[i] = idx
+        return pl.Series(result)
 
-    for i in range(1, max_window):
-        shifted = e.shift(i)
-        is_better = (shifted >= best_val) if is_max else (shifted <= best_val)
-        best_val = pl.when(is_better).then(shifted).otherwise(best_val)
-        best_idx = pl.when(is_better).then(pl.lit(i, dtype=pl.Int32)).otherwise(best_idx)
-
-    return best_idx
+    return e.map_batches(_arg_numpy, return_dtype=pl.Int32)
 
 
 @register_operator(OperatorCategory.TIME)

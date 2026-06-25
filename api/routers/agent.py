@@ -191,7 +191,11 @@ async def send_chat(req: ChatRequest, request: Request) -> ChatResponse:
             chat_id=req.session_id,
             sender_id="api",
             content=req.message,
-            session_key=req.session_id,
+            # v3.0.0: InboundMessage uses ``session_key_override`` (verified
+            # against nanobot 0.2.1 ``nanobot/bus/events.py``). The derived
+            # ``session_key`` property returns ``f"{channel}:{chat_id}"``
+            # unless ``session_key_override`` is set.
+            session_key_override=req.session_id,
             metadata={"_wants_stream": False, "api_message_id": msg_id},
         )
         await rt.bus.publish_inbound(inbound)
@@ -352,3 +356,58 @@ async def run_cron_job_now(job_id: str, request: Request) -> Dict[str, Any]:
     except Exception as e:
         logger.exception("run_cron_job_now(%s) failed", job_id)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── v3.0.0 Stage 7: Gateway bootstrap proxy ─────────────────────
+# When the gateway binds to 0.0.0.0 (LAN access), it requires a token
+# in the ``X-Nanobot-Auth`` header for ``/webui/bootstrap``. The browser
+# can't send custom headers with ``fetch()`` to a different origin, so
+# we proxy the bootstrap request server-side where the token is available.
+# The browser calls ``/api/agent/gateway-bootstrap`` → this endpoint
+# adds the token and forwards to ``{gateway}/webui/bootstrap``.
+
+@router.get("/gateway-bootstrap")
+async def gateway_bootstrap(request: Request):
+    """Proxy ``/webui/bootstrap`` to the nanobot gateway with auth token.
+
+    The browser calls this endpoint instead of hitting the gateway directly.
+    This keeps the gateway token server-side (not exposed in frontend JS).
+    """
+    import httpx
+    rt = getattr(request.app.state, "nanobot_runtime", None)
+    if rt is None or rt.state.state != "running":
+        raise HTTPException(status_code=503, detail={"available": False})
+
+    gateway_url = f"http://{rt.gateway_host}:{rt.gateway_port}"
+    # Read gateway token from the generated config
+    try:
+        config_path = rt.config_path
+        import json
+        config_data = json.loads(config_path.read_text(encoding="utf-8"))
+        ws_token = config_data.get("channels", {}).get("websocket", {}).get("token", "")
+    except Exception:
+        ws_token = ""
+
+    headers = {}
+    if ws_token:
+        headers["X-Nanobot-Auth"] = ws_token
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"{gateway_url}/webui/bootstrap",
+                headers=headers,
+            )
+            data = resp.json()
+            # v3.0.0: when gateway binds to 0.0.0.0, the bootstrap response
+            # returns ws://0.0.0.0:18090/ which the browser can't connect to.
+            # Rewrite ws_url to use the actual hostname from the request.
+            if data.get("ws_url", "").startswith("ws://0.0.0.0"):
+                actual_host = request.headers.get("host", "127.0.0.1").split(":")[0]
+                data["ws_url"] = f"ws://{actual_host}:{rt.gateway_port}/"
+            return JSONResponse(
+                status_code=resp.status_code,
+                content=data,
+            )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Gateway unreachable: {e}")

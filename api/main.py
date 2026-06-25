@@ -6,6 +6,20 @@ from .config import settings as app_settings
 from .routers import wiki, backtest, factor, skill, dream, stats, strategy, settings as settings_router, prompts, code, agent as agent_router, alpha_gpt
 from .services.nanobot_runtime import init_runtime, shutdown_runtime
 
+# v3.0.0: load .env into os.environ so NANOBOT_GATEWAY_HOST/PORT, QUANTNODES__LLM__*,
+# and FEISHU_* are visible to os.environ.get() in config_mapper / nanobot_runtime.
+# api/config.py uses pydantic-settings to load .env into the Settings object,
+# but that doesn't propagate to os.environ.
+# v3.0.0 Stage 7: reuse ``QuantNodes.cli._helpers.load_env_file`` (DRY — same
+# helper backs ``quantnodes serve``). If .env is missing the helper returns
+# False; we log a warning so devs notice during onboarding.
+from QuantNodes.cli._helpers import load_env_file
+if not load_env_file():
+    import logging
+    logging.getLogger(__name__).warning(
+        ".env 未找到，部分功能可能受限（建议运行 `quantnodes init` 生成）"
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,7 +38,7 @@ async def lifespan(app: FastAPI):
     # v3.0.0 Stage 5.3: Single-process nanobot runtime.
     # If nanobot-ai is installed, this starts AgentLoop + ChannelManager +
     # CronService as asyncio.create_task under uvicorn's event loop. The
-    # WebUI SPA + WebSocket are served from cfg.gateway.port (default 18080)
+    # WebUI SPA + WebSocket are served from cfg.gateway.port (default 18090)
     # inside this same Python process.
     # If nanobot-ai is NOT installed, init_runtime() still returns a runtime
     # object but its state stays "unavailable" — /api/agent/* endpoints will

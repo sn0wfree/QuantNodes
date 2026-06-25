@@ -46,9 +46,9 @@ def test_agent_chat_view_uses_status_polling():
     view = (REPO_ROOT / "frontend" / "src" / "views" / "AgentChat.vue").read_text(encoding="utf-8")
     assert "/api/agent/status" in view
     assert "VITE_NANOBOT_GATEWAY_URL" in view
-    # iframe target with sandbox attribute for safety
-    assert "sandbox=" in view
-    assert "<iframe" in view
+    # v3.0.0 Stage 7: native WebSocket chat (no iframe)
+    assert "useNanobotWebSocket" in view
+    assert "markdown-it" in view or "MarkdownIt" in view
 
 
 def test_agent_chat_view_handles_unavailable_state():
@@ -64,7 +64,8 @@ def test_env_development_has_agent_flags():
     env = (REPO_ROOT / "frontend" / ".env.development").read_text(encoding="utf-8")
     assert "VITE_AGENT_ENABLED=true" in env
     assert "VITE_NANOBOT_GATEWAY_URL" in env
-    assert "18080" in env
+    # v3.0.0: gateway port changed from 18080 to 18090 (avoid gpustack conflict)
+    assert "18090" in env
 
 
 def test_env_template_has_nanobot_section():
@@ -73,7 +74,7 @@ def test_env_template_has_nanobot_section():
     assert "NANOBOT_GATEWAY_HOST" in env
     assert "NANOBOT_GATEWAY_PORT" in env
     assert "NANOBOT_WORKSPACE" in env
-    assert "18080" in env
+    assert "18090" in env
     assert "Stage 5.3" in env or "agent" in env.lower()
 
 

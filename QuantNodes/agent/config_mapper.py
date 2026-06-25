@@ -57,8 +57,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from QuantNodes.constants import DEFAULT_HOST, DEFAULT_WEBSOCKET_PORT, DEFAULT_LLM_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +78,20 @@ def _resolve_slot(base_url: str, api_key: str) -> tuple[str, str]:
     ``responses``, or ``auto``).
     """
     u = (base_url or "").lower()
-    if "anthropic" in u:
-        if "minimax" in u or "MiniMax" in u:
-            return "minimax_anthropic", "auto"
+    if "anthropic" in u and "minimax" not in u and "minimaxi" not in u:
+        # Anthropic native endpoint (api.anthropic.com or proxied clones).
         return "anthropic", "auto"
     if "azure" in u:
         return "azure_openai", "responses"
     if "ollama" in u or ":11434" in u:
         return "ollama", "auto"
+    # v3.0.0: MiniMax provider (``api.minimaxi.com`` /
+    # ``api.minimax.com``) exposes an OpenAI-compatible ``/v1/chat/completions``
+    # endpoint, NOT the Anthropic ``/v1/messages`` surface — so the
+    # ``minimax_anthropic`` slot (which forces Anthropic schema) would 404.
+    # Use the ``custom`` slot with ``chat_completions`` API type instead.
+    if "minimaxi" in u or "minimax" in u:
+        return "custom", "chat_completions"
     if api_key and api_key.startswith("sk-ant-"):
         return "anthropic", "auto"
     # Default: OpenAI-compatible endpoint goes to ``custom`` slot
@@ -91,8 +100,9 @@ def _resolve_slot(base_url: str, api_key: str) -> tuple[str, str]:
 
 
 def _build_websocket_config(
-    host: str = "127.0.0.1",
-    port: int = 8765,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_WEBSOCKET_PORT,
+    ws_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build the WebSocket channel config block.
 
@@ -120,6 +130,11 @@ def _build_websocket_config(
         "websocketRequiresToken": True,
         "allowFrom": ["*"],
         "streaming": True,
+        # v3.0.0: when binding to 0.0.0.0 (all interfaces), nanobot's
+        # WebSocketConfig validates that a token is set — this prevents
+        # unauthenticated access from the LAN. Use NANOBOT_WS_TOKEN env
+        # var if provided; otherwise auto-generate one on startup.
+        **({"token": ws_token} if ws_token else {}),
     }
 
 
@@ -188,7 +203,7 @@ def build_nanobot_config(
 
     api_key = user_config.get("api_key") or os.environ.get("QUANTNODES__LLM__API_KEY", "")
     base_url = user_config.get("api_base") or os.environ.get("QUANTNODES__LLM__BASE_URL", "")
-    model = user_config.get("model") or os.environ.get("QUANTNODES__LLM__MODEL", "gpt-4o")
+    model = user_config.get("model") or os.environ.get("QUANTNODES__LLM__MODEL", DEFAULT_LLM_MODEL)
 
     slot, api_type = _resolve_slot(base_url, api_key)
 
@@ -208,9 +223,18 @@ def build_nanobot_config(
     ws_override = channel_overrides.get("websocket") or {}
     ws_enabled = ws_override.get("enabled", True)
     if ws_enabled:
+        ws_host = ws_override.get("host", DEFAULT_HOST)
+        # v3.0.0: when binding to 0.0.0.0, nanobot requires a token for security.
+        # Use NANOBOT_WS_TOKEN env var if set; otherwise auto-generate one.
+        ws_token = os.environ.get("NANOBOT_WS_TOKEN", "")
+        if not ws_token and ws_host in ("0.0.0.0", "::"):
+            import secrets
+            ws_token = secrets.token_urlsafe(32)
+            logger.info("Auto-generated WebSocket token for LAN access: %s...", ws_token[:12])
         channels["websocket"] = _build_websocket_config(
-            host=ws_override.get("host", "127.0.0.1"),
-            port=int(ws_override.get("port", 8765)),
+            host=ws_host,
+            port=int(ws_override.get("port", DEFAULT_WEBSOCKET_PORT)),
+            ws_token=ws_token or None,
         )
     else:
         # Caller explicitly disabled websocket — emit the block anyway so
@@ -226,6 +250,12 @@ def build_nanobot_config(
     channels["feishu"] = feishu_config
 
     # ── Top-level ───────────────────────────────────────────────────────
+    # v3.0.0: MCP servers live under ``tools.mcp_servers`` in nanobot 0.2.1
+    # (verified against ``nanobot.config.schema.ToolsConfig``). The upstream
+    # schema rejects top-level ``mcpServers`` (extra_forbidden), so we must
+    # nest it here. Field mapping:
+    #   - ``transport: stdio``  →  ``type: stdio``  (upstream enum)
+    #   - ``description`` removed (not in MCPServerConfig schema)
     config: Dict[str, Any] = {
         "agents": {
             "defaults": {
@@ -238,12 +268,17 @@ def build_nanobot_config(
             slot: provider_block,
         },
         "channels": channels,
-        "mcpServers": {
-            "quant": {
-                "command": "python",
-                "args": ["-m", "QuantNodes.mcp_server"],
-                "transport": "stdio",
-                "description": "QuantNodes quant tools (backtest/factor/strategy/wiki/sandbox/data_query)",
+        "tools": {
+            "mcpServers": {
+                "quant": {
+                    "type": "stdio",
+                    # v3.0.0: use ``sys.executable`` to ensure the same
+                    # Python interpreter that runs the FastAPI process
+                    # (which may be ``python3.11`` on systems where
+                    # ``python`` isn't on PATH) launches the MCP server.
+                    "command": sys.executable,
+                    "args": ["-m", "QuantNodes.mcp_server"],
+                },
             },
         },
     }

@@ -3,18 +3,28 @@
 
 import argparse
 import functools
+import os
+import signal
+import socket
 import sys
 import subprocess
+import time
 from pathlib import Path
-from typing import Sequence
+from typing import Optional, Sequence
 
 from QuantNodes.research.wiki import init_factor_wiki
 from QuantNodes.core.path_utils import ensure_dir
 
 PROG_NAME = "quantnodes"
-DEFAULT_API_PORT = 8000
-DEFAULT_FRONTEND_PORT = 5173
-DEFAULT_HOST = "localhost"
+
+# Re-export from QuantNodes.constants (single source of truth)
+from QuantNodes.constants import (  # noqa: E402, F401
+    DEFAULT_API_PORT,
+    DEFAULT_FRONTEND_PORT,
+    DEFAULT_HOST,
+    DEFAULT_GATEWAY_PORT,
+)
+PIDFILE_NAME = ".quantnodes.pid"
 
 
 def is_initialized() -> bool:
@@ -351,3 +361,151 @@ def install_talib() -> bool:
     except Exception as e:
         print(f"  ⚠ TA-Lib 安装失败: {e}，跳过继续...")
         return False
+
+
+# ============================================================================
+# v3.0.0 Stage 7 — serve/stop/status lifecycle helpers
+# ============================================================================
+#
+# These helpers back the new ``quantnodes serve`` / ``stop`` / ``status`` /
+# ``agent`` subcommands. Design goals:
+#   - Reuse from both CLI (foreground or daemon) and FastAPI startup
+#     (api/main.py uses ``load_env_file`` to populate os.environ before
+#     reading QUANTNODES__LLM__*).
+#   - Avoid new dependencies: use only stdlib + httpx (already required).
+#   - Keep pidfile simple: one file at project root, single int PID.
+
+
+def load_env_file(env_path: Optional[Path] = None) -> bool:
+    """Load ``.env`` into ``os.environ`` (no override).
+
+    Returns True if the file existed and was loaded, False otherwise.
+    Used by both ``quantnodes serve`` (CLI) and ``api/main.py`` (FastAPI
+    lifespan startup) so a single source of truth populates
+    ``QUANTNODES__LLM__*`` / ``NANOBOT_GATEWAY_*`` / ``FEISHU_*`` for
+    ``os.environ.get(...)`` consumers (config_mapper.py, nanobot_runtime.py).
+
+    Idempotent: safe to call multiple times. ``override=False`` so an
+    explicit shell env var always wins (e.g. ``NANOBOT_GATEWAY_PORT=18090
+    quantnodes serve``).
+    """
+    env_path = Path(env_path) if env_path else Path.cwd() / ".env"
+    if not env_path.is_file():
+        return False
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_path, override=False)
+        return True
+    except ImportError:
+        # python-dotenv is optional. Without it the user must source .env
+        # manually (or use shell exports).
+        return False
+
+
+def write_pidfile(pid: int, path: Optional[Path] = None) -> Path:
+    """Write ``pid`` to ``.quantnodes.pid`` (project root by default)."""
+    path = Path(path) if path else Path.cwd() / PIDFILE_NAME
+    path.write_text(str(pid), encoding="utf-8")
+    return path
+
+
+def read_pidfile(path: Optional[Path] = None) -> Optional[int]:
+    """Read PID from ``.quantnodes.pid``. Returns None if missing/invalid."""
+    path = Path(path) if path else Path.cwd() / PIDFILE_NAME
+    if not path.is_file():
+        return None
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (ValueError, OSError):
+        return None
+
+
+def remove_pidfile(path: Optional[Path] = None) -> None:
+    """Remove ``.quantnodes.pid`` if it exists (best-effort)."""
+    path = Path(path) if path else Path.cwd() / PIDFILE_NAME
+    if path.is_file():
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def is_pid_alive(pid: int) -> bool:
+    """Return True if a process with ``pid`` is running.
+
+    Uses ``kill(pid, 0)`` which doesn't actually send a signal but raises
+    ``ProcessLookupError`` if the process is gone. Works on Linux/macOS.
+    """
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+    except OSError:
+        return False
+
+
+def is_port_free(port: int, host: str = "127.0.0.1") -> bool:
+    """Return True if ``port`` on ``host`` is currently bindable.
+
+    Tries to bind a TCP socket to the address. ``OSError`` (EADDRINUSE)
+    means the port is taken; anything else means it's free. We don't
+    actually listen (SO_REUSEADDR + immediate close).
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
+def wait_for_health(api_url: str, timeout_s: int = 30,
+                    poll_interval_s: float = 1.0) -> bool:
+    """Poll ``GET {api_url}/api/agent/status`` until ``state == "running"``.
+
+    Returns True on success, False on timeout. Used by ``quantnodes serve``
+    to block until the FastAPI lifespan has wired the nanobot runtime.
+    """
+    import httpx  # local import: avoid hard dep at module-import time
+    deadline = time.time() + timeout_s
+    last_state = "unreachable"
+    while time.time() < deadline:
+        try:
+            r = httpx.get(f"{api_url}/api/agent/status", timeout=2.0)
+            if r.status_code == 200:
+                data = r.json()
+                last_state = data.get("state", "unknown")
+                if last_state == "running":
+                    return True
+        except Exception:
+            pass
+        time.sleep(poll_interval_s)
+    print(f"  ⚠ health check timeout after {timeout_s}s (last state={last_state})")
+    return False
+
+
+def is_nanobot_installed() -> bool:
+    """Return True if ``nanobot-ai`` is importable.
+
+    Used by ``quantnodes init`` and ``serve --check-env`` to give a
+    friendly non-blocking warning when the optional ``[agent]`` extra
+    is not installed. Quant tool library (Wiki/Factor/Backtest/Strategy)
+    works without it; only Agent Chat / WebUI / MCP / Feishu need it.
+    """
+    try:
+        from nanobot.agent.tools.base import Tool  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def print_nanobot_install_hint() -> None:
+    """Print a friendly hint for installing the optional ``[agent]`` extra."""
+    if is_nanobot_installed():
+        return
+    print()
+    print("ℹ 未检测到 nanobot-ai（量化 agent 可选依赖）")
+    print("  安装后可启用 Agent Chat / WebUI / MCP / 飞书:")
+    print("    pip install 'quantnodes[agent]'    # 或 'quantnodes[all]'")
+    print("  未安装时量化工具库（Wiki / Factor / Backtest / Strategy）完全可用")

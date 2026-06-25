@@ -59,10 +59,10 @@
         <a-card>
           <a-form layout="vertical">
             <a-form-item label="API Base URL">
-              <a-input v-model:value="localSettings.api.base_url" placeholder="http://localhost:8000" />
+              <a-input v-model:value="localSettings.api.base_url" placeholder="http://localhost:19380" />
             </a-form-item>
             <a-form-item label="WebSocket URL">
-              <a-input v-model:value="localSettings.api.ws_url" placeholder="ws://localhost:8000" />
+              <a-input v-model:value="localSettings.api.ws_url" placeholder="ws://localhost:19380" />
             </a-form-item>
             <a-form-item label="Request Timeout (ms)">
               <a-input-number v-model:value="localSettings.api.timeout" :min="5000" :max="120000" :step="1000" />
@@ -478,8 +478,8 @@ const localSettings = reactive({
     compact_mode: false,
   },
   api: {
-    base_url: 'http://localhost:8000',
-    ws_url: 'ws://localhost:8000',
+    base_url: 'http://localhost:19380',
+    ws_url: 'ws://localhost:19380',
     timeout: 30000,
   },
   agent: {
