@@ -14,6 +14,7 @@ from QuantNodes.cli.command import Command
 from .._helpers import (
     DEFAULT_API_PORT,
     DEFAULT_FRONTEND_PORT,
+    DEFAULT_GATEWAY_PORT,
     DEFAULT_HOST,
     get_project_root,
     is_initialized,
@@ -24,8 +25,15 @@ def start_api_server(
     host: str,
     port: int,
     log_file: Optional[Path] = None,
+    gateway_port: Optional[int] = None,
 ) -> Tuple[subprocess.Popen, Optional[Any]]:
-    """Start the API server. Returns (process, log_file_handle)."""
+    """Start the API server. Returns (process, log_file_handle).
+
+    v3.0.0 Stage 7: ``gateway_port`` (default ``DEFAULT_GATEWAY_PORT=18090``)
+    is injected into the subprocess env as ``NANOBOT_GATEWAY_PORT`` so the
+    nanobot WebSocket gateway binds to a port not occupied by gpustack
+    (which defaults to 18080).
+    """
     cmd = [
         sys.executable, "-m", "uvicorn",
         "api.main:app",
@@ -34,6 +42,10 @@ def start_api_server(
         "--reload"
     ]
 
+    env = os.environ.copy()
+    env["NANOBOT_GATEWAY_HOST"] = host
+    env["NANOBOT_GATEWAY_PORT"] = str(gateway_port or DEFAULT_GATEWAY_PORT)
+
     if log_file:
         ensure_parent(log_file)
         log_fd = open(log_file, "w", encoding="utf-8")
@@ -41,13 +53,15 @@ def start_api_server(
             cmd,
             stdout=log_fd,
             stderr=subprocess.STDOUT,
-            cwd=get_project_root()
+            cwd=get_project_root(),
+            env=env,
         )
         return proc, log_fd
     else:
         proc = subprocess.Popen(
             cmd,
-            cwd=get_project_root()
+            cwd=get_project_root(),
+            env=env,
         )
         return proc, None
 
@@ -122,7 +136,8 @@ def cmd_run(args) -> int:
         print(f"  前端日志: {frontend_log}")
         print()
 
-        api_proc, api_fd = start_api_server(host, api_port, api_log)
+        api_proc, api_fd = start_api_server(host, api_port, api_log,
+                                             gateway_port=args.gateway_port)
         frontend_proc, frontend_fd = start_frontend_server(
             host, frontend_port, api_port, frontend_log,
         )
@@ -130,6 +145,7 @@ def cmd_run(args) -> int:
         print("✓ 服务已后台启动")
         print(f"  API 进程: {api_proc.pid}")
         print(f"  前端进程: {frontend_proc.pid}")
+        print(f"  nanobot gateway: ws://{host}:{args.gateway_port}")
         print()
         print("查看日志:")
         print(f"  tail -f {api_log}")
@@ -137,6 +153,7 @@ def cmd_run(args) -> int:
         print()
         print("停止服务:")
         print(f"  kill {api_proc.pid} {frontend_proc.pid}")
+        print(f"  (quantnodes stop 仅作用于 serve --daemon 启动的服务)")
 
         return 0
 
@@ -150,7 +167,9 @@ def cmd_run(args) -> int:
     try:
         if not args.frontend_only:
             print(f"\n启动后端: http://{host}:{api_port}")
-            api_proc, api_fd = start_api_server(host, api_port)
+            print(f"  nanobot gateway: ws://{host}:{args.gateway_port}")
+            api_proc, api_fd = start_api_server(host, api_port,
+                                                 gateway_port=args.gateway_port)
             processes.append(("API", api_proc))
             log_fds.append(api_fd)
             print(f"  进程 PID: {api_proc.pid}")
@@ -226,6 +245,10 @@ class RunCommand(Command):
         p.add_argument("--host", help="绑定主机")
         p.add_argument("--port", type=int, help="前端端口")
         p.add_argument("--api-port", type=int, dest="api_port", help="后端端口")
+        # v3.0.0 Stage 7: nanobot WebSocket gateway 端口（注入到子进程 env）
+        p.add_argument("--gateway-port", type=int, dest="gateway_port",
+                       default=DEFAULT_GATEWAY_PORT,
+                       help=f"nanobot WebSocket gateway 端口 (默认 {DEFAULT_GATEWAY_PORT})")
         p.add_argument("--daemon", action="store_true", help="后台运行 (仅 Linux)")
         p.add_argument("--api-only", action="store_true", dest="api_only", help="仅启动后端")
         p.add_argument(

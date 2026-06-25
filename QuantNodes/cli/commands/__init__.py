@@ -17,10 +17,16 @@ COMMAND_REGISTRY = CommandRegistry()
 
 def _register_all() -> None:
     """注册所有 command. 顺序决定 argparse help 中子命令的显示顺序."""
-    # 顺序: 初始化 / 启动 / 对话 / 演化 / factor-* (按字母) / version / help
+    # 顺序: 初始化 / 服务生命周期 / 启动 / 对话 / agent / 演化 / factor-* / version / help
     from QuantNodes.cli.commands.init import InitCommand
+    # v3.0.0 Stage 7: 服务生命周期 (serve / stop / status / logs)
+    from QuantNodes.cli.commands.serve import (
+        ServeCommand, StopCommand, StatusCommand, LogsCommand,
+    )
     from QuantNodes.cli.commands.run import RunCommand
     from QuantNodes.cli.commands.chat import ChatCommand
+    # v3.0.0 Stage 7: HTTP 客户端 (agent status / chat / restart)
+    from QuantNodes.cli.commands.agent import AgentCommand
     from QuantNodes.cli.commands.evolve import EvolveCommand
     from QuantNodes.cli.commands.alpha import AlphaMctsCommand, AlphaGptCommand
     from QuantNodes.cli.commands.factor import (
@@ -36,8 +42,13 @@ def _register_all() -> None:
 
     for cmd in [
         InitCommand(),
+        ServeCommand(),
+        StopCommand(),
+        StatusCommand(),
+        LogsCommand(),
         RunCommand(),
         ChatCommand(),
+        AgentCommand(),
         EvolveCommand(),
         AlphaMctsCommand(),
         AlphaGptCommand(),
