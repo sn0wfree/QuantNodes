@@ -74,7 +74,7 @@ def test_env_template_has_nanobot_section():
     assert "NANOBOT_GATEWAY_HOST" in env
     assert "NANOBOT_GATEWAY_PORT" in env
     assert "NANOBOT_WORKSPACE" in env
-    assert "18080" in env
+    assert "18090" in env
     assert "Stage 5.3" in env or "agent" in env.lower()
 
 
