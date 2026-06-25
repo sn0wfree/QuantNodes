@@ -119,9 +119,8 @@ class AlphaGptWorkflow:
         self.config = config
         self.data = data
         self.data_path = data_path
-        if llm_client is None:
-            from QuantNodes.ai.llm.gateway import get_llm_gateway
-            llm_client = get_llm_gateway()
+        # llm_client=None → 使用 _mock_llm_response (Stage 1)
+        # llm_client=LLMGateway → 使用真实 LLM (Stage 2)
         self.llm_client = llm_client
         self.state = AlphaGptState(
             objective=config.objective,
