@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # QUANTNODES__LLM__* and NANOBOT_* are consumed by config_mapper.py via os.environ, not here
 
 
 settings = Settings()

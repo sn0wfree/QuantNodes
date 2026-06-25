@@ -57,6 +57,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -226,6 +227,12 @@ def build_nanobot_config(
     channels["feishu"] = feishu_config
 
     # ── Top-level ───────────────────────────────────────────────────────
+    # v3.0.0: MCP servers live under ``tools.mcp_servers`` in nanobot 0.2.1
+    # (verified against ``nanobot.config.schema.ToolsConfig``). The upstream
+    # schema rejects top-level ``mcpServers`` (extra_forbidden), so we must
+    # nest it here. Field mapping:
+    #   - ``transport: stdio``  →  ``type: stdio``  (upstream enum)
+    #   - ``description`` removed (not in MCPServerConfig schema)
     config: Dict[str, Any] = {
         "agents": {
             "defaults": {
@@ -238,12 +245,17 @@ def build_nanobot_config(
             slot: provider_block,
         },
         "channels": channels,
-        "mcpServers": {
-            "quant": {
-                "command": "python",
-                "args": ["-m", "QuantNodes.mcp_server"],
-                "transport": "stdio",
-                "description": "QuantNodes quant tools (backtest/factor/strategy/wiki/sandbox/data_query)",
+        "tools": {
+            "mcpServers": {
+                "quant": {
+                    "type": "stdio",
+                    # v3.0.0: use ``sys.executable`` to ensure the same
+                    # Python interpreter that runs the FastAPI process
+                    # (which may be ``python3.11`` on systems where
+                    # ``python`` isn't on PATH) launches the MCP server.
+                    "command": sys.executable,
+                    "args": ["-m", "QuantNodes.mcp_server"],
+                },
             },
         },
     }

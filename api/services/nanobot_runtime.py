@@ -328,10 +328,21 @@ class NanobotRuntime:
 
         # 2. Build runtime Config from the JSON we just wrote
         cfg = Config.model_validate(json.loads(self.config_path.read_text()))
-        cfg.workspace_path = self.workspace
+        # v3.0.0: ``workspace_path`` is a derived @property on Config
+        # (read from ``agents.defaults.workspace``). Don't try to set it
+        # directly — it's read-only. The workspace was already written into
+        # the JSON by config_mapper.py at line above, so this is enough.
         cfg.gateway.host = self.gateway_host
         cfg.gateway.port = self.gateway_port
         cfg.agents.defaults.workspace = str(self.workspace)
+        # v3.0.0: WebSocket channel port must also be updated to match
+        # gateway_port (in case env NANOBOT_GATEWAY_PORT differs from the
+        # default 18080 written by config_mapper). ChannelsConfig uses
+        # ``extra="allow"``, so ``cfg.channels.websocket`` is a plain dict
+        # (each channel parses its own config in __init__).
+        if isinstance(cfg.channels.websocket, dict):
+            cfg.channels.websocket["port"] = self.gateway_port
+            cfg.channels.websocket["host"] = self.gateway_host
 
         # 3. Build components
         self._bus = MessageBus()

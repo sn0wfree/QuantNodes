@@ -191,7 +191,11 @@ async def send_chat(req: ChatRequest, request: Request) -> ChatResponse:
             chat_id=req.session_id,
             sender_id="api",
             content=req.message,
-            session_key=req.session_id,
+            # v3.0.0: InboundMessage uses ``session_key_override`` (verified
+            # against nanobot 0.2.1 ``nanobot/bus/events.py``). The derived
+            # ``session_key`` property returns ``f"{channel}:{chat_id}"``
+            # unless ``session_key_override`` is set.
+            session_key_override=req.session_id,
             metadata={"_wants_stream": False, "api_message_id": msg_id},
         )
         await rt.bus.publish_inbound(inbound)

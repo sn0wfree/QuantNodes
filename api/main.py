@@ -6,6 +6,22 @@ from .config import settings as app_settings
 from .routers import wiki, backtest, factor, skill, dream, stats, strategy, settings as settings_router, prompts, code, agent as agent_router, alpha_gpt
 from .services.nanobot_runtime import init_runtime, shutdown_runtime
 
+import os
+from pathlib import Path
+
+# v3.0.0: load .env into os.environ so NANOBOT_GATEWAY_HOST/PORT, QUANTNODES__LLM__*,
+# and FEISHU_* are visible to os.environ.get() in config_mapper / nanobot_runtime.
+# api/config.py uses pydantic-settings to load .env into the Settings object,
+# but that doesn't propagate to os.environ.
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+if _ENV_FILE.is_file():
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_ENV_FILE, override=False)
+    except ImportError:
+        # python-dotenv is optional; if missing, rely on shell env.
+        pass
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
