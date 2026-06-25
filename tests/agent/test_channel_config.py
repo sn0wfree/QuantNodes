@@ -151,43 +151,32 @@ def test_channel_overrides_can_disable_websocket(tmp_path: Path, clean_feishu_en
     assert cfg["channels"]["websocket"]["enabled"] is False
 
 
-def test_mcp_server_block_still_emitted(tmp_path: Path, clean_feishu_env: None) -> None:
-    """Stage 5.2's MCP quant block must coexist with Stage 5.4 channels.
+def test_mcp_server_block_removed(tmp_path: Path, clean_feishu_env: None) -> None:
+    """v3.1.0: MCP servers removed from auto-generated config.
 
-    v3.0.0: in nanobot 0.2.1 the MCP servers live under
-    ``tools.mcp_servers`` (verified against ``nanobot.config.schema.ToolsConfig``);
-    a top-level ``mcpServers`` key is rejected by ``Config.model_validate``
-    with extra_forbidden. So the mapper nests the entry under
-    ``tools.mcpServers`` (camelCase via to_camel alias).
+    QuantTools are registered directly on the agent's ToolRegistry via
+    ``register_all_quant_tools()``. The MCP server can be started
+    independently for external clients (``quantnodes serve --mcp``).
     """
     from QuantNodes.agent.config_mapper import build_nanobot_config
 
     cfg = build_nanobot_config(tmp_path, {})
 
-    assert "tools" in cfg
-    assert "mcpServers" in cfg["tools"]
-    assert "quant" in cfg["tools"]["mcpServers"]
-    quant_cfg = cfg["tools"]["mcpServers"]["quant"]
-    assert quant_cfg["type"] == "stdio"
-    assert "-m" in quant_cfg["args"]
-    assert "QuantNodes.mcp_server" in quant_cfg["args"]
-    # ``command`` is sys.executable (not hardcoded "python") to support
-    # environments where ``python`` is not on PATH but ``python3.11`` is.
-    import sys
-    assert quant_cfg["command"] == sys.executable
+    # MCP config no longer in auto-generated config
+    assert "tools" not in cfg
+    # Core keys still present
+    assert "agents" in cfg
+    assert "providers" in cfg
+    assert "channels" in cfg
 
 
 def test_config_blocks_have_known_keys(tmp_path: Path, clean_feishu_env: None) -> None:
-    """Sanity: top-level structure has agents / providers / channels / tools.
-
-    v3.0.0: ``mcpServers`` moved under ``tools`` to match nanobot 0.2.1 schema.
-    """
+    """Sanity: top-level structure has agents / providers / channels."""
     from QuantNodes.agent.config_mapper import build_nanobot_config
 
     cfg = build_nanobot_config(tmp_path, {})
 
-    assert set(cfg.keys()) >= {"agents", "providers", "channels", "tools"}
+    assert set(cfg.keys()) >= {"agents", "providers", "channels"}
     assert "defaults" in cfg["agents"]
-    assert "mcpServers" in cfg["tools"]
     assert "workspace" in cfg["agents"]["defaults"]
     assert "model" in cfg["agents"]["defaults"]

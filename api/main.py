@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from .config import settings as app_settings
 from .routers import wiki, backtest, factor, skill, dream, stats, strategy, settings as settings_router, prompts, code, agent as agent_router, alpha_gpt
@@ -93,6 +94,14 @@ app.include_router(prompts.router, prefix="/api", tags=["prompts"])
 app.include_router(code.router, prefix="/api", tags=["code"])
 app.include_router(agent_router.router, prefix="/api/agent", tags=["agent"])
 app.include_router(alpha_gpt.router, prefix="/api/alpha/alpha-gpt", tags=["alpha-gpt"])
+
+# v3.1.0: Serve QuantNodes Vue frontend as static files (production mode).
+# When --frontend is NOT used, users can access the built SPA at /ui/.
+# When --frontend IS used, the Vite dev server on port 5173 takes precedence.
+from fastapi.staticfiles import StaticFiles
+_frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if _frontend_dist.is_dir():
+    app.mount("/ui", StaticFiles(directory=str(_frontend_dist), html=True), name="ui")
 
 
 @app.get("/")
