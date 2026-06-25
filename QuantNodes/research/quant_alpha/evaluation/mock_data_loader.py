@@ -200,6 +200,8 @@ class MockDataLoader(DataLoader):
     def load_summary(self) -> dict:
         """加载并返回数据摘要（用于测试与展示）"""
         df = self.load()
+        close_mean = df["close"].mean()
+        close_std = df["close"].std()
         return {
             "n_rows": df.height,
             "n_stocks": df["code"].n_unique(),
@@ -209,8 +211,8 @@ class MockDataLoader(DataLoader):
                 str(df["date"].min()),
                 str(df["date"].max()),
             ],
-            "close_mean": float(df["close"].mean()),
-            "close_std": float(df["close"].std()),
+            "close_mean": float(close_mean) if close_mean is not None else 0.0,
+            "close_std": float(close_std) if close_std is not None else 0.0,
             "amount_total": float(df["amount"].sum()),
         }
 
