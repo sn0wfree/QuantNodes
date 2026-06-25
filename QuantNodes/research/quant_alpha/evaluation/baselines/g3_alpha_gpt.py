@@ -85,33 +85,36 @@ class G3AlphaGpt(Baseline):
             workflow = AlphaGptWorkflow(config=config, llm_client=None)
             result = workflow.run()
         except Exception as e:
-            logger.error("[G3] AlphaGptWorkflow failed: %s", e)
-            return []
+            logger.error("[G3] AlphaGptWorkflow failed: %s, using fallback", e)
+            # workflow 失败时, 用 mock fallback（与 workflow 返回空时的逻辑一致）
+            result = None
 
-        self._last_workflow_result = result
+        if result is not None:
+            self._last_workflow_result = result
 
         factors: List[FactorSpec] = []
-        for i, formula_rec in enumerate(result.final_pool[:n]):
-            factors.append(
-                FactorSpec(
-                    formula_id=f"G3_{i:03d}",
-                    formula=formula_rec.formula,
-                    source="g3_alpha_gpt",
-                    category=formula_rec.category or "unknown",
-                    complexity=formula_rec.formula.count("("),
-                    meta={
-                        "rank": formula_rec.rank,
-                        "selection_reason": formula_rec.selection_reason,
-                        "round_discovered": formula_rec.round_discovered,
-                    },
+        if result is not None:
+            for i, formula_rec in enumerate(result.final_pool[:n]):
+                factors.append(
+                    FactorSpec(
+                        formula_id=f"G3_{i:03d}",
+                        formula=formula_rec.formula,
+                        source="g3_alpha_gpt",
+                        category=formula_rec.category or "unknown",
+                        complexity=formula_rec.formula.count("("),
+                        meta={
+                            "rank": formula_rec.rank,
+                            "selection_reason": formula_rec.selection_reason,
+                            "round_discovered": formula_rec.round_discovered,
+                        },
+                    )
                 )
-            )
 
-        # Stage 1 mock 兼容：若 workflow 因 mock 公式 parser 不兼容返回空，
-        # 用 G2 风格的简单 valid 公式兜底（保证 baseline 数量稳定）
+        # Stage 1 mock 兼容：若 workflow 失败/返回空/final_pool 不足，
+        # 用 G1 风格的简单 valid 公式兜底（保证 baseline 数量稳定）
         if len(factors) < n:
             logger.warning(
-                "[G3] AlphaGptWorkflow 仅返回 %d 因子 (期望 %d), mock 兜底补充",
+                "[G3] workflow returned %d factors (期望 %d), mock 兜底补充",
                 len(factors),
                 n,
             )
@@ -134,11 +137,12 @@ class G3AlphaGpt(Baseline):
                     )
                 )
 
-        logger.info(
-            "[G3] AlphaGptWorkflow returned %d factors (total=%d, elapsed=%.2fs)",
-            len(factors),
-            result.total_formulas,
-            result.elapsed_seconds,
-        )
+        if result is not None:
+            logger.info(
+                "[G3] AlphaGptWorkflow returned %d factors (total=%d, elapsed=%.2fs)",
+                len(factors),
+                result.total_formulas,
+                result.elapsed_seconds,
+            )
 
         return factors
