@@ -105,18 +105,24 @@ python -m QuantNodes init
 ### 启动服务
 
 ```bash
-# 启动全部服务（前端 + API）
+# ── v3.0.0 推荐方式（lifecycle 接口）──
+quantnodes serve                     # 前台启动，Ctrl+C 停止
+quantnodes serve --check-env        # 启动前校验 API key
+quantnodes serve --gateway-port 18090  # 自定义 nanobot gateway 端口
+quantnodes serve --frontend         # 同时启动 Vite dev server
+quantnodes serve --daemon           # 后台运行，写 .quantnodes.pid
+quantnodes stop                     # 停止后台 serve
+quantnodes status                   # 综合健康检查
+quantnodes logs -f                  # 实时查看日志
+
+# ── 旧接口（兼容保留）──
 quantnodes run
-
-# 启动参数
-quantnodes run --host 0.0.0.0 --port 8080 --api-port 8000 --daemon
-
-# 仅启动 API
+quantnodes run --host 0.0.0.0 --port 19380 --gateway-port 18090 --daemon
 quantnodes run --api-only
-
-# 仅启动前端
 quantnodes run --frontend-only
 ```
+
+详细使用文档：[`docs/16-quantnodes-cli使用指南.md`](docs/16-quantnodes-cli使用指南.md)
 
 ### 外部 Agent API
 
