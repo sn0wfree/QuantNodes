@@ -16,10 +16,14 @@ from QuantNodes.research.wiki import init_factor_wiki
 from QuantNodes.core.path_utils import ensure_dir
 
 PROG_NAME = "quantnodes"
-DEFAULT_API_PORT = 19380
-DEFAULT_FRONTEND_PORT = 5173
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_GATEWAY_PORT = 18090
+
+# Re-export from QuantNodes.constants (single source of truth)
+from QuantNodes.constants import (  # noqa: E402, F401
+    DEFAULT_API_PORT,
+    DEFAULT_FRONTEND_PORT,
+    DEFAULT_HOST,
+    DEFAULT_GATEWAY_PORT,
+)
 PIDFILE_NAME = ".quantnodes.pid"
 
 

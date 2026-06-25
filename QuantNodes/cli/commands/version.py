@@ -63,14 +63,14 @@ init 选项:
 run 选项:
     --host HOST         绑定主机 (默认: localhost)
     --port PORT         前端端口 (默认: 5173)，设置后后端端口自动设为 PORT+1000
-    --api-port PORT     后端端口 (默认: 8000)，优先级高于 --port 联动
+    --api-port PORT     后端端口 (默认: 19380)，优先级高于 --port 联动
     --daemon           后台运行 (仅 Linux)
     --api-only         仅启动后端
     --frontend-only    仅启动前端
 
 示例:
     quantnodes init
-    quantnodes run                          # 前端:5173, 后端:8000
+    quantnodes run                          # 前端:5173, 后端:19380
     quantnodes run --port 18380             # 前端:18380, 后端:19380 (联动)
     quantnodes run --port 18380 --api-port 9000  # 前端:18380, 后端:9000 (指定后端)
     quantnodes run --daemon

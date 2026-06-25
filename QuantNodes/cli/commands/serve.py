@@ -18,6 +18,7 @@ Design:
 """
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
@@ -43,6 +44,18 @@ from .._helpers import (
     wait_for_health,
     write_pidfile,
 )
+
+
+def _read_gateway_token() -> str:
+    """Read the gateway tokenIssueSecret from .agent/nanobot_config.json."""
+    try:
+        cfg_path = get_project_root() / ".agent" / "nanobot_config.json"
+        if cfg_path.exists():
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            return cfg.get("channels", {}).get("websocket", {}).get("token", "")
+    except Exception:
+        pass
+    return ""
 
 
 def _log_dir() -> Path:
@@ -147,6 +160,9 @@ def cmd_serve(args) -> int:
         print("=" * 50)
         print(f"  API:       {api_url}")
         print(f"  WebUI:     {gateway_url}/")
+        _token = _read_gateway_token()
+        if _token:
+            print(f"  Token:     {_token}")
         print(f"  PID:       {api_proc.pid}    日志: {log_path}")
         print(f"  停止:      quantnodes stop")
         print(f"  状态:      quantnodes status")
@@ -164,6 +180,9 @@ def cmd_serve(args) -> int:
         print("=" * 50)
         print(f"  API:       {api_url}")
         print(f"  WebUI:     http://{args.host}:{args.gateway_port}/")
+        _token = _read_gateway_token()
+        if _token:
+            print(f"  Token:     {_token}")
         if args.frontend:
             print(f"  Frontend:  http://{args.host}:{args.frontend_port}/")
         print(f"  日志:      tail -f {log_path}")

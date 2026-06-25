@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Iterator
 
 import requests
 
+from QuantNodes.constants import DEFAULT_LLM_MODEL, DEFAULT_LLM_BASE_URL
 from QuantNodes.ai.llm.base import (
     LLMClientBase,
     RateLimitError,
@@ -35,8 +36,8 @@ class OpenAIClient(LLMClientBase):
         >>> response = client.chat([Message(role="user", content="Hello")])
     """
 
-    DEFAULT_BASE_URL = "https://api.openai.com/v1"
-    DEFAULT_MODEL = "gpt-4"
+    DEFAULT_BASE_URL = DEFAULT_LLM_BASE_URL
+    DEFAULT_MODEL = DEFAULT_LLM_MODEL
 
     def __init__(
         self,

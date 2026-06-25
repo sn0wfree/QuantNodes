@@ -69,7 +69,7 @@ def start_api_server(
 def start_frontend_server(
     host: str,
     port: int,
-    api_port: int = 8000,
+    api_port: int = DEFAULT_API_PORT,
     log_file: Optional[Path] = None,
 ) -> Tuple[subprocess.Popen, Optional[Any]]:
     """Start the frontend server. Returns (process, log_file_handle)."""

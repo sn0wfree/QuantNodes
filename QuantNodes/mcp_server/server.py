@@ -40,6 +40,8 @@ from typing import Any, Dict, List, Optional
 from fastmcp import FastMCP
 from pydantic import Field, create_model
 
+from QuantNodes.constants import DEFAULT_HOST, DEFAULT_WEBSOCKET_PORT
+
 logger = logging.getLogger(__name__)
 
 
@@ -232,9 +234,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--transport", choices=["stdio", "http", "sse", "streamable-http"],
                         default="stdio", help="MCP transport (default: stdio)")
-    parser.add_argument("--port", type=int, default=8765,
+    parser.add_argument("--port", type=int, default=DEFAULT_WEBSOCKET_PORT,
                         help="HTTP port (only for http/sse transports)")
-    parser.add_argument("--host", default="127.0.0.1",
+    parser.add_argument("--host", default=DEFAULT_HOST,
                         help="HTTP host (only for http/sse transports)")
     parser.add_argument("--workspace", default=".agent",
                         help="QuantNodes workspace path (default: .agent)")

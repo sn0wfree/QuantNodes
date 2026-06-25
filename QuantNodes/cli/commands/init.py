@@ -4,6 +4,7 @@
 from pathlib import Path
 
 from QuantNodes.cli.command import Command
+from QuantNodes.constants import DEFAULT_LLM_MODEL
 from .._helpers import (
     confirm_section,
     create_directory_structure,
@@ -72,7 +73,7 @@ def cmd_init(args) -> int:
 
     model = get_model_choice()
     if model == "custom":
-        model = get_input_with_default("请输入自定义模型名称", "gpt-4")
+        model = get_input_with_default("请输入自定义模型名称", DEFAULT_LLM_MODEL)
 
     print()
     print("-" * 50)

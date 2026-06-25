@@ -61,6 +61,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from QuantNodes.constants import DEFAULT_HOST, DEFAULT_WEBSOCKET_PORT, DEFAULT_LLM_MODEL
+
 logger = logging.getLogger(__name__)
 
 
@@ -98,8 +100,8 @@ def _resolve_slot(base_url: str, api_key: str) -> tuple[str, str]:
 
 
 def _build_websocket_config(
-    host: str = "127.0.0.1",
-    port: int = 8765,
+    host: str = DEFAULT_HOST,
+    port: int = DEFAULT_WEBSOCKET_PORT,
     ws_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build the WebSocket channel config block.
@@ -201,7 +203,7 @@ def build_nanobot_config(
 
     api_key = user_config.get("api_key") or os.environ.get("QUANTNODES__LLM__API_KEY", "")
     base_url = user_config.get("api_base") or os.environ.get("QUANTNODES__LLM__BASE_URL", "")
-    model = user_config.get("model") or os.environ.get("QUANTNODES__LLM__MODEL", "gpt-4o")
+    model = user_config.get("model") or os.environ.get("QUANTNODES__LLM__MODEL", DEFAULT_LLM_MODEL)
 
     slot, api_type = _resolve_slot(base_url, api_key)
 
@@ -221,7 +223,7 @@ def build_nanobot_config(
     ws_override = channel_overrides.get("websocket") or {}
     ws_enabled = ws_override.get("enabled", True)
     if ws_enabled:
-        ws_host = ws_override.get("host", "127.0.0.1")
+        ws_host = ws_override.get("host", DEFAULT_HOST)
         # v3.0.0: when binding to 0.0.0.0, nanobot requires a token for security.
         # Use NANOBOT_WS_TOKEN env var if set; otherwise auto-generate one.
         ws_token = os.environ.get("NANOBOT_WS_TOKEN", "")
@@ -231,7 +233,7 @@ def build_nanobot_config(
             logger.info("Auto-generated WebSocket token for LAN access: %s...", ws_token[:12])
         channels["websocket"] = _build_websocket_config(
             host=ws_host,
-            port=int(ws_override.get("port", 8765)),
+            port=int(ws_override.get("port", DEFAULT_WEBSOCKET_PORT)),
             ws_token=ws_token or None,
         )
     else:

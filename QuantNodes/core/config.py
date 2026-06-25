@@ -6,6 +6,8 @@ from functools import lru_cache
 from pathlib import Path
 from pydantic_settings import BaseSettings
 
+from QuantNodes.constants import DEFAULT_LLM_MODEL, DEFAULT_LLM_BASE_URL
+
 
 class DatabaseConfig(BaseSettings):
     """数据库配置"""
@@ -40,8 +42,8 @@ class DuckDBConfig(BaseSettings):
 class LLMConfig(BaseSettings):
     """LLM 配置"""
     api_key: Optional[str] = None
-    base_url: str = "https://api.openai.com/v1"
-    model: str = "gpt-4"
+    base_url: str = DEFAULT_LLM_BASE_URL
+    model: str = DEFAULT_LLM_MODEL
     timeout: int = 60
     max_retries: int = 3
     max_tokens: int = 102400
