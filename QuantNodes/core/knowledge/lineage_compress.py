@@ -52,6 +52,9 @@ class Compressor:
     ):
         self.model = model
         self.max_tokens = max_tokens
+        if llm_callable is None and model != "mock":
+            from QuantNodes.ai.llm.gateway import get_llm_gateway
+            llm_callable = get_llm_gateway()
         self._llm_callable = llm_callable
 
     def compress(

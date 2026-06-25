@@ -42,7 +42,7 @@ class StrategyGenerator:
 
     def __init__(
         self,
-        llm_client: LLMClientBase,
+        llm_client=None,
         code_sandbox: Optional[CodeSandbox] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
@@ -52,11 +52,14 @@ class StrategyGenerator:
         初始化策略生成器
 
         Args:
-            llm_client: LLM 客户端
+            llm_client: LLM 客户端 (默认使用 LLMGateway)
             code_sandbox: 代码沙箱（用于验证）
             temperature: 生成温度
             max_tokens: 最大 token 数
         """
+        if llm_client is None:
+            from QuantNodes.ai.llm.gateway import get_llm_gateway
+            llm_client = get_llm_gateway()
         self.llm = llm_client
         self.sandbox = code_sandbox or CodeSandbox()
         self.temperature = temperature
@@ -340,7 +343,7 @@ class NaturalLanguageToPipeline:
 
     def __init__(
         self,
-        llm_client: LLMClientBase,
+        llm_client=None,
         code_sandbox: Optional[CodeSandbox] = None,
         **kwargs
     ):
@@ -348,9 +351,12 @@ class NaturalLanguageToPipeline:
         初始化转换器
 
         Args:
-            llm_client: LLM 客户端
+            llm_client: LLM 客户端 (默认使用 LLMGateway)
             code_sandbox: 代码沙箱
         """
+        if llm_client is None:
+            from QuantNodes.ai.llm.gateway import get_llm_gateway
+            llm_client = get_llm_gateway()
         self.generator = StrategyGenerator(llm_client, code_sandbox, **kwargs)
 
     def convert(

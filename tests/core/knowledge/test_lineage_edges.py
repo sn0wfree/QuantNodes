@@ -136,10 +136,11 @@ class TestCompressorLLM:
         assert r.method == "heuristic"
         assert "alpha" in r.summary
 
-    def test_real_model_no_callable_raises(self):
+    def test_real_model_auto_injects_gateway(self):
+        """model='deepseek' 无 llm_callable → 自动注入 LLMGateway。"""
+        from QuantNodes.ai.llm.gateway import LLMGateway
         c = Compressor(model="deepseek-v3")
-        with pytest.raises(NotImplementedError, match="真实 LLM"):
-            c.compress([(1, _entry("e1"))], relation="ancestors")
+        assert isinstance(c._llm_callable, LLMGateway)
 
     def test_llm_prompt_includes_entries(self):
         captured = {}

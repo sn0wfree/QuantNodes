@@ -126,15 +126,15 @@ class TestCustomLLMCallable:
 
 
 # ============================================================================
-# 3. 真实 model 未实现 (2 tests)
+# 3. 真实 model: 自动注入 LLMGateway (1 test)
 # ============================================================================
 
 class TestRealModel:
-    def test_real_model_no_callable_raises(self):
-        """model='deepseek' 无 llm_callable → NotImplementedError。"""
+    def test_real_model_auto_injects_gateway(self):
+        """model='deepseek' 无 llm_callable → 自动注入 LLMGateway。"""
+        from QuantNodes.ai.llm.gateway import LLMGateway
         j = LLMJudge(model="deepseek-v3")
-        with pytest.raises(NotImplementedError, match="真实 LLM"):
-            j.judge("h", "d", "close")
+        assert isinstance(j._llm_callable, LLMGateway)
 
 
 # ============================================================================

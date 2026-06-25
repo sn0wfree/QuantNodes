@@ -31,6 +31,13 @@ from QuantNodes.ai.llm.openai import (
     AzureOpenAIClient,
 )
 
+from QuantNodes.ai.llm.gateway import (
+    LLMGateway,
+    get_llm_gateway,
+    create_llm_gateway,
+    reset_llm_gateway,
+)
+
 __all__ = [
     # Base classes
     'LLMClientBase',
@@ -55,4 +62,10 @@ __all__ = [
     # Implementations
     'OpenAIClient',
     'AzureOpenAIClient',
+
+    # Gateway (unified LLM entry point)
+    'LLMGateway',
+    'get_llm_gateway',
+    'create_llm_gateway',
+    'reset_llm_gateway',
 ]
