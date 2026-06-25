@@ -100,6 +100,7 @@ def _resolve_slot(base_url: str, api_key: str) -> tuple[str, str]:
 def _build_websocket_config(
     host: str = "127.0.0.1",
     port: int = 8765,
+    ws_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build the WebSocket channel config block.
 
@@ -127,6 +128,11 @@ def _build_websocket_config(
         "websocketRequiresToken": True,
         "allowFrom": ["*"],
         "streaming": True,
+        # v3.0.0: when binding to 0.0.0.0 (all interfaces), nanobot's
+        # WebSocketConfig validates that a token is set — this prevents
+        # unauthenticated access from the LAN. Use NANOBOT_WS_TOKEN env
+        # var if provided; otherwise auto-generate one on startup.
+        **({"token": ws_token} if ws_token else {}),
     }
 
 
@@ -215,9 +221,18 @@ def build_nanobot_config(
     ws_override = channel_overrides.get("websocket") or {}
     ws_enabled = ws_override.get("enabled", True)
     if ws_enabled:
+        ws_host = ws_override.get("host", "127.0.0.1")
+        # v3.0.0: when binding to 0.0.0.0, nanobot requires a token for security.
+        # Use NANOBOT_WS_TOKEN env var if set; otherwise auto-generate one.
+        ws_token = os.environ.get("NANOBOT_WS_TOKEN", "")
+        if not ws_token and ws_host in ("0.0.0.0", "::"):
+            import secrets
+            ws_token = secrets.token_urlsafe(32)
+            logger.info("Auto-generated WebSocket token for LAN access: %s...", ws_token[:12])
         channels["websocket"] = _build_websocket_config(
-            host=ws_override.get("host", "127.0.0.1"),
+            host=ws_host,
             port=int(ws_override.get("port", 8765)),
+            ws_token=ws_token or None,
         )
     else:
         # Caller explicitly disabled websocket — emit the block anyway so

@@ -84,10 +84,17 @@ export function useNanobotWebSocket(options: NanobotWebSocketOptions) {
   let intentionalClose = false
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-  /** GET /webui/bootstrap to get a short-lived WS token. */
+  /** GET /webui/bootstrap to get a short-lived WS token.
+
+    v3.0.0: When the gateway binds to 0.0.0.0 (LAN access), it requires
+    an ``X-Nanobot-Auth`` header. The browser can't send custom headers
+    cross-origin, so we proxy through FastAPI's ``/api/agent/gateway-bootstrap``
+    endpoint which adds the token server-side.
+    */
   async function fetchBootstrap(): Promise<{ token: string; model_name?: string; ws_path: string }> {
-    const url = `${baseUrl.replace(/\/$/, '')}/webui/bootstrap`
-    const resp = await fetch(url, {
+    // v3.0.0: always use FastAPI proxy for bootstrap (handles auth + rewrites ws_url)
+    // Works in both Vite dev (proxy → FastAPI → gateway) and production (same origin).
+    const resp = await fetch('/api/agent/gateway-bootstrap', {
       headers: clientId ? { 'X-Nanobot-Client': clientId } : {},
     })
     if (!resp.ok) {
