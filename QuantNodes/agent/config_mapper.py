@@ -76,14 +76,20 @@ def _resolve_slot(base_url: str, api_key: str) -> tuple[str, str]:
     ``responses``, or ``auto``).
     """
     u = (base_url or "").lower()
-    if "anthropic" in u:
-        if "minimax" in u or "MiniMax" in u:
-            return "minimax_anthropic", "auto"
+    if "anthropic" in u and "minimax" not in u and "minimaxi" not in u:
+        # Anthropic native endpoint (api.anthropic.com or proxied clones).
         return "anthropic", "auto"
     if "azure" in u:
         return "azure_openai", "responses"
     if "ollama" in u or ":11434" in u:
         return "ollama", "auto"
+    # v3.0.0: MiniMax provider (``api.minimaxi.com`` /
+    # ``api.minimax.com``) exposes an OpenAI-compatible ``/v1/chat/completions``
+    # endpoint, NOT the Anthropic ``/v1/messages`` surface — so the
+    # ``minimax_anthropic`` slot (which forces Anthropic schema) would 404.
+    # Use the ``custom`` slot with ``chat_completions`` API type instead.
+    if "minimaxi" in u or "minimax" in u:
+        return "custom", "chat_completions"
     if api_key and api_key.startswith("sk-ant-"):
         return "anthropic", "auto"
     # Default: OpenAI-compatible endpoint goes to ``custom`` slot
