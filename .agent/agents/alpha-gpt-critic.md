@@ -129,6 +129,7 @@ score = 0.5 * normalized(ir) +
 3. **A 股语境** — 若 `a_share_focus=true`，优先选 `a_share_compatible=true`
 4. **不要只选 IR 最高** — 兼顾稳健性 / 独立性 / 类别多样性
 5. **JSON 严格** — 输出会被工作流直接持久化
+6. **输出格式** — **必须** 输出纯 JSON，不要包含 markdown 代码块（```json ... ```）或其他文本。直接以 `{` 开始，以 `}` 结束。
 
 ## 与 nanobot 集成
 

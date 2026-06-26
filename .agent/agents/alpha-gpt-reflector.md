@@ -138,6 +138,7 @@ Evaluator 的 IC/IR/回测结果，反思哪些想法有效、哪些失败，给
 2. **建设性** — 即使公式失败，也要给改进方向（`mutate` / `drop` 都要 `improvements`）
 3. **多样性优先** — `next_round_suggestions` 必须引导 IdeaGenerator 生成与现有池正交的想法
 4. **可执行性** — `explore_operators` 必须在 OperatorVocab 白名单内
+5. **输出格式** — **必须** 输出纯 JSON，不要包含 markdown 代码块（```json ... ```）或其他文本。直接以 `{` 开始，以 `}` 结束。
 
 ## 与 nanobot 集成
 
