@@ -83,6 +83,9 @@ class PipelineConfig:
     # 去重配置
     max_mutual_ic: float = 0.7
 
+    # Alpha-GPT 过滤配置
+    min_ir_threshold: float = 0.1
+
     # 通用配置
     top_k: int = 10
     date_column: str = "date"
@@ -179,6 +182,7 @@ class AlphaPipeline:
                 iterations=self.config.alphagpt_iterations,
                 pool_size=self.config.alphagpt_pool_size,
                 top_k=self.config.alphagpt_top_k,
+                min_ir_threshold=self.config.min_ir_threshold,
                 max_mutual_ic_threshold=self.config.max_mutual_ic,
                 forward_returns=list(self.config.forward_returns),
                 date_column=self.config.date_column,

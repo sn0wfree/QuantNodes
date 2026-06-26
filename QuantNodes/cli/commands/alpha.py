@@ -597,6 +597,12 @@ class AlphaPipelineCommand(Command):
             type=float, default=0.7,
             help="最大 mutual IC 阈值（默认 0.7）",
         )
+        # Alpha-GPT 过滤配置
+        parser.add_argument(
+            "--min-ir-threshold",
+            type=float, default=0.1,
+            help="最小 IR 阈值（默认 0.1）",
+        )
         # 通用配置
         parser.add_argument(
             "--top-k", "-k",
@@ -688,6 +694,7 @@ class AlphaPipelineCommand(Command):
             mcts_iterations=args.mcts_iterations,
             mcts_max_depth=args.mcts_max_depth,
             max_mutual_ic=args.max_mutual_ic,
+            min_ir_threshold=args.min_ir_threshold,
             top_k=args.top_k,
             date_column=args.date_column,
             code_column=args.code_column,
