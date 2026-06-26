@@ -34,32 +34,83 @@ Stage 1 mock Table 4 复现 — 论文 Alpha-GPT 框架 mock 端到端验证。
 - 预计 Stage 2: ~2.4d
 - 复用 M1-M6 基础设施 85% (OperatorVocab/PolarsAlphaCalculator/alpha_evaluate/AlphaGptWorkflow)
 
-## [Unreleased]
+## [2.10.0] - 2026-06-26
+
+Stage 2 real Table 4 复现 + LLM Gateway 统一入口 + 工具调用扩展 + 向量化优化。
+
+### Added
+
+- **LLM Gateway 统一入口** (`QuantNodes/ai/llm/gateway.py`):
+  - `LLMGateway` 类：统一所有 LLM 调用入口，委托 nanobot upstream
+  - 4 种接口：`chat()` / `complete()` / `__call__()` / `run()`
+  - `ToolCallResponse` 数据类：支持工具调用事件返回
+  - `get_llm_gateway()` / `create_llm_gateway()` / `reset_llm_gateway()` 全局单例管理
+  - 测试 54 passed（含 17 个工具调用测试）
+
+- **OperatorLookupTool** (`QuantNodes/agent/tools/operator_lookup.py`):
+  - 3 个 action：`list_operators` / `get_operator_info` / `validate_formula`
+  - 让 agent 动态发现 OperatorVocab 的 162 个可用算子
+  - 测试 20 passed
+
+- **Stage 2 real Table 4** (`QuantNodes/research/quant_alpha/evaluation/`):
+  - `ClickHouseDataLoader`：从 ClickHouse 加载全 A 股数据（6.62M rows, 5570 stocks）
+  - `RealTable4Runner`：Stage 2 主入口
+  - `scripts/reproduce_table4_real.py`：Stage 2 CLI
+  - G2 改用 `agent.run()` + `operator_lookup` 生成公式（valid 率从 20% → 80%）
+  - G3 注入 `LLMGateway` 到 `AlphaGptWorkflow`
+  - 测试 18 passed
+
+- **PolarsAlphaCalculatorEvaluator 重构** (`QuantNodes/research/quant_alpha/evaluation/evaluators/polars_evaluator.py`):
+  - 使用 `OperatorVocab.evaluate()` 直接评估公式（替代 alpha_evaluate tool 的有限 parser）
+  - 支持复杂表达式：`rank(ts_mean(close, 20) - ts_mean(close, 5))` 等
+  - 向量化 IC 计算：polars `group_by` + `pl.corr()` 替代逐日循环
+  - 1.2M rows × 2 公式：从超时 → 秒级完成
 
 ### Changed
+
+- **9 个 LLM 消费模块默认使用 LLMGateway**：
+  - `ai/strategy_gen.py` / `ai/optimizer.py` / `research/report_reproducer.py`
+  - `research/quant_alpha/workflow/alpha_gpt.py`
+  - `core/feedback/llm_judge.py` / `core/knowledge/lineage_compress.py` / `core/evolution/operators.py`
+  - `agent/tools/strategy.py` / `cli/commands/alpha.py`
+
+- **Agent.chat() 增强** (`QuantNodes/agent/nanobot_bridge.py`):
+  - 新增 `tools` / `tool_choice` 参数
+  - `_filter_tools()` 工具名列表过滤（未知工具名警告并跳过）
+  - 修复 `AgentRunSpec.max_tool_result_chars` 参数传递
+
+- **Loop 3 向量化优化** (`QuantNodes/research/factor_test/nodes/group_analyzer_node.py`):
+  - `cycle_net.T.groupby(fg).mean().T` 替代内层 `for g` 循环
+  - 1304 × 5 × 6 = ~39000 次 pandas 调用 → 1304 × 5 = ~6520 次（6x 提速）
 
 - **零子进程架构** (`QuantNodes/cli/commands/serve.py`, `api/main.py`,
   `QuantNodes/agent/config_mapper.py`):
   - `cmd_serve` 从 `subprocess.Popen(uvicorn)` 改为 `uvicorn.Server.run()` 同进程运行
-  - 删除 `tools.mcpServers` 自动配置；QuantTools 通过 `register_all_quant_tools()` 直接注册在 ToolRegistry
-  - 新增 `--mcp` / `--mcp-port` 参数：可选启动 MCP server 子进程（供 Claude Desktop / Cursor 等外部客户端）
-  - 新增 `--frontend` / `--frontend-port`：Vite dev server 子进程，生命周期由 finally 块管理
-  - daemon 模式改为双 fork（`os.fork()` + `os.setsid()`），不再依赖 subprocess.Popen
-  - `cmd_stop` SIGTERM 直达 uvicorn 进程，lifespan finally 自动清理所有组件
-  - FastAPI 挂载 `frontend/dist/` 静态文件到 `/ui/`（生产模式零子进程访问前端）
+  - 新增 `--mcp` / `--mcp-port` / `--frontend` / `--frontend-port` 参数
+  - daemon 模式改为双 fork（`os.fork()` + `os.setsid()`）
   - 测试 700 passed / 3 skipped
 
-### 架构变化
+### Stage 2 验证结果
 
 ```
-quantnodes serve (主进程 = uvicorn, port 19380)
-├── FastAPI + /ui/* → frontend/dist/ (零子进程)
-├── nanobot gateway (port 18090, asyncio.Task)
-│   ├── QuantTools (ToolRegistry, in-process)
-│   ├── AgentLoop / CronService / ChannelManager (asyncio.Tasks)
-├── [可选] npm run dev (port 5173, --frontend, subprocess)
-└── [可选] MCP server (port 8765, --mcp, subprocess)
+数据源: ClickHouse quote.stock_quote (2024-01-01 ~ 2024-06-30)
+LLM: MiniMax (via LLMGateway → nanobot → MiniMax API)
+
+Group            | N | Success | avg_IR  | best_IR
+G1_Handcrafted   | 10|       1 | -0.0330 | -0.0330
+G2_LlmOnly       |  5|       4 |  0.0067 |  0.0554
+G3_AlphaGpt      |  5|       2 |  0.0376 |  0.1082
+
+排名: G3 (0.0376) > G2 (0.0067) > G1 (-0.0330) ✅
 ```
+
+### 测试基线
+
+- 总计：2539 passed, 7 skipped
+- LLM Gateway：54 passed
+- OperatorLookupTool：20 passed
+- Stage 2 real：18 passed
+- Loop 3 向量化：73 passed
 
 ## [2.9.1] - 2026-06-24
 
