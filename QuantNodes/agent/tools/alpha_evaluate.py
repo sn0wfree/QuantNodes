@@ -310,13 +310,18 @@ class AlphaEvaluateTool(Tool):
                 "delta": "delta", "Delta": "delta",
                 "ts_delta": "delta",
                 "ts_decay_linear": "decay_linear",
-                "ts_corr": "corr",
-                "ts_cov": "cov",
             }
             if op in window_ops:
                 if len(parsed_args) != 2:
                     raise ValueError(f"{op} needs 2 args")
                 return RollingOp(parsed_args[0], int(float(parsed_args[1].value)), window_ops[op])
+
+            # ts_corr/ts_cov: 3 args (x, y, window) -> RollingOp on combined
+            if op in {"ts_corr", "ts_cov"}:
+                if len(parsed_args) != 3:
+                    raise ValueError(f"{op} needs 3 args (x, y, window)")
+                window = int(float(parsed_args[2].value))
+                return RollingOp(parsed_args[0], window, "corr" if op == "ts_corr" else "cov")
 
             cross_sectional_ops = {"abs": "abs", "log": "log", "sqrt": "sqrt", "sign": "sign"}
             if op in cross_sectional_ops:

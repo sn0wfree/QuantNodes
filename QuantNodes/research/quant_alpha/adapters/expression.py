@@ -274,7 +274,7 @@ def Winsorize(expr: Expression) -> UnaryOp:
 
 
 class RollingOp(Expression):
-    """滚动操作：mean, std, var, max, min, sum, skew, kurt, median, rank, delta
+    """滚动操作：mean, std, var, max, min, sum, skew, kurt, median, rank, delta, corr, cov
 
     Examples:
         RollingOp(Feature("close"), window=20, op="mean")
@@ -292,6 +292,8 @@ class RollingOp(Expression):
         "median": "ts_median",
         "rank": "ts_rank",
         "delta": "ts_delta",
+        "corr": "ts_corr",
+        "cov": "ts_cov",
     }
 
     def __init__(self, expr, window: int, op: str):
