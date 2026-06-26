@@ -169,18 +169,29 @@ def _validate_evaluator(obj: Dict[str, Any]) -> Optional[str]:
 
 
 def _validate_reflector(obj: Dict[str, Any]) -> Optional[str]:
-    """Reflector 输出 schema"""
-    if "formula_feedback" not in obj:
-        return "missing 'formula_feedback'"
-    feedback = obj["formula_feedback"]
-    if not isinstance(feedback, list):
-        return "'formula_feedback' must be list"
-    for i, fb in enumerate(feedback):
-        if "verdict" not in fb:
-            return f"formula_feedback[{i}] missing verdict"
-        if fb["verdict"] not in {"keep", "mutate", "drop", "merge"}:
-            return f"formula_feedback[{i}] bad verdict"
-    return None
+    """Reflector 输出 schema
+
+    兼容两种格式：
+    1. 标准格式：包含 formula_feedback 数组
+    2. 分析格式：包含 analysis 字段（formula_feedback 可选）
+    """
+    # 标准格式：必须有 formula_feedback
+    if "formula_feedback" in obj:
+        feedback = obj["formula_feedback"]
+        if not isinstance(feedback, list):
+            return "'formula_feedback' must be list"
+        for i, fb in enumerate(feedback):
+            if "verdict" not in fb:
+                return f"formula_feedback[{i}] missing verdict"
+            if fb["verdict"] not in {"keep", "mutate", "drop", "merge"}:
+                return f"formula_feedback[{i}] bad verdict"
+        return None
+
+    # 分析格式：有 analysis 即可（formula_feedback 可选）
+    if "analysis" in obj:
+        return None
+
+    return "missing 'formula_feedback' or 'analysis'"
 
 
 def _validate_critic(obj: Dict[str, Any]) -> Optional[str]:

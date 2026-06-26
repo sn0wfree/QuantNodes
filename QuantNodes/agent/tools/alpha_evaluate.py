@@ -254,6 +254,12 @@ class AlphaEvaluateTool(Tool):
             return Ref(Feature(m.group(1)), int(m.group(2)))
 
         # 简写字段名: "close", "vol" 等
+        # 特殊处理 "returns" → (close - delay(close, 1)) / delay(close, 1)
+        if formula == "returns":
+            close_feat = Feature("close")
+            delay1 = Ref(close_feat, 1)
+            return BinaryOp(BinaryOp(close_feat, delay1, "sub"), delay1, "div")
+
         if re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", formula):
             return Feature(formula)
 
@@ -288,8 +294,14 @@ class AlphaEvaluateTool(Tool):
                 "ts_zscore": "zscore",
                 "ts_rank": "rank",
                 "ts_median": "median", "median": "median",
+                "ts_skew": "skew", "skew": "skew",
+                "ts_kurt": "kurt", "kurt": "kurt",
+                "ts_var": "var", "var": "var",
                 "delta": "delta", "Delta": "delta",
                 "ts_delta": "delta",
+                "ts_decay_linear": "decay_linear",
+                "ts_corr": "corr",
+                "ts_cov": "cov",
             }
             if op in window_ops:
                 if len(parsed_args) != 2:
@@ -304,6 +316,50 @@ class AlphaEvaluateTool(Tool):
 
             if op in {"Abs", "Log", "Sqrt", "Sign"}:
                 return UnaryOp(op.lower(), parsed_args[0])
+
+            # rank (cross-sectional) - treat as unary "rank" op
+            if op in {"rank", "Rank"}:
+                if len(parsed_args) != 1:
+                    raise ValueError(f"{op} needs 1 arg")
+                return UnaryOp("rank", parsed_args[0])
+
+            # zscore (cross-sectional)
+            if op in {"zscore", "Zscore"}:
+                if len(parsed_args) != 1:
+                    raise ValueError(f"{op} needs 1 arg")
+                return UnaryOp("zscore", parsed_args[0])
+
+            # winsorize
+            if op in {"winsorize", "Winsorize"}:
+                if len(parsed_args) != 1:
+                    raise ValueError(f"{op} needs 1 arg")
+                return UnaryOp("winsorize", parsed_args[0])
+
+            # signedpower
+            if op in {"signedpower", "SignedPower"}:
+                if len(parsed_args) != 2:
+                    raise ValueError(f"{op} needs 2 args")
+                return BinaryOp(parsed_args[0], parsed_args[1], "signedpower")
+
+            # IndNeutralize - treat as unary passthrough (no industry data)
+            if op in {"IndNeutralize", "indneutralize"}:
+                if len(parsed_args) != 1:
+                    raise ValueError(f"{op} needs 1 arg")
+                return parsed_args[0]
+
+            # returns shorthand: returns = (close - delay(close, 1)) / delay(close, 1)
+            if op in {"returns", "Returns"}:
+                if len(parsed_args) != 1:
+                    raise ValueError(f"{op} needs 1 arg")
+                feat = parsed_args[0]
+                delay1 = Ref(feat, 1)
+                return BinaryOp(BinaryOp(feat, delay1, "sub"), delay1, "div")
+
+            # delay(x, n) → Ref(x, n)
+            if op in {"delay", "Delay"}:
+                if len(parsed_args) != 2:
+                    raise ValueError(f"{op} needs 2 args")
+                return Ref(parsed_args[0], int(float(parsed_args[1].value)))
 
         raise ValueError(f"Cannot parse formula: {formula!r}")
 

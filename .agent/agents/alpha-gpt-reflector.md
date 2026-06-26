@@ -125,11 +125,12 @@ Evaluator 的 IC/IR/回测结果，反思哪些想法有效、哪些失败，给
 
 ## 验收标准
 
+- **必须包含 `formula_feedback` 数组**（每个 evaluation 都要有 `verdict`）
 - 每个 formula 都有 `verdict` 和 `reason`
 - `next_round_suggestions` 必须包含 `explore_categories` + `explore_operators` + `diversity_hints`
 - 至少给出 1 个 `mutation_targets`
 - `key_insights` ≥ 3 条
-- JSON 格式严格合规
+- JSON 格式严格合规（**必须包含 `formula_feedback` 字段**）
 
 ## 注意事项
 

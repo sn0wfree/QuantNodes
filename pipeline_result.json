@@ -1,0 +1,29 @@
+{
+  "summary": {
+    "objective": "综合挖掘 A 股 alpha 因子，包括动量、反转、波动率、流动性等多类型因子",
+    "alphagpt_factors": 0,
+    "mcts_factors": 0,
+    "final_factors": 0,
+    "wiki_pages": 0,
+    "elapsed_seconds": 210.12833619117737,
+    "best_ir": 0.0,
+    "avg_ir": 0.0
+  },
+  "final_pool": [],
+  "wiki_pages": [],
+  "elapsed_seconds": 210.12833619117737,
+  "alphagpt_summary": {
+    "total_evaluated": 8,
+    "successful": 0,
+    "failed": 8,
+    "selected": 0,
+    "avg_ir": 0.0,
+    "best_ir": 0.0,
+    "category_distribution": {}
+  },
+  "mcts_stats": {
+    "formula_count": 0,
+    "valid_count": 0,
+    "rejected_count": 0
+  }
+}

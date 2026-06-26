@@ -132,7 +132,7 @@ class Ref(Expression):
 
 
 class BinaryOp(Expression):
-    """二元操作：add, sub, mul, div, gt, lt"""
+    """二元操作：add, sub, mul, div, gt, lt, signedpower"""
     _OP_MAP = {
         "add": "+",
         "sub": "-",
@@ -140,6 +140,7 @@ class BinaryOp(Expression):
         "div": "/",
         "gt": ">",
         "lt": "<",
+        "signedpower": "**",
     }
 
     def __init__(self, left, right, op: str):
@@ -191,13 +192,16 @@ def Less(left, right) -> BinaryOp:
 
 
 class UnaryOp(Expression):
-    """一元操作：abs, neg, log, sign, sqrt"""
+    """一元操作：abs, neg, log, sign, sqrt, rank, zscore, winsorize"""
     _OP_MAP = {
         "abs": "abs",
         "neg": "-",  # 一元负号特殊处理
         "log": "log",
         "sign": "sign",
         "sqrt": "sqrt",
+        "rank": "rank",
+        "zscore": "zscore",
+        "winsorize": "winsorize",
     }
 
     def __init__(self, expr, op: str):
@@ -238,6 +242,30 @@ def Sign(expr: Expression) -> UnaryOp:
 
 def Sqrt(expr: Expression) -> UnaryOp:
     return UnaryOp(expr, "sqrt")
+
+
+def Rank(expr: Expression) -> UnaryOp:
+    return UnaryOp(expr, "rank")
+
+
+def Zscore(expr: Expression) -> UnaryOp:
+    return UnaryOp(expr, "zscore")
+
+
+def Winsorize(expr: Expression) -> UnaryOp:
+    return UnaryOp(expr, "winsorize")
+
+
+def Rank(expr: Expression) -> UnaryOp:
+    return UnaryOp(expr, "rank")
+
+
+def Zscore(expr: Expression) -> UnaryOp:
+    return UnaryOp(expr, "zscore")
+
+
+def Winsorize(expr: Expression) -> UnaryOp:
+    return UnaryOp(expr, "winsorize")
 
 
 # ==============================================================================

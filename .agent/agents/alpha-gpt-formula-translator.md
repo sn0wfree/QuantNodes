@@ -90,9 +90,13 @@
 - `delta` (= `close - close.shift(N)`)
 
 **复合（来自 M3 few-shot 模板）**：
-- `returns` = `close / close.shift(1) - 1`
+- `returns` = `(close - close.shift(1)) / close.shift(1)` （日收益率）
 - `intra_day_return` = `(close - open) / open`
 - `volume_ratio` = `vol / ts_mean(vol, 20)`
+
+**数据列**：`code`, `open`, `high`, `low`, `close`, `vol`, `amount`, `date`
+- `returns` 是 `close` 的日收益率（自动计算）
+- 其他列可直接使用
 
 ## Few-shot 示例（M3 alpha101_design）
 
