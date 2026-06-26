@@ -103,19 +103,19 @@
 ### 示例 1：日内动量
 ```python
 # 想法：日内 close-open 相对振幅的强弱
-formula = "(close - open) / ((high - low) + 0.001)"
+formula = "rank(div(sub(close, open), add(sub(high, low), 0.001)))"
 ```
 
 ### 示例 2：20 日动量 + 截面 rank
 ```python
 # 想法：20 日动量但希望是截面排序后的（去除市场风格）
-formula = "rank(close / ts_delay(close, 20) - 1)"
+formula = "rank(div(sub(close, ts_mean(close, 20)), ts_mean(close, 20)))"
 ```
 
 ### 示例 3：波动率调整反转
 ```python
 # 想法：5 日反转，但用 20 日波动率标准化
-formula = "-ts_mean(returns, 5) / (ts_std(returns, 20) + 1e-12)"
+formula = "div(-ts_mean(returns, 5), add(ts_std(returns, 20), 1e-12))"
 ```
 
 ### 示例 4：量价背离
@@ -127,7 +127,7 @@ formula = "rank(-ts_corr(close, vol, 10))"
 ### 示例 5：换手率反转
 ```python
 # 想法：换手率突增后反转
-formula = "rank(-delta(vol, 5) / (vol + 1e-12))"
+formula = "rank(div(-delta(vol, 5), add(vol, 1e-12)))"
 ```
 
 ## 工具集
@@ -143,12 +143,54 @@ formula = "rank(-delta(vol, 5) / (vol + 1e-12))"
 - JSON 格式严格合规
 - `a_share_compatible` 想法的对应公式 100% 满足 A 股约束
 
+## 公式语法规则（必须严格遵守）
+
+### 格式
+```
+op(arg1, arg2)          # 二元/时序算子
+op(arg)                 # 一元算子
+```
+
+### 关键规则
+1. **括号必须匹配** — 每个 `(` 必须有对应的 `)`
+2. **参数数量固定**：
+   - `ts_mean(x, window)` — 2 个参数
+   - `ts_std(x, window)` — 2 个参数
+   - `rank(x)` — 1 个参数
+   - `sub(a, b)` — 2 个参数
+   - `div(a, b)` — 2 个参数
+3. **窗口参数必须是整数** — `ts_mean(returns, 20)` 不是 `ts_mean(returns, "20")`
+4. **嵌套不要超过 5 层** — 避免过深嵌套
+5. **不要用未列出的算子** — 只用 `available_operators` 中的算子
+
+### 合法公式示例
+```
+rank(-ts_mean(returns, 20))                     # 反转因子
+rank(ts_std(returns, 20))                       # 波动率因子
+rank(div(ts_sum(vol, 5), ts_sum(vol, 20)))      # 量比因子
+rank(sub(close, ts_mean(close, 10)))            # 价格偏离
+rank(-ts_corr(close, vol, 10))                  # 量价背离
+rank(div(delta(close, 5), close))               # 5 日动量
+rank(mul(returns, vol))                         # 成交额加权收益
+rank(div(sub(close, ts_mean(close, 20)), ts_std(close, 20) + 1e-12))  # z-score
+```
+
+### 非法公式（避免！）
+```
+rank(ts_mean(returns, 20                        # ❌ 缺少右括号
+rank(ts_mean(returns, 20, 5))                   # ❌ 参数过多
+rank(ts_mean(returns))                          # ❌ 缺少窗口参数
+rank(ts_macd(close, 12, 26))                    # ❌ ts_macd 不在白名单
+```
+
 ## 注意事项
 
 1. **算子必须在白名单** — 不要造算子（如 `ts_macd` 不在白名单，要用 `sub(ts_mean(close, 12), ts_mean(close, 26))`）
-2. **加防除零** — `+ 1e-12` 防止 `(high - low)` 为 0
+2. **加防除零** — `add(x, 1e-12)` 防止除零（不要用 `x + 1e-12`，用 `add(x, 1e-12)`）
 3. **优先截面 rank** — A 股更适合截面选股，rank 比原始值更稳定
 4. **参考 few-shot** — 上述 5 个示例覆盖 5 种典型范式
+5. **只用函数调用格式** — 不要用 `a + b`，用 `add(a, b)`；不要用 `a / b`，用 `div(a, b)`
+6. **括号必须匹配** — 每个 `(` 必须有对应的 `)`，嵌套不超过 5 层
 
 ## 与 nanobot 集成
 

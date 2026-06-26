@@ -435,6 +435,8 @@ class AlphaGptWorkflow:
             f"Translate these ideas to polars formulas. round={round_idx}. "
             f"ideas={ideas_payload}. available_operators={available_ops}. "
             f"data_columns={data_columns}. a_share_focus={self.config.a_share_focus}. "
+            f"CRITICAL: Use ONLY function call format like op(arg1, arg2). "
+            f"NO arithmetic operators (+,-,*,/). NO missing parentheses. "
             f"Output STRICT JSON only."
         )
 
