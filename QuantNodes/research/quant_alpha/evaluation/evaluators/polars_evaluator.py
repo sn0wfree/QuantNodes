@@ -76,25 +76,21 @@ class PolarsAlphaCalculatorEvaluator(Evaluator):
         # 计算前瞻收益
         forward_return_series = {}
         for offset in fr:
-            col_name = f"forward_return_{offset}d"
-            if col_name in data.columns:
-                forward_return_series[offset] = data[col_name].to_list()
-            else:
-                # 计算前瞻收益: close(t+offset) / close(t) - 1
-                sorted_data = data.sort([code_column, date_column])
-                fwd_returns = [None] * len(sorted_data)
-                
-                # 按股票分组计算
-                for code in sorted_data[code_column].unique().sort():
-                    mask = sorted_data[code_column] == code
-                    stock_indices = [i for i, x in enumerate(sorted_data[code_column].to_list()) if x == code]
-                    stock_closes = sorted_data.filter(mask)['close'].to_list()
-                    
-                    for j, idx in enumerate(stock_indices):
-                        if j + offset < len(stock_closes):
-                            fwd_returns[idx] = (stock_closes[j + offset] / stock_closes[j]) - 1.0
-                
-                forward_return_series[offset] = fwd_returns
+                    col_name = f"forward_return_{offset}d"
+                    if col_name in data.columns:
+                        forward_return_series[offset] = data[col_name]
+                    else:
+                        # 计算前瞻收益: close(t+offset) / close(t) - 1
+                        sorted_data = data.sort([code_column, date_column])
+                        fwd = sorted_data.with_columns(
+                            pl.col("close")
+                            .shift(-offset)
+                            .over(code_column)
+                            .alias("_fwd_close")
+                        )
+                        forward_return_series[offset] = (
+                            (fwd["_fwd_close"] / sorted_data["close"]) - 1.0
+                        )
 
         out: List[FactorMetrics] = []
         for factor in factors:
@@ -115,45 +111,49 @@ class PolarsAlphaCalculatorEvaluator(Evaluator):
                     ))
                     continue
 
-                # 计算 IC
+                # 计算 IC (向量化 per-date)
                 ic_results = {}
                 for offset in fr:
-                    fwd_ret = forward_return_series.get(offset)
-                    if fwd_ret is None:
+                    fwd_ret = forward_return_series[offset]
+                    
+                    # 构造临时 DataFrame 计算 per-date IC
+                    tmp = pl.DataFrame({
+                        "_date": data[date_column],
+                        "_factor": factor_values,
+                        "_fwd": fwd_ret,
+                    }).drop_nulls()
+
+                    if len(tmp) == 0:
                         continue
 
-                    # per-date IC
-                    dates = data[date_column].unique().sort()
-                    daily_ics = []
-                    for d in dates:
-                        mask = data[date_column] == d
-                        # 获取当前日期的因子值和前瞻收益
-                        fv = factor_values.filter(mask).to_list()
-                        # fwd_ret 是 list，用索引获取对应日期的值
-                        mask_indices = [i for i, x in enumerate(data[date_column].to_list()) if x == d]
-                        rv = [fwd_ret[i] for i in mask_indices if i < len(fwd_ret)]
+                    # per-date corr (groupby)
+                    try:
+                        daily_corr = (
+                            tmp
+                            .group_by("_date")
+                            .agg([
+                                pl.corr("_factor", "_fwd").alias("_corr"),
+                                pl.len().alias("_n"),
+                            ])
+                            .filter(pl.col("_n") >= 3)
+                            .drop_nulls()
+                        )
 
-                        # 过滤 NaN
-                        valid = [(f, r) for f, r in zip(fv, rv)
-                                 if f is not None and r is not None
-                                 and not (isinstance(f, float) and np.isnan(f))
-                                 and not (isinstance(r, float) and np.isnan(r))]
+                        if len(daily_corr) == 0:
+                            continue
 
-                        if len(valid) >= 3:
-                            fv_valid, rv_valid = zip(*valid)
-                            corr = np.corrcoef(fv_valid, rv_valid)[0, 1]
-                            if not np.isnan(corr):
-                                daily_ics.append(corr)
-
-                    if daily_ics:
-                        ic_mean = float(np.mean(daily_ics))
-                        ic_std = float(np.std(daily_ics))
+                        ics = daily_corr["_corr"].to_list()
+                        ic_mean = float(np.mean(ics))
+                        ic_std = float(np.std(ics))
                         ir = ic_mean / ic_std if ic_std > 1e-12 else 0.0
                         ic_results[offset] = {
                             "ic_mean": ic_mean,
                             "ic_std": ic_std,
                             "ir": ir,
                         }
+                    except Exception as e:
+                        logger.debug("IC calc failed for offset %d: %s", offset, e)
+                        continue
 
                 if ic_results:
                     primary = ic_results[fr[0]]
