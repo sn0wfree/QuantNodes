@@ -319,29 +319,27 @@ class AlphaGptWorkflow:
         self.state.critic_output = data
 
     def _select_final_pool(self) -> List[FinalFormulaRecord]:
-        """从 critic_output 或 fallback 选 top-K"""
-        critic_pool = (self.state.critic_output or {}).get("final_pool") or []
-        if critic_pool:
-            pool_data = critic_pool[: self.config.top_k]
-            final_pool = [FinalFormulaRecord.from_dict(p, i + 1) for i, p in enumerate(pool_data)]
-        else:
-            # Fallback: 直接从 evaluations 排序
-            successful = [e for e in self.state.all_evaluations if e.status == "success"]
-            successful.sort(key=lambda e: e.ir, reverse=True)
-            top = successful[: self.config.top_k]
-            final_pool = [
-                FinalFormulaRecord(
-                    rank=i + 1,
-                    formula_id=e.formula_id,
-                    formula=e.formula,
-                    ic_mean=e.ic_mean,
-                    ir=e.ir,
-                    round_discovered=int(e.formula_id.split("-")[1]) if "-" in e.formula_id else 0,
-                    selection_reason=f"IR={e.ir:.3f} (auto-selected by fallback)",
-                    risk_notes=[],
-                )
-                for i, e in enumerate(top)
-            ]
+        """从 evaluations 中选 top-K（代码方式，不依赖 critic LLM）
+
+        直接从所有成功评估中按 IR 排序选 top-K，然后做互信息去重。
+        """
+        # 直接从 evaluations 排序（不依赖 critic LLM）
+        successful = [e for e in self.state.all_evaluations if e.status == "success"]
+        successful.sort(key=lambda e: abs(e.ir), reverse=True)
+        top = successful[: self.config.top_k]
+        final_pool = [
+            FinalFormulaRecord(
+                rank=i + 1,
+                formula_id=e.formula_id,
+                formula=e.formula,
+                ic_mean=e.ic_mean,
+                ir=e.ir,
+                round_discovered=int(e.formula_id.split("-")[1]) if "-" in e.formula_id else 0,
+                selection_reason=f"IR={e.ir:.3f} (auto-selected by code)",
+                risk_notes=[],
+            )
+            for i, e in enumerate(top)
+        ]
 
         # 互信息去重
         if self.config.max_mutual_ic_threshold < 1.0 and self.data is not None:
