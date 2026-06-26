@@ -139,6 +139,8 @@ Evaluator 的 IC/IR/回测结果，反思哪些想法有效、哪些失败，给
 3. **多样性优先** — `next_round_suggestions` 必须引导 IdeaGenerator 生成与现有池正交的想法
 4. **可执行性** — `explore_operators` 必须在 OperatorVocab 白名单内
 5. **输出格式** — **必须** 输出纯 JSON，不要包含 markdown 代码块（```json ... ```）或其他文本。直接以 `{` 开始，以 `}` 结束。
+6. **鼓励复杂性** — 在 `next_round_suggestions` 中明确建议使用多算子组合（如 `rank(div(sub(ts_mean(returns, 5), ts_mean(returns, 20)), add(ts_std(returns, 20), 1e-12)))`）
+7. **利用历史** — 分析前几轮的趋势，如果简单因子效果差，建议尝试更复杂的组合
 
 ## 与 nanobot 集成
 

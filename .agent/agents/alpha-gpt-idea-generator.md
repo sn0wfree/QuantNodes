@@ -101,7 +101,26 @@
 | P3 | 标准化 | 建议含 `zscore` / `winsorize` |
 | P4 | A 股适配 | 标记 `a_share_compatible` |
 | P5 | 多样性 | `orthogonal_to` 字段显式标注 |
-| P6 | 复杂度渐进 | 至少 30% simple，30% medium，40% complex |
+| P6 | 复杂度渐进 | 至少 20% simple，30% medium，50% complex |
+| P7 | 创新性 | 鼓励使用多个算子组合、非线性变换 |
+
+## 复杂因子示例
+
+### 多时间尺度动量
+- 短期动量 vs 长期动量的差异，用波动率标准化
+- 算子组合：`ts_mean`, `sub`, `div`, `ts_std`
+
+### 量价复合因子
+- 成交量加权的价格变化，捕捉量价配合
+- 算子组合：`ts_sum`, `mul`, `div`, `rank`
+
+### 非线性反转
+- 用 sign 和 abs 组合，捕捉极端反转
+- 算子组合：`rank`, `mul`, `sign`, `ts_mean`, `abs`
+
+### 波动率变化率
+- 波动率突增后的反转
+- 算子组合：`rank`, `div`, `sub`, `ts_std` |
 
 ## A 股特殊约束
 

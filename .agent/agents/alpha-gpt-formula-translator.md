@@ -98,36 +98,48 @@
 - `returns` 是 `close` 的日收益率（自动计算）
 - 其他列可直接使用
 
-## Few-shot 示例（M3 alpha101_design）
+## Few-shot 示例（复杂因子）
 
-### 示例 1：日内动量
+### 示例 1：日内动量（简单）
 ```python
 # 想法：日内 close-open 相对振幅的强弱
 formula = "rank(div(sub(close, open), add(sub(high, low), 0.001)))"
 ```
 
-### 示例 2：20 日动量 + 截面 rank
-```python
-# 想法：20 日动量但希望是截面排序后的（去除市场风格）
-formula = "rank(div(sub(close, ts_mean(close, 20)), ts_mean(close, 20)))"
-```
-
-### 示例 3：波动率调整反转
+### 示例 2：波动率调整反转（中等）
 ```python
 # 想法：5 日反转，但用 20 日波动率标准化
 formula = "div(-ts_mean(returns, 5), add(ts_std(returns, 20), 1e-12))"
 ```
 
-### 示例 4：量价背离
+### 示例 3：量价背离（中等）
 ```python
 # 想法：价跌量缩是真实反转信号
 formula = "rank(-ts_corr(close, vol, 10))"
 ```
 
-### 示例 5：换手率反转
+### 示例 4：多时间尺度动量（复杂）
 ```python
-# 想法：换手率突增后反转
-formula = "rank(div(-delta(vol, 5), add(vol, 1e-12)))"
+# 想法：短期动量 vs 长期动量的差异，用波动率标准化
+formula = "rank(div(sub(ts_mean(returns, 5), ts_mean(returns, 20)), add(ts_std(returns, 20), 1e-12)))"
+```
+
+### 示例 5：量价复合因子（复杂）
+```python
+# 想法：成交量加权的价格变化，捕捉量价配合
+formula = "rank(div(ts_sum(mul(returns, vol), 10), add(ts_sum(vol, 10), 1e-12)))"
+```
+
+### 示例 6：非线性反转（复杂）
+```python
+# 想法：用 sign 和 abs 组合，捕捉极端反转
+formula = "rank(mul(sign(-returns), ts_mean(abs(returns), 10)))"
+```
+
+### 示例 7：波动率变化率（复杂）
+```python
+# 想法：波动率突增后的反转
+formula = "rank(div(sub(ts_std(returns, 5), ts_std(returns, 20)), add(ts_std(returns, 20), 1e-12)))"
 ```
 
 ## 工具集
