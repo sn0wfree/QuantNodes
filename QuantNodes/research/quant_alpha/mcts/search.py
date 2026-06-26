@@ -230,13 +230,25 @@ class MCTSSearch:
         )
 
     def _select(self, root: MCTSNode) -> MCTSNode:
-        """UCB1 选择最有潜力的叶子节点"""
+        """UCB1 选择最有潜力的叶子节点
+
+        优化：优先选择高 IC/IR 的节点，同时保持探索性。
+        """
         node = root
         while node.children:
             # 选择 UCB1 最大的子节点
             unvisited = [c for c in node.children if c.visits == 0]
             if unvisited:
-                return self.rng.choice(unvisited)
+                # 优先选择高 IC/IR 的未访问节点
+                def _score(n: MCTSNode) -> float:
+                    ic_ir = n.metadata.get("ir", 0.0)
+                    return abs(ic_ir) if ic_ir != 0.0 else 0.0
+
+                # 50% 概率选择高 IC/IR，50% 概率随机
+                if self.rng.random() < 0.5:
+                    return max(unvisited, key=_score)
+                else:
+                    return self.rng.choice(unvisited)
             # 全已访问：选 UCB1 最大
             best = max(node.children, key=lambda c: c.ucb1(self.config.exploration_weight))
             node = best
@@ -249,6 +261,8 @@ class MCTSSearch:
         available_cols: List[str],
     ) -> Optional[MCTSNode]:
         """扩展节点：生成子公式
+
+        优化：优先使用高 IC/IR 的节点作为父节点，优先选择有效算子。
 
         Returns:
             新 MCTSNode，None = 公式无效或已存在
@@ -271,8 +285,12 @@ class MCTSSearch:
 
         # 选第二输入（仅二元算子）
         if op.max_inputs == 2:
-            # 选另一列作为第二输入
-            other_col = self.rng.choice(available_cols)
+            # 优先选择与当前公式不同的列
+            other_cols = [c for c in available_cols if c not in node.formula]
+            if other_cols:
+                other_col = self.rng.choice(other_cols)
+            else:
+                other_col = self.rng.choice(available_cols)
             try:
                 new_formula = op.template.replace(
                     "{f2}", other_col,
@@ -414,19 +432,28 @@ class MCTSSearch:
         return {"ic_mean": 0.0, "ic_std": 0.0, "ir": 0.0}
 
     def _backpropagate(self, node: MCTSNode) -> None:
-        """回传评分：更新所有祖先节点的 overall_score（取子节点最大值）"""
+        """回传评分：更新所有祖先节点的 overall_score
+
+        优化：使用加权平均而非最大值，考虑 IC/IR 信息。
+        """
         current = node
         while current is not None and current.parent_id is not None:
             parent = self._find_parent(current)
             if parent is None:
                 break
-            # 取所有子节点中最大 overall_score
+            # 使用加权平均：IC/IR 越高，权重越大
             if parent.children:
+                def _weighted_score(n: MCTSNode) -> float:
+                    base = n.overall_score
+                    ir = abs(n.metadata.get("ir", 0.0))
+                    # IC/IR 越高，权重越大
+                    return base * (1.0 + ir)
+
                 best_child = max(
                     parent.children,
-                    key=lambda c: c.overall_score,
+                    key=_weighted_score,
                 )
-                parent.overall_score = best_child.overall_score
+                parent.overall_score = _weighted_score(best_child)
             current = parent
 
     def _find_parent(self, node: MCTSNode) -> Optional[MCTSNode]:
