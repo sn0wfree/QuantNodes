@@ -1,6 +1,6 @@
 # 多智能体 WorkflowTool 设计文档
 
-> 状态: **设计阶段**  
+> 状态: **评审通过，准备实施**  
 > 关联: [13-Agent架构设计.md](13-Agent架构设计.md), [15-可选依赖安装指南.md](15-可选依赖安装指南.md)  
 > 上游依赖: `nanobot-ai>=0.2.1`（SubagentManager, Tool 基类, AgentLoop）
 
@@ -78,24 +78,85 @@ QuantNodes 已有两种多 agent 模式：
 | Hook/Streaming | 无 | 7 个生命周期钩子 |
 | 用途 | pipeline 步骤 | 独立专家 |
 
-### 2.3 数据流
+### 2.3 数据流（声明式 + 多轮迭代）
 
 ```
-WorkflowTool.execute(workflow="alpha-gpt", config={objective: "momentum"})
+WorkflowTool.execute(workflow="alpha-gpt", config={objective: "momentum", iterations: 5})
   │
   ├─ 1. 从 WorkflowRegistry 拿到 WorkflowSpec
-  ├─ 2. 确定 LLM provider (spec 覆盖 > 主 agent provider)
-  ├─ 3. 构造 State 对象
-  ├─ 4. 逐步执行:
-  │     for step_spec in spec.steps:
-  │       step = StepAgent(step_spec, llm_client)
-  │       records = step.run(**config, state=state)  ← 同步, to_thread 包装
-  │       state.update(step_spec.output_key, records)
+  ├─ 2. 确定 LLM provider (v1: 始终用主 agent provider)
+  ├─ 3. state = spec.state_factory()
   │
-  ├─ 5. result_builder(state, config) → 完整结果 dict
-  ├─ 6. 存 JSON 到 .agent/results/alpha-gpt-{timestamp}.json
-  └─ 7. 返回摘要字符串给 LLM
+  ├─ 4. 多轮循环:
+  │     for round_idx in 1..iterations:
+  │       prev_output = None
+  │       for step_spec in spec.steps:
+  │         if step_spec.skip_on_last and is_last_round:
+  │           continue                          ← reflector 最后一轮跳过
+  │         step = StepAgent(step_spec, client)
+  │         records = step.run(                 ← 同步, to_thread 包装
+  │           state=state,                      ← prompt_builder 从 state 读累积数据
+  │           round_idx=round_idx,              ← 当前轮次
+  │           prev_output=prev_output,          ← 上一步输出 (轮内链式传递)
+  │           **config,
+  │         )
+  │         _update_state(state, step_spec, records)  ← append 或 set
+  │         prev_output = records               ← 传给下一步
+  │
+  ├─ 5. 最终步骤:
+  │     for step_spec in spec.final_steps:      ← critic 读全量 evals + reflects
+  │       step = StepAgent(step_spec, client)
+  │       records = step.run(state=state, **config)
+  │       _update_state(state, step_spec, records)
+  │
+  ├─ 6. result = spec.result_builder(state, config)
+  ├─ 7. 存 JSON 到 .agent/results/alpha-gpt-{timestamp}.json
+  └─ 8. 返回摘要字符串给 LLM
 ```
+
+### 2.4 轮内数据流示意
+
+```
+Round 1:
+  IDEA_GEN (prev_output=None, state=empty)
+    → ideas_1, state.all_ideas = [ideas_1]
+    → prev_output = ideas_1
+
+  FORMULA_TRANS (prev_output=ideas_1, state=...)
+    → formulas_1, state.all_formulas = [formulas_1]
+    → prev_output = formulas_1
+
+  EVALUATOR (prev_output=formulas_1, state=...)
+    → evals_1, state.all_evaluations = [evals_1]
+    → prev_output = evals_1
+
+  REFLECTOR (prev_output=evals_1, state=...)  ← skip_on_last=True, 最后一轮跳过
+    → reflect_1, state.all_reflections = [reflect_1]
+
+Round 2:
+  IDEA_GEN (prev_output=None, state=all_ideas+all_reflections)
+    → ideas_2, state.all_ideas = [ideas_1, ideas_2]
+    → prompt_builder 从 state.all_reflections[-1] 读上轮建议
+
+  ... 同上 ...
+
+Round 5 (最后一轮):
+  IDEA_GEN → FORMULA_TRANS → EVALUATOR  ← 正常执行
+  REFLECTOR ← skip_on_last=True, 跳过
+
+Final:
+  CRITIC (state=全量 evals+reflects)
+    → state.critic_output = final_pool
+```
+
+### 2.5 prompt_builder 数据来源
+
+| prompt_builder | 数据来源 | 获取方式 |
+|---------------|----------|----------|
+| `_build_idea_prompt` | 上轮 reflection | `state.all_reflections[-1]` (通过 `state` 参数) |
+| `_build_formula_prompt` | 本轮 ideas | `prev_output` 参数 |
+| `_build_reflector_prompt` | 本轮 evaluations | `prev_output` 参数 |
+| `_build_critic_prompt` | 全量 evals+reflects | `state.all_evaluations` + `state.all_reflections` |
 
 ---
 
@@ -124,12 +185,15 @@ QuantNodes/agent/workflows/
 class StepAgentSpec:
     """单个 pipeline 步骤的规格定义。"""
     agent_id: str                                    # "alpha-gpt-idea-generator"
-    prompt_builder: Callable[..., str]               # (**ctx) -> prompt str
-    output_parser: Callable[[str], ParseResult]      # (raw) -> ParseResult
-    output_key: str                                  # "ideas", "formulas", ...
-    record_factory: Callable[[dict], Any]            # (dict) -> Record
+    prompt_builder: Callable[..., str] | None        # (**ctx) -> prompt str, evaluator 为 None
+    output_parser: Callable[[str], ParseResult] | None  # (raw) -> ParseResult, evaluator 为 None
+    output_key: str                                  # JSON 输出 key: "ideas", "formulas", ...
+    record_factory: Callable[[dict], Any] | None = None  # dict -> Record, evaluator 为 None
+    state_output: str | None = None                  # 写入 state 的字段名: "all_ideas"
+    state_input: str | None = None                   # 从 state 读取的字段名 (供 prompt_builder)
     tool_executor: Callable[..., list[Any]] | None = None  # evaluator 用
     max_retries: int = 2                             # 解析失败重试次数
+    skip_on_last: bool = False                       # 最后一轮跳过 (reflector 用)
 ```
 
 ### 4.2 StepAgent
@@ -140,10 +204,31 @@ class StepAgent:
 
     def __init__(self, spec: StepAgentSpec, llm_client=None): ...
 
-    def run(self, **context) -> list[Any]:
-        """执行: prompt → LLM → parse(带重试+修复) → records"""
+    def run(self, state=None, round_idx=None, prev_output=None, **context) -> list[Any]:
+        """执行: prompt → LLM → parse(带重试+修复) → records
+
+        Args:
+            state: workflow 状态对象, prompt_builder 可从中读取累积数据
+            round_idx: 当前轮次 (多轮 workflow 用)
+            prev_output: 上一步的输出 (轮内链式传递)
+            **context: 其他参数 (config 等)
+        """
+        # 从 state 读取 state_input
+        if self.spec.state_input and state is not None:
+            context[self.spec.state_input] = getattr(state, self.spec.state_input)
+
+        # 轮内上一步输出
+        if prev_output is not None:
+            context["prev_output"] = prev_output
+
+        context["state"] = state
+        context["round_idx"] = round_idx
+
+        # tool_executor 路径 (evaluator)
         if self.spec.tool_executor:
             return self.spec.tool_executor(**context)
+
+        # LLM 路径 (带重试)
         result = self._run_with_retry(**context)
         if not result.ok:
             return []
@@ -179,11 +264,13 @@ class WorkflowSpec:
     """一个完整 workflow 的规格定义。"""
     name: str                                        # "alpha-gpt"
     description: str                                 # 给 LLM 看的描述
-    steps: list[StepAgentSpec]                       # 有序步骤列表
+    steps: list[StepAgentSpec]                       # 每轮执行的步骤
     state_factory: Callable[[], Any]                 # () -> State 对象
     result_builder: Callable[[Any, dict], dict]      # (state, config) -> result dict
-    provider: str | None = None                      # 可选: 覆盖 LLM provider
-    model: str | None = None                         # 可选: 覆盖 model
+    iterations: int = 1                              # 轮数 (1 = 线性)
+    final_steps: list[StepAgentSpec] = []            # 最终步骤 (critic)
+    provider: str | None = None                      # v2 扩展
+    model: str | None = None                         # v2 扩展
 ```
 
 ### 4.4 WorkflowRegistry
@@ -212,9 +299,50 @@ class WorkflowTool(Tool):
     def __init__(self, llm_client, model=None, results_dir=None): ...
 
     async def execute(self, workflow: str, config: dict | None = None, **kwargs) -> str:
-        """1. 查 registry → 2. 确定 provider → 3. 构造 state
-           → 4. 逐步 StepAgent.run() → 5. 存 JSON → 6. 返回摘要"""
+        spec = REGISTRY.get(workflow)
+        state = spec.state_factory()
+        iterations = config.get("iterations", spec.iterations)
+        client = self._llm_client
+
+        # 多轮循环
+        for round_idx in range(1, iterations + 1):
+            is_last = (round_idx == iterations)
+            prev_output = None
+
+            for step_spec in spec.steps:
+                if step_spec.skip_on_last and is_last:
+                    continue
+                step = StepAgent(step_spec, client)
+                records = await asyncio.to_thread(
+                    step.run,
+                    state=state, round_idx=round_idx,
+                    prev_output=prev_output, **config,
+                )
+                _update_state(state, step_spec, records)
+                prev_output = records
+
+        # 最终步骤
+        for step_spec in spec.final_steps:
+            step = StepAgent(step_spec, client)
+            records = await asyncio.to_thread(
+                step.run, state=state, **config,
+            )
+            _update_state(state, step_spec, records)
+
+        # 构建结果
+        result = spec.result_builder(state, config)
+        # 存 JSON + 返回摘要
         ...
+
+def _update_state(state, step_spec, records):
+    """根据 step_spec.state_output 更新 state。"""
+    if not step_spec.state_output:
+        return
+    target = getattr(state, step_spec.state_output)
+    if isinstance(target, list):
+        target.extend(records)
+    else:
+        setattr(state, step_spec.state_output, records)
 ```
 
 ---
@@ -260,7 +388,8 @@ LLM 返回: "Here are some ideas: {ideas: [...]}"  ← 解析失败
 ### 6.1 优先级
 
 ```
-workflow 配置的 provider/model  →  主 agent 的 provider/model  →  抛错
+v1: 始终用主 agent 的 provider/model
+v2: workflow 配置的 provider/model → 主 agent 的 provider/model
 ```
 
 ### 6.2 实现
@@ -272,9 +401,8 @@ wt = WorkflowTool(
     model=getattr(self._loop, 'model', None),
 )
 
-# execute 时按 spec 覆盖
-client = spec.provider or self._llm_client
-model = spec.model or self._model
+# v1: execute 时始终用 self._llm_client
+# v2: execute 时按 spec 覆盖 (spec.provider or self._llm_client)
 ```
 
 ### 6.3 动态更新
@@ -318,13 +446,79 @@ Provider 在构造时确定，**不支持运行时动态更新**。切换模型�
 
 ### 8.1 5 个 StepAgentSpec
 
-| 步骤 | agent_id | LLM? | output_key | 特殊逻辑 |
-|------|----------|------|------------|----------|
-| 1. IdeaGenerator | `alpha-gpt-idea-generator` | ✅ | `ideas` | 注入 prev_reflection |
-| 2. FormulaTranslator | `alpha-gpt-formula-translator` | ✅ | `formulas` | operator 白名单校验 |
-| 3. Evaluator | `alpha-gpt-evaluator` | ❌ | `evaluations` | tool_executor 调 AlphaEvaluateTool |
-| 4. Reflector | `alpha-gpt-reflector` | ✅ | `formula_feedback` | 注入 evaluations |
-| 5. Critic | `alpha-gpt-critic` | ✅ | `final_pool` | 仅最终轮执行 |
+| 步骤 | agent_id | LLM? | output_key | state_output | skip_on_last |
+|------|----------|------|------------|--------------|--------------|
+| 1. IdeaGenerator | `alpha-gpt-idea-generator` | ✅ | `ideas` | `all_ideas` | False |
+| 2. FormulaTranslator | `alpha-gpt-formula-translator` | ✅ | `formulas` | `all_formulas` | False |
+| 3. Evaluator | `alpha-gpt-evaluator` | ❌ | `evaluations` | `all_evaluations` | False |
+| 4. Reflector | `alpha-gpt-reflector` | ✅ | `formula_feedback` | `all_reflections` | **True** |
+| 5. Critic | `alpha-gpt-critic` | ✅ | `final_pool` | `critic_output` | N/A (final_steps) |
+
+完整定义：
+
+```python
+IDEA_GEN_SPEC = StepAgentSpec(
+    agent_id="alpha-gpt-idea-generator",
+    prompt_builder=_build_idea_prompt,
+    output_parser=lambda raw: parse_json_3layer(raw, validate_idea_generator),
+    output_key="ideas",
+    state_output="all_ideas",
+    record_factory=lambda d: IdeaRecord.from_dict(d, 0),  # round_idx 由 run() 注入
+)
+
+FORMULA_TRANS_SPEC = StepAgentSpec(
+    agent_id="alpha-gpt-formula-translator",
+    prompt_builder=_build_formula_prompt,
+    output_parser=lambda raw: parse_json_3layer(raw, validate_formula_translator),
+    output_key="formulas",
+    state_output="all_formulas",
+    record_factory=lambda d: FormulaRecord(...),
+)
+
+EVALUATOR_SPEC = StepAgentSpec(
+    agent_id="alpha-gpt-evaluator",
+    prompt_builder=None,
+    output_parser=None,
+    output_key="evaluations",
+    state_output="all_evaluations",
+    tool_executor=_run_evaluator,
+    record_factory=lambda d: EvaluationRecord(...),
+)
+
+REFLECTOR_SPEC = StepAgentSpec(
+    agent_id="alpha-gpt-reflector",
+    prompt_builder=_build_reflector_prompt,
+    output_parser=lambda raw: parse_json_3layer(raw, validate_reflector),
+    output_key="formula_feedback",
+    state_output="all_reflections",
+    skip_on_last=True,
+    record_factory=lambda d: ReflectionRecord(...),
+)
+
+CRITIC_SPEC = StepAgentSpec(
+    agent_id="alpha-gpt-critic",
+    prompt_builder=_build_critic_prompt,
+    output_parser=lambda raw: parse_json_3layer(raw, validate_critic),
+    output_key="final_pool",
+    state_output="critic_output",
+    record_factory=lambda d: FinalFormulaRecord.from_dict(d, 0),
+)
+```
+
+注册（纯声明式）：
+
+```python
+ALPHA_GPT_SPEC = WorkflowSpec(
+    name="alpha-gpt",
+    description="5-round alpha discovery: idea → formula → evaluate → reflect → critic",
+    steps=[IDEA_GEN_SPEC, FORMULA_TRANS_SPEC, EVALUATOR_SPEC, REFLECTOR_SPEC],
+    iterations=5,
+    final_steps=[CRITIC_SPEC],
+    state_factory=lambda: AlphaGptState(objective=""),
+    result_builder=_build_result,
+)
+REGISTRY.register(ALPHA_GPT_SPEC)
+```
 
 ### 8.2 复用关系
 
@@ -339,17 +533,28 @@ QuantNodes/agent/workflows/implementations/alpha_gpt.py
 不修改原 research/quant_alpha/workflow/alpha_gpt.py，保持向后兼容。
 ```
 
-### 8.3 State 更新映射
+### 8.3 State 更新逻辑
+
+由框架的 `_update_state()` 处理，根据 `StepAgentSpec.state_output` 自动判断更新方式：
 
 ```python
-STATE_FIELD_MAP = {
-    "ideas": "all_ideas",
-    "formulas": "all_formulas",
-    "evaluations": "all_evaluations",
-    "formula_feedback": "all_reflections",
-    "final_pool": "critic_output",
-}
+def _update_state(state, step_spec, records):
+    if not step_spec.state_output:
+        return
+    target = getattr(state, step_spec.state_output)
+    if isinstance(target, list):
+        target.extend(records)      # ideas/formulas/evaluations/reflections → 追加
+    else:
+        setattr(state, step_spec.state_output, records)  # critic_output → 覆盖
 ```
+
+| 步骤 | state_output | state 字段类型 | 更新方式 |
+|------|-------------|---------------|---------|
+| IdeaGenerator | `all_ideas` | `List[IdeaRecord]` | `extend` (每轮追加) |
+| FormulaTranslator | `all_formulas` | `List[FormulaRecord]` | `extend` |
+| Evaluator | `all_evaluations` | `List[EvaluationRecord]` | `extend` |
+| Reflector | `all_reflections` | `List[ReflectionRecord]` | `extend` |
+| Critic | `critic_output` | `Optional[Dict]` | `setattr` (覆盖) |
 
 ---
 
@@ -389,7 +594,10 @@ STATE_FIELD_MAP = {
 
 ### 10.2 集成测试
 
-- 用 mock LLM 跑完整 alpha-gpt workflow（5 步 × 1 轮）
+- 用 mock LLM 跑完整 alpha-gpt workflow（5 步 × 3 轮 + critic）
+- 验证多轮迭代：state 中 all_ideas/all_formulas/all_evaluations/all_reflections 按轮次累积
+- 验证 skip_on_last：最后一轮 reflector 被跳过
+- 验证 final_steps：critic 在所有轮次后执行
 - 验证 `.agent/results/` 下生成 JSON 文件
 - 验证返回摘要包含 top_formulas
 
