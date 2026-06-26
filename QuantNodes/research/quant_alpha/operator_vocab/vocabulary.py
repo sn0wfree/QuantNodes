@@ -230,6 +230,11 @@ class OperatorVocab:
         for col in data.columns:
             namespace[col] = data[col]
 
+        # 注入 returns 快捷方式
+        if "close" in data.columns:
+            close = data["close"]
+            namespace["returns"] = (close - close.shift(1)) / (close.shift(1) + 1e-12)
+
         # 注入 L0 算子（基于注册表）
         l0 = self._ensure_l0_loaded()
         for name, entry in l0.items():
