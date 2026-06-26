@@ -486,7 +486,9 @@ class AlphaGptWorkflow:
 
             # 兼容旧接口: complete(agent_id, prompt)
             if hasattr(self.llm_client, 'complete'):
-                return self.llm_client.complete(agent_id=agent_id, prompt=prompt)
+                return self.llm_client.complete(
+                    agent_id=agent_id, prompt=prompt, temperature=temperature
+                )
             # 兼容 LLMGateway: __call__(prompt)
             return self.llm_client(prompt)
         # 默认 mock：返回最小 valid JSON（让 workflow 可端到端跑通）

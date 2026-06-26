@@ -106,6 +106,7 @@ class Agent:
         mode: Optional[str] = None,
         tools: Optional[List[str]] = None,
         tool_choice: Optional[str] = None,
+        temperature: Optional[float] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream chat events using the v2.x event protocol.
 
@@ -120,6 +121,7 @@ class Agent:
         Args:
             tools: 工具名列表 (None=全部, []=无工具)
             tool_choice: "auto"/"none"/"required"
+            temperature: 采样温度（可选）
         """
         from nanobot.agent.hook import SDKCaptureHook
 
@@ -130,7 +132,7 @@ class Agent:
         try:
             async for event in self._stream_via_loop(
                 message, session_id, model, max_tokens, mode,
-                tools=tools, tool_choice=tool_choice,
+                tools=tools, tool_choice=tool_choice, temperature=temperature,
             ):
                 yield event
         finally:
@@ -169,6 +171,7 @@ class Agent:
         mode: Optional[str],
         tools: Optional[List[str]] = None,
         tool_choice: Optional[str] = None,
+        temperature: Optional[float] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Drive the upstream AgentLoop and re-emit events in v2.x protocol."""
         from nanobot.agent.runner import AgentRunSpec
@@ -181,6 +184,7 @@ class Agent:
             max_tokens=max_tokens or getattr(self._loop, "max_tokens", 102400),
             max_iterations=getattr(self._loop, "max_iterations", 5),
             max_tool_result_chars=getattr(self._loop, "max_tool_result_chars", 50000),
+            temperature=temperature,
         )
 
         tools_used: List[str] = []

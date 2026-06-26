@@ -152,6 +152,7 @@ class LLMGateway(LLMClientBase):
         prompt: str = "",
         tools: Optional[List[str]] = None,
         tool_choice: Optional[str] = None,
+        temperature: Optional[float] = None,
     ) -> str:
         """同步调用 LLM, 返回字符串结果。
 
@@ -172,6 +173,7 @@ class LLMGateway(LLMClientBase):
                 agent, prompt,
                 session_id=agent_id,
                 tools=tools, tool_choice=tool_choice,
+                temperature=temperature,
             )
         )
         return result["content"] or ""
@@ -261,6 +263,7 @@ class LLMGateway(LLMClientBase):
         tools: Optional[List[str]] = None,
         tool_choice: Optional[str] = None,
         collect_events: bool = False,
+        temperature: Optional[float] = None,
     ) -> Union[Dict[str, Any], ToolCallResponse]:
         """异步消费 agent.chat() 流, 收集最终结果 + 工具调用。"""
         final_content = ""
@@ -273,6 +276,7 @@ class LLMGateway(LLMClientBase):
             session_id=session_id,
             tools=tools,
             tool_choice=tool_choice,
+            temperature=temperature,
         ):
             etype = event.get("type")
 
