@@ -78,6 +78,12 @@ class AlphaGptConfig:
     llm_model: Optional[str] = None
     temperature: float = 0.7
 
+    # 各阶段温度参数（覆盖 temperature）
+    temperature_idea_gen: float = 0.8   # 鼓励创新
+    temperature_formula: float = 0.4    # 需要精确
+    temperature_reflector: float = 0.6  # 平衡
+    temperature_critic: float = 0.3     # 需要稳定
+
     spawn_timeout_seconds: float = 30.0
 
     a_share_focus: bool = True
@@ -475,6 +481,9 @@ class AlphaGptWorkflow:
     def _call_llm(self, agent_id: str, prompt: str) -> str:
         """调用 LLM（mock 时返回预定义 JSON）"""
         if self.llm_client is not None:
+            # 根据 agent_id 选择温度
+            temperature = self._get_temperature_for_agent(agent_id)
+
             # 兼容旧接口: complete(agent_id, prompt)
             if hasattr(self.llm_client, 'complete'):
                 return self.llm_client.complete(agent_id=agent_id, prompt=prompt)
@@ -482,6 +491,19 @@ class AlphaGptWorkflow:
             return self.llm_client(prompt)
         # 默认 mock：返回最小 valid JSON（让 workflow 可端到端跑通）
         return _mock_llm_response(agent_id, prompt, self.state, self.config)
+
+    def _get_temperature_for_agent(self, agent_id: str) -> float:
+        """根据 agent_id 返回对应的温度参数"""
+        if "idea-generator" in agent_id:
+            return self.config.temperature_idea_gen
+        elif "formula-translator" in agent_id:
+            return self.config.temperature_formula
+        elif "reflector" in agent_id:
+            return self.config.temperature_reflector
+        elif "critic" in agent_id:
+            return self.config.temperature_critic
+        else:
+            return self.config.temperature
 
     # ------------------------------------------------------------------
     # 数据 metadata

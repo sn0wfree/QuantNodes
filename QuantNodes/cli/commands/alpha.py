@@ -641,6 +641,26 @@ class AlphaPipelineCommand(Command):
             type=float, default=0.7,
             help="采样温度（默认 0.7）",
         )
+        parser.add_argument(
+            "--temperature-idea-gen",
+            type=float, default=0.8,
+            help="idea-generator 温度（默认 0.8）",
+        )
+        parser.add_argument(
+            "--temperature-formula",
+            type=float, default=0.4,
+            help="formula-translator 温度（默认 0.4）",
+        )
+        parser.add_argument(
+            "--temperature-reflector",
+            type=float, default=0.6,
+            help="reflector 温度（默认 0.6）",
+        )
+        parser.add_argument(
+            "--temperature-critic",
+            type=float, default=0.3,
+            help="critic 温度（默认 0.3）",
+        )
         # 输出
         parser.add_argument(
             "--output", "-O",
@@ -702,6 +722,10 @@ class AlphaPipelineCommand(Command):
             llm_provider=args.llm,
             llm_model=args.model,
             temperature=args.temperature,
+            temperature_idea_gen=args.temperature_idea_gen,
+            temperature_formula=args.temperature_formula,
+            temperature_reflector=args.temperature_reflector,
+            temperature_critic=args.temperature_critic,
         )
 
         pipeline = AlphaPipeline(config)

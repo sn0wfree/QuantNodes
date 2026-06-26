@@ -97,6 +97,12 @@ class PipelineConfig:
     llm_model: Optional[str] = None
     temperature: float = 0.7
 
+    # 各阶段温度参数
+    temperature_idea_gen: float = 0.8   # 鼓励创新
+    temperature_formula: float = 0.4    # 需要精确
+    temperature_reflector: float = 0.6  # 平衡
+    temperature_critic: float = 0.3     # 需要稳定
+
 
 # ==============================================================================
 # 结果
@@ -190,6 +196,10 @@ class AlphaPipeline:
                 llm_provider=self.config.llm_provider,
                 llm_model=self.config.llm_model,
                 temperature=self.config.temperature,
+                temperature_idea_gen=self.config.temperature_idea_gen,
+                temperature_formula=self.config.temperature_formula,
+                temperature_reflector=self.config.temperature_reflector,
+                temperature_critic=self.config.temperature_critic,
             )
 
             # 构建 LLM 客户端
