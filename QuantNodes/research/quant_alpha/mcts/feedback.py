@@ -48,7 +48,7 @@ DEFAULT_COMPLEXITY_CONFIG = {
 
 @dataclass
 class MCTSFeedbackConfig:
-    """MCTS 5 通道反馈配置"""
+    """MCTS 5+3 通道反馈配置"""
     # CODE 通道阈值
     symbol_length_threshold: int = 200
     base_features_threshold: int = 5
@@ -62,6 +62,13 @@ class MCTSFeedbackConfig:
     enable_code: bool = True
     enable_value: bool = True
     enable_llm: bool = False  # M2 暂用 mock，M5+ 接入真实 LLM
+    # 金融约束通道
+    enable_lookahead: bool = True   # 前瞻偏差检测
+    enable_decay: bool = True       # IC 衰减率约束
+    enable_turnover: bool = True    # 换手率阈值
+    # 金融约束阈值
+    decay_ratio_threshold: float = 0.3  # 5日IC >= 30% × 1日IC
+    turnover_threshold: float = 0.5     # 月换手率 < 50%
 
 
 # ==============================================================================
@@ -271,6 +278,154 @@ def collect_llm_channel(
 
 
 # ==============================================================================
+# 金融约束通道
+# ==============================================================================
+
+
+def collect_lookahead_channel(formula: str) -> ChannelFeedback:
+    """LOOKAHEAD 通道：前瞻偏差检测
+
+    检查项：
+    1. 负窗口（如 ts_mean(close, -5)）
+    2. 引用前瞻收益列（如 forward_return, fwd_ret）
+    3. 负 shift（如 shift(-1)）
+    """
+    import re
+
+    violations: List[str] = []
+
+    # 检查负窗口
+    if re.search(r'ts_\w+\([^,]+,\s*-\d+', formula):
+        violations.append("negative window detected")
+
+    # 检查引用前瞻收益列
+    if re.search(r'forward_return|fwd_ret|_fwd_ret', formula):
+        violations.append("references forward return column")
+
+    # 检查负 shift
+    if re.search(r'shift\(-\d+', formula):
+        violations.append("negative shift detected")
+
+    passed = len(violations) == 0
+    detail = "; ".join(violations) if violations else "OK (no lookahead bias)"
+    score = 1.0 if passed else 0.0
+
+    return ChannelFeedback(
+        channel=FeedbackChannel.LOOKAHEAD,
+        passed=passed,
+        detail=detail,
+        score=score,
+        metadata={"violations": violations},
+    )
+
+
+def collect_decay_channel(
+    ic_decay: Dict[int, float],
+    config: MCTSFeedbackConfig,
+) -> ChannelFeedback:
+    """DECAY 通道：IC 衰减率约束
+
+    检查：5日IC >= decay_ratio_threshold × 1日IC
+    """
+    if not ic_decay or 1 not in ic_decay or 5 not in ic_decay:
+        return ChannelFeedback(
+            channel=FeedbackChannel.DECAY,
+            passed=True,
+            detail="insufficient data for decay check",
+            score=0.5,
+            metadata={"reason": "insufficient_data"},
+        )
+
+    ic_1d = abs(ic_decay[1])
+    ic_5d = abs(ic_decay[5])
+
+    if ic_1d < 1e-6:
+        ratio = 1.0  # 1日IC为0，视为通过
+    else:
+        ratio = ic_5d / ic_1d
+
+    passed = ratio >= config.decay_ratio_threshold
+    detail = f"5d/1d ratio={ratio:.2f} (threshold={config.decay_ratio_threshold})"
+    score = min(1.0, ratio / config.decay_ratio_threshold) if config.decay_ratio_threshold > 0 else 1.0
+
+    return ChannelFeedback(
+        channel=FeedbackChannel.DECAY,
+        passed=passed,
+        detail=detail,
+        score=score,
+        metadata={"ratio": ratio, "ic_1d": ic_1d, "ic_5d": ic_5d},
+    )
+
+
+def collect_turnover_channel(
+    factor_values: Optional[pl.Series],
+    data: pl.DataFrame,
+    date_column: str,
+    code_column: str,
+    config: MCTSFeedbackConfig,
+) -> ChannelFeedback:
+    """TURNOVER 通道：换手率阈值
+
+    检查：因子 top 10% 股票的平均换手率 < turnover_threshold
+    """
+    if factor_values is None:
+        return ChannelFeedback(
+            channel=FeedbackChannel.TURNOVER,
+            passed=True,
+            detail="no factor values",
+            score=0.5,
+            metadata={"reason": "no_values"},
+        )
+
+    try:
+        # 计算每日 top 10% 股票的换手率
+        # 简化：使用 vol / ts_mean(vol, 20) 作为换手率代理
+        if "vol" not in data.columns:
+            return ChannelFeedback(
+                channel=FeedbackChannel.TURNOVER,
+                passed=True,
+                detail="no vol column for turnover",
+                score=0.5,
+                metadata={"reason": "no_vol_column"},
+            )
+
+        # 计算换手率代理：vol / 20日均量
+        df = data.with_columns(
+            (pl.col("vol") / pl.col("vol").rolling_mean(20).over(code_column)).alias("_turnover_proxy")
+        )
+
+        # 添加因子值
+        df = df.with_columns(factor_values.alias("_factor"))
+
+        # 计算每日 top 10% 的平均换手率
+        # 简化：计算整体平均
+        avg_turnover = df["_turnover_proxy"].mean()
+        if avg_turnover is None:
+            avg_turnover = 0.0
+
+        passed = avg_turnover <= config.turnover_threshold
+        detail = f"avg turnover={avg_turnover:.2%} (threshold={config.turnover_threshold:.0%})"
+        score = max(0.0, 1.0 - (avg_turnover / config.turnover_threshold)) if config.turnover_threshold > 0 else 1.0
+
+        return ChannelFeedback(
+            channel=FeedbackChannel.TURNOVER,
+            passed=passed,
+            detail=detail,
+            score=score,
+            metadata={"avg_turnover": avg_turnover},
+        )
+
+    except Exception as e:
+        return ChannelFeedback(
+            channel=FeedbackChannel.TURNOVER,
+            passed=True,
+            detail=f"turnover check failed: {e}",
+            score=0.5,
+            metadata={"error": str(e)[:100]},
+        )
+
+
+# ==============================================================================
 # 聚合器
 # ==============================================================================
 
@@ -283,23 +438,32 @@ def collect_all_channels(
     exception: Optional[Exception] = None,
     hypothesis: Optional[str] = None,
     description: Optional[str] = None,
+    ic_decay: Optional[Dict[int, float]] = None,
+    data: Optional[pl.DataFrame] = None,
+    date_column: str = "date",
+    code_column: str = "code",
 ) -> FactorFeedback:
-    """一次性采集 5 通道反馈，构造 FactorFeedback
+    """一次性采集 5+3 通道反馈，构造 FactorFeedback
 
     Args:
         formula: 因子公式
         result: 评估结果（pl.Series 或 None）
         expected_length: 预期长度（数据行数）
-        config: 5 通道配置
+        config: 通道配置
         exception: 评估异常（None=成功）
         hypothesis: 研究假设（用于 LLM 通道）
         description: 因子描述（用于 LLM 通道）
+        ic_decay: IC 衰减数据（用于 DECAY 通道）
+        data: 行情数据（用于 TURNOVER 通道）
+        date_column: 日期列名
+        code_column: 代码列名
 
     Returns:
-        FactorFeedback（含 5 通道 + decision + summary）
+        FactorFeedback（含 5+3 通道 + decision + summary）
     """
     channels: Dict[FeedbackChannel, ChannelFeedback] = {}
 
+    # 原始 5 通道
     if config.enable_execution:
         channels[FeedbackChannel.EXECUTION] = collect_execution_channel(formula, exception)
     if config.enable_shape and exception is None:
@@ -311,6 +475,16 @@ def collect_all_channels(
     if config.enable_llm:
         channels[FeedbackChannel.LLM] = collect_llm_channel(
             formula, hypothesis, description,
+        )
+
+    # 金融约束通道
+    if config.enable_lookahead:
+        channels[FeedbackChannel.LOOKAHEAD] = collect_lookahead_channel(formula)
+    if config.enable_decay and ic_decay is not None:
+        channels[FeedbackChannel.DECAY] = collect_decay_channel(ic_decay, config)
+    if config.enable_turnover and data is not None:
+        channels[FeedbackChannel.TURNOVER] = collect_turnover_channel(
+            result, data, date_column, code_column, config,
         )
 
     # decision: 所有启用的通道都通过

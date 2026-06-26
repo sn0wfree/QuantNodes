@@ -20,12 +20,16 @@ from QuantNodes.core.path_utils import ensure_parent
 
 
 class FeedbackChannel(str, Enum):
-    """5 通道反馈信号。"""
+    """5+3 通道反馈信号。"""
     EXECUTION = "execution"
     SHAPE = "shape"
     CODE = "code"
     VALUE = "value"
     LLM = "llm"
+    # 金融约束通道
+    LOOKAHEAD = "lookahead"    # 前瞻偏差检测
+    DECAY = "decay"            # IC 衰减率约束
+    TURNOVER = "turnover"      # 换手率阈值
 
 
 @dataclass

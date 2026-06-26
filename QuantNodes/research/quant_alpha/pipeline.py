@@ -149,6 +149,10 @@ class AlphaPipeline:
         start_time = time.time()
         result = PipelineResult()
 
+        # 预计算前瞻收益（避免重复计算）
+        logger.info("[Pipeline] 预计算前瞻收益...")
+        data = self._precompute_forward_returns(data)
+
         # Stage 1: Alpha-GPT
         logger.info("[Pipeline] Stage 1: Alpha-GPT")
         result.alphagpt_result = self._run_alphagpt(data)
@@ -179,6 +183,28 @@ class AlphaPipeline:
         )
 
         return result
+
+    def _precompute_forward_returns(self, data: pl.DataFrame) -> pl.DataFrame:
+        """预计算所有前瞻收益列（避免每个公式重复计算）
+
+        添加列: _fwd_ret_1d, _fwd_ret_5d, _fwd_ret_20d 等
+        """
+        dc = self.config.date_column
+        cc = self.config.code_column
+        sorted_df = data.sort([cc, dc])
+
+        for offset in self.config.forward_returns:
+            col_name = f"_fwd_ret_{offset}d"
+            if col_name not in sorted_df.columns:
+                sorted_df = sorted_df.with_columns(
+                    (
+                        (pl.col("close").shift(-offset).over(cc) - pl.col("close"))
+                        / pl.col("close")
+                    ).alias(col_name)
+                )
+                logger.info("[Pipeline] 预计算 %s 完成", col_name)
+
+        return sorted_df
 
     def _run_alphagpt(self, data: pl.DataFrame) -> Optional[AlphaGptResult]:
         """运行 Alpha-GPT 工作流"""

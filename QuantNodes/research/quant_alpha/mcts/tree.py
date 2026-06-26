@@ -123,11 +123,13 @@ class MCTSTree:
     - 完整 entry_id 谱系
     - 节点状态追踪
     - 公式缓存去重
+    - entry_id 索引（O(1) 父节点查找）
     """
     root: MCTSNode = field(default_factory=lambda: MCTSNode(
         formula="__ROOT__", depth=-1,
     ))
     formula_cache: Dict[str, MCTSNode] = field(default_factory=dict)
+    _entry_index: Dict[str, MCTSNode] = field(default_factory=dict)
     total_iterations: int = 0
 
     def add_node(self, node: MCTSNode, parent: Optional[MCTSNode] = None) -> None:
@@ -142,6 +144,12 @@ class MCTSTree:
         parent.add_child(node)
         # 加入公式缓存
         self.formula_cache[node.formula] = node
+        # 加入 entry_id 索引
+        self._entry_index[node.entry_id] = node
+
+    def get_by_entry_id(self, entry_id: str) -> Optional[MCTSNode]:
+        """按 entry_id 查找节点（O(1) via index）"""
+        return self._entry_index.get(entry_id)
 
     def get_by_formula(self, formula: str) -> Optional[MCTSNode]:
         """按公式查找节点（O(1) via cache）"""

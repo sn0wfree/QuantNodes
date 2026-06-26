@@ -425,22 +425,30 @@ class AlphaEvaluateTool(Tool):
         date_column: str,
         code_column: str,
     ) -> Dict[int, Any]:
-        """从 close 计算前瞻 N 日收益"""
+        """从 close 计算前瞻 N 日收益
+
+        优化：如果 DataFrame 已有预计算列 (_fwd_ret_{n}d)，直接使用。
+        """
         import polars as pl
 
         if "close" not in df.columns:
             raise ValueError("data must have 'close' column for forward returns")
 
         out: Dict[int, Any] = {}
-        sorted_df = df.sort([code_column, date_column])
         for offset in forward_returns:
             col_name = f"_fwd_ret_{offset}d"
-            ret = sorted_df.with_columns(
-                pl.col("close").shift(-offset).over(code_column).alias("_next_close")
-            ).with_columns(
-                ((pl.col("_next_close") - pl.col("close")) / pl.col("close")).alias(col_name)
-            )[col_name]
-            out[offset] = ret
+            # 优先使用预计算列
+            if col_name in df.columns:
+                out[offset] = df[col_name]
+            else:
+                # 回退：从 close 计算
+                sorted_df = df.sort([code_column, date_column])
+                ret = sorted_df.with_columns(
+                    pl.col("close").shift(-offset).over(code_column).alias("_next_close")
+                ).with_columns(
+                    ((pl.col("_next_close") - pl.col("close")) / pl.col("close")).alias(col_name)
+                )[col_name]
+                out[offset] = ret
         return out
 
     @staticmethod

@@ -59,6 +59,8 @@ def deduplicate_mutual_ic(
     按 overall_score 降序排序，逐个检查与已选因子的 Spearman 相关性。
     如果 |corr| > threshold，跳过该因子；否则加入已选集合。
 
+    优化：缓存 get_values 结果，避免重复计算。
+
     Args:
         factors: 候选因子列表
         get_values: 获取因子值的函数
@@ -67,15 +69,20 @@ def deduplicate_mutual_ic(
     Returns:
         去重后的因子列表
     """
+    values_cache: Dict[str, Optional[pl.Series]] = {}
     sorted_f = sorted(factors, key=lambda f: f.overall_score, reverse=True)
     selected = []
     for f in sorted_f:
-        vals = get_values(f)
+        if f.formula_id not in values_cache:
+            values_cache[f.formula_id] = get_values(f)
+        vals = values_cache[f.formula_id]
         if vals is None:
             continue
         is_dup = False
         for s in selected:
-            s_vals = get_values(s)
+            if s.formula_id not in values_cache:
+                values_cache[s.formula_id] = get_values(s)
+            s_vals = values_cache[s.formula_id]
             if s_vals is None:
                 continue
             corr = _spearman_corr(vals, s_vals)

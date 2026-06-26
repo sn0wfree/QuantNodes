@@ -311,6 +311,12 @@ class MCTSSearch:
         if node.formula.count("(") >= 5 * 2:  # 防止过深嵌套
             return None
 
+        # 快速预检查（避免无效公式进入评估）
+        precheck_err = self._precheck_formula(new_formula)
+        if precheck_err is not None:
+            logger.debug("预检查失败: %s (%s)", new_formula[:50], precheck_err)
+            return None
+
         # 创建子节点
         child = MCTSNode(
             formula=new_formula,
@@ -319,6 +325,32 @@ class MCTSSearch:
         node.add_child(child)
         self._tree.add_node(child, parent=node)
         return child
+
+    def _precheck_formula(self, formula: str) -> Optional[str]:
+        """快速预检查，返回错误原因或 None
+
+        检查项：
+        1. 括号匹配
+        2. 长度限制
+        3. 未知算子
+        """
+        # 括号匹配
+        if formula.count("(") != formula.count(")"):
+            return "bracket mismatch"
+
+        # 长度限制
+        if len(formula) > 500:
+            return "too long"
+
+        # 未知算子
+        import re
+        from QuantNodes.research.quant_alpha.llm.parser import ALLOWED_OPERATORS
+        ops = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(', formula)
+        for op in ops:
+            if op not in ALLOWED_OPERATORS:
+                return f"unknown op: {op}"
+
+        return None
 
     def _evaluate(
         self,
@@ -352,14 +384,29 @@ class MCTSSearch:
                 exception = e
                 result = None
 
-        # 5 通道反馈
+        # 5+3 通道反馈
         expected_length = len(data)
+
+        # 计算 IC/IR（用于 DECAY 通道）
+        ic_metrics = {}
+        if self.config.compute_ic_ir and exception is None and result is not None:
+            try:
+                ic_metrics = self._compute_ic_ir(
+                    node.formula, data, date_column, forward_return_column
+                )
+            except Exception as e:
+                logger.debug("IC/IR computation failed for %s: %s", node.formula, e)
+
         fb = collect_all_channels(
             formula=node.formula,
             result=result,
             expected_length=expected_length,
             config=self.config.feedback_config,
             exception=exception,
+            ic_decay=ic_metrics.get("ic_decay"),
+            data=data,
+            date_column=date_column,
+            code_column=self.config.code_column,
         )
         self._feedback_cache[node.formula] = fb
 
@@ -369,7 +416,7 @@ class MCTSSearch:
             for ch, ch_fb in fb.channels.items()
         }
 
-        # 综合评分 = 5 通道平均 score
+        # 综合评分 = 所有通道平均 score
         if fb.channels:
             node.overall_score = sum(
                 ch.score for ch in fb.channels.values()
@@ -381,19 +428,9 @@ class MCTSSearch:
         if not fb.decision:
             node.status = NodeStatus.REJECTED
 
-        # IC/IR 计算（如果 5 通道通过且配置启用）
-        if (self.config.compute_ic_ir and 
-            fb.decision and 
-            result is not None and 
-            exception is None):
-            try:
-                ic_metrics = self._compute_ic_ir(
-                    node.formula, data, date_column, forward_return_column
-                )
-                node.metadata.update(ic_metrics)
-            except Exception as e:
-                logger.debug("IC/IR computation failed for %s: %s", node.formula, e)
-                node.metadata["ic_error"] = str(e)[:100]
+        # 存储 IC/IR 指标（已在前面计算）
+        if ic_metrics:
+            node.metadata.update(ic_metrics)
 
         # 元数据
         node.metadata["feedback_summary"] = fb.summary
@@ -457,9 +494,12 @@ class MCTSSearch:
             current = parent
 
     def _find_parent(self, node: MCTSNode) -> Optional[MCTSNode]:
-        """通过 parent_id 找到父节点"""
+        """通过 parent_id 找到父节点（O(1) via tree index）"""
         if node.parent_id is None:
             return None
+        if self._tree is not None:
+            return self._tree.get_by_entry_id(node.parent_id)
+        # 回退：线性扫描
         for n in self._tree.all_nodes():
             if n.entry_id == node.parent_id:
                 return n
