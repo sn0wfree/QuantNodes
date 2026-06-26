@@ -33,9 +33,9 @@ def _update_state(state: Any, step_spec: Any, records: list[Any]) -> None:
     """
     if not step_spec.state_output:
         return
-    target = getattr(state, step_spec.state_output, None)
-    if target is None:
+    if not hasattr(state, step_spec.state_output):
         return
+    target = getattr(state, step_spec.state_output)
     if isinstance(target, list):
         target.extend(records)
     else:
