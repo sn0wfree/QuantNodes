@@ -73,7 +73,12 @@ class Agent:
         self._loop = self._bot._loop
         self._hook_lock = asyncio.Lock()
 
-        quant_count = register_all_quant_tools(self._loop.tools, workspace=self.workspace)
+        quant_count = register_all_quant_tools(
+            self._loop.tools,
+            workspace=self.workspace,
+            llm_client=getattr(self._loop, 'provider', None),
+            model=getattr(self._loop, 'model', None),
+        )
         logger.info(
             "QuantNodes Agent ready (workspace=%s, quant_tools=%d, "
             "upstream_tools=%d)",

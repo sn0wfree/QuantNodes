@@ -7,6 +7,7 @@ Tool基类（继承自 HKUDS nanobot upstream Tool）/ 注册表 / 具体工具�
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from .base import Tool, ToolExecutionResult
 from .context import ToolContext, ToolContextFactory
@@ -53,7 +54,12 @@ _QUANT_TOOL_FACTORIES = [
 ]
 
 
-def register_all_quant_tools(registry: ToolRegistry, workspace: Path | None = None) -> int:
+def register_all_quant_tools(
+    registry: ToolRegistry,
+    workspace: Path | None = None,
+    llm_client: Any = None,
+    model: str | None = None,
+) -> int:
     """Register all 14 quant tool classes (echo/sandbox/.../task) into a registry.
 
     Returns the number of quant tools registered. Idempotent: re-registration
@@ -63,6 +69,11 @@ def register_all_quant_tools(registry: ToolRegistry, workspace: Path | None = No
     ``workspace`` is forwarded to tools that need it (``WikiTool``,
     ``FileOpsTool``, ``CodeSearchTool``, ``GitOpsTool``, ``TaskTool``).
     Other tools take no constructor args.
+
+    ``llm_client`` and ``model`` are forwarded to ``WorkflowTool`` (if
+    nanobot is available). When ``llm_client`` is provided, the
+    ``run_workflow`` tool is registered, enabling LLM-driven pipeline
+    execution via ``WorkflowRegistry``.
 
     Usage from Agent.__init__::
 
@@ -94,6 +105,23 @@ def register_all_quant_tools(registry: ToolRegistry, workspace: Path | None = No
             continue
         registry.register(tool)
         registered += 1
+
+    # Register WorkflowTool (run_workflow) if llm_client is provided
+    if llm_client is not None:
+        try:
+            from ..workflows.tool import WorkflowTool
+
+            wt = WorkflowTool(
+                llm_client=llm_client,
+                model=model,
+                results_dir=workspace / "results",
+            )
+            if not registry.has(wt.name):
+                registry.register(wt)
+                registered += 1
+        except Exception as exc:
+            logger.warning("Failed to register WorkflowTool: %s", exc)
+
     return registered
 
 
