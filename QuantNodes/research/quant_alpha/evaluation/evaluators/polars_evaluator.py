@@ -2,11 +2,11 @@
 """
 polars_evaluator.py - Stage 1/2 通用 Polars 评估器
 
-内部包 alpha_evaluate tool（M5），把 polars 公式批量评估为 FactorMetrics 列表。
+内部使用 OperatorVocab.evaluate() 直接评估公式，支持复杂表达式。
 Stage 1 + Stage 2 共用此实现（不依赖 mock / real 数据）。
 
 复用：
-- QuantNodes.agent.tools.alpha_evaluate.AlphaEvaluateTool：M5 已实现评估逻辑
+- QuantNodes.research.quant_alpha.operator_vocab.OperatorVocab：162 算子
 - contracts.FactorMetrics：统一输出 schema
 - contracts.FactorSpec：输入因子列表
 """
@@ -14,7 +14,10 @@ Stage 1 + Stage 2 共用此实现（不依赖 mock / real 数据）。
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import polars as pl
 
 from ..contracts import Evaluator, FactorMetrics, FactorSpec
 
@@ -26,33 +29,19 @@ __all__ = ["PolarsAlphaCalculatorEvaluator"]
 class PolarsAlphaCalculatorEvaluator(Evaluator):
     """Stage 1/2 通用 Polars 评估器
 
-    内部包 alpha_evaluate tool（M5），把 FactorSpec 列表转换为
-    polars 公式字符串列表，调用 tool.execute()，再转换为 FactorMetrics。
-
-    字段映射：
-        FactorSpec.formula → tool.execute(formulas=[...])
-        FactorSpec.formula_id → FactorMetrics.formula_id
-        tool 返回 metrics dict → FactorMetrics.from_alpha_evaluate()
+    使用 OperatorVocab.evaluate() 直接评估公式，支持复杂表达式。
     """
 
     def __init__(self, max_workers: int = 4) -> None:
         self.max_workers = max_workers
-        self._tool = None  # lazy init（避免 import 期 nanobot 影响）
+        self._vocab = None  # lazy init
 
-    def _get_tool(self):
-        """懒加载 alpha_evaluate tool（避免 nanobot import 副作用）"""
-        if self._tool is None:
-            try:
-                from QuantNodes.agent.tools.alpha_evaluate import AlphaEvaluateTool
-
-                self._tool = AlphaEvaluateTool()
-            except ImportError as e:
-                logger.error(
-                    "alpha_evaluate tool 不可用: %s；请安装 nanobot (pip install 'quantnodes[agent]')",
-                    e,
-                )
-                raise
-        return self._tool
+    def _get_vocab(self):
+        """懒加载 OperatorVocab"""
+        if self._vocab is None:
+            from QuantNodes.research.quant_alpha.operator_vocab import OperatorVocab
+            self._vocab = OperatorVocab.default()
+        return self._vocab
 
     def evaluate(
         self,
@@ -64,7 +53,7 @@ class PolarsAlphaCalculatorEvaluator(Evaluator):
 
         Args:
             factors: FactorSpec 列表
-            data: polars.DataFrame（含 date / code / OHLCV / industry 等列）
+            data: polars.DataFrame（含 date / code / OHLCV 等列）
             forward_returns: 前瞻期列表（默认 [1]）
 
         Returns:
@@ -73,93 +62,123 @@ class PolarsAlphaCalculatorEvaluator(Evaluator):
         if not factors:
             return []
 
-        tool = self._get_tool()
-        formulas = [f.formula for f in factors]
+        vocab = self._get_vocab()
         fr = forward_returns or [1]
+        date_column = "date"
+        code_column = "code"
 
         logger.info(
             "[PolarsAlphaCalculatorEvaluator] 评估 %d 个公式 (forward_returns=%s)",
-            len(formulas),
+            len(factors),
             fr,
         )
 
-        try:
-            import asyncio
-
-            coro = tool.execute(
-                formulas=formulas,
-                data=data,
-                forward_returns=fr,
-                max_workers=self.max_workers,
-            )
-            # 在 sync 上下文中运行 async tool（nanobot tool 本身就是 async）
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    import concurrent.futures
-
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                        result = ex.submit(asyncio.run, coro).result()
-                else:
-                    result = loop.run_until_complete(coro)
-            except RuntimeError:
-                # 无 event loop → 新建一个
-                result = asyncio.run(coro)
-        except Exception as e:
-            logger.error("[PolarsAlphaCalculatorEvaluator] tool 执行失败: %s", e)
-            return [
-                FactorMetrics(
-                    formula_id=f.formula_id,
-                    status="failed",
-                    error_msg=f"tool.execute failed: {e}",
-                )
-                for f in factors
-            ]
-
-        if not isinstance(result, dict):
-            logger.error(
-                "[PolarsAlphaCalculatorEvaluator] tool 返回非 dict: %s",
-                type(result).__name__,
-            )
-            return [
-                FactorMetrics(
-                    formula_id=f.formula_id,
-                    status="failed",
-                    error_msg="tool.execute returned non-dict",
-                )
-                for f in factors
-            ]
-
-        # alpha_evaluate tool 返回结构：
-        # {
-        #   "status": "success" | "failed",
-        #   "evaluations": [
-        #       {"formula": "...", "status": "...", "metrics": {...}, "error_msg": ...},
-        #       ...
-        #   ],
-        #   "summary": {...}
-        # }
-        evaluations = result.get("evaluations", [])
-        if len(evaluations) != len(factors):
-            logger.warning(
-                "[PolarsAlphaCalculatorEvaluator] 评估数量不匹配: factors=%d, evaluations=%d",
-                len(factors),
-                len(evaluations),
-            )
+        # 计算前瞻收益
+        forward_return_series = {}
+        for offset in fr:
+            col_name = f"forward_return_{offset}d"
+            if col_name in data.columns:
+                forward_return_series[offset] = data[col_name].to_list()
+            else:
+                # 计算前瞻收益: close(t+offset) / close(t) - 1
+                sorted_data = data.sort([code_column, date_column])
+                fwd_returns = [None] * len(sorted_data)
+                
+                # 按股票分组计算
+                for code in sorted_data[code_column].unique().sort():
+                    mask = sorted_data[code_column] == code
+                    stock_indices = [i for i, x in enumerate(sorted_data[code_column].to_list()) if x == code]
+                    stock_closes = sorted_data.filter(mask)['close'].to_list()
+                    
+                    for j, idx in enumerate(stock_indices):
+                        if j + offset < len(stock_closes):
+                            fwd_returns[idx] = (stock_closes[j + offset] / stock_closes[j]) - 1.0
+                
+                forward_return_series[offset] = fwd_returns
 
         out: List[FactorMetrics] = []
-        for i, factor in enumerate(factors):
-            if i < len(evaluations):
-                eval_dict = evaluations[i]
-                out.append(FactorMetrics.from_alpha_evaluate(factor.formula_id, eval_dict))
-            else:
-                out.append(
-                    FactorMetrics(
+        for factor in factors:
+            try:
+                # 评估因子值
+                factor_values = vocab.evaluate(
+                    formula=factor.formula,
+                    data=data,
+                    date_column=date_column,
+                    code_column=code_column,
+                )
+
+                if factor_values is None or len(factor_values) != len(data):
+                    out.append(FactorMetrics(
                         formula_id=factor.formula_id,
                         status="failed",
-                        error_msg="missing evaluation result",
-                    )
-                )
+                        error_msg="Factor evaluation returned None or wrong length",
+                    ))
+                    continue
+
+                # 计算 IC
+                ic_results = {}
+                for offset in fr:
+                    fwd_ret = forward_return_series.get(offset)
+                    if fwd_ret is None:
+                        continue
+
+                    # per-date IC
+                    dates = data[date_column].unique().sort()
+                    daily_ics = []
+                    for d in dates:
+                        mask = data[date_column] == d
+                        # 获取当前日期的因子值和前瞻收益
+                        fv = factor_values.filter(mask).to_list()
+                        # fwd_ret 是 list，用索引获取对应日期的值
+                        mask_indices = [i for i, x in enumerate(data[date_column].to_list()) if x == d]
+                        rv = [fwd_ret[i] for i in mask_indices if i < len(fwd_ret)]
+
+                        # 过滤 NaN
+                        valid = [(f, r) for f, r in zip(fv, rv)
+                                 if f is not None and r is not None
+                                 and not (isinstance(f, float) and np.isnan(f))
+                                 and not (isinstance(r, float) and np.isnan(r))]
+
+                        if len(valid) >= 3:
+                            fv_valid, rv_valid = zip(*valid)
+                            corr = np.corrcoef(fv_valid, rv_valid)[0, 1]
+                            if not np.isnan(corr):
+                                daily_ics.append(corr)
+
+                    if daily_ics:
+                        ic_mean = float(np.mean(daily_ics))
+                        ic_std = float(np.std(daily_ics))
+                        ir = ic_mean / ic_std if ic_std > 1e-12 else 0.0
+                        ic_results[offset] = {
+                            "ic_mean": ic_mean,
+                            "ic_std": ic_std,
+                            "ir": ir,
+                        }
+
+                if ic_results:
+                    primary = ic_results[fr[0]]
+                    out.append(FactorMetrics(
+                        formula_id=factor.formula_id,
+                        status="success",
+                        ic_mean=primary["ic_mean"],
+                        ic_std=primary["ic_std"],
+                        ir=primary["ir"],
+                        ic_decay={str(k): v["ic_mean"] for k, v in ic_results.items()},
+                    ))
+                else:
+                    out.append(FactorMetrics(
+                        formula_id=factor.formula_id,
+                        status="failed",
+                        error_msg="No valid IC computed",
+                    ))
+
+            except Exception as e:
+                logger.debug("[PolarsAlphaCalculatorEvaluator] 公式评估失败: %s - %s", factor.formula, e)
+                out.append(FactorMetrics(
+                    formula_id=factor.formula_id,
+                    status="failed",
+                    error_msg=str(e),
+                ))
 
         n_success = sum(1 for m in out if m.status == "success")
         logger.info(
