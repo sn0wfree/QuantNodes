@@ -253,6 +253,16 @@ class AlphaEvaluateTool(Tool):
         if m:
             return Ref(Feature(m.group(1)), int(m.group(2)))
 
+        # Ref(close, 1) 格式
+        m = re.fullmatch(r"Ref\((\w+),\s*(\d+)\)", formula)
+        if m:
+            return Ref(Feature(m.group(1)), int(m.group(2)))
+
+        # close.shift(1) 格式
+        m = re.fullmatch(r"(\w+)\.shift\((\d+)\)", formula)
+        if m:
+            return Ref(Feature(m.group(1)), int(m.group(2)))
+
         # 简写字段名: "close", "vol" 等
         # 特殊处理 "returns" → (close - delay(close, 1)) / delay(close, 1)
         if formula == "returns":
@@ -321,19 +331,19 @@ class AlphaEvaluateTool(Tool):
             if op in {"rank", "Rank"}:
                 if len(parsed_args) != 1:
                     raise ValueError(f"{op} needs 1 arg")
-                return UnaryOp("rank", parsed_args[0])
+                return UnaryOp(parsed_args[0], "rank")
 
             # zscore (cross-sectional)
             if op in {"zscore", "Zscore"}:
                 if len(parsed_args) != 1:
                     raise ValueError(f"{op} needs 1 arg")
-                return UnaryOp("zscore", parsed_args[0])
+                return UnaryOp(parsed_args[0], "zscore")
 
             # winsorize
             if op in {"winsorize", "Winsorize"}:
                 if len(parsed_args) != 1:
                     raise ValueError(f"{op} needs 1 arg")
-                return UnaryOp("winsorize", parsed_args[0])
+                return UnaryOp(parsed_args[0], "winsorize")
 
             # signedpower
             if op in {"signedpower", "SignedPower"}:
