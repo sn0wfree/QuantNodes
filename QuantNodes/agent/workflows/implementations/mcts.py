@@ -326,16 +326,17 @@ def _build_mcts_result(state: MCTSState, config: dict) -> dict:
 def _infer_category(node: Dict[str, Any]) -> str:
     """从节点推断类别。"""
     formula = node.get("formula", "")
+    # 检查顺序：先检查特定模式，再检查通用模式
+    if " - ts_mean(" in formula or " - ts_std(" in formula:
+        return "diff"
+    if " / ts_lag(" in formula or " / ts_mean(" in formula:
+        return "ratio"
     if "rank(" in formula or "zscore(" in formula:
         return "wrap"
-    if "ts_mean(" in formula or "ts_std(" in formula:
+    if "ts_mean(" in formula or "ts_std(" in formula or "ts_corr(" in formula:
         return "window"
-    if "abs(" in formula or "log(" in formula:
+    if "abs(" in formula or "log(" in formula or "sqrt(" in formula:
         return "unary"
-    if " - ts_mean(" in formula:
-        return "diff"
-    if " / ts_lag(" in formula:
-        return "ratio"
     return "unknown"
 
 

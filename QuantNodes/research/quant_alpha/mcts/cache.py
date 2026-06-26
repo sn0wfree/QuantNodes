@@ -87,10 +87,11 @@ class MCTSCache:
         ]
         sample_size = min(100, len(data))
         if sample_size > 0:
-            head = data.head(sample_size).to_numpy().tobytes()
-            tail = data.tail(sample_size).to_numpy().tobytes()
-            parts.append(hashlib.md5(head).hexdigest())
-            parts.append(hashlib.md5(tail).hexdigest())
+            # 转换为字符串以确保确定性
+            head_str = str(data.head(sample_size).rows())
+            tail_str = str(data.tail(sample_size).rows())
+            parts.append(hashlib.md5(head_str.encode()).hexdigest())
+            parts.append(hashlib.md5(tail_str.encode()).hexdigest())
         return hashlib.md5("|".join(parts).encode()).hexdigest()[:16]
 
     # ----------------------------------------------------------
