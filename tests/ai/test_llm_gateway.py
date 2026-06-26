@@ -432,15 +432,27 @@ class TestIntegrationScenarios:
         assert isinstance(h._llm_callable, LLMGateway)
 
     def test_alpha_gpt_workflow_uses_gateway(self):
-        """AlphaGptWorkflow() 默认使用 LLMGateway。"""
+        """AlphaGptWorkflow(llm_client=gateway) 使用 LLMGateway。"""
         from QuantNodes.research.quant_alpha.workflow.alpha_gpt import (
             AlphaGptConfig, AlphaGptWorkflow,
         )
         from QuantNodes.ai.llm.gateway import LLMGateway
 
+        agent = FakeAgent(response="mock")
+        gateway = LLMGateway(agent=agent)
+        config = AlphaGptConfig(objective="momentum", iterations=1)
+        workflow = AlphaGptWorkflow(config=config, llm_client=gateway)
+        assert isinstance(workflow.llm_client, LLMGateway)
+
+    def test_alpha_gpt_workflow_no_client_is_none(self):
+        """AlphaGptWorkflow() 不传 llm_client 时为 None (mock 模式)。"""
+        from QuantNodes.research.quant_alpha.workflow.alpha_gpt import (
+            AlphaGptConfig, AlphaGptWorkflow,
+        )
+
         config = AlphaGptConfig(objective="momentum", iterations=1)
         workflow = AlphaGptWorkflow(config=config)
-        assert isinstance(workflow.llm_client, LLMGateway)
+        assert workflow.llm_client is None
 
 
 # ---------------------------------------------------------------------------
