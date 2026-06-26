@@ -326,6 +326,7 @@ class AlphaGptWorkflow:
         successful = [e for e in self.state.all_evaluations if e.status == "success"]
         successful.sort(key=lambda e: abs(e.ir), reverse=True)
         top = successful[: self.config.top_k]
+        logger.info("[_select_final_pool] %d successful, %d top selected", len(successful), len(top))
         final_pool = [
             FinalFormulaRecord(
                 rank=i + 1,
@@ -340,6 +341,8 @@ class AlphaGptWorkflow:
             for i, e in enumerate(top)
         ]
 
+        logger.info("[_select_final_pool] before dedup: %d formulas", len(final_pool))
+
         # 互信息去重
         if self.config.max_mutual_ic_threshold < 1.0 and self.data is not None:
             try:
@@ -353,7 +356,8 @@ class AlphaGptWorkflow:
                 def get_values(record: FinalFormulaRecord) -> Optional[Any]:
                     try:
                         return vocab.evaluate(record.formula, self.data)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("[_select_final_pool] eval failed for %s: %s", record.formula, e)
                         return None
 
                 # 转换为 FactorMetrics 格式用于去重
@@ -375,6 +379,8 @@ class AlphaGptWorkflow:
                     threshold=self.config.max_mutual_ic_threshold,
                 )
 
+                logger.info("[_select_final_pool] dedup: %d -> %d (threshold=%.2f)", len(metrics_list), len(deduped), self.config.max_mutual_ic_threshold)
+
                 # 重建 final_pool
                 deduped_ids = {m.formula_id for m in deduped}
                 final_pool = [r for r in final_pool if r.formula_id in deduped_ids]
@@ -384,8 +390,9 @@ class AlphaGptWorkflow:
                     r.rank = i + 1
 
             except Exception as e:
-                logger.warning("互信息去重失败: %s", e)
+                logger.warning("互信息去重失败: %s", e, exc_info=True)
 
+        logger.info("[_select_final_pool] after dedup: %d formulas", len(final_pool))
         return final_pool
 
     def _build_summary(

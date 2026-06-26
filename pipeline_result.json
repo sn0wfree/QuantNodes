@@ -1,29 +1,51 @@
 {
   "summary": {
-    "objective": "综合挖掘 A 股 alpha 因子，包括动量、反转、波动率、流动性等多类型因子",
-    "alphagpt_factors": 0,
+    "objective": "综合挖掘 A 股 alpha 因子",
+    "alphagpt_factors": 2,
     "mcts_factors": 0,
-    "final_factors": 0,
-    "wiki_pages": 0,
-    "elapsed_seconds": 243.5534269809723,
-    "best_ir": 0.0,
-    "avg_ir": 0.0
-  },
-  "final_pool": [],
-  "wiki_pages": [],
-  "elapsed_seconds": 243.5534269809723,
-  "alphagpt_summary": {
-    "total_evaluated": 15,
-    "successful": 1,
-    "failed": 14,
-    "selected": 0,
-    "avg_ir": 0.08160511232784624,
+    "final_factors": 2,
+    "wiki_pages": 2,
+    "elapsed_seconds": 79.70897102355957,
     "best_ir": 0.08160511232784624,
-    "category_distribution": {}
+    "avg_ir": -0.03569943617697594
+  },
+  "final_pool": [
+    {
+      "formula_id": "FORMULA-2-2",
+      "ic_mean": 0.009160397933564142,
+      "ic_std": 0.0,
+      "ir": 0.08160511232784624,
+      "rank_ic_mean": 0.0,
+      "overall_score": 0.08160511232784624
+    },
+    {
+      "formula_id": "FORMULA-1-3",
+      "ic_mean": -0.011444080593353232,
+      "ic_std": 0.0,
+      "ir": -0.15300398468179813,
+      "rank_ic_mean": 0.0,
+      "overall_score": -0.15300398468179813
+    }
+  ],
+  "wiki_pages": [
+    "Factor/FORMULA-2-2",
+    "Factor/FORMULA-1-3"
+  ],
+  "elapsed_seconds": 79.70897102355957,
+  "alphagpt_summary": {
+    "total_evaluated": 6,
+    "successful": 2,
+    "failed": 4,
+    "selected": 2,
+    "avg_ir": -0.03569943617697594,
+    "best_ir": 0.08160511232784624,
+    "category_distribution": {
+      "unknown": 2
+    }
   },
   "mcts_stats": {
-    "formula_count": 0,
+    "formula_count": 18,
     "valid_count": 0,
-    "rejected_count": 0
+    "rejected_count": 18
   }
 }
