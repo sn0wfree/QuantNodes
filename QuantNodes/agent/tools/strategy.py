@@ -22,6 +22,9 @@ class StrategyTool(Tool):
     CODE_BLOCK_PATTERN = re.compile(r'```(?:python)?\s*(.*?)```', re.DOTALL)
 
     def __init__(self, llm_client=None):
+        if llm_client is None:
+            from QuantNodes.ai.llm.gateway import get_llm_gateway
+            llm_client = get_llm_gateway()
         self._llm_client = llm_client
 
     @property

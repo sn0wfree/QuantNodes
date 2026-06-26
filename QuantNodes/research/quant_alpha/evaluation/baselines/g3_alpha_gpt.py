@@ -40,12 +40,14 @@ class G3AlphaGpt(Baseline):
         iterations: int = 3,
         pool_size: int = 10,
         seed: int = 11,
+        llm_client=None,
     ) -> None:
         self.n = n
         self.objective = objective
         self.iterations = iterations
         self.pool_size = pool_size
         self.seed = seed
+        self._llm_client = llm_client
         self._last_workflow_result = None  # 暴露给 runner 调试
 
     @property
@@ -82,7 +84,9 @@ class G3AlphaGpt(Baseline):
         )
 
         try:
-            workflow = AlphaGptWorkflow(config=config, llm_client=None)
+            # Stage 2: 注入真实 LLM client
+            # Stage 1: llm_client=None → AlphaGptWorkflow 使用 mock
+            workflow = AlphaGptWorkflow(config=config, llm_client=self._llm_client)
             result = workflow.run()
         except Exception as e:
             logger.error("[G3] AlphaGptWorkflow failed: %s, using fallback", e)

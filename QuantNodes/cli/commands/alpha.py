@@ -476,8 +476,8 @@ class AlphaGptCommand(Command):
             if not NANOBOT_AVAILABLE:
                 print(f"⚠️  nanobot-ai 未安装，使用 mock LLM", file=sys.stderr)
                 return None
-            from QuantNodes.agent.nanobot_bridge import Agent
-            return NanobotLLMWrapper(args)
+            from QuantNodes.ai.llm.gateway import LLMGateway
+            return LLMGateway(workspace=".agent")
         except NanobotNotInstalled:
             print(f"⚠️  nanobot-ai 未安装，使用 mock LLM", file=sys.stderr)
             return None
@@ -505,40 +505,17 @@ class AlphaGptCommand(Command):
 
 
 class NanobotLLMWrapper:
-    """把 nanobot Agent 包装成 workflow 期望的 client 接口"""
+    """把 nanobot Agent 包装成 workflow 期望的 client 接口
+
+    现在内部委托 LLMGateway。
+    """
 
     def __init__(self, args: argparse.Namespace):
-        from QuantNodes.agent.nanobot_bridge import Agent
-        self.agent = Agent(workspace=".agent")
+        from QuantNodes.ai.llm.gateway import LLMGateway
+        self._gateway = LLMGateway(workspace=".agent")
         self.temperature = args.temperature
         self.model = args.model
 
     def complete(self, agent_id: str, prompt: str) -> str:
-        """同步调用 nanobot agent.run()"""
-        import asyncio
-        import sys
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                    return ex.submit(
-                        asyncio.run,
-                        self._async_complete(agent_id, prompt),
-                    ).result()
-            return loop.run_until_complete(self._async_complete(agent_id, prompt))
-        except RuntimeError:
-            return asyncio.run(self._async_complete(agent_id, prompt))
-
-    async def _async_complete(self, agent_id: str, prompt: str) -> str:
-        full_prompt = (
-            f"[Acting as {agent_id}]\n\n"
-            f"{prompt}\n\n"
-            f"Return STRICT JSON only. No markdown, no explanation."
-        )
-        try:
-            return await self.agent.run(full_prompt, session_id=agent_id)
-        except Exception as e:
-            print(f"⚠️  LLM call failed: {e}", file=sys.stderr)
-            return "{}"
+        """同步调用 LLMGateway.complete()"""
+        return self._gateway.complete(agent_id=agent_id, prompt=prompt)

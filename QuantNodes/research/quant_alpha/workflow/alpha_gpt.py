@@ -119,6 +119,8 @@ class AlphaGptWorkflow:
         self.config = config
         self.data = data
         self.data_path = data_path
+        # llm_client=None → 使用 _mock_llm_response (Stage 1)
+        # llm_client=LLMGateway → 使用真实 LLM (Stage 2)
         self.llm_client = llm_client
         self.state = AlphaGptState(
             objective=config.objective,
@@ -415,7 +417,11 @@ class AlphaGptWorkflow:
     def _call_llm(self, agent_id: str, prompt: str) -> str:
         """调用 LLM（mock 时返回预定义 JSON）"""
         if self.llm_client is not None:
-            return self.llm_client.complete(agent_id=agent_id, prompt=prompt)
+            # 兼容旧接口: complete(agent_id, prompt)
+            if hasattr(self.llm_client, 'complete'):
+                return self.llm_client.complete(agent_id=agent_id, prompt=prompt)
+            # 兼容 LLMGateway: __call__(prompt)
+            return self.llm_client(prompt)
         # 默认 mock：返回最小 valid JSON（让 workflow 可端到端跑通）
         return _mock_llm_response(agent_id, prompt, self.state, self.config)
 

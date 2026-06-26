@@ -226,6 +226,8 @@ class AlphaBacktestTool(Tool):
             cash = initial_cash
             equity_curve: List[float] = [initial_cash]
             entry_days: List[int] = list(range(0, len(dates) - 1, rebalance_freq))
+            prev_longs: List[str] = []
+            prev_shorts: List[str] = []
 
             for entry_idx in entry_days:
                 if entry_idx + 1 >= len(dates):
@@ -268,12 +270,15 @@ class AlphaBacktestTool(Tool):
                     ].drop_nulls().mean()
                     period_ret = float(long_ret or 0)
 
-                turnover = (len(longs) + len(shorts)) / max(1, len(longs) + len(shorts))
+                changed = len(set(longs) ^ set(prev_longs)) + len(set(shorts) ^ set(prev_shorts))
+                total = max(1, len(longs) + len(shorts))
+                turnover = changed / total
                 cost = turnover * commission
                 net_ret = period_ret - cost
                 cash *= 1.0 + net_ret
                 holdings_returns.append(net_ret)
                 equity_curve.append(cash)
+                prev_longs, prev_shorts = longs, shorts
 
             if not holdings_returns:
                 return {

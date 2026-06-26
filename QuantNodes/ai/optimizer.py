@@ -237,7 +237,7 @@ class PipelineOptimizer:
 
     def __init__(
         self,
-        llm_client: Optional[LLMClientBase] = None,
+        llm_client=None,
         code_sandbox: Optional[CodeSandbox] = None,
         enable_ai_optimization: bool = True,
         **kwargs
@@ -246,10 +246,13 @@ class PipelineOptimizer:
         初始化优化器
 
         Args:
-            llm_client: LLM 客户端（可选，用于 AI 优化）
+            llm_client: LLM 客户端（可选，默认使用 LLMGateway）
             code_sandbox: 代码沙箱
             enable_ai_optimization: 是否启用 AI 优化
         """
+        if llm_client is None:
+            from QuantNodes.ai.llm.gateway import get_llm_gateway
+            llm_client = get_llm_gateway()
         self.llm = llm_client
         self.sandbox = code_sandbox or CodeSandbox()
         self.enable_ai_optimization = enable_ai_optimization and self.llm is not None

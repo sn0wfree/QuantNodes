@@ -17,6 +17,11 @@ from QuantNodes.ai.llm import (
     ChatCompletionChunk,
     OpenAIClient,
     AzureOpenAIClient,
+    LLMGateway,
+    ToolCallResponse,
+    get_llm_gateway,
+    create_llm_gateway,
+    reset_llm_gateway,
 )
 
 from QuantNodes.ai.prompts import (
@@ -57,6 +62,13 @@ __all__ = [
     'ChatCompletionChunk',
     'OpenAIClient',
     'AzureOpenAIClient',
+
+    # Gateway
+    'LLMGateway',
+    'ToolCallResponse',
+    'get_llm_gateway',
+    'create_llm_gateway',
+    'reset_llm_gateway',
 
     # Prompts
     'PromptLibrary',

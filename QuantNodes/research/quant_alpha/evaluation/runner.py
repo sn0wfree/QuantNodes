@@ -26,7 +26,7 @@ from .contracts import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["MockTable4Runner"]
+__all__ = ["MockTable4Runner", "RealTable4Runner"]
 
 
 class MockTable4Runner(Table4Runner):
@@ -194,3 +194,50 @@ if __name__ == "__main__":
 
     loader = MockDataLoader(n_stocks=100, n_days=200)
     print("Mock loader summary:", loader.load_summary())
+
+
+class RealTable4Runner(MockTable4Runner):
+    """Stage 2 real 主入口
+
+    与 MockTable4Runner 完全相同的流程，
+    仅 stage="real" 和默认输出目录不同。
+
+    用法::
+
+        from QuantNodes.research.quant_alpha.evaluation import (
+            ClickHouseDataLoader, PolarsAlphaCalculatorEvaluator,
+            G1Handcrafted, G2LlmOnly, G3AlphaGpt,
+        )
+        from QuantNodes.research.quant_alpha.evaluation.runner import RealTable4Runner
+
+        runner = RealTable4Runner(
+            loader=ClickHouseDataLoader(table="quote.stock_quote"),
+            evaluator=PolarsAlphaCalculatorEvaluator(),
+            baselines=[
+                G1Handcrafted(n=100),
+                G2LlmOnly(n=50),       # 默认使用 LLMGateway → MiniMax
+                G3AlphaGpt(n=30),      # 默认使用 LLMGateway → MiniMax
+            ],
+            output_dir=Path("data/output/table4_real"),
+        )
+        report = runner.run()
+    """
+
+    def __init__(
+        self,
+        loader: DataLoader,
+        evaluator: Evaluator,
+        baselines: Sequence[Baseline],
+        output_dir: Optional[Path] = None,
+        forward_returns: Optional[List[int]] = None,
+        notes: Optional[List[str]] = None,
+    ) -> None:
+        super().__init__(
+            loader=loader,
+            evaluator=evaluator,
+            baselines=baselines,
+            output_dir=output_dir or Path("data/output/table4_real"),
+            forward_returns=forward_returns,
+            stage="real",
+            notes=notes,
+        )

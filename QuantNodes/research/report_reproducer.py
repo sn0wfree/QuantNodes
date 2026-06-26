@@ -116,10 +116,13 @@ class ResearchReportReproducer:
         """
         Args:
             wiki_path: Wiki 因子库路径
-            llm_client: OpenAIClient 实例 (可选, 不传则使用规则匹配)
+            llm_client: LLM 客户端 (可选, 默认使用 LLMGateway)
             eval_config: 因子评估配置
         """
         self.wiki_path = wiki_path
+        if llm_client is None:
+            from QuantNodes.ai.llm.gateway import get_llm_gateway
+            llm_client = get_llm_gateway()
         self.llm_client = llm_client
         self.proxy = WikiFactorProxy(wiki_path)
         self.evaluator = FactorEvaluator(eval_config)

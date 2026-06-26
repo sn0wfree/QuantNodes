@@ -40,6 +40,7 @@ class ChatCompletion:
     role: MessageRole = MessageRole.ASSISTANT
     finish_reason: Optional[str] = None
     usage: Optional[Dict[str, int]] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
 
 
 @dataclass

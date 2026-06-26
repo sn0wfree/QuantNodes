@@ -312,12 +312,11 @@ class TestStrategyTool:
         assert "description" in params.get("required", [])
 
     @pytest.mark.asyncio
-    async def test_execute_without_llm_returns_needs_configuration(self):
-        """StrategyTool without an LLM client returns ``status=needs_configuration``."""
+    async def test_execute_auto_injects_llm_gateway(self):
+        """StrategyTool auto-injects LLMGateway when no llm_client provided."""
+        from QuantNodes.ai.llm.gateway import LLMGateway
         tool = StrategyTool()
-        result = await tool.execute(description="生成一个动量策略")
-        assert result["status"] == "needs_configuration"
-        assert "LLM" in result["message"]
+        assert isinstance(tool._llm_client, LLMGateway)
 
 
 # ----------------------------------------------------------------------------

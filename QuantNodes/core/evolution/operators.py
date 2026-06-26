@@ -66,6 +66,9 @@ class BaseOperator:
         self.model = model
         self.max_correction_attempts = max_correction_attempts
         self.seed = seed
+        if llm_callable is None and model != "mock":
+            from QuantNodes.ai.llm.gateway import get_llm_gateway
+            llm_callable = get_llm_gateway()
         self._llm_callable = llm_callable
 
     def _call(self, prompt: str) -> str:
