@@ -30,7 +30,8 @@ quantnodes init --force               # 强制重新初始化
 quantnodes serve                      # 前台启动，Ctrl+C 停止
 quantnodes serve --check-env          # 启动前校验 API key
 quantnodes serve --gateway-port 18090 # 设置 nanobot gateway 端口（默认 18090）
-quantnodes serve --frontend           # 同时启动 Vite dev server
+quantnodes serve --frontend           # 同时启动 Vite dev server（开发模式）
+quantnodes serve --mcp                # 同时启动 MCP server（供外部客户端）
 quantnodes serve --daemon             # 后台运行，写 .quantnodes.pid
 ```
 
@@ -58,8 +59,10 @@ quantnodes serve --daemon             # 后台运行，写 .quantnodes.pid
 | `--host` | 绑定主机 | `127.0.0.1` |
 | `--port` | FastAPI 端口 | `19380` |
 | `--gateway-port` | nanobot WebSocket + WebUI 端口 | `18090` |
-| `--frontend` | 同时启动 Vite dev server | 不启动 |
+| `--frontend` | 同时启动 Vite dev server（开发模式） | 不启动 |
 | `--frontend-port` | 前端端口 | `5173` |
+| `--mcp` | 同时启动 MCP server（供 Claude Desktop / Cursor 等） | 不启动 |
+| `--mcp-port` | MCP server HTTP 端口 | `8765` |
 | `--daemon` | 后台运行，写 `.quantnodes.pid` | 前台 |
 | `--check-env` | 启动前校验 `QUANTNODES__LLM__API_KEY` | 不校验 |
 

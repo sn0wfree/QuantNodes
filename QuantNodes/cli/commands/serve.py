@@ -1,20 +1,20 @@
 # coding=utf-8
 """``quantnodes serve / stop / status / logs`` — backend lifecycle.
 
-v3.0.0 Stage 7: 一键启动 / 停止 / 状态查询 / 日志查看。
-对标 llmwikify 的 ``llmwikify <cmd>`` 风格。
+v3.1.0: Zero-subprocess architecture.
 
 Commands:
-    serve   — 启动 FastAPI (+ nanobot gateway), 可选前端 (--frontend)
+    serve   — 启动 FastAPI (+ nanobot gateway), 可选前端/ MCP
     stop    — 通过 pidfile 停止 serve
     status  — 打印 health + /api/agent/status JSON
     logs    — tail -f logs/quantnodes_serve.log
 
 Design:
-    - serve 用 subprocess.Popen 启动 uvicorn (与 run.py 一致)
-    - --daemon 时写 .quantnodes.pid 并立即返回 0
-    - 前台时 wait_for_health 轮询直到 state=running, 然后等 Ctrl+C
-    - 端口冲突检测在启动前 (避免 nanobot 报 OSError 才知道 18080 被 gpustack 占用)
+    - serve 直接调用 uvicorn.Server.run() (同进程, 无子进程)
+    - --daemon 时双 fork 脱离终端, 写 .quantnodes.pid
+    - --frontend 时 spawn npm dev server (subprocess, lifespan 管理)
+    - --mcp 时 spawn MCP server (subprocess, 供外部客户端)
+    - 前台时 Ctrl+C 直接终止 (所有组件 in-process)
 """
 from __future__ import annotations
 
@@ -23,11 +23,12 @@ import os
 import signal
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Optional
 
 from QuantNodes.cli.command import Command
+
+from QuantNodes.constants import DEFAULT_WEBSOCKET_PORT
 
 from .._helpers import (
     DEFAULT_API_PORT,
@@ -70,43 +71,17 @@ def _serve_log_path() -> Path:
     return _log_dir() / "quantnodes_serve.log"
 
 
-def _start_uvicorn(host: str, port: int, gateway_port: int,
-                   log_path: Path) -> subprocess.Popen:
-    """Spawn uvicorn with NANOBOT_GATEWAY_PORT injected into the subprocess env.
-
-    Returns the Popen handle (caller is responsible for .wait() / .terminate()).
-    Stdout+stderr are appended to ``log_path`` so the daemon case leaves an
-    audit trail that ``quantnodes logs`` can tail.
-    """
-    env = os.environ.copy()
-    env["NANOBOT_GATEWAY_HOST"] = host
-    env["NANOBOT_GATEWAY_PORT"] = str(gateway_port)
-    cmd = [
-        sys.executable, "-m", "uvicorn", "api.main:app",
-        "--host", host, "--port", str(port),
-    ]
-    log_fd = open(log_path, "ab", buffering=0)
-    return subprocess.Popen(
-        cmd, cwd=str(get_project_root()), env=env,
-        stdout=log_fd, stderr=subprocess.STDOUT,
-    )
-
-
 def _start_frontend(host: str, frontend_port: int, api_port: int,
                     gateway_port: int = DEFAULT_GATEWAY_PORT) -> subprocess.Popen:
     """Spawn Vite dev server (npm run dev) with HOST/PORT/API_PORT injected.
 
-    v3.0.0 Stage 7: also inject ``VITE_NANOBOT_GATEWAY_URL`` and ``GATEWAY_PORT``
-    so the Vue frontend's AgentChat.vue can reach the nanobot gateway
-    for WebSocket chat and HTTP APIs (sessions/settings/mcp).
-    Stdout/stderr are inherited (frontend's own dev output is useful for the user).
+    The frontend subprocess lifecycle is managed by the caller's finally
+    block (terminate on shutdown).
     """
     env = os.environ.copy()
     env["HOST"] = host
     env["PORT"] = str(frontend_port)
     env["API_PORT"] = str(api_port)
-    # v3.0.0: inject gateway port so AgentChat.vue resolves the correct
-    # WebSocket + HTTP API endpoint (avoids hardcoded 18080).
     env["GATEWAY_PORT"] = str(gateway_port)
     env["VITE_NANOBOT_GATEWAY_URL"] = f"http://{host}:{gateway_port}/"
     return subprocess.Popen(
@@ -116,13 +91,69 @@ def _start_frontend(host: str, frontend_port: int, api_port: int,
     )
 
 
+def _start_mcp_server(host: str, port: int) -> subprocess.Popen:
+    """Spawn MCP server as HTTP subprocess for external clients.
+
+    The MCP server exposes quant tools over MCP protocol (HTTP transport)
+    so that Claude Desktop, Cursor, etc. can connect.
+    """
+    cmd = [
+        sys.executable, "-m", "QuantNodes.mcp_server",
+        "--transport", "http",
+        "--host", host,
+        "--port", str(port),
+    ]
+    return subprocess.Popen(
+        cmd, cwd=str(get_project_root()),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+
+def _print_startup_info(args, pid: int) -> None:
+    """Print startup info (used in daemon mode)."""
+    api_url = f"http://{args.host}:{args.port}"
+    gateway_url = f"http://{args.host}:{args.gateway_port}"
+    log_path = _serve_log_path()
+    print("=" * 50)
+    print("✓ QuantNodes 已后台启动")
+    print("=" * 50)
+    print(f"  API:       {api_url}")
+    print(f"  WebUI:     {gateway_url}/")
+    _token = _read_gateway_token()
+    if _token:
+        print(f"  Token:     {_token}")
+    if getattr(args, "mcp", False):
+        print(f"  MCP:       http://{args.host}:{getattr(args, 'mcp_port', DEFAULT_WEBSOCKET_PORT)}/")
+    print(f"  PID:       {pid}    日志: {log_path}")
+    print(f"  停止:      quantnodes stop")
+    print(f"  状态:      quantnodes status")
+    print()
+    print_nanobot_install_hint()
+
+
+def _kill_procs(*procs: Optional[subprocess.Popen]) -> None:
+    """Terminate a list of subprocesses gracefully, with SIGKILL fallback."""
+    for proc in procs:
+        if proc is None or proc.poll() is not None:
+            continue
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
 def cmd_serve(args) -> int:
-    """Foreground by default; --daemon writes .quantnodes.pid and returns 0."""
+    """Start the QuantNodes backend.
+
+    Foreground by default; --daemon double-forks and writes .quantnodes.pid.
+    uvicorn runs in-process (no subprocess) for clean signal handling.
+    """
     if not load_env_quietly():
         print("⚠ .env 未找到（继续运行，部分功能可能受限）")
         print("  建议运行: quantnodes init  生成 .env")
 
-    # 1. 端口冲突检测（明确报错，比 nanobot 内部 OSError 更友好）
+    # 1. Port conflict detection
     if not is_port_free(args.port):
         print(f"✗ 后端端口 {args.port} 已被占用")
         print(f"  提示: 用 --port 换其他端口 (默认 {DEFAULT_API_PORT})")
@@ -133,81 +164,73 @@ def cmd_serve(args) -> int:
             print("  提示: 18080 常被 gpustack 等占用，建议换 --gateway-port 18090")
         print(f"  当前默认: {DEFAULT_GATEWAY_PORT}")
         return 1
+    if getattr(args, "mcp", False) and not is_port_free(getattr(args, "mcp_port", DEFAULT_WEBSOCKET_PORT)):
+        print(f"✗ MCP server 端口 {args.mcp_port} 已被占用")
+        return 1
 
-    # 2. --check-env 时验证 .env 中 QUANTNODES__LLM__API_KEY
+    # 2. --check-env
     if args.check_env and not os.environ.get("QUANTNODES__LLM__API_KEY"):
         print("✗ .env 中缺少 QUANTNODES__LLM__API_KEY")
         print("  请运行: quantnodes init  或手动编辑 .env")
         return 1
 
-    # 3. 启动后端
-    log_path = _serve_log_path()
-    api_proc = _start_uvicorn(args.host, args.port, args.gateway_port, log_path)
+    # 3. Set environment variables (for lifespan / nanobot)
+    os.environ["NANOBOT_GATEWAY_HOST"] = args.host
+    os.environ["NANOBOT_GATEWAY_PORT"] = str(args.gateway_port)
 
-    # 4. 可选前端
+    # 4. Optional frontend subprocess
     frontend_proc: Optional[subprocess.Popen] = None
     if args.frontend:
         frontend_proc = _start_frontend(args.host, args.frontend_port, args.port,
                                              gateway_port=args.gateway_port)
 
-    # 5. daemon / 前台 分支
-    if args.daemon:
-        write_pidfile(api_proc.pid)
-        api_url = f"http://{args.host}:{args.port}"
-        gateway_url = f"http://{args.host}:{args.gateway_port}"
-        print("=" * 50)
-        print("✓ QuantNodes 已后台启动")
-        print("=" * 50)
-        print(f"  API:       {api_url}")
-        print(f"  WebUI:     {gateway_url}/")
-        _token = _read_gateway_token()
-        if _token:
-            print(f"  Token:     {_token}")
-        print(f"  PID:       {api_proc.pid}    日志: {log_path}")
-        print(f"  停止:      quantnodes stop")
-        print(f"  状态:      quantnodes status")
-        print()
-        print_nanobot_install_hint()
-        return 0
+    # 5. Optional MCP server subprocess
+    mcp_proc: Optional[subprocess.Popen] = None
+    if getattr(args, "mcp", False):
+        mcp_proc = _start_mcp_server(args.host, getattr(args, "mcp_port", DEFAULT_WEBSOCKET_PORT))
 
-    # 前台模式：等 health 成功后打印 ready 信息
-    api_url = f"http://{args.host}:{args.port}"
-    print(f"⏳ 等待后端就绪 (timeout 30s)...")
-    if wait_for_health(api_url, timeout_s=30):
-        print()
-        print("=" * 50)
-        print("✓ QuantNodes 后端已就绪")
-        print("=" * 50)
-        print(f"  API:       {api_url}")
-        print(f"  WebUI:     http://{args.host}:{args.gateway_port}/")
-        _token = _read_gateway_token()
-        if _token:
-            print(f"  Token:     {_token}")
-        if args.frontend:
-            print(f"  Frontend:  http://{args.host}:{args.frontend_port}/")
-        print(f"  日志:      tail -f {log_path}")
-        print()
-        print("按 Ctrl+C 停止")
-        print()
-        print_nanobot_install_hint()
-    else:
-        print("⚠ 后端 30s 内未就绪，请检查:")
-        print(f"  tail -f {log_path}")
+    # 6. Daemon mode: double-fork to detach from terminal
+    if args.daemon:
+        # Fork 1: exit parent, child becomes session leader
+        if os.fork() > 0:
+            _kill_procs(frontend_proc, mcp_proc)
+            sys.exit(0)
+        os.setsid()
+        # Fork 2: prevent re-acquiring controlling terminal
+        if os.fork() > 0:
+            sys.exit(0)
+        # Redirect stdio to log file
+        sys.stdin = open(os.devnull)
+        log_path = _serve_log_path()
+        log_fd = open(log_path, "a")
+        sys.stdout = sys.stderr = log_fd
+        write_pidfile(os.getpid())
+        _print_startup_info(args, os.getpid())
+
+    # 7. Run uvicorn in-process (blocking)
+    import uvicorn
+    config = uvicorn.Config(
+        "api.main:app",
+        host=args.host,
+        port=args.port,
+        log_level="info",
+    )
+    server = uvicorn.Server(config)
+
+    # Signal: SIGTERM → graceful shutdown
+    def _shutdown(sig, frame):
+        server.should_exit = True
+    signal.signal(signal.SIGTERM, _shutdown)
 
     try:
-        api_proc.wait()
+        server.run()
     except KeyboardInterrupt:
-        print("\n正在停止...")
-        api_proc.terminate()
-        if frontend_proc:
-            try:
-                frontend_proc.terminate()
-            except Exception:
-                pass
-        try:
-            api_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            api_proc.kill()
+        pass
+    finally:
+        _kill_procs(frontend_proc, mcp_proc)
+        if not args.daemon:
+            remove_pidfile()
+
     return 0
 
 
@@ -238,7 +261,6 @@ def cmd_stop(args) -> int:
     except PermissionError:
         print(f"✗ 无权终止 PID {pid}（可能属于其他用户）")
         return 1
-    # 清理 pidfile（即使进程还没完全退出，下一次 stop 不会重复 kill）
     remove_pidfile()
     print(f"  pidfile 已清理: {PIDFILE_NAME}")
     return 0
@@ -285,17 +307,14 @@ def cmd_logs(args) -> int:
         print("（需要先运行 quantnodes serve）")
         return 1
     if args.follow:
-        # Use `tail -F` so logrotate / truncation triggers reopen
         try:
             subprocess.run(["tail", "-F", "-n", "+1", str(log_path)])
         except KeyboardInterrupt:
             pass
     else:
-        # 打印最后 200 行后退出
         try:
             subprocess.run(["tail", "-n", "200", str(log_path)])
         except FileNotFoundError:
-            # tail 不存在（Windows）；fallback 到 Python read
             text = log_path.read_text(encoding="utf-8", errors="replace")
             lines = text.splitlines()[-200:]
             print("\n".join(lines))
@@ -307,7 +326,7 @@ def cmd_logs(args) -> int:
 # ============================================================================
 
 class ServeCommand(Command):
-    """``quantnodes serve`` — 启动后端（+ 可选前端）."""
+    """``quantnodes serve`` — 启动后端（+ 可选前端/MCP）."""
 
     name = "serve"
     description = "启动 QuantNodes 后端（FastAPI + nanobot gateway）"
@@ -320,9 +339,13 @@ class ServeCommand(Command):
         p.add_argument("--gateway-port", type=int, default=DEFAULT_GATEWAY_PORT,
                        help=f"nanobot WebSocket gateway 端口 (默认 {DEFAULT_GATEWAY_PORT})")
         p.add_argument("--frontend", action="store_true",
-                       help="同时启动 Vite dev server (默认仅启动后端)")
+                       help="同时启动 Vite dev server (开发模式)")
         p.add_argument("--frontend-port", type=int, default=DEFAULT_FRONTEND_PORT,
                        help=f"前端端口 (默认 {DEFAULT_FRONTEND_PORT})")
+        p.add_argument("--mcp", action="store_true",
+                       help="同时启动 MCP server (供 Claude Desktop / Cursor 等外部客户端)")
+        p.add_argument("--mcp-port", type=int, default=DEFAULT_WEBSOCKET_PORT,
+                       help=f"MCP server HTTP 端口 (默认 {DEFAULT_WEBSOCKET_PORT})")
         p.add_argument("--daemon", action="store_true",
                        help="后台运行，写入 .quantnodes.pid")
         p.add_argument("--check-env", action="store_true",

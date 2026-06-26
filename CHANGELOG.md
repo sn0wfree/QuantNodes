@@ -36,6 +36,31 @@ Stage 1 mock Table 4 复现 — 论文 Alpha-GPT 框架 mock 端到端验证。
 
 ## [Unreleased]
 
+### Changed
+
+- **零子进程架构** (`QuantNodes/cli/commands/serve.py`, `api/main.py`,
+  `QuantNodes/agent/config_mapper.py`):
+  - `cmd_serve` 从 `subprocess.Popen(uvicorn)` 改为 `uvicorn.Server.run()` 同进程运行
+  - 删除 `tools.mcpServers` 自动配置；QuantTools 通过 `register_all_quant_tools()` 直接注册在 ToolRegistry
+  - 新增 `--mcp` / `--mcp-port` 参数：可选启动 MCP server 子进程（供 Claude Desktop / Cursor 等外部客户端）
+  - 新增 `--frontend` / `--frontend-port`：Vite dev server 子进程，生命周期由 finally 块管理
+  - daemon 模式改为双 fork（`os.fork()` + `os.setsid()`），不再依赖 subprocess.Popen
+  - `cmd_stop` SIGTERM 直达 uvicorn 进程，lifespan finally 自动清理所有组件
+  - FastAPI 挂载 `frontend/dist/` 静态文件到 `/ui/`（生产模式零子进程访问前端）
+  - 测试 700 passed / 3 skipped
+
+### 架构变化
+
+```
+quantnodes serve (主进程 = uvicorn, port 19380)
+├── FastAPI + /ui/* → frontend/dist/ (零子进程)
+├── nanobot gateway (port 18090, asyncio.Task)
+│   ├── QuantTools (ToolRegistry, in-process)
+│   ├── AgentLoop / CronService / ChannelManager (asyncio.Tasks)
+├── [可选] npm run dev (port 5173, --frontend, subprocess)
+└── [可选] MCP server (port 8765, --mcp, subprocess)
+```
+
 ## [2.9.1] - 2026-06-24
 
 Patch release — 2 个 bug 修复，无新增功能。
