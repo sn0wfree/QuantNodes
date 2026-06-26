@@ -83,11 +83,13 @@ class G2LlmOnly(Baseline):
     def _generate_with_llm(self, n: int) -> List[FactorSpec]:
         """Stage 2: 用真实 LLM 生成公式。"""
         prompt = (
-            f"Generate {n} unique alpha factor formulas for quantitative trading.\n"
-            f"Each formula must be a valid Polars expression using these base features: "
-            f"open, high, low, close, vol, amount.\n"
-            f"Use these operators: ts_mean, ts_std, ts_rank, ts_max, ts_min, "
-            f"ts_sum, delta, rank, abs, log, sign, power.\n"
+            f"Generate {n} unique alpha factor formulas for quantitative trading.\n\n"
+            f"IMPORTANT: Before generating formulas, call the operator_lookup tool:\n"
+            f"1. operator_lookup(action='list_operators') to see all available operators\n"
+            f"2. operator_lookup(action='get_operator_info', name='xxx') for details\n"
+            f"3. operator_lookup(action='validate_formula', formula='xxx') to verify\n\n"
+            f"Base features: open, high, low, close, vol, amount\n"
+            f"Formula syntax: Python function calls, e.g. rank(ts_mean(close, 20))\n"
             f"Return ONLY a JSON array of formula strings, e.g.: "
             f'[\"rank(-ts_mean(returns, 20))\", \"ts_std(close, 10) / close\"]\n'
             f"No explanation, no markdown, just the JSON array."

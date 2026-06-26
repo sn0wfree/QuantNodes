@@ -27,6 +27,7 @@ from .web_search import WebSearchTool
 from .task import TaskTool
 from .alpha_evaluate import AlphaEvaluateTool
 from .alpha_backtest import AlphaBacktestTool
+from .operator_lookup import OperatorLookupTool
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ _QUANT_TOOL_FACTORIES = [
     TaskTool,
     AlphaEvaluateTool,
     AlphaBacktestTool,
+    OperatorLookupTool,
 ]
 
 
@@ -118,4 +120,5 @@ __all__ = [
     "TaskTool",
     "AlphaEvaluateTool",
     "AlphaBacktestTool",
+    "OperatorLookupTool",
 ]
