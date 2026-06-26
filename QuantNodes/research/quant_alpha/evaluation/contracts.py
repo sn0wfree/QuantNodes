@@ -93,6 +93,14 @@ class FactorMetrics:
             "metrics": {ic_mean, ic_std, ir, ic_decay: {1: x, 5: y, 20: z}},
             "error_msg": None | "..."
         }
+
+    扩展 6 维验证（从 _legacy_3c 迁移）：
+        - Return (收益): IC/ICIR
+        - Stability (稳定性): 滚动 IC 标准差
+        - Diversification (分散度): 与已有因子的相关性
+        - Turnover (换手率): 排名变化率
+        - Monotonicity (单调性): 分组收益单调性
+        - Coverage (覆盖率): 非空比例
     """
 
     formula_id: str
@@ -103,6 +111,17 @@ class FactorMetrics:
     ic_decay: Dict[int, float] = field(default_factory=dict)
     error_msg: Optional[str] = None
 
+    # 6 维验证字段（从 _legacy_3c 迁移）
+    rank_ic_mean: float = 0.0
+    stability_score: float = 0.0
+    diversification_score: float = 0.0
+    turnover: float = 0.0
+    monotonicity_score: float = 0.0
+    coverage: float = 0.0
+    is_valid: bool = False
+    fail_reasons: List[str] = field(default_factory=list)
+    overall_score: float = 0.0
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "formula_id": self.formula_id,
@@ -112,7 +131,16 @@ class FactorMetrics:
                 "ic_std": self.ic_std,
                 "ir": self.ir,
                 "ic_decay": {str(k): v for k, v in self.ic_decay.items()},
+                "rank_ic_mean": self.rank_ic_mean,
+                "stability_score": self.stability_score,
+                "diversification_score": self.diversification_score,
+                "turnover": self.turnover,
+                "monotonicity_score": self.monotonicity_score,
+                "coverage": self.coverage,
+                "overall_score": self.overall_score,
             },
+            "is_valid": self.is_valid,
+            "fail_reasons": self.fail_reasons,
             "error_msg": self.error_msg,
         }
 
@@ -130,6 +158,44 @@ class FactorMetrics:
             ic_decay={int(k): float(v) for k, v in decay_raw.items()},
             error_msg=eval_dict.get("error_msg"),
         )
+
+
+@dataclass
+class VerifyConfig:
+    """6 维验证阈值配置（从 _legacy_3c 迁移）"""
+
+    # 收益维度
+    ic_threshold: float = 0.03
+    icir_threshold: float = 0.5
+
+    # 稳定性维度
+    stability_threshold: float = 0.6
+
+    # 分散度维度
+    corr_threshold: float = 0.7
+
+    # 换手率维度
+    turnover_threshold: float = 0.5
+
+    # 单调性维度
+    monotonicity_threshold: float = 0.7
+
+    # 覆盖率维度
+    coverage_threshold: float = 0.8
+
+    # 维度权重
+    weights: Dict[str, float] = field(default_factory=lambda: {
+        "return": 0.30,
+        "stability": 0.20,
+        "diversification": 0.20,
+        "turnover": 0.15,
+        "monotonicity": 0.10,
+        "coverage": 0.05,
+    })
+
+    # 分组参数
+    n_groups: int = 5
+    rolling_window: int = 20
 
 
 @dataclass

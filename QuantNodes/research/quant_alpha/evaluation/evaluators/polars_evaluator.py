@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import polars as pl
 
-from ..contracts import Evaluator, FactorMetrics, FactorSpec
+from ..contracts import Evaluator, FactorMetrics, FactorSpec, VerifyConfig
 
 logger = logging.getLogger(__name__)
 
@@ -188,3 +188,263 @@ class PolarsAlphaCalculatorEvaluator(Evaluator):
         )
 
         return out
+
+    def verify(
+        self,
+        metrics: FactorMetrics,
+        data: Any,
+        factor_values: Any = None,
+        existing_factors: Optional[List[Any]] = None,
+        config: Optional[VerifyConfig] = None,
+    ) -> FactorMetrics:
+        """6 维验证（从 _legacy_3c 迁移）
+
+        Args:
+            metrics: 已计算的 IC/IR 指标
+            data: 原始数据 DataFrame
+            factor_values: 因子值 Series（可选，用于计算 turnover/monotonicity）
+            existing_factors: 已有因子值列表（可选，用于计算 diversification）
+            config: 验证阈值配置
+
+        Returns:
+            更新后的 FactorMetrics（含 6 维分数和 is_valid）
+        """
+        if metrics.status != "success":
+            metrics.is_valid = False
+            metrics.fail_reasons = [metrics.error_msg or "IC 计算失败"]
+            return metrics
+
+        cfg = config or VerifyConfig()
+        fail_reasons = []
+
+        # 1. 收益维度（已有 IC/IR）
+        return_score = min(abs(metrics.ir) / 1.0, 1.0)
+        if abs(metrics.ic_mean) < cfg.ic_threshold:
+            fail_reasons.append(f"IC {abs(metrics.ic_mean):.4f} < {cfg.ic_threshold}")
+        if abs(metrics.ir) < cfg.icir_threshold:
+            fail_reasons.append(f"IR {abs(metrics.ir):.4f} < {cfg.icir_threshold}")
+
+        # 2. 稳定性维度（滚动 IC）
+        stability_score = self._compute_stability(data, factor_values, cfg)
+        metrics.stability_score = stability_score
+        if stability_score < cfg.stability_threshold:
+            fail_reasons.append(f"稳定性 {stability_score:.4f} < {cfg.stability_threshold}")
+
+        # 3. 分散度维度（与已有因子相关性）
+        diversification_score = self._compute_diversification(
+            factor_values, existing_factors, cfg
+        )
+        metrics.diversification_score = diversification_score
+        if diversification_score < (1.0 - cfg.corr_threshold):
+            fail_reasons.append(f"分散度 {diversification_score:.4f} < {1.0 - cfg.corr_threshold}")
+
+        # 4. 换手率维度
+        turnover = self._compute_turnover(data, factor_values, cfg)
+        metrics.turnover = turnover
+        if turnover > cfg.turnover_threshold:
+            fail_reasons.append(f"换手率 {turnover:.4f} > {cfg.turnover_threshold}")
+
+        # 5. 单调性维度
+        monotonicity_score = self._compute_monotonicity(data, factor_values, cfg)
+        metrics.monotonicity_score = monotonicity_score
+        if monotonicity_score < cfg.monotonicity_threshold:
+            fail_reasons.append(f"单调性 {monotonicity_score:.4f} < {cfg.monotonicity_threshold}")
+
+        # 6. 覆盖率维度
+        coverage = self._compute_coverage(data, factor_values)
+        metrics.coverage = coverage
+        if coverage < cfg.coverage_threshold:
+            fail_reasons.append(f"覆盖率 {coverage:.4f} < {cfg.coverage_threshold}")
+
+        # 计算综合分数
+        weights = cfg.weights
+        metrics.overall_score = (
+            weights["return"] * return_score
+            + weights["stability"] * stability_score
+            + weights["diversification"] * diversification_score
+            + weights["turnover"] * (1.0 - turnover)
+            + weights["monotonicity"] * monotonicity_score
+            + weights["coverage"] * coverage
+        )
+
+        metrics.is_valid = len(fail_reasons) == 0
+        metrics.fail_reasons = fail_reasons
+
+        return metrics
+
+    def _compute_stability(
+        self, data: Any, factor_values: Any, config: VerifyConfig
+    ) -> float:
+        """计算稳定性分数（滚动 IC 标准差）"""
+        if factor_values is None:
+            return 0.0
+
+        try:
+            # 计算每日 IC
+            tmp = pl.DataFrame({
+                "_date": data["date"],
+                "_factor": factor_values,
+                "_fwd": data.get("forward_return", pl.Series([0.0] * len(data))),
+            }).drop_nulls()
+
+            daily_ic = (
+                tmp
+                .group_by("_date")
+                .agg(pl.corr("_factor", "_fwd").alias("_ic"))
+                .sort("_date")
+                .drop_nulls()
+            )
+
+            if len(daily_ic) < config.rolling_window:
+                return 0.0
+
+            # 滚动窗口计算稳定性
+            ics = daily_ic["_ic"].to_numpy()
+            rolling_std = np.array([
+                np.std(ics[max(0, i - config.rolling_window):i + 1])
+                for i in range(len(ics))
+            ])
+            rolling_mean = np.array([
+                np.mean(ics[max(0, i - config.rolling_window):i + 1])
+                for i in range(len(ics))
+            ])
+
+            # 稳定性 = 1 - 滚动标准差 / |滚动均值|
+            stability = np.mean(
+                np.maximum(0, 1 - rolling_std / (np.abs(rolling_mean) + 1e-8))
+            )
+            return float(stability)
+
+        except Exception as e:
+            logger.debug("稳定性计算失败: %s", e)
+            return 0.0
+
+    def _compute_diversification(
+        self, factor_values: Any, existing_factors: Optional[List[Any]], config: VerifyConfig
+    ) -> float:
+        """计算分散度分数（与已有因子的相关性）"""
+        if factor_values is None or not existing_factors:
+            return 1.0  # 没有已有因子时默认满分
+
+        try:
+            corrs = []
+            for existing in existing_factors:
+                if existing is not None and len(existing) == len(factor_values):
+                    # 计算 Spearman 相关性
+                    corr = np.corrcoef(
+                        np.argsort(np.argsort(factor_values)),
+                        np.argsort(np.argsort(existing))
+                    )[0, 1]
+                    corrs.append(abs(corr))
+
+            if not corrs:
+                return 1.0
+
+            avg_corr = np.mean(corrs)
+            return float(max(0, 1 - avg_corr))
+
+        except Exception as e:
+            logger.debug("分散度计算失败: %s", e)
+            return 0.0
+
+    def _compute_turnover(
+        self, data: Any, factor_values: Any, config: VerifyConfig
+    ) -> float:
+        """计算换手率（排名变化率）"""
+        if factor_values is None:
+            return 1.0
+
+        try:
+            # 按日期分组计算排名
+            tmp = pl.DataFrame({
+                "_date": data["date"],
+                "_factor": factor_values,
+            })
+
+            # 全局排名
+            tmp = tmp.with_columns(pl.col("_factor").rank().alias("_rank"))
+
+            # 计算相邻日期的排名变化
+            dates = tmp["_date"].unique().sort()
+            if len(dates) < 2:
+                return 0.0
+
+            turnovers = []
+            for i in range(min(len(dates) - 1, 50)):  # 最多计算 50 天
+                curr = tmp.filter(pl.col("_date") == dates[i])["_rank"].to_numpy()
+                prev = tmp.filter(pl.col("_date") == dates[i + 1])["_rank"].to_numpy()
+                if len(curr) == len(prev) and len(curr) > 0:
+                    turnover = np.mean(np.abs(curr - prev)) / len(curr)
+                    turnovers.append(turnover)
+
+            return float(np.mean(turnovers)) if turnovers else 0.0
+
+        except Exception as e:
+            logger.debug("换手率计算失败: %s", e)
+            return 1.0
+
+    def _compute_monotonicity(
+        self, data: Any, factor_values: Any, config: VerifyConfig
+    ) -> float:
+        """计算单调性分数（分组收益单调性）"""
+        if factor_values is None:
+            return 0.0
+
+        try:
+            # 构造临时 DataFrame
+            tmp = pl.DataFrame({
+                "_factor": factor_values,
+                "_fwd": data.get("forward_return", pl.Series([0.0] * len(data))),
+            }).drop_nulls()
+
+            if len(tmp) < config.n_groups * 10:
+                return 0.0
+
+            # 分组
+            tmp = tmp.with_columns(
+                pl.col("_factor")
+                .qcut(config.n_groups, labels=[str(i) for i in range(config.n_groups)])
+                .alias("_group")
+            )
+
+            # 计算每组平均收益
+            group_returns = (
+                tmp
+                .group_by("_group")
+                .agg(pl.col("_fwd").mean().alias("_mean_return"))
+                .sort("_group")
+            )
+
+            if len(group_returns) < config.n_groups:
+                return 0.0
+
+            # 计算 Spearman 相关性（组号 vs 组收益）
+            groups = list(range(len(group_returns)))
+            returns = group_returns["_mean_return"].to_list()
+            corr = np.corrcoef(groups, returns)[0, 1]
+
+            return float(max(0, corr))
+
+        except Exception as e:
+            logger.debug("单调性计算失败: %s", e)
+            return 0.0
+
+    def _compute_coverage(self, data: Any, factor_values: Any) -> float:
+        """计算覆盖率（非空比例）"""
+        if factor_values is None:
+            return 0.0
+
+        try:
+            if isinstance(factor_values, pl.Series):
+                non_null = factor_values.drop_nulls().len()
+                total = len(factor_values)
+            else:
+                # numpy array
+                non_null = np.count_nonzero(~np.isnan(factor_values))
+                total = len(factor_values)
+
+            return float(non_null / total) if total > 0 else 0.0
+
+        except Exception as e:
+            logger.debug("覆盖率计算失败: %s", e)
+            return 0.0

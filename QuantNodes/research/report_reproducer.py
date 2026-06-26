@@ -19,12 +19,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import polars as pl
 
-from QuantNodes.research._legacy_3c.factor_evaluator import (
-    EvalConfig,
-    FactorEvaluationResult,
-    FactorEvaluator,
+from QuantNodes.research.quant_alpha.evaluation.contracts import (
+    FactorSpec,
+    FactorMetrics,
+    VerifyConfig,
 )
-from QuantNodes.research._legacy_3c.factor_miner import FactorCandidate
+from QuantNodes.research.quant_alpha.evaluation.evaluators.polars_evaluator import (
+    PolarsAlphaCalculatorEvaluator,
+)
 from QuantNodes.research.wiki import (
     FactorCategory,
     FactorSource,
@@ -54,7 +56,7 @@ class ReproductionResult:
     """单条逻辑的复现结果"""
     logic: ExtractedLogic
     verification_status: str = "pending"  # verified | failed | pending | unverifiable
-    factor_result: Optional[FactorEvaluationResult] = None
+    factor_result: Optional[FactorMetrics] = None
     deviation: str = ""
     wiki_page_name: Optional[str] = None
 
@@ -111,13 +113,13 @@ class ResearchReportReproducer:
         self,
         wiki_path: str,
         llm_client=None,
-        eval_config: EvalConfig = None,
+        verify_config: VerifyConfig = None,
     ):
         """
         Args:
             wiki_path: Wiki 因子库路径
             llm_client: LLM 客户端 (可选, 默认使用 LLMGateway)
-            eval_config: 因子评估配置
+            verify_config: 因子验证配置
         """
         self.wiki_path = wiki_path
         if llm_client is None:
@@ -125,7 +127,8 @@ class ResearchReportReproducer:
             llm_client = get_llm_gateway()
         self.llm_client = llm_client
         self.proxy = WikiFactorProxy(wiki_path)
-        self.evaluator = FactorEvaluator(eval_config)
+        self.evaluator = PolarsAlphaCalculatorEvaluator()
+        self.verify_config = verify_config or VerifyConfig()
 
     def process(
         self,
@@ -332,21 +335,38 @@ class ResearchReportReproducer:
             result.deviation = "缺少公式"
             return result
 
-        candidate = FactorCandidate(
-            name=f"report_{logic.title}",
+        # 构造 FactorSpec
+        spec = FactorSpec(
+            formula_id=f"report_{logic.title}",
             formula=logic.formula,
-            description=logic.description,
-            operators_used=[],
-            category=FactorCategory.OTHER,
-            template_name="research_report",
+            source="research_report",
+            category="other",
+            meta={
+                "description": logic.description,
+                "template_name": "research_report",
+            },
         )
 
-        eval_result = self.evaluator.evaluate(candidate, data)
+        # 评估因子
+        metrics_list = self.evaluator.evaluate([spec], data)
+        if not metrics_list:
+            result.verification_status = "failed"
+            result.deviation = "评估失败"
+            return result
+
+        eval_result = metrics_list[0]
+
+        # 6 维验证
+        eval_result = self.evaluator.verify(
+            eval_result,
+            data,
+            config=self.verify_config,
+        )
 
         if eval_result.is_valid:
             result.verification_status = "verified"
             result.factor_result = eval_result
-            result.deviation = f"IC={eval_result.ic_mean:.4f}, ICIR={eval_result.icir:.4f}"
+            result.deviation = f"IC={eval_result.ic_mean:.4f}, IR={eval_result.ir:.4f}"
         else:
             result.verification_status = "failed"
             result.factor_result = eval_result
@@ -376,13 +396,18 @@ class ResearchReportReproducer:
             tags=["research_report"],
             ic_mean=result.factor_result.ic_mean,
             ic_std=result.factor_result.ic_std,
-            icir=result.factor_result.icir,
+            icir=result.factor_result.ir,
             rank_ic_mean=result.factor_result.rank_ic_mean,
             turnover=result.factor_result.turnover,
             metadata={
                 "source_evidence": result.logic.evidence,
                 "confidence": result.logic.confidence,
                 "logic_type": result.logic.logic_type,
+                "stability_score": result.factor_result.stability_score,
+                "diversification_score": result.factor_result.diversification_score,
+                "monotonicity_score": result.factor_result.monotonicity_score,
+                "coverage": result.factor_result.coverage,
+                "overall_score": result.factor_result.overall_score,
             },
         )
         page_name = self.proxy.store_factor(factor)
@@ -452,7 +477,9 @@ class ResearchReportReproducer:
                 lines.append(f"- **详情**: {r.deviation}")
             if r.factor_result:
                 lines.append(f"- **IC Mean**: {r.factor_result.ic_mean:.4f}")
-                lines.append(f"- **IC IR**: {r.factor_result.icir:.4f}")
+                lines.append(f"- **IR**: {r.factor_result.ir:.4f}")
+                lines.append(f"- **稳定性**: {r.factor_result.stability_score:.4f}")
+                lines.append(f"- **综合分数**: {r.factor_result.overall_score:.4f}")
             lines.append("")
 
         return "\n".join(lines)
