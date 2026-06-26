@@ -14,7 +14,7 @@ Stage 1 + Stage 2 共用此实现（不依赖 mock / real 数据）。
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import polars as pl
@@ -23,7 +23,68 @@ from ..contracts import Evaluator, FactorMetrics, FactorSpec, VerifyConfig
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["PolarsAlphaCalculatorEvaluator"]
+__all__ = ["PolarsAlphaCalculatorEvaluator", "deduplicate_mutual_ic"]
+
+
+# ==============================================================================
+# 辅助函数
+# ==============================================================================
+
+
+def _spearman_corr(x: pl.Series, y: pl.Series) -> float:
+    """Spearman 秩相关
+
+    Args:
+        x: 第一个序列
+        y: 第二个序列
+
+    Returns:
+        相关系数 [-1, 1]
+    """
+    n = min(len(x), len(y))
+    if n < 3:
+        return 0.0
+    x_rank = x.head(n).rank()
+    y_rank = y.head(n).rank()
+    return float(np.corrcoef(x_rank, y_rank)[0, 1])
+
+
+def deduplicate_mutual_ic(
+    factors: List[FactorMetrics],
+    get_values: Callable[[FactorMetrics], Optional[pl.Series]],
+    threshold: float = 0.7,
+) -> List[FactorMetrics]:
+    """贪心互信息去重
+
+    按 overall_score 降序排序，逐个检查与已选因子的 Spearman 相关性。
+    如果 |corr| > threshold，跳过该因子；否则加入已选集合。
+
+    Args:
+        factors: 候选因子列表
+        get_values: 获取因子值的函数
+        threshold: 相关性阈值（默认 0.7）
+
+    Returns:
+        去重后的因子列表
+    """
+    sorted_f = sorted(factors, key=lambda f: f.overall_score, reverse=True)
+    selected = []
+    for f in sorted_f:
+        vals = get_values(f)
+        if vals is None:
+            continue
+        is_dup = False
+        for s in selected:
+            s_vals = get_values(s)
+            if s_vals is None:
+                continue
+            corr = _spearman_corr(vals, s_vals)
+            if abs(corr) > threshold:
+                is_dup = True
+                break
+        if not is_dup:
+            selected.append(f)
+    return selected
 
 
 class PolarsAlphaCalculatorEvaluator(Evaluator):

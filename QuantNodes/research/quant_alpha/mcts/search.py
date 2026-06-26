@@ -71,6 +71,8 @@ class MCTSSearchConfig:
     forward_returns: Tuple[int, ...] = (1, 5, 20)
     date_column: str = "date"
     code_column: str = "code"
+    # 互信息去重阈值
+    dedup_threshold: float = 0.7
 
 
 class MCTSSearch:
@@ -172,6 +174,45 @@ class MCTSSearch:
             if n.status == NodeStatus.EVALUATED and n.overall_score > 0
         ]
         best_k = tree.best_k(k=10, metric="overall_score")
+
+        # 7. 互信息去重
+        if hasattr(config, 'dedup_threshold') and config.dedup_threshold < 1.0:
+            try:
+                from QuantNodes.research.quant_alpha.evaluation.evaluators.polars_evaluator import (
+                    deduplicate_mutual_ic,
+                    FactorMetrics,
+                )
+
+                def get_values(node: MCTSNode) -> Optional[Any]:
+                    try:
+                        return self.vocab.evaluate(node.formula, data)
+                    except Exception:
+                        return None
+
+                # 转换为 FactorMetrics 格式用于去重
+                metrics_list = [
+                    FactorMetrics(
+                        formula_id=n.entry_id,
+                        status="success",
+                        overall_score=n.overall_score,
+                        ic_mean=n.metadata.get("ic_mean", 0.0),
+                        ir=n.metadata.get("ir", 0.0),
+                    )
+                    for n in best_k
+                ]
+
+                deduped = deduplicate_mutual_ic(
+                    metrics_list,
+                    get_values,
+                    threshold=config.dedup_threshold,
+                )
+
+                # 重建 best_k
+                deduped_ids = {m.formula_id for m in deduped}
+                best_k = [n for n in best_k if n.entry_id in deduped_ids]
+
+            except Exception as e:
+                logger.warning("MCTS 互信息去重失败: %s", e)
 
         elapsed = time.time() - start_time
         stats = tree.stats()

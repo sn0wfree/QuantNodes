@@ -323,25 +323,73 @@ class AlphaGptWorkflow:
         critic_pool = (self.state.critic_output or {}).get("final_pool") or []
         if critic_pool:
             pool_data = critic_pool[: self.config.top_k]
-            return [FinalFormulaRecord.from_dict(p, i + 1) for i, p in enumerate(pool_data)]
+            final_pool = [FinalFormulaRecord.from_dict(p, i + 1) for i, p in enumerate(pool_data)]
+        else:
+            # Fallback: 直接从 evaluations 排序
+            successful = [e for e in self.state.all_evaluations if e.status == "success"]
+            successful.sort(key=lambda e: e.ir, reverse=True)
+            top = successful[: self.config.top_k]
+            final_pool = [
+                FinalFormulaRecord(
+                    rank=i + 1,
+                    formula_id=e.formula_id,
+                    formula=e.formula,
+                    ic_mean=e.ic_mean,
+                    ir=e.ir,
+                    round_discovered=int(e.formula_id.split("-")[1]) if "-" in e.formula_id else 0,
+                    selection_reason=f"IR={e.ir:.3f} (auto-selected by fallback)",
+                    risk_notes=[],
+                )
+                for i, e in enumerate(top)
+            ]
 
-        # Fallback: 直接从 evaluations 排序
-        successful = [e for e in self.state.all_evaluations if e.status == "success"]
-        successful.sort(key=lambda e: e.ir, reverse=True)
-        top = successful[: self.config.top_k]
-        return [
-            FinalFormulaRecord(
-                rank=i + 1,
-                formula_id=e.formula_id,
-                formula=e.formula,
-                ic_mean=e.ic_mean,
-                ir=e.ir,
-                round_discovered=int(e.formula_id.split("-")[1]) if "-" in e.formula_id else 0,
-                selection_reason=f"IR={e.ir:.3f} (auto-selected by fallback)",
-                risk_notes=[],
-            )
-            for i, e in enumerate(top)
-        ]
+        # 互信息去重
+        if self.config.max_mutual_ic_threshold < 1.0 and self.data is not None:
+            try:
+                from QuantNodes.research.quant_alpha.evaluation.evaluators.polars_evaluator import (
+                    deduplicate_mutual_ic,
+                )
+                from QuantNodes.research.quant_alpha.operator_vocab import OperatorVocab
+
+                vocab = OperatorVocab.default()
+
+                def get_values(record: FinalFormulaRecord) -> Optional[Any]:
+                    try:
+                        return vocab.evaluate(record.formula, self.data)
+                    except Exception:
+                        return None
+
+                # 转换为 FactorMetrics 格式用于去重
+                from QuantNodes.research.quant_alpha.evaluation.contracts import FactorMetrics
+                metrics_list = [
+                    FactorMetrics(
+                        formula_id=r.formula_id,
+                        status="success",
+                        ic_mean=r.ic_mean,
+                        ir=r.ir,
+                        overall_score=r.ir,
+                    )
+                    for r in final_pool
+                ]
+
+                deduped = deduplicate_mutual_ic(
+                    metrics_list,
+                    get_values,
+                    threshold=self.config.max_mutual_ic_threshold,
+                )
+
+                # 重建 final_pool
+                deduped_ids = {m.formula_id for m in deduped}
+                final_pool = [r for r in final_pool if r.formula_id in deduped_ids]
+
+                # 重新编号
+                for i, r in enumerate(final_pool):
+                    r.rank = i + 1
+
+            except Exception as e:
+                logger.warning("互信息去重失败: %s", e)
+
+        return final_pool
 
     def _build_summary(
         self, final_pool: List[FinalFormulaRecord],
