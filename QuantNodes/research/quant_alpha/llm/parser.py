@@ -107,7 +107,7 @@ def parse_json_3layer(
 
     return ParseResult(
         ok=False,
-        error=f"Cannot parse JSON after 2 layers. raw[:200]={raw[:200]!r}",
+        error="Cannot parse JSON after 2 layers (full raw in ParseResult.raw)",
         raw=raw,
     )
 
