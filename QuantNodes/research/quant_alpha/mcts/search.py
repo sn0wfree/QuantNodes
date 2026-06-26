@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import polars as pl
 
 from QuantNodes.core.feedback import FactorFeedback
+from QuantNodes.research.quant_alpha.mcts.cache import MCTSCache, MCTSCacheConfig
 from QuantNodes.research.quant_alpha.mcts.extension_ops import (
     ExtensionOpPool,
 )
@@ -63,6 +64,13 @@ class MCTSSearchConfig:
     feedback_config: MCTSFeedbackConfig = field(default_factory=MCTSFeedbackConfig)
     # 控制：是否启用谱系追踪（用于 M3+ TrajectoryPool 集成）
     enable_lineage: bool = True
+    # 缓存配置
+    cache_config: Optional[MCTSCacheConfig] = None
+    # IC/IR 配置
+    compute_ic_ir: bool = True
+    forward_returns: Tuple[int, ...] = (1, 5, 20)
+    date_column: str = "date"
+    code_column: str = "code"
 
 
 class MCTSSearch:
@@ -73,11 +81,13 @@ class MCTSSearch:
         vocab: Optional[OperatorVocab] = None,
         op_pool: Optional[ExtensionOpPool] = None,
         config: Optional[MCTSSearchConfig] = None,
+        cache: Optional[MCTSCache] = None,
     ):
         self.vocab = vocab or OperatorVocab.default()
         self.op_pool = op_pool or ExtensionOpPool(vocab=self.vocab)
         self.config = config or MCTSSearchConfig()
         self.rng = random.Random(self.config.seed)
+        self.cache = cache
 
         # 统计
         self._tree: Optional[MCTSTree] = None
@@ -107,13 +117,20 @@ class MCTSSearch:
         start_time = time.time()
         config = self.config
 
-        # 1. 初始化树
+        # 1. 加载共享缓存
+        if self.cache is not None:
+            self.cache.load(data)
+            self._formula_cache = self.cache._formula_cache
+            self._feedback_cache = self.cache._feedback_cache
+
+        # 2. 初始化树
         tree = MCTSTree()
         self._tree = tree
-        self._formula_cache.clear()
-        self._feedback_cache.clear()
+        if self.cache is None:
+            self._formula_cache.clear()
+            self._feedback_cache.clear()
 
-        # 2. 注入种子公式
+        # 3. 注入种子公式
         available_cols = [
             c for c in data.columns
             if c not in (date_column, code_column, forward_return_column)
@@ -127,24 +144,28 @@ class MCTSSearch:
             node = MCTSNode(formula=formula, depth=0)
             tree.add_node(node, parent=tree.root)
 
-        # 3. MCTS 主循环
+        # 4. MCTS 主循环
         for iteration in range(config.iterations):
-            # 3.1 SELECT: UCB1 选择
+            # 4.1 SELECT: UCB1 选择
             leaf = self._select(tree.root)
 
-            # 3.2 EXPAND: 生成子节点
+            # 4.2 EXPAND: 生成子节点
             if not leaf.is_expanded and leaf.depth < config.max_depth:
                 new_node = self._expand(leaf, data, available_cols)
                 if new_node is not None:
                     leaf = new_node
 
-            # 3.3 EVALUATE: 5 通道反馈
-            self._evaluate(leaf, data, date_column)
+            # 4.3 EVALUATE: 5 通道反馈 + IC/IR
+            self._evaluate(leaf, data, date_column, forward_return_column)
 
-            # 3.4 BACKUP: 回传评分
+            # 4.4 BACKUP: 回传评分
             self._backpropagate(leaf)
 
-        # 4. 收集结果
+        # 5. 保存共享缓存
+        if self.cache is not None:
+            self.cache.save()
+
+        # 6. 收集结果
         tree.total_iterations = config.iterations
         valid_nodes = [
             n for n in tree.all_nodes()
@@ -245,8 +266,9 @@ class MCTSSearch:
         node: MCTSNode,
         data: pl.DataFrame,
         date_column: str,
+        forward_return_column: str = "forward_return",
     ) -> None:
-        """评估节点：5 通道反馈"""
+        """评估节点：5 通道反馈 + IC/IR"""
         if node.status != NodeStatus.PENDING:
             return
 
@@ -300,11 +322,55 @@ class MCTSSearch:
         if not fb.decision:
             node.status = NodeStatus.REJECTED
 
+        # IC/IR 计算（如果 5 通道通过且配置启用）
+        if (self.config.compute_ic_ir and 
+            fb.decision and 
+            result is not None and 
+            exception is None):
+            try:
+                ic_metrics = self._compute_ic_ir(
+                    node.formula, data, date_column, forward_return_column
+                )
+                node.metadata.update(ic_metrics)
+            except Exception as e:
+                logger.debug("IC/IR computation failed for %s: %s", node.formula, e)
+                node.metadata["ic_error"] = str(e)[:100]
+
         # 元数据
         node.metadata["feedback_summary"] = fb.summary
         node.metadata["decision"] = fb.decision
         if exception:
             node.metadata["exception"] = str(exception)[:200]
+
+    def _compute_ic_ir(
+        self,
+        formula: str,
+        data: pl.DataFrame,
+        date_column: str,
+        forward_return_column: str,
+    ) -> Dict[str, float]:
+        """计算 IC/IR 指标"""
+        from QuantNodes.agent.tools.alpha_evaluate import AlphaEvaluateTool
+        import asyncio
+
+        tool = AlphaEvaluateTool()
+        result = asyncio.run(
+            tool.execute(
+                formulas=[formula],
+                data=data,
+                date_column=date_column,
+                forward_returns=list(self.config.forward_returns),
+            )
+        )
+        if result.get("evaluations") and result["evaluations"][0]["status"] == "success":
+            metrics = result["evaluations"][0]["metrics"]
+            return {
+                "ic_mean": metrics.get("ic_mean", 0.0),
+                "ic_std": metrics.get("ic_std", 0.0),
+                "ir": metrics.get("ir", 0.0),
+                "ic_decay": metrics.get("ic_decay", {}),
+            }
+        return {"ic_mean": 0.0, "ic_std": 0.0, "ir": 0.0}
 
     def _backpropagate(self, node: MCTSNode) -> None:
         """回传评分：更新所有祖先节点的 overall_score（取子节点最大值）"""
