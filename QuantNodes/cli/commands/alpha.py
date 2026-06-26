@@ -519,3 +519,323 @@ class NanobotLLMWrapper:
     def complete(self, agent_id: str, prompt: str) -> str:
         """同步调用 LLMGateway.complete()"""
         return self._gateway.complete(agent_id=agent_id, prompt=prompt)
+
+
+# ==============================================================================
+# 端到端流水线命令
+# ==============================================================================
+
+
+class AlphaPipelineCommand(Command):
+    """quantnodes alpha-pipeline - 端到端因子挖掘流水线
+
+    用法:
+        quantnodes alpha-pipeline --objective "捕捉 A 股反转效应" --data data.parquet
+        quantnodes alpha-pipeline --objective "..." --wiki-path wiki/ --top-k 20
+        quantnodes alpha-pipeline --objective "..." --alphagpt-iterations 5 --mcts-iterations 100
+
+    详见 docs/quant_alpha/pipeline_design.md
+    """
+    name = "alpha-pipeline"
+    description = "端到端因子挖掘流水线（Alpha-GPT → MCTS → 去重 → Wiki）"
+
+    def add_arguments(self, subparsers: Any) -> None:
+        parser = subparsers.add_parser(
+            self.name,
+            help=self.description,
+            description=(
+                "端到端因子挖掘流水线：\n"
+                "Stage 1: Alpha-GPT (LLM 生成种子)\n"
+                "Stage 2: MCTS (种子优化)\n"
+                "Stage 3: 合并去重\n"
+                "Stage 4: Wiki 持久化\n"
+                "详见 docs/quant_alpha/pipeline_design.md"
+            ),
+        )
+        # 必选
+        parser.add_argument(
+            "--objective", "-o",
+            type=str, required=True,
+            help="研究目标（如 '捕捉 A 股反转效应'）",
+        )
+        parser.add_argument(
+            "--data", "-d",
+            type=str, default=None,
+            help="行情数据路径（Parquet/CSV），None=合成测试数据",
+        )
+        # Wiki
+        parser.add_argument(
+            "--wiki-path",
+            type=str, default="wiki/",
+            help="Wiki 因子库路径（默认 wiki/）",
+        )
+        # Alpha-GPT 配置
+        parser.add_argument(
+            "--alphagpt-iterations",
+            type=int, default=3,
+            help="Alpha-GPT 迭代轮次（默认 3）",
+        )
+        parser.add_argument(
+            "--alphagpt-pool-size",
+            type=int, default=10,
+            help="Alpha-GPT 每轮想法数量（默认 10）",
+        )
+        # MCTS 配置
+        parser.add_argument(
+            "--mcts-iterations",
+            type=int, default=50,
+            help="MCTS 迭代次数（默认 50）",
+        )
+        parser.add_argument(
+            "--mcts-max-depth",
+            type=int, default=5,
+            help="MCTS 最大深度（默认 5）",
+        )
+        # 去重配置
+        parser.add_argument(
+            "--max-mutual-ic",
+            type=float, default=0.7,
+            help="最大 mutual IC 阈值（默认 0.7）",
+        )
+        # 通用配置
+        parser.add_argument(
+            "--top-k", "-k",
+            type=int, default=10,
+            help="最终返回的 top-K 公式数量（默认 10）",
+        )
+        parser.add_argument(
+            "--date-column",
+            type=str, default="date",
+            help="日期列名（默认 date）",
+        )
+        parser.add_argument(
+            "--code-column",
+            type=str, default="code",
+            help="股票代码列名（默认 code）",
+        )
+        parser.add_argument(
+            "--forward-returns",
+            type=str, default="1,5,20",
+            help="前瞻期列表（逗号分隔，默认 '1,5,20'）",
+        )
+        # LLM 配置
+        parser.add_argument(
+            "--llm",
+            type=str, default="minimax",
+            choices=["minimax", "deepseek", "openai", "qwen", "azure", "mock"],
+            help="LLM provider（默认 minimax）",
+        )
+        parser.add_argument(
+            "--model",
+            type=str, default=None,
+            help="模型名（如 'minimax-M3' / 'gpt-4o'）",
+        )
+        parser.add_argument(
+            "--temperature",
+            type=float, default=0.7,
+            help="采样温度（默认 0.7）",
+        )
+        # 输出
+        parser.add_argument(
+            "--output", "-O",
+            type=str, default="pipeline_result.json",
+            help="结果保存路径（默认 pipeline_result.json）",
+        )
+        parser.add_argument(
+            "--verbose", "-v",
+            action="store_true",
+            help="详细输出",
+        )
+        parser.add_argument(
+            "--quiet", "-q",
+            action="store_true",
+            help="安静模式（只输出摘要）",
+        )
+
+    def run(self, args: argparse.Namespace) -> int:
+        from QuantNodes.research.quant_alpha.pipeline import AlphaPipeline, PipelineConfig
+
+        # 1. 解析 forward_returns
+        try:
+            forward_returns = tuple(
+                int(x.strip()) for x in args.forward_returns.split(",") if x.strip()
+            )
+        except ValueError:
+            print(f"❌ --forward-returns 格式错误: {args.forward_returns}", file=sys.stderr)
+            return 1
+
+        # 2. 加载数据
+        data = self._load_data(args.data, args.date_column, args.code_column)
+        if data is None:
+            return 1
+
+        if not args.quiet:
+            print(f"🔬 端到端因子挖掘流水线")
+            print(f"📊 数据：{len(data)} 行 × {len(data.columns)} 列")
+            print(f"🎯 目标：{args.objective}")
+            print(f"🧠 LLM：{args.llm}{f' ({args.model})' if args.model else ''}")
+            print(f"🔄 Alpha-GPT: {args.alphagpt_iterations} 轮 × {args.alphagpt_pool_size} 候选")
+            print(f"🔄 MCTS: {args.mcts_iterations} 次迭代")
+            print(f"📚 Wiki：{args.wiki_path}")
+            print()
+
+        # 3. 配置 + 运行流水线
+        config = PipelineConfig(
+            objective=args.objective,
+            wiki_path=args.wiki_path,
+            alphagpt_iterations=args.alphagpt_iterations,
+            alphagpt_pool_size=args.alphagpt_pool_size,
+            mcts_iterations=args.mcts_iterations,
+            mcts_max_depth=args.mcts_max_depth,
+            max_mutual_ic=args.max_mutual_ic,
+            top_k=args.top_k,
+            date_column=args.date_column,
+            code_column=args.code_column,
+            forward_returns=forward_returns,
+            llm_provider=args.llm,
+            llm_model=args.model,
+            temperature=args.temperature,
+        )
+
+        pipeline = AlphaPipeline(config)
+        result = pipeline.run(data)
+
+        # 4. 保存结果
+        self._save_result(result, args.output, args.verbose)
+
+        # 5. 打印结果
+        if not args.quiet:
+            self._print_human_readable(result, args.verbose)
+
+        return 0
+
+    def _load_data(
+        self, data_path: Optional[str], date_column: str, code_column: str
+    ) -> Optional[Any]:
+        """加载数据"""
+        import polars as pl
+
+        if data_path is None:
+            print("⚠️  未指定数据路径，使用合成测试数据", file=sys.stderr)
+            return self._generate_synthetic_data()
+
+        path = Path(data_path)
+        if not path.exists():
+            print(f"❌ 数据文件不存在: {data_path}", file=sys.stderr)
+            return None
+
+        try:
+            if path.suffix == ".parquet":
+                df = pl.read_parquet(path)
+            elif path.suffix == ".csv":
+                df = pl.read_csv(path)
+            elif path.suffix == ".json":
+                df = pl.read_json(path)
+            else:
+                print(f"❌ 不支持的文件格式: {path.suffix}", file=sys.stderr)
+                return None
+
+            # 确保日期列存在
+            if date_column not in df.columns:
+                print(f"❌ 缺少日期列: {date_column}", file=sys.stderr)
+                return None
+
+            # 确保代码列存在
+            if code_column not in df.columns:
+                print(f"❌ 缺少代码列: {code_column}", file=sys.stderr)
+                return None
+
+            return df
+
+        except Exception as e:
+            print(f"❌ 数据加载失败: {e}", file=sys.stderr)
+            return None
+
+    def _generate_synthetic_data(self) -> Any:
+        """生成合成测试数据"""
+        import numpy as np
+        import polars as pl
+
+        np.random.seed(42)
+        dates = [f"2024-01-{d:02d}" for d in range(1, 21)]
+        rows = []
+        for date in dates:
+            for code in ["A", "B", "C", "D", "E"]:
+                close = float(np.random.randn() * 5 + 100)
+                rows.append({
+                    "date": date,
+                    "code": code,
+                    "close": close,
+                    "open": close,
+                    "high": close + 1,
+                    "low": close - 1,
+                    "vol": 1000.0,
+                })
+        return pl.DataFrame(rows).with_columns(pl.col("date").str.to_date())
+
+    def _save_result(self, result: Any, output_path: str, verbose: bool) -> None:
+        """保存结果"""
+        try:
+            output = {
+                "summary": result.summary,
+                "final_pool": [
+                    {
+                        "formula_id": m.formula_id,
+                        "ic_mean": m.ic_mean,
+                        "ic_std": m.ic_std,
+                        "ir": m.ir,
+                        "rank_ic_mean": m.rank_ic_mean,
+                        "overall_score": m.overall_score,
+                    }
+                    for m in result.final_pool
+                ],
+                "wiki_pages": result.wiki_pages,
+                "elapsed_seconds": result.elapsed_seconds,
+            }
+
+            if verbose:
+                output["alphagpt_summary"] = (
+                    result.alphagpt_result.summary if result.alphagpt_result else None
+                )
+                output["mcts_stats"] = (
+                    {
+                        "formula_count": result.mcts_result.formula_count,
+                        "valid_count": result.mcts_result.valid_count,
+                        "rejected_count": result.mcts_result.rejected_count,
+                    }
+                    if result.mcts_result
+                    else None
+                )
+
+            Path(output_path).write_text(
+                json.dumps(output, ensure_ascii=False, indent=2)
+            )
+            print(f"💾 结果已保存到: {output_path}")
+
+        except Exception as e:
+            print(f"⚠️  结果保存失败: {e}", file=sys.stderr)
+
+    def _print_human_readable(self, result: Any, verbose: bool = False) -> None:
+        print()
+        print(f"✅ 流水线完成")
+        print(f"⏱️  耗时：{result.elapsed_seconds:.1f}s")
+        print(f"📊 摘要：")
+        print(f"  - Alpha-GPT 因子: {result.summary.get('alphagpt_factors', 0)}")
+        print(f"  - MCTS 因子: {result.summary.get('mcts_factors', 0)}")
+        print(f"  - 最终因子: {result.summary.get('final_factors', 0)}")
+        print(f"  - Wiki 页面: {result.summary.get('wiki_pages', 0)}")
+        print(f"  - best_ir: {result.summary.get('best_ir', 0):.3f}")
+        print(f"  - avg_ir: {result.summary.get('avg_ir', 0):.3f}")
+        print()
+
+        if not result.final_pool:
+            print("⚠️  final pool 为空（可能所有公式都失败了）")
+            return
+
+        print(f"🏆 Top {len(result.final_pool)} 因子：")
+        for m in result.final_pool:
+            print(f"  IR={m.ir:>6.3f}  IC={m.ic_mean:>6.4f}  formula_id={m.formula_id}")
+            if verbose:
+                print(f"           rank_ic={m.rank_ic_mean:.4f}  "
+                      f"stability={m.stability_score:.4f}  "
+                      f"overall={m.overall_score:.4f}")

@@ -28,7 +28,7 @@ def _register_all() -> None:
     # v3.0.0 Stage 7: HTTP 客户端 (agent status / chat / restart)
     from QuantNodes.cli.commands.agent import AgentCommand
     from QuantNodes.cli.commands.evolve import EvolveCommand
-    from QuantNodes.cli.commands.alpha import AlphaMctsCommand, AlphaGptCommand
+    from QuantNodes.cli.commands.alpha import AlphaMctsCommand, AlphaGptCommand, AlphaPipelineCommand
     from QuantNodes.cli.commands.factor import (
         FactorInfoCommand,
         FactorBestCommand,
@@ -52,6 +52,7 @@ def _register_all() -> None:
         EvolveCommand(),
         AlphaMctsCommand(),
         AlphaGptCommand(),
+        AlphaPipelineCommand(),
         FactorInfoCommand(),
         FactorBestCommand(),
         FactorVisualCommand(),
