@@ -119,17 +119,11 @@ def collect_code_channel(
     formula: str,
     config: MCTSFeedbackConfig,
 ) -> ChannelFeedback:
-    """CODE 通道：AST 静态检查（防过拟合）"""
-    try:
-        tree = ast.parse(formula)
-    except SyntaxError as e:
-        return ChannelFeedback(
-            channel=FeedbackChannel.CODE,
-            passed=False,
-            detail=f"语法错误: {e}",
-            score=0.0,
-        )
+    """CODE 通道：AST 静态检查（防过拟合）
 
+    注意：公式使用 OperatorVocab 语法（如 rank(ts_mean(close, 20))），
+    不是标准 Python 语法。因此只做基本检查，不做 AST 解析。
+    """
     symbol_length = len(formula)
     base_features = _count_base_features(formula)
     free_args_ratio = _calc_free_args_ratio(formula)
@@ -147,6 +141,12 @@ def collect_code_channel(
         violations.append(
             f"free_args={free_args_ratio:.2f}>{config.free_args_ratio_threshold}"
         )
+
+    # 基本括号匹配检查
+    open_parens = formula.count("(")
+    close_parens = formula.count(")")
+    if open_parens != close_parens:
+        violations.append(f"parentheses mismatch: {open_parens} vs {close_parens}")
 
     passed = len(violations) == 0
     detail = (
@@ -364,18 +364,39 @@ def _count_base_features(formula: str) -> int:
 
 
 def _calc_free_args_ratio(formula: str) -> float:
-    """计算自由参数（非基础特征）占比"""
-    try:
-        tree = ast.parse(formula)
-    except SyntaxError:
-        return 0.0
+    """计算自由参数（非基础特征）占比
+
+    注意：只计算数据特征（如 close, open, high, low, vol, amount, returns），
+    不计算函数名（如 rank, ts_mean, ts_std）。
+    """
+    import re
+
+    # 已知函数名（不算作自由参数）
+    known_ops = {
+        "rank", "zscore", "winsorize", "ts_mean", "ts_std", "ts_sum",
+        "ts_max", "ts_min", "ts_median", "ts_rank", "ts_zscore",
+        "ts_skew", "ts_kurt", "ts_delta", "ts_corr", "ts_cov",
+        "ts_decay_linear", "abs", "log", "sqrt", "sign", "signedpower",
+        "delta", "delay", "sub", "add", "mul", "div", "greater", "less",
+        "IndNeutralize", "returns", "scale",
+    }
+
+    # 提取所有标识符
+    names = re.findall(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b', formula)
+
     total_names = 0
     free_args = 0
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name):
-            total_names += 1
-            if node.id not in BASE_FEATURE_NAMES:
-                free_args += 1
+    for name in names:
+        # 跳过已知函数名
+        if name in known_ops:
+            continue
+        # 跳过数字
+        if name.isdigit():
+            continue
+        total_names += 1
+        if name not in BASE_FEATURE_NAMES:
+            free_args += 1
+
     if total_names == 0:
         return 0.0
     return free_args / total_names

@@ -18,6 +18,7 @@ from typing import FrozenSet, Tuple
 BASE_FEATURE_NAMES: FrozenSet[str] = frozenset({
     "open", "high", "low", "close", "volume", "amount",
     "vwap", "turnover", "mv_float", "total_mv", "circ_mv",
+    "returns",  # 日收益率（从 close 计算）
     "returns", "vwap_adj",
     "industry", "cap",  # 扩展字段
 })
