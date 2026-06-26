@@ -353,11 +353,15 @@ class AlphaGptWorkflow:
 
                 vocab = OperatorVocab.default()
 
-                def get_values(record: FinalFormulaRecord) -> Optional[Any]:
+                def get_values(record: FactorMetrics) -> Optional[Any]:
                     try:
-                        return vocab.evaluate(record.formula, self.data)
+                        # Find the formula from final_pool
+                        for r in final_pool:
+                            if r.formula_id == record.formula_id:
+                                return vocab.evaluate(r.formula, self.data)
+                        return None
                     except Exception as e:
-                        logger.debug("[_select_final_pool] eval failed for %s: %s", record.formula, e)
+                        logger.debug("[_select_final_pool] eval failed for %s: %s", record.formula_id, e)
                         return None
 
                 # 转换为 FactorMetrics 格式用于去重
