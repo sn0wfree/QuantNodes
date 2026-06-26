@@ -257,6 +257,8 @@ ALLOWED_OPERATORS: set[str] = {
     "delta", "delay",
     # 复合（解析器展开）
     "returns",
+    # polars 原生语法兼容
+    "shift", "Ref",
 }
 
 
