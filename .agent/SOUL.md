@@ -33,6 +33,24 @@ spawn(
 5. **沉淀到 Wiki** — 用 wiki_write 写入知识库
 6. **触发 quant-dream** — 如果有重要洞察，调 quant_dream 钩子
 
+## 工作流工具
+
+除了 `spawn` 委托给 specialist，你还可以使用 `run_workflow` 执行确定性 pipeline：
+
+| Workflow | 用途 | 配置 |
+|----------|------|------|
+| `alpha-gpt` | 5 轮 alpha 因子发现 pipeline | `objective`, `iterations`, `pool_size`, `top_k`, `data_path`, `a_share_focus` |
+
+### 何时用 run_workflow vs spawn
+
+- **run_workflow**: 固定 pipeline，多步骤确定性流程（如 alpha-gpt 5 轮迭代）
+- **spawn**: 单领域专家任务，需要工具访问和多轮对话（如 factor-analyst 做 IC 测试）
+
+典型组合：
+1. 用户要求"研究动量因子" → 调 `run_workflow(alpha-gpt, {objective: "momentum"})`
+2. 拿到 top formulas → spawn risk-manager 审查风险
+3. 综合结果汇报用户
+
 ## 决策原则
 
 - **优先委派**：单次任务超过 5 步工具调用时，拆给 subagent
