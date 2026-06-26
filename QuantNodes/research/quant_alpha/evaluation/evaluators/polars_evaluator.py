@@ -151,6 +151,28 @@ class PolarsAlphaCalculatorEvaluator(Evaluator):
                             "ic_std": ic_std,
                             "ir": ir,
                         }
+
+                        # 计算 Rank IC（Spearman 秩相关）
+                        try:
+                            rank_corr = (
+                                tmp
+                                .with_columns([
+                                    pl.col("_factor").rank().alias("_factor_rank"),
+                                    pl.col("_fwd").rank().alias("_fwd_rank"),
+                                ])
+                                .group_by("_date")
+                                .agg(pl.corr("_factor_rank", "_fwd_rank").alias("_rank_corr"))
+                                .drop_nulls()
+                            )
+                            if len(rank_corr) > 0:
+                                rank_ics = rank_corr["_rank_corr"].to_list()
+                                ic_results[offset]["rank_ic_mean"] = float(np.mean(rank_ics))
+                            else:
+                                ic_results[offset]["rank_ic_mean"] = 0.0
+                        except Exception as e:
+                            logger.debug("Rank IC calc failed for offset %d: %s", offset, e)
+                            ic_results[offset]["rank_ic_mean"] = 0.0
+
                     except Exception as e:
                         logger.debug("IC calc failed for offset %d: %s", offset, e)
                         continue
@@ -164,6 +186,7 @@ class PolarsAlphaCalculatorEvaluator(Evaluator):
                         ic_std=primary["ic_std"],
                         ir=primary["ir"],
                         ic_decay={str(k): v["ic_mean"] for k, v in ic_results.items()},
+                        rank_ic_mean=primary.get("rank_ic_mean", 0.0),
                     ))
                 else:
                     out.append(FactorMetrics(
@@ -358,6 +381,7 @@ class PolarsAlphaCalculatorEvaluator(Evaluator):
             # 按日期分组计算排名
             tmp = pl.DataFrame({
                 "_date": data["date"],
+                "_code": data["code"],
                 "_factor": factor_values,
             })
 
@@ -371,13 +395,16 @@ class PolarsAlphaCalculatorEvaluator(Evaluator):
 
             turnovers = []
             for i in range(min(len(dates) - 1, 50)):  # 最多计算 50 天
-                curr = tmp.filter(pl.col("_date") == dates[i])["_rank"].to_numpy()
-                prev = tmp.filter(pl.col("_date") == dates[i + 1])["_rank"].to_numpy()
-                if len(curr) == len(prev) and len(curr) > 0:
-                    turnover = np.mean(np.abs(curr - prev)) / len(curr)
+                # 按股票代码 join（正确处理股票池变化）
+                curr_df = tmp.filter(pl.col("_date") == dates[i]).select(["_code", "_rank"])
+                prev_df = tmp.filter(pl.col("_date") == dates[i + 1]).select(["_code", "_rank"])
+                merged = curr_df.join(prev_df, on="_code", suffix="_prev")
+                
+                if len(merged) > 0:
+                    turnover = (merged["_rank"] - merged["_rank_prev"]).abs().mean() / len(merged)
                     turnovers.append(turnover)
 
-            return float(np.mean(turnovers)) if turnovers else 0.0
+            return float(max(0, np.mean(turnovers))) if turnovers else 0.0
 
         except Exception as e:
             logger.debug("换手率计算失败: %s", e)
