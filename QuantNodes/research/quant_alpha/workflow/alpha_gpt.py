@@ -209,8 +209,7 @@ class AlphaGptWorkflow:
             formula_str = fd.get("formula", "")
             err = validate_formula_operators(formula_str)
             if err:
-                logger.debug("formula op-validation failed: %s (%s)", formula_str, err)
-                continue
+                logger.info("formula op-validation warning (will try anyway): %s (%s)", formula_str, err)
             result.append(
                 FormulaRecord(
                     formula_id=f"FORMULA-{round_idx}-{i+1}",
