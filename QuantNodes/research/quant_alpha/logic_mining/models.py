@@ -31,6 +31,8 @@ __all__ = [
     "LogicCondition",
     "LogicBehavior",
     "WikiLogicStructured",
+    "LogicPerformanceEvidence",
+    "LogicAbstractionResult",
 ]
 
 
@@ -171,3 +173,80 @@ class WikiLogicStructured:
             if p.second_variable:
                 vars_.add(p.second_variable)
         return sorted(vars_)
+
+
+@dataclass
+class LogicPerformanceEvidence:
+    """聚合的 per-logic 回测证据 E^Logic
+
+    对应论文中每条逻辑下所有因子的回测证据聚合。
+
+    Attributes:
+        n_factors_explored: 探索过的因子数
+        best_ir: 最佳 IR
+        best_ic: 最佳 IC
+        best_factor_id: 最佳因子 ID
+        mean_ir: 平均 IR
+        refinement_round: 第几轮聚合的证据
+        timestamp: 时间戳
+    """
+    n_factors_explored: int = 0
+    best_ir: float = 0.0
+    best_ic: float = 0.0
+    best_factor_id: Optional[str] = None
+    mean_ir: float = 0.0
+    refinement_round: int = 0
+    timestamp: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            "n_factors_explored": self.n_factors_explored,
+            "best_ir": self.best_ir,
+            "best_ic": self.best_ic,
+            "best_factor_id": self.best_factor_id,
+            "mean_ir": self.mean_ir,
+            "refinement_round": self.refinement_round,
+            "timestamp": self.timestamp,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> LogicPerformanceEvidence:
+        """从字典创建"""
+        return cls(
+            n_factors_explored=data.get("n_factors_explored", 0),
+            best_ir=data.get("best_ir", 0.0),
+            best_ic=data.get("best_ic", 0.0),
+            best_factor_id=data.get("best_factor_id"),
+            mean_ir=data.get("mean_ir", 0.0),
+            refinement_round=data.get("refinement_round", 0),
+            timestamp=data.get("timestamp"),
+        )
+
+
+@dataclass
+class LogicAbstractionResult:
+    """Logic Mining 三段式 Agent 的输出
+
+    Attributes:
+        formula_structure: FormulaStructureAgent 输出
+        financial_semantics: FinancialSemanticsMappingAgent 输出
+        structured_logic: MarketLogicAbstractionAgent 输出
+        source_formula: 原始公式
+        source_lib: 来源库 ("alpha101" / "alpha158" / "alpha191")
+    """
+    formula_structure: Dict[str, Any] = field(default_factory=dict)
+    financial_semantics: Dict[str, Any] = field(default_factory=dict)
+    structured_logic: Optional[WikiLogicStructured] = None
+    source_formula: str = ""
+    source_lib: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            "formula_structure": self.formula_structure,
+            "financial_semantics": self.financial_semantics,
+            "structured_logic": self.structured_logic.to_dict() if self.structured_logic else None,
+            "source_formula": self.source_formula,
+            "source_lib": self.source_lib,
+        }
