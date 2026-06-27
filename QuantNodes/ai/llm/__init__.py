@@ -33,6 +33,7 @@ from QuantNodes.ai.llm.openai import (
 
 from QuantNodes.ai.llm.gateway import (
     LLMGateway,
+    LLMConfig,
     ToolCallResponse,
     get_llm_gateway,
     create_llm_gateway,
@@ -66,6 +67,7 @@ __all__ = [
 
     # Gateway (unified LLM entry point)
     'LLMGateway',
+    'LLMConfig',
     'ToolCallResponse',
     'get_llm_gateway',
     'create_llm_gateway',

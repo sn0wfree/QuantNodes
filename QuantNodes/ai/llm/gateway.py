@@ -13,11 +13,17 @@
     - tools: 工具名列表 (None=全部, []=无工具)
     - tool_choice: "auto"/"none"/"required"
     - with_tool_events: 异步接口返回 ToolCallResponse
+
+支持重试机制和超时控制:
+    - max_retries: 最大重试次数 (默认 3)
+    - retry_delay: 重试间隔秒数 (默认 1.0)
+    - timeout: 超时秒数 (默认 120)
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
 
@@ -29,6 +35,14 @@ from QuantNodes.ai.llm.base import (
 )
 
 logger = logging.getLogger("llm.gateway")
+
+
+@dataclass
+class LLMConfig:
+    """LLM 配置（重试机制和超时控制）"""
+    max_retries: int = 3           # 最大重试次数
+    retry_delay: float = 1.0       # 重试间隔秒数
+    timeout: float = 120.0         # 超时秒数
 
 
 @dataclass
@@ -57,6 +71,11 @@ class LLMGateway(LLMClientBase):
     - tool_choice: "auto"/"none"/"required"
     - with_tool_events: 异步接口返回 ToolCallResponse
 
+    支持重试机制和超时控制:
+    - max_retries: 最大重试次数 (默认 3)
+    - retry_delay: 重试间隔秒数 (默认 1.0)
+    - timeout: 超时秒数 (默认 120)
+
     Examples:
         >>> gateway = LLMGateway()
         >>> response = gateway.chat([Message(role="user", content="Hello")])
@@ -69,6 +88,7 @@ class LLMGateway(LLMClientBase):
         self,
         agent: Any = None,
         workspace: str = ".agent",
+        llm_config: Optional[LLMConfig] = None,
         **kwargs,
     ):
         """初始化 LLMGateway。
@@ -76,11 +96,13 @@ class LLMGateway(LLMClientBase):
         Args:
             agent: nanobot Agent 实例 (可选, 不传则自动创建)
             workspace: nanobot workspace 路径
+            llm_config: LLM 配置（重试机制和超时控制）
         """
         super().__init__(**kwargs)
         self._agent = agent
         self._workspace = workspace
         self._agent_resolved = False
+        self._llm_config = llm_config or LLMConfig()
 
     def _ensure_agent(self) -> Any:
         """懒加载 nanobot Agent。"""
@@ -160,6 +182,8 @@ class LLMGateway(LLMClientBase):
 
         Note: 同步接口返回纯文本 (工具调用已被 LLM 整合到 content 中)。
         如需工具调用详情, 请使用 chat() 或 run(with_tool_events=True)。
+
+        支持重试机制和超时控制。
         """
         agent = self._ensure_agent()
 
@@ -168,15 +192,45 @@ class LLMGateway(LLMClientBase):
                 [Message(role=MessageRole.USER, content=prompt)]
             ).content
 
-        result = self._run_sync(
-            self._async_chat_collect(
-                agent, prompt,
-                session_id=agent_id,
-                tools=tools, tool_choice=tool_choice,
-                temperature=temperature,
-            )
-        )
-        return result["content"] or ""
+        # 重试机制
+        last_error = None
+        for attempt in range(self._llm_config.max_retries + 1):
+            try:
+                start_time = time.time()
+
+                result = self._run_sync(
+                    self._async_chat_collect(
+                        agent, prompt,
+                        session_id=agent_id,
+                        tools=tools, tool_choice=tool_choice,
+                        temperature=temperature,
+                    )
+                )
+
+                # 检查超时
+                elapsed = time.time() - start_time
+                if elapsed > self._llm_config.timeout:
+                    raise TimeoutError(f"LLM call timed out after {elapsed:.1f}s")
+
+                return result["content"] or ""
+
+            except (TimeoutError, Exception) as e:
+                last_error = e
+                if attempt < self._llm_config.max_retries:
+                    delay = self._llm_config.retry_delay * (2 ** attempt)  # 指数退避
+                    logger.warning(
+                        "LLM call failed (attempt %d/%d), retrying in %.1fs: %s",
+                        attempt + 1, self._llm_config.max_retries, delay, str(e)[:100]
+                    )
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "LLM call failed after %d attempts: %s",
+                        self._llm_config.max_retries + 1, str(e)[:200]
+                    )
+
+        # 所有重试都失败
+        raise last_error
 
     # ─── 接口 C: callable 兼容 ───
 
