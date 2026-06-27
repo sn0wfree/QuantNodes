@@ -1,6 +1,6 @@
 # Wiki Index
 
-Last updated: 2026-06-27T07:00:05.868928Z
+Last updated: 2026-06-27T15:56:03.403518Z
 
 Total pages: 7 — Factor: 6 | Overview: 1
 

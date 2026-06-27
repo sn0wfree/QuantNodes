@@ -339,7 +339,7 @@ def _structured_logic_match(
     total_score = 0.0
     checks = {}
 
-    # 1. 算子匹配（40% 权重）
+    # 1. 算子匹配（30% 权重）
     whitelist = set(structured_logic.operator_whitelist or [])
     ops_used_in_logic = set(structured_logic.get_operators())
     if whitelist:
@@ -348,18 +348,18 @@ def _structured_logic_match(
         # 无白名单约束时, 计算 formula 中算子与逻辑算子的重叠率
         op_overlap = len(used_ops & ops_used_in_logic) / max(len(ops_used_in_logic), 1) if ops_used_in_logic else 1.0
     checks["operator_overlap"] = op_overlap
-    total_score += op_overlap * 0.4
+    total_score += op_overlap * 0.3
 
-    # 2. 变量匹配（30% 权重）
+    # 2. 变量匹配（20% 权重）
     logic_vars = set(structured_logic.get_variables())
     if logic_vars:
         var_overlap = len(used_vars & logic_vars) / max(len(logic_vars), 1)
         checks["variable_overlap"] = var_overlap
-        total_score += var_overlap * 0.3
+        total_score += var_overlap * 0.2
     else:
-        total_score += 0.3
+        total_score += 0.2
 
-    # 3. 行为方向（30% 权重）
+    # 3. 行为方向（20% 权重）
     behavior = structured_logic.behavior
     sign_constraint = structured_logic.sign_constraint
     if sign_constraint is not None:
@@ -372,7 +372,52 @@ def _structured_logic_match(
             direction_match = not has_negative
         direction_score = 1.0 if direction_match else 0.0
         checks["direction_match"] = direction_score
-        total_score += direction_score * 0.3
+        total_score += direction_score * 0.2
+    else:
+        total_score += 0.2
+
+    # 4. 参数范围（30% 权重）
+    param_ranges = structured_logic.parameter_ranges or {}
+    if param_ranges:
+        param_match_count = 0
+        param_total = 0
+        for op, (lo, hi) in param_ranges.items():
+            if op in formula:
+                # 提取 op( 后的所有数字（最后一个通常是 window）
+                import re as _re2
+                m = _re2.search(rf"{op}\s*\(", formula)
+                if m:
+                    # 找到匹配的右括号，提取括号内的内容
+                    start = m.end()
+                    depth = 1
+                    pos = start
+                    while pos < len(formula) and depth > 0:
+                        if formula[pos] == "(":
+                            depth += 1
+                        elif formula[pos] == ")":
+                            depth -= 1
+                        pos += 1
+                    args_str = formula[start:pos-1]
+                    # 提取所有数字
+                    nums = []
+                    for arg in args_str.split(","):
+                        arg = arg.strip()
+                        try:
+                            nums.append(int(float(arg)))
+                        except ValueError:
+                            pass
+                    if nums:
+                        # 取最后一个数字（通常是 window）
+                        val = nums[-1]
+                        param_total += 1
+                        if lo <= val <= hi:
+                            param_match_count += 1
+        if param_total > 0:
+            param_score = param_match_count / param_total
+            checks["param_match"] = param_score
+        else:
+            param_score = 1.0
+        total_score += param_score * 0.3
     else:
         total_score += 0.3
 
