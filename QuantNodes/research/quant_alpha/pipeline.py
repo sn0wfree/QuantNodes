@@ -294,6 +294,9 @@ class PipelineConfig:
     # 输出配置
     output_dir: str = "pipeline_output"
 
+    # Γ 约束配置（用于逻辑驱动因子生成）
+    gamma: Optional[Any] = None  # CompiledConstraint from logic_mining.compiler
+
 
 # ==============================================================================
 # 流水线结果
@@ -649,6 +652,7 @@ class AlphaPipeline:
                 temperature_formula=self.config.temperature_formula,
                 temperature_reflector=self.config.temperature_reflector,
                 temperature_critic=self.config.temperature_critic,
+                gamma=self.config.gamma,
             )
 
             # 注入反馈

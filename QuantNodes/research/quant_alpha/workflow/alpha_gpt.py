@@ -95,6 +95,9 @@ class AlphaGptConfig:
     # 自定义反馈（用于多轮迭代，注入到 IdeaGenerator）
     custom_feedback: Optional[str] = None
 
+    # Γ 约束（用于逻辑驱动因子生成）
+    gamma: Optional[Any] = None  # CompiledConstraint from logic_mining.compiler
+
 
 @dataclass
 class AlphaGptResult:
@@ -219,6 +222,14 @@ class AlphaGptWorkflow:
             err = validate_formula_operators(formula_str)
             if err:
                 logger.info("formula op-validation warning (will try anyway): %s (%s)", formula_str, err)
+
+            # Γ 约束校验
+            if self.config.gamma is not None:
+                passed, reason = self.config.gamma.validate(formula_str)
+                if not passed:
+                    logger.info("Γ 校验失败，丢弃公式: %s - %s", formula_str, reason)
+                    continue
+
             result.append(
                 FormulaRecord(
                     formula_id=f"FORMULA-{round_idx}-{i+1}",
@@ -453,15 +464,22 @@ class AlphaGptWorkflow:
         available_ops: List[str],
         data_columns: List[str],
     ) -> str:
-        return (
+        prompt = (
             f"Read .agent/agents/alpha-gpt-formula-translator.md. "
             f"Translate these ideas to polars formulas. round={round_idx}. "
             f"ideas={ideas_payload}. available_operators={available_ops}. "
             f"data_columns={data_columns}. a_share_focus={self.config.a_share_focus}. "
             f"CRITICAL: Use ONLY function call format like op(arg1, arg2). "
             f"NO arithmetic operators (+,-,*,/). NO missing parentheses. "
-            f"Output STRICT JSON only."
         )
+
+        # 注入 Γ 约束
+        if self.config.gamma is not None:
+            gamma_text = self.config.gamma.render_for_prompt()
+            prompt += f"\n\n{gamma_text}\n"
+
+        prompt += f"Output STRICT JSON only."
+        return prompt
 
     def _build_reflector_prompt(self, round_idx: int, evaluations: List[Dict[str, Any]]) -> str:
         return (
