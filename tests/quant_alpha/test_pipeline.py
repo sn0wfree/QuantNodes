@@ -124,10 +124,11 @@ class TestPipelineResult:
     def test_initial_state(self):
         """初始状态"""
         result = PipelineResult()
-        assert result.alphagpt_result is None
-        assert result.mcts_result is None
+        assert result.rounds == []
         assert result.final_pool == []
         assert result.wiki_pages == []
+        assert result.all_mcts_nodes == []
+        assert result.global_correlation_matrix == {}
         assert result.elapsed_seconds == 0.0
         assert result.summary == {}
 

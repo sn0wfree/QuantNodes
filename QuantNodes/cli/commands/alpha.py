@@ -527,29 +527,29 @@ class NanobotLLMWrapper:
 
 
 class AlphaPipelineCommand(Command):
-    """quantnodes alpha-pipeline - 端到端因子挖掘流水线
+    """quantnodes alpha-pipeline - 端到端因子挖掘流水线（多轮迭代版）
 
     用法:
         quantnodes alpha-pipeline --objective "捕捉 A 股反转效应" --data data.parquet
-        quantnodes alpha-pipeline --objective "..." --wiki-path wiki/ --top-k 20
-        quantnodes alpha-pipeline --objective "..." --alphagpt-iterations 5 --mcts-iterations 100
+        quantnodes alpha-pipeline --objective "..." --max-rounds 5 --target-factors 10
+        quantnodes alpha-pipeline --objective "..." --no-early-stopping --patience 3
 
-    详见 docs/quant_alpha/pipeline_design.md
+    详见 docs/quant_alpha/pipeline_multi_round_design.md
     """
     name = "alpha-pipeline"
-    description = "端到端因子挖掘流水线（Alpha-GPT → MCTS → 去重 → Wiki）"
+    description = "端到端因子挖掘流水线（Alpha-GPT → MCTS → 去重 → Wiki，支持多轮迭代）"
 
     def add_arguments(self, subparsers: Any) -> None:
         parser = subparsers.add_parser(
             self.name,
             help=self.description,
             description=(
-                "端到端因子挖掘流水线：\n"
-                "Stage 1: Alpha-GPT (LLM 生成种子)\n"
-                "Stage 2: MCTS (种子优化)\n"
-                "Stage 3: 合并去重\n"
-                "Stage 4: Wiki 持久化\n"
-                "详见 docs/quant_alpha/pipeline_design.md"
+                "端到端因子挖掘流水线（多轮迭代版）：\n"
+                "Round 1: Alpha-GPT → MCTS → 去重 → 反馈\n"
+                "Round 2: Alpha-GPT(←反馈) → MCTS → 去重 → 反馈\n"
+                "...\n"
+                "Round N: 最终结果 → Wiki 持久化\n"
+                "详见 docs/quant_alpha/pipeline_multi_round_design.md"
             ),
         )
         # 必选
@@ -568,6 +568,42 @@ class AlphaPipelineCommand(Command):
             "--wiki-path",
             type=str, default="wiki/",
             help="Wiki 因子库路径（默认 wiki/）",
+        )
+        # 终止条件配置（新增）
+        parser.add_argument(
+            "--max-rounds",
+            type=int, default=5,
+            help="最大迭代轮次（默认 5）",
+        )
+        parser.add_argument(
+            "--target-factors",
+            type=int, default=10,
+            help="目标因子数量（默认 10）",
+        )
+        parser.add_argument(
+            "--min-improvement",
+            type=float, default=0.01,
+            help="最小 IR 提升阈值（默认 0.01）",
+        )
+        parser.add_argument(
+            "--no-early-stopping",
+            action="store_true",
+            help="禁用早停机制",
+        )
+        parser.add_argument(
+            "--patience",
+            type=int, default=3,
+            help="早停耐心值：连续 N 轮无改善则停止（默认 3）",
+        )
+        parser.add_argument(
+            "--timeout",
+            type=int, default=3600,
+            help="总超时时间（秒，默认 3600）",
+        )
+        parser.add_argument(
+            "--round-timeout",
+            type=int, default=600,
+            help="单轮超时时间（秒，默认 600）",
         )
         # Alpha-GPT 配置
         parser.add_argument(
@@ -668,6 +704,11 @@ class AlphaPipelineCommand(Command):
             help="结果保存路径（默认 pipeline_result.json）",
         )
         parser.add_argument(
+            "--output-dir",
+            type=str, default="pipeline_output",
+            help="详细结果输出目录（默认 pipeline_output）",
+        )
+        parser.add_argument(
             "--verbose", "-v",
             action="store_true",
             help="详细输出",
@@ -679,7 +720,9 @@ class AlphaPipelineCommand(Command):
         )
 
     def run(self, args: argparse.Namespace) -> int:
-        from QuantNodes.research.quant_alpha.pipeline import AlphaPipeline, PipelineConfig
+        from QuantNodes.research.quant_alpha.pipeline import (
+            AlphaPipeline, PipelineConfig, TerminationConfig,
+        )
 
         # 1. 解析 forward_returns
         try:
@@ -696,19 +739,32 @@ class AlphaPipelineCommand(Command):
             return 1
 
         if not args.quiet:
-            print(f"🔬 端到端因子挖掘流水线")
+            print(f"🔬 端到端因子挖掘流水线（多轮迭代版）")
             print(f"📊 数据：{len(data)} 行 × {len(data.columns)} 列")
             print(f"🎯 目标：{args.objective}")
             print(f"🧠 LLM：{args.llm}{f' ({args.model})' if args.model else ''}")
+            print(f"🔄 最大轮次: {args.max_rounds}, 目标因子: {args.target_factors}")
             print(f"🔄 Alpha-GPT: {args.alphagpt_iterations} 轮 × {args.alphagpt_pool_size} 候选")
             print(f"🔄 MCTS: {args.mcts_iterations} 次迭代")
+            print(f"⏹️  早停: {'禁用' if args.no_early_stopping else f'启用 (patience={args.patience})'}")
             print(f"📚 Wiki：{args.wiki_path}")
             print()
 
         # 3. 配置 + 运行流水线
+        termination = TerminationConfig(
+            max_rounds=args.max_rounds,
+            target_factors=args.target_factors,
+            min_improvement=args.min_improvement,
+            early_stopping=not args.no_early_stopping,
+            patience=args.patience,
+            timeout_seconds=args.timeout,
+            round_timeout_seconds=args.round_timeout,
+        )
+
         config = PipelineConfig(
             objective=args.objective,
             wiki_path=args.wiki_path,
+            termination=termination,
             alphagpt_iterations=args.alphagpt_iterations,
             alphagpt_pool_size=args.alphagpt_pool_size,
             mcts_iterations=args.mcts_iterations,
@@ -726,6 +782,7 @@ class AlphaPipelineCommand(Command):
             temperature_formula=args.temperature_formula,
             temperature_reflector=args.temperature_reflector,
             temperature_critic=args.temperature_critic,
+            output_dir=args.output_dir,
         )
 
         pipeline = AlphaPipeline(config)
@@ -809,6 +866,15 @@ class AlphaPipelineCommand(Command):
         try:
             output = {
                 "summary": result.summary,
+                "rounds": [
+                    {
+                        "round_num": r.round_num,
+                        "elapsed_seconds": r.elapsed_seconds,
+                        "feedback": r.feedback.to_dict() if r.feedback else None,
+                        "final_factors": len(r.final_pool),
+                    }
+                    for r in result.rounds
+                ],
                 "final_pool": [
                     {
                         "formula_id": m.formula_id,
@@ -826,15 +892,17 @@ class AlphaPipelineCommand(Command):
 
             if verbose:
                 output["alphagpt_summary"] = (
-                    result.alphagpt_result.summary if result.alphagpt_result else None
+                    result.rounds[-1].alphagpt_result.summary
+                    if result.rounds and result.rounds[-1].alphagpt_result
+                    else None
                 )
                 output["mcts_stats"] = (
                     {
-                        "formula_count": result.mcts_result.formula_count,
-                        "valid_count": result.mcts_result.valid_count,
-                        "rejected_count": result.mcts_result.rejected_count,
+                        "formula_count": result.rounds[-1].mcts_result.formula_count,
+                        "valid_count": result.rounds[-1].mcts_result.valid_count,
+                        "rejected_count": result.rounds[-1].mcts_result.rejected_count,
                     }
-                    if result.mcts_result
+                    if result.rounds and result.rounds[-1].mcts_result
                     else None
                 )
 
@@ -848,16 +916,27 @@ class AlphaPipelineCommand(Command):
 
     def _print_human_readable(self, result: Any, verbose: bool = False) -> None:
         print()
-        print(f"✅ 流水线完成")
+        print(f"✅ 流水线完成（多轮迭代）")
         print(f"⏱️  耗时：{result.elapsed_seconds:.1f}s")
         print(f"📊 摘要：")
-        print(f"  - Alpha-GPT 因子: {result.summary.get('alphagpt_factors', 0)}")
-        print(f"  - MCTS 因子: {result.summary.get('mcts_factors', 0)}")
+        print(f"  - 总轮次: {result.summary.get('total_rounds', 0)}")
         print(f"  - 最终因子: {result.summary.get('final_factors', 0)}")
         print(f"  - Wiki 页面: {result.summary.get('wiki_pages', 0)}")
         print(f"  - best_ir: {result.summary.get('best_ir', 0):.3f}")
         print(f"  - avg_ir: {result.summary.get('avg_ir', 0):.3f}")
         print()
+
+        # 显示每轮统计
+        if result.rounds:
+            print(f"🔄 各轮统计：")
+            for r in result.rounds:
+                feedback = r.feedback
+                if feedback:
+                    print(f"  Round {r.round_num}: "
+                          f"IR={feedback.best_ir:.3f}, "
+                          f"有效因子={feedback.valid_count}, "
+                          f"耗时={r.elapsed_seconds:.1f}s")
+            print()
 
         if not result.final_pool:
             print("⚠️  final pool 为空（可能所有公式都失败了）")

@@ -92,6 +92,9 @@ class AlphaGptConfig:
 
     custom_few_shot: Optional[List[Dict[str, Any]]] = None
 
+    # 自定义反馈（用于多轮迭代，注入到 IdeaGenerator）
+    custom_feedback: Optional[str] = None
+
 
 @dataclass
 class AlphaGptResult:
@@ -429,13 +432,19 @@ class AlphaGptWorkflow:
     # ------------------------------------------------------------------
 
     def _build_idea_prompt(self, round_idx: int, prev_reflection: Any) -> str:
-        return (
+        prompt = (
             f"Read .agent/agents/alpha-gpt-idea-generator.md. "
             f"Generate {self.config.pool_size} alpha ideas for objective={self.config.objective!r}. "
             f"round={round_idx}, a_share_focus={self.config.a_share_focus}. "
             f"previous_reflection={prev_reflection}. "
-            f"Output STRICT JSON only."
         )
+
+        # 注入自定义反馈（用于多轮迭代）
+        if self.config.custom_feedback:
+            prompt += f"\n\n## 历史反馈（来自上一轮 MCTS 搜索）\n{self.config.custom_feedback}\n"
+
+        prompt += f"Output STRICT JSON only."
+        return prompt
 
     def _build_formula_prompt(
         self,
