@@ -53,6 +53,9 @@ class MCTSSearchResult:
     rejected_count: int = 0
     pruned_count: int = 0
 
+    # 反馈缓存（用于分析失败模式）
+    feedback_cache: Dict[str, FactorFeedback] = field(default_factory=dict)
+
 
 @dataclass
 class MCTSSearchConfig:
@@ -227,6 +230,7 @@ class MCTSSearch:
             valid_count=len(valid_nodes),
             rejected_count=stats["by_status"].get("rejected", 0),
             pruned_count=stats["by_status"].get("pruned", 0),
+            feedback_cache=self._feedback_cache,
         )
 
     def _select(self, root: MCTSNode) -> MCTSNode:

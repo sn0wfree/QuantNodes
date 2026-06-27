@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import polars as pl
 
+from QuantNodes.core.feedback import FactorFeedback
 from QuantNodes.research.quant_alpha.evaluation.contracts import FactorMetrics
 from QuantNodes.research.quant_alpha.evaluation.evaluators.polars_evaluator import (
     deduplicate_mutual_ic,
@@ -347,7 +348,8 @@ def generate_feedback(
     # 2. 提取失败模式
     failed_patterns: List[Dict[str, str]] = []
     if round_result.mcts_result:
-        for node in round_result.mcts_result.all_nodes():
+        # 使用 tree.all_nodes() 获取所有节点
+        for node in round_result.mcts_result.tree.all_nodes():
             fb = round_result.mcts_result.feedback_cache.get(node.formula)
             if fb and not fb.decision:
                 failed_patterns.append({
@@ -399,7 +401,7 @@ def generate_feedback(
     stats = {
         "improvement_vs_prev": improvement_vs_prev,
         "total_mcts_nodes": (
-            len(round_result.mcts_result.all_nodes())
+            len(round_result.mcts_result.tree.all_nodes())
             if round_result.mcts_result
             else 0
         ),
