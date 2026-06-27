@@ -296,6 +296,7 @@ class PipelineConfig:
 
     # Γ 约束配置（用于逻辑驱动因子生成）
     gamma: Optional[Any] = None  # CompiledConstraint from logic_mining.compiler
+    structured_logic: Optional[Any] = None  # WikiLogicStructured (PR-5 一致性评分)
 
 
 # ==============================================================================
@@ -686,6 +687,8 @@ class AlphaPipeline:
                 forward_returns=self.config.forward_returns,
                 date_column=self.config.date_column,
                 code_column=self.config.code_column,
+                structured_logic=self.config.structured_logic,
+                llm_client=self._build_llm_client(),
             )
 
             cache = MCTSCache(MCTSCacheConfig(enabled=True))

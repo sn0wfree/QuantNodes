@@ -236,26 +236,63 @@ def collect_llm_channel(
     formula: str,
     hypothesis: Optional[str] = None,
     description: Optional[str] = None,
+    llm_client: Optional[Any] = None,
+    structured_logic: Optional[Any] = None,
+    score_threshold: float = 0.5,
 ) -> ChannelFeedback:
     """LLM 通道：hypothesis ↔ expression 一致性
 
     M2: 使用 mock 简单实现（关键字匹配）
-    M5+: 接入真实 LLM judge
+    M5+: 接入真实 LLM judge（PR-5）
+
+    Args:
+        formula: 因子公式
+        hypothesis: 研究假设（自然语言）
+        description: 因子描述
+        llm_client: LLM 客户端（None 时使用 mock）
+        structured_logic: WikiLogicStructured 结构化逻辑（PR-5 新增）
+        score_threshold: LLM 评分阈值（>= threshold 则通过）
+
+    Returns:
+        ChannelFeedback
     """
-    # Mock: 简单关键字匹配
-    if hypothesis is None or description is None:
-        # 没有 hypothesis/description 时默认 pass
+    # 1. 无 hypothesis/description/structured_logic 时默认 pass
+    if hypothesis is None and description is None and structured_logic is None:
         return ChannelFeedback(
             channel=FeedbackChannel.LLM,
             passed=True,
-            detail="no hypothesis/description (mock: pass)",
+            detail="no hypothesis/description/structured_logic (pass)",
             score=1.0,
         )
 
-    # 提取 hypothesis 关键词
-    hyp_lower = hypothesis.lower()
+    # 2. 优先使用真实 LLM 评分（PR-5 升级）
+    if llm_client is not None:
+        return _llm_judge_consistency(
+            formula=formula,
+            hypothesis=hypothesis,
+            description=description,
+            structured_logic=structured_logic,
+            llm_client=llm_client,
+            score_threshold=score_threshold,
+        )
+
+    # 3. 结构化逻辑：基于逻辑算子/变量匹配打分
+    if structured_logic is not None:
+        return _structured_logic_match(formula, structured_logic, score_threshold)
+
+    # 4. 回退到 mock: 简单关键字匹配
+    return _mock_keyword_match(formula, hypothesis, description, score_threshold)
+
+
+def _mock_keyword_match(
+    formula: str,
+    hypothesis: Optional[str],
+    description: Optional[str],
+    score_threshold: float = 0.5,
+) -> ChannelFeedback:
+    """Mock 关键字匹配"""
+    hyp_lower = (hypothesis or description or "").lower()
     expr_lower = formula.lower()
-    # 至少 formula 中应包含 hypothesis 中提到的关键算子或变量
     keywords = [
         w for w in hyp_lower.split()
         if len(w) > 3 and w.isalpha()
@@ -263,17 +300,177 @@ def collect_llm_channel(
     matches = sum(1 for kw in keywords if kw in expr_lower)
     match_ratio = matches / len(keywords) if keywords else 1.0
 
-    passed = match_ratio >= 0.3
+    passed = match_ratio >= score_threshold
     detail = (
         f"keyword match: {matches}/{len(keywords)} ({match_ratio:.0%})"
     )
-    score = match_ratio
+    return ChannelFeedback(
+        channel=FeedbackChannel.LLM,
+        passed=passed,
+        detail=detail,
+        score=match_ratio,
+        metadata={"match_ratio": match_ratio, "matches": matches, "mode": "mock_keyword"},
+    )
+
+
+def _structured_logic_match(
+    formula: str,
+    structured_logic: Any,
+    score_threshold: float = 0.5,
+) -> ChannelFeedback:
+    """结构化逻辑匹配打分
+
+    检查项:
+    1. 算子是否在白名单内
+    2. 变量是否被使用
+    3. 参数范围是否匹配
+    """
+    import re as _re
+
+    # 提取 formula 中的算子
+    used_ops = set(_re.findall(r"\b([a-zA-Z_]\w*)\s*\(", formula))
+    used_ops.discard("if")
+
+    # 提取 formula 中的变量
+    known_vars = {"open", "high", "low", "close", "vol", "amount", "returns", "volume"}
+    used_vars = {v for v in known_vars if _re.search(r"\b" + v + r"\b", formula)}
+
+    # 检查项
+    total_score = 0.0
+    checks = {}
+
+    # 1. 算子匹配（40% 权重）
+    whitelist = set(structured_logic.operator_whitelist or [])
+    ops_used_in_logic = set(structured_logic.get_operators())
+    if whitelist:
+        op_overlap = len(used_ops & ops_used_in_logic) / max(len(ops_used_in_logic), 1)
+    else:
+        # 无白名单约束时, 计算 formula 中算子与逻辑算子的重叠率
+        op_overlap = len(used_ops & ops_used_in_logic) / max(len(ops_used_in_logic), 1) if ops_used_in_logic else 1.0
+    checks["operator_overlap"] = op_overlap
+    total_score += op_overlap * 0.4
+
+    # 2. 变量匹配（30% 权重）
+    logic_vars = set(structured_logic.get_variables())
+    if logic_vars:
+        var_overlap = len(used_vars & logic_vars) / max(len(logic_vars), 1)
+        checks["variable_overlap"] = var_overlap
+        total_score += var_overlap * 0.3
+    else:
+        total_score += 0.3
+
+    # 3. 行为方向（30% 权重）
+    behavior = structured_logic.behavior
+    sign_constraint = structured_logic.sign_constraint
+    if sign_constraint is not None:
+        # 检查公式是否与方向一致
+        has_negative = formula.startswith("-") or "sign(-" in formula or "sub(0" in formula
+        # 严格匹配：sign_constraint<0 必须 has_negative, sign_constraint>0 必须 not has_negative
+        if sign_constraint < 0:
+            direction_match = has_negative
+        else:
+            direction_match = not has_negative
+        direction_score = 1.0 if direction_match else 0.0
+        checks["direction_match"] = direction_score
+        total_score += direction_score * 0.3
+    else:
+        total_score += 0.3
+
+    passed = total_score >= score_threshold
+    detail = (
+        f"structured logic match: {total_score:.2f} "
+        f"(ops={checks.get('operator_overlap', 0):.0%}, "
+        f"vars={checks.get('variable_overlap', 0):.0%}, "
+        f"dir={checks.get('direction_match', 0):.0%})"
+    )
+    return ChannelFeedback(
+        channel=FeedbackChannel.LLM,
+        passed=passed,
+        detail=detail,
+        score=total_score,
+        metadata={**checks, "mode": "structured_logic_match"},
+    )
+
+
+def _llm_judge_consistency(
+    formula: str,
+    hypothesis: Optional[str],
+    description: Optional[str],
+    structured_logic: Any,
+    llm_client: Any,
+    score_threshold: float = 0.5,
+) -> ChannelFeedback:
+    """真实 LLM judge 评分（PR-5 新增）
+
+    用 LLM 评估 formula 与 hypothesis/structured_logic 的语义一致性。
+    """
+    # 构建 prompt
+    if structured_logic is not None:
+        logic_text = structured_logic.render_for_prompt() if hasattr(
+            structured_logic, "render_for_prompt"
+        ) else str(structured_logic)
+        prompt = (
+            f"You are evaluating whether a factor formula is consistent with "
+            f"a market hypothesis.\n\n"
+            f"Hypothesis (structured):\n{logic_text}\n\n"
+            f"Formula: {formula}\n\n"
+            f"Question: On a scale 0-1, how well does the formula match "
+            f"the hypothesis?\n"
+            f"- 1.0: perfect match (correct operators, correct direction, "
+            f"correct window)\n"
+            f"- 0.5: partial (some operators right but sign or window off)\n"
+            f"- 0.0: mismatch\n\n"
+            f"Output STRICT JSON: {{\"score\": 0.85, \"reason\": \"...\"}}"
+        )
+    else:
+        prompt = (
+            f"You are evaluating whether a factor formula is consistent "
+            f"with a market hypothesis.\n\n"
+            f"Hypothesis: {hypothesis or description or ''}\n\n"
+            f"Formula: {formula}\n\n"
+            f"Question: On a scale 0-1, how well does the formula match "
+            f"the hypothesis?\n\n"
+            f"Output STRICT JSON: {{\"score\": 0.85, \"reason\": \"...\"}}"
+        )
+
+    # 调用 LLM
+    try:
+        if hasattr(llm_client, "complete"):
+            raw = llm_client.complete(agent_id="logic-consistency-judge", prompt=prompt)
+        else:
+            raw = llm_client(prompt)
+    except Exception as e:
+        logger.warning("LLM judge call failed: %s, falling back to mock", e)
+        return _mock_keyword_match(formula, hypothesis, description, score_threshold)
+
+    # 解析响应
+    import json
+    score = 0.5
+    reason = ""
+    try:
+        data = json.loads(raw)
+        score = float(data.get("score", 0.5))
+        reason = str(data.get("reason", ""))
+    except (json.JSONDecodeError, ValueError, TypeError):
+        # 尝试提取数字
+        import re as _re
+        nums = _re.findall(r"(\d+\.?\d*)", raw)
+        if nums:
+            try:
+                score = float(nums[0])
+            except ValueError:
+                score = 0.5
+        reason = raw[:200]
+
+    score = max(0.0, min(1.0, score))
+    passed = score >= score_threshold
+    detail = f"LLM judge score={score:.2f}: {reason[:100]}"
     return ChannelFeedback(
         channel=FeedbackChannel.LLM,
         passed=passed,
         detail=detail,
         score=score,
-        metadata={"match_ratio": match_ratio, "matches": matches},
+        metadata={"llm_score": score, "reason": reason, "mode": "llm_judge"},
     )
 
 
@@ -443,6 +640,8 @@ def collect_all_channels(
     data: Optional[pl.DataFrame] = None,
     date_column: str = "date",
     code_column: str = "code",
+    llm_client: Optional[Any] = None,
+    structured_logic: Optional[Any] = None,
 ) -> FactorFeedback:
     """一次性采集 5+3 通道反馈，构造 FactorFeedback
 
@@ -458,6 +657,8 @@ def collect_all_channels(
         data: 行情数据（用于 TURNOVER 通道）
         date_column: 日期列名
         code_column: 代码列名
+        llm_client: LLM 客户端（PR-5: 用于一致性评分）
+        structured_logic: WikiLogicStructured（PR-5: 用于结构化一致性匹配）
 
     Returns:
         FactorFeedback（含 5+3 通道 + decision + summary）
@@ -476,6 +677,8 @@ def collect_all_channels(
     if config.enable_llm:
         channels[FeedbackChannel.LLM] = collect_llm_channel(
             formula, hypothesis, description,
+            llm_client=llm_client,
+            structured_logic=structured_logic,
         )
 
     # 金融约束通道

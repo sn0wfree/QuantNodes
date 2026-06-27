@@ -76,6 +76,9 @@ class MCTSSearchConfig:
     code_column: str = "code"
     # 互信息去重阈值
     dedup_threshold: float = 0.7
+    # PR-5: 结构化逻辑与 LLM 客户端（用于一致性评分）
+    structured_logic: Optional[Any] = None
+    llm_client: Optional[Any] = None
 
 
 class MCTSSearch:
@@ -411,6 +414,8 @@ class MCTSSearch:
             data=data,
             date_column=date_column,
             code_column=self.config.code_column,
+            llm_client=self.config.llm_client,
+            structured_logic=self.config.structured_logic,
         )
         self._feedback_cache[node.formula] = fb
 
