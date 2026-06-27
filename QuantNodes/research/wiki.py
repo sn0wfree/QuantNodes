@@ -86,6 +86,72 @@ class WikiLogic:
     created_at: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    # === 新增:结构化字段(PR-1/4 向后兼容,全部 Optional) ===
+    structured: Optional[Any] = None  # WikiLogicStructured (避免循环导入)
+    performance_evidence: Optional[Any] = None  # LogicPerformanceEvidence
+    parent_logic: Optional[str] = None  # 衍生自的逻辑名(用于追溯重构链)
+    refinement_round: int = 0  # 第几轮外层优化生成/重构
+
+    def to_structured_dict(self) -> Dict[str, Any]:
+        """序列化为字典(便于 JSON 持久化)"""
+        return {
+            "name": self.name,
+            "content": self.content,
+            "source": self.source.value if hasattr(self.source, "value") else str(self.source),
+            "extracted_formula": self.extracted_formula,
+            "validation_status": self.validation_status,
+            "parent_logic": self.parent_logic,
+            "refinement_round": self.refinement_round,
+            "structured": self.structured.to_dict() if self.structured else None,
+            "performance_evidence": (
+                self.performance_evidence.to_dict()
+                if self.performance_evidence and hasattr(self.performance_evidence, "to_dict")
+                else self.performance_evidence
+            ),
+        }
+
+    @classmethod
+    def from_structured_dict(cls, data: Dict[str, Any]) -> "WikiLogic":
+        """从字典创建(用于反序列化)"""
+        from QuantNodes.research.quant_alpha.logic_mining.models import (
+            LogicBehavior,
+            LogicCondition,
+            LogicPerformanceEvidence,
+            WikiLogicStructured,
+        )
+
+        structured = None
+        if data.get("structured"):
+            try:
+                s = data["structured"]
+                structured = WikiLogicStructured.from_dict(s)
+            except Exception:
+                structured = None
+
+        evidence = None
+        if data.get("performance_evidence"):
+            try:
+                evidence = LogicPerformanceEvidence.from_dict(data["performance_evidence"])
+            except Exception:
+                evidence = None
+
+        try:
+            source = LogicSource(data.get("source", "research_report"))
+        except ValueError:
+            source = LogicSource.RESEARCH_REPORT
+
+        return cls(
+            name=data["name"],
+            content=data.get("content", ""),
+            source=source,
+            extracted_formula=data.get("extracted_formula"),
+            validation_status=data.get("validation_status", "pending"),
+            structured=structured,
+            performance_evidence=evidence,
+            parent_logic=data.get("parent_logic"),
+            refinement_round=data.get("refinement_round", 0),
+        )
+
 
 @dataclass
 class WikiStrategy:
@@ -435,6 +501,93 @@ class WikiFactorProxy:
                 except Exception:
                     continue
         return logics
+
+    def list_logics(
+        self,
+        validated_only: bool = False,
+        limit: int = 100,
+    ) -> List[WikiLogic]:
+        """列出所有 Logic
+
+        Args:
+            validated_only: 仅返回已验证的逻辑
+            limit: 最大数量
+
+        Returns:
+            List of WikiLogic
+        """
+        page_type_dir = self.wiki.wiki_dir / self.PAGE_TYPE_LOGIC
+        if not page_type_dir.exists():
+            return []
+
+        logics = []
+        for md_file in list(page_type_dir.glob("*.md"))[:limit]:
+            try:
+                logic = self.get_logic(md_file.stem)
+                if logic is None:
+                    continue
+                if validated_only and logic.validation_status != "validated":
+                    continue
+                logics.append(logic)
+            except Exception:
+                continue
+        return logics
+
+    def update_logic_evidence(
+        self,
+        name: str,
+        evidence: Any,
+    ) -> bool:
+        """更新逻辑的回测证据
+
+        Args:
+            name: 逻辑名称
+            evidence: LogicPerformanceEvidence 实例
+
+        Returns:
+            True 表示更新成功
+        """
+        logic = self.get_logic(name)
+        if logic is None:
+            return False
+
+        logic.performance_evidence = evidence
+        self.store_logic(logic)
+        return True
+
+    def search_logics_by_predicate(
+        self,
+        variable: Optional[str] = None,
+        op: Optional[str] = None,
+    ) -> List[WikiLogic]:
+        """按谓词查询逻辑
+
+        Args:
+            variable: 市场变量名(可选)
+            op: 算子名(可选)
+
+        Returns:
+            匹配的 WikiLogic 列表
+        """
+        all_logics = self.list_logics(limit=1000)
+        results = []
+
+        for logic in all_logics:
+            if logic.structured is None:
+                continue
+            match = True
+            if variable:
+                variables = logic.structured.get_variables()
+                if variable not in variables:
+                    match = False
+            if op and match:
+                operators = logic.structured.get_operators()
+                if op not in operators:
+                    match = False
+            if match:
+                results.append(logic)
+
+        return results
 
     def add_relation(self, source_name: str, target_name: str, relation: str) -> bool:
         if relation not in QUANT_RELATION_TYPES:

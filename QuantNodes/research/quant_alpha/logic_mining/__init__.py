@@ -39,6 +39,11 @@ from QuantNodes.research.quant_alpha.logic_mining.sources import (
     get_formulas_from_source,
     list_available_sources,
 )
+from QuantNodes.research.quant_alpha.logic_mining.generator import (
+    MarketLogicGenerator,
+    MarketLogicRefinementDirection,
+    generate_logic_name,
+)
 
 __all__ = [
     # Models
@@ -62,4 +67,8 @@ __all__ = [
     "SOURCES",
     "get_formulas_from_source",
     "list_available_sources",
+    # Generator (外层循环 PR-4)
+    "MarketLogicGenerator",
+    "MarketLogicRefinementDirection",
+    "generate_logic_name",
 ]
