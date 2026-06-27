@@ -467,17 +467,57 @@ class AlphaGptWorkflow:
         prompt = (
             f"Read .agent/agents/alpha-gpt-formula-translator.md. "
             f"Translate these ideas to polars formulas. round={round_idx}. "
-            f"ideas={ideas_payload}. available_operators={available_ops}. "
-            f"data_columns={data_columns}. a_share_focus={self.config.a_share_focus}. "
+            f"ideas={ideas_payload}. "
+            f"a_share_focus={self.config.a_share_focus}. "
             f"CRITICAL: Use ONLY function call format like op(arg1, arg2). "
             f"NO arithmetic operators (+,-,*,/). NO missing parentheses. "
         )
 
-        # 注入 Γ 约束
+        # 注入 Γ 约束（更清晰的格式）
         if self.config.gamma is not None:
-            gamma_text = self.config.gamma.render_for_prompt()
-            prompt += f"\n\n{gamma_text}\n"
-
+            gamma = self.config.gamma
+            
+            # 构建约束说明
+            constraints = []
+            
+            # 算子白名单
+            if gamma.operator_whitelist:
+                ops = sorted(gamma.operator_whitelist)
+                constraints.append(f"ALLOWED OPERATORS: {', '.join(ops)}")
+                constraints.append(f"You MUST use ONLY these operators. Do NOT use any other operators.")
+            
+            # 变量白名单
+            if gamma.variable_whitelist:
+                vars_ = sorted(gamma.variable_whitelist)
+                constraints.append(f"ALLOWED VARIABLES: {', '.join(vars_)}")
+                constraints.append(f"You MUST use ONLY these variables. Do NOT use any other variables.")
+            
+            # 参数范围
+            if gamma.parameter_ranges:
+                constraints.append(f"PARAMETER RANGES:")
+                for op, (lo, hi) in sorted(gamma.parameter_ranges.items()):
+                    constraints.append(f"  - {op}: window must be between {lo} and {hi}")
+            
+            # 符号约束
+            if gamma.sign_constraint is not None:
+                direction = "POSITIVE (+1)" if gamma.sign_constraint > 0 else "NEGATIVE (-1)"
+                constraints.append(f"SIGN CONSTRAINT: Overall factor direction must be {direction}")
+            
+            # 添加到 prompt
+            if constraints:
+                prompt += "\n\n=== Γ CONSTRAINTS (MUST FOLLOW) ===\n"
+                prompt += "\n".join(constraints)
+                prompt += "\n===================================\n"
+                
+                # 添加示例
+                if gamma.operator_whitelist and "rank" in gamma.operator_whitelist and "ts_corr" in gamma.operator_whitelist:
+                    prompt += "\nEXAMPLE FORMULA (follows constraints):\n"
+                    prompt += "  sign(-ts_corr(rank(open), rank(volume), 10))\n"
+        
+        # 添加可用算子和变量（来自 OperatorVocab）
+        prompt += f"\navailable_operators={available_ops}. "
+        prompt += f"data_columns={data_columns}. "
+        
         prompt += f"Output STRICT JSON only."
         return prompt
 
