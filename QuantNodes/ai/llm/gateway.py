@@ -42,7 +42,7 @@ class LLMConfig:
     """LLM 配置（重试机制和超时控制）"""
     max_retries: int = 3           # 最大重试次数
     retry_delay: float = 1.0       # 重试间隔秒数
-    timeout: float = 120.0         # 超时秒数
+    timeout: float = 300.0         # 超时秒数（MiniMax M3 复杂 JSON 需要较长时间）
 
 
 @dataclass
@@ -114,6 +114,13 @@ class LLMGateway(LLMClientBase):
             try:
                 from QuantNodes.agent.nanobot_bridge import Agent
                 self._agent = Agent(workspace=self._workspace)
+                # 覆盖 provider.generation.max_tokens（nanobot 默认 8192 太小）
+                from dataclasses import replace
+                loop = self._agent._loop
+                gen = getattr(loop.provider, "generation", None)
+                if gen is not None and gen.max_tokens < 16384:
+                    loop.provider.generation = replace(gen, max_tokens=16384)
+                    logger.info("LLMGateway: provider.generation.max_tokens → 16384")
                 logger.info("LLMGateway: nanobot Agent 已初始化")
             except Exception as e:
                 logger.warning("LLMGateway: nanobot 不可用, 降级到 NullLLMClient: %s", e)

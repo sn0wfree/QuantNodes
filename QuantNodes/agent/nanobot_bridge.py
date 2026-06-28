@@ -181,7 +181,7 @@ class Agent:
             initial_messages=[{"role": "user", "content": message}],
             tools=filtered,
             model=model or getattr(self._loop, "model", None),
-            max_tokens=max_tokens or getattr(self._loop, "max_tokens", 102400),
+            max_tokens=max_tokens or 16384,
             max_iterations=getattr(self._loop, "max_iterations", 5),
             max_tool_result_chars=getattr(self._loop, "max_tool_result_chars", 50000),
             temperature=temperature,
