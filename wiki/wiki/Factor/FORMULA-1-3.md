@@ -1,64 +1,31 @@
 ---
 type: Factor
 name: FORMULA-1-3
-formula: "rank(div(ts_std(close, 20), ts_mean(close, 20)))"
+formula: "FORMULA-1-3"
 source: auto_research
 category: other
-tags: [alpha-pipeline, ir=-0.053, logic=volatility]
-ic_mean: -0.006138521508093471
+tags: [alpha-pipeline, ir=-0.113]
+ic_mean: -0.013840461230231204
 ic_std: 0.0
-icir: -0.05349365845976675
+icir: -0.11269840497000337
 rank_ic_mean: 0.0
-created_at: 2026-06-28T12:00:14.899978
+created_at: 2026-06-28T14:16:08.584846
 ---
-
-# FORMULA-1-3
-
-## 因子公式
-
-```
-rank(div(ts_std(close, 20), ts_mean(close, 20)))
-```
-
-## 来源逻辑
-
-**逻辑名称**: `volatility`
-**逻辑类型**: 量化因子
-**方向**: -（IR 负向预测）
-
 ## 单因子表现
-
 | 指标 | 值 |
 |------|-----|
-| IC Mean | -0.006138521508093471 |
-| IC IR | -0.05349365845976675 |
-| 绝对 IR | 0.0535 |
-
-## 因子描述
-
-波动率均值比因子
-
-## 评估方法
-
-- **数据源**: A 股市场 2023 年全量数据（5380 只股票）
-- **前瞻期**: 5 日 / 20 日 forward return
-- **评估窗口**: 全市场横截面
-- **评估时间**: 2026-06-28
+| IC Mean | -0.013840461230231204 |
+| IC Std | 0.0 |
+| IC IR | -0.11269840497000337 |
+| Rank IC Mean | 0.0 |
 
 ## 相关性
-
-暂无（待后续 MCTS 去重后填充）
+暂无
 
 ## 使用记录
-
-暂无（待策略集成后填充）
+暂无
 
 ## 策略配置 (YAML)
-
 ```yaml
-factor:
-  name: FORMULA-1-3
-  formula: "rank(div(ts_std(close, 20), ts_mean(close, 20)))"
-  direction: -1
-  weight: 0.1
+# 暂无
 ```
