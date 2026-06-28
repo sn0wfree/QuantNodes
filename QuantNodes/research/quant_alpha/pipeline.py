@@ -766,8 +766,8 @@ class AlphaPipeline:
             threshold=self.config.max_mutual_ic,
         )
 
-        # 按 overall_score 降序排序，取 top_k
-        deduped.sort(key=lambda m: m.overall_score, reverse=True)
+        # 按 |overall_score| 降序排序，取 top_k（修复负 IR 因子被排在最后的 bug）
+        deduped.sort(key=lambda m: abs(m.overall_score), reverse=True)
         return deduped[: self.config.top_k]
 
     def _select_final_pool(self, rounds: List[RoundResult]) -> List[FactorMetrics]:

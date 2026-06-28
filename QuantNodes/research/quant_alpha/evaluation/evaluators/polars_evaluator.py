@@ -70,7 +70,7 @@ def deduplicate_mutual_ic(
         去重后的因子列表
     """
     values_cache: Dict[str, Optional[pl.Series]] = {}
-    sorted_f = sorted(factors, key=lambda f: f.overall_score, reverse=True)
+    sorted_f = sorted(factors, key=lambda f: abs(f.overall_score), reverse=True)
     selected = []
     for f in sorted_f:
         if f.formula_id not in values_cache:
