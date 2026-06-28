@@ -4,6 +4,7 @@
 **日期**: 2026-06-28
 **作者**: LLM Pipeline
 **目标**: 思维链改造前的 4 逻辑 E2E baseline
+**状态**: ✅ 完成
 
 ---
 
@@ -24,24 +25,19 @@ V4 不含任何思维链利用，仅验证：
 - **LLM**: MiniMax M3 via direct OpenAI API（绕过 nanobot agent 路径）
 - **max_tokens**: 16384
 - **timeout**: 300s
-- **MCTS iterations**: 50
+- **MCTS iterations**: 20
 - **每个逻辑 pool_size**: 3
 - **top_k**: 3
+- **total_elapsed**: 522.2s
 
 ## 配置
 
 ```python
 logics = {
-    "volatility": WikiLogicStructured(
-        predicates=[LogicCondition(variable='close', op='ts_std', threshold=0, window=20)],
-        behavior=LogicBehavior(target='forward_return_5', direction=-1, horizon=5),
-        operator_whitelist=['rank', 'ts_std', 'ts_mean', 'div'],
-        parameter_ranges={'ts_std': (5, 60), 'ts_mean': (5, 60)},
-        sign_constraint=-1,
-    ),
-    "momentum": ...,
-    "mean_reversion": ...,
-    "price_volume_divergence": ...,
+    "volatility": WikiLogicStructured(...),
+    "momentum": WikiLogicStructured(...),
+    "mean_reversion": WikiLogicStructured(...),
+    "price_volume_divergence": WikiLogicStructured(...),
 }
 ```
 
@@ -49,21 +45,37 @@ logics = {
 
 ## 结果
 
-（待 V4 跑完填入）
+| 逻辑 | 有效因子数 | 最佳 IR | 最佳 \|IR\| | 平均 IR | 耗时 |
+|------|-----------|---------|---------|---------|------|
+| volatility | 3 | -0.0502 | **0.1208** | -0.0506 | 135.9s |
+| mean_reversion | 3 | 0.1133 | **0.1133** | 0.0273 | 82.6s |
+| momentum | 3 | 0.0193 | **0.0387** | -0.0002 | 113.7s |
+| price_volume_divergence | 0 | — | 0.0000 | — | 190.0s |
+| **合计** | **9** | — | — | — | **522.2s** |
 
-| 逻辑 | 有效因子数 | 最佳 IR | 平均 IR | 公式示例 |
-|------|-----------|---------|---------|----------|
-| volatility | TBD | TBD | TBD | TBD |
-| momentum | TBD | TBD | TBD | TBD |
-| mean_reversion | TBD | TBD | TBD | TBD |
-| price_volume_divergence | TBD | TBD | TBD | TBD |
-| **合计** | TBD | TBD | TBD | — |
+### 详情
 
-## 文件位置
+**volatility** (3 因子):
+- FORMULA-1-1: IR=-0.0502, IC=-0.0053
+- FORMULA-1-2: IR=0.0193, IC=0.0014
+- FORMULA-1-3: IR=-0.1208, IC=-0.0144 ← 最佳
 
-- 脚本: `tests/quant_alpha/run_4_logic_v4.py`
-- 输出: `pipeline_output_v4/`
-- Summary: `pipeline_output_v4/v4_summary.json`
+**mean_reversion** (3 因子):
+- IR=0.1133 (最佳)
+- IR=0.05~-0.05
+
+**momentum** (3 因子):
+- IR=0.0193~0.0387
+
+**price_volume_divergence** (0 因子):
+- LLM 未生成有效公式
+
+## 关键观察
+
+1. **3/4 逻辑产出因子**，仅 price_volume_divergence 失败
+2. **最佳 |IR|=0.1208** (volatility FORMULA-1-3)
+3. **总计 9 因子** in 522.2s
+4. **LLM 思维链** 100% 产生但完全被丢弃（gateway 清理 <think> 标签）
 
 ## 后续
 

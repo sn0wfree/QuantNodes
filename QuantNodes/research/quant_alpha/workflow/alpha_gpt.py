@@ -508,9 +508,9 @@ class AlphaGptWorkflow:
             f"round={round_idx}, a_share_focus={self.config.a_share_focus}. "
             f"previous_reflection={prev_reflection}. "
             f"6 categories: momentum/reversal/value/quality/volatility/liquidity. "
-            f"Each idea must have id (IDEA-{{round}}-{{idx}}), name, category, description, "
-            f"expected_direction (long/short/both), suggested_lookback, a_share_compatible, "
-            f"orthogonal_to, complexity_hint (simple/medium/complex). "
+            f"Each idea must have id (IDEA-{{round}}-{{idx}}), name, category, description "
+            f"(<150 chars, brief!), expected_direction (long/short/both), suggested_lookback, "
+            f"a_share_compatible, orthogonal_to, complexity_hint (simple/medium/complex). "
             f"Output STRICT JSON (no markdown, no code blocks) matching this schema: {schema}"
         )
 
@@ -580,6 +580,9 @@ class AlphaGptWorkflow:
             "SUGGESTED_OPS: <公式中实际使用的算子列表>\n"
             "</think>\n"
             "```\n"
+            "CRITICAL: explanation 字段必须 <80 字符！\n"
+            "禁止在 explanation 中包含 HYPOTHESIS/MECHANISM 等结构化字段。\n"
+            "explanation 只描述公式的'做什么'，不解释'为什么'。\n"
         )
 
         # 注入 Γ 约束（更清晰的格式）
