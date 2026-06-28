@@ -27,7 +27,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +82,17 @@ def parse_json_3layer(
     if raw is None or not raw.strip():
         return ParseResult(ok=False, error="empty input", raw=raw)
 
+    _json_ok = False
+
     def _try(s: str) -> Optional[Dict[str, Any]]:
+        nonlocal _json_ok
         try:
             obj = json.loads(s)
         except (json.JSONDecodeError, TypeError):
             return None
         if not isinstance(obj, dict):
             return None
+        _json_ok = True
         if schema_validator is not None:
             err = schema_validator(obj)
             if err is not None:
@@ -105,11 +109,90 @@ def parse_json_3layer(
         if obj is not None:
             return ParseResult(ok=True, data=obj, layer="regex", raw=raw)
 
+    if not _json_ok:
+        truncated = _recover_truncated_json(raw, schema_validator)
+        if truncated is not None:
+            return ParseResult(
+                ok=True, data=truncated, layer="truncated", raw=raw
+            )
+
     return ParseResult(
         ok=False,
-        error="Cannot parse JSON after 2 layers (full raw in ParseResult.raw)",
+        error="Cannot parse JSON after 3 layers (full raw in ParseResult.raw)",
         raw=raw,
     )
+
+
+def _recover_truncated_json(
+    raw: str,
+    schema_validator: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
+) -> Optional[Dict[str, Any]]:
+    """截断恢复：扫描 LLM 输出，提取所有已完整闭合的子对象。
+
+    处理 LLM 输出因 max_tokens 截断的场景：
+    - LLM 输出 `{"ideas": [完整对象1, 完整对象2, {不完整对象`
+    - 简单 json.loads 失败
+    - 但内层 [完整对象1, 完整对象2] 仍可解析
+
+    策略：用 json.JSONDecoder().raw_decode() 反复解码，每次从下一个 [ 或 { 开始。
+    - 收集可解的 list（直接收）
+    - 收集可解的 dict（按"位置相邻"组成 list，因为数组虽然外层 [] 截断，但
+      内部 {item1}, {item2} 都可解，它们之间距离通常很近）
+
+    Returns:
+        恢复后的 dict（如 {"items": [item1, item2], "_truncated": True}），
+        或 None 表示无法恢复
+    """
+    if not raw or not raw.strip():
+        return None
+
+    decoder = json.JSONDecoder()
+    text = raw.strip()
+
+    # 收集可解的对象和它们的终止位置
+    decoded_objects: List[Dict[str, Any]] = []
+    pos = 0
+    n = len(text)
+    openers_set = set("[{")
+
+    while pos < n:
+        next_pos = -1
+        for k in range(pos, n):
+            if text[k] in openers_set:
+                next_pos = k
+                break
+        if next_pos == -1:
+            break
+        try:
+            obj, end = decoder.raw_decode(text[next_pos:])
+        except json.JSONDecodeError:
+            pos = next_pos + 1
+            continue
+        if isinstance(obj, list) and len(obj) > 0:
+            return {
+                "_truncated": True,
+                "_recovered_count": len(obj),
+                "items": obj,
+            }
+        if isinstance(obj, dict) and len(obj) > 0:
+            # 跳过只含顶层元数据的 dict (如 {round: 1})
+            if not (set(obj.keys()) <= {"round"}):
+                decoded_objects.append(obj)
+        pos = next_pos + end
+
+    if decoded_objects:
+        return {
+            "_truncated": True,
+            "_recovered_count": len(decoded_objects),
+            "items": decoded_objects,
+        }
+
+    return None
+
+
+# ==============================================================================
+# 5 阶段 schema 校验
+# ==============================================================================
 
 
 # ==============================================================================
@@ -208,28 +291,93 @@ def _validate_critic(obj: Dict[str, Any]) -> Optional[str]:
 
 
 # ==============================================================================
+# 截断恢复后的字段映射
+# ==============================================================================
+
+
+# 截断恢复时把 "items" 重命名为对应 stage 的字段
+_TRUNCATED_KEY_MAP = {
+    "idea_generator": "ideas",
+    "formula_translator": "formulas",
+    "evaluator": "evaluations",
+    "reflector": "formula_feedback",
+    "critic": "final_pool",
+}
+
+
+_STAGE_VALIDATORS = {
+    "idea_generator": _validate_idea_generator,
+    "formula_translator": _validate_formula_translator,
+    "evaluator": _validate_evaluator,
+    "reflector": _validate_reflector,
+    "critic": _validate_critic,
+}
+
+
+def _apply_truncation_mapping(result: ParseResult, stage: str) -> ParseResult:
+    """截断恢复后，把 items 字段重命名为对应 stage 的字段
+
+    例如 idea_generator 截断后返回 {items: [idea1, idea2]}，重命名为
+    {ideas: [idea1, idea2]}，让下游代码能正常处理。
+    然后用对应 stage 的 schema validator 校验 mapped data。
+    """
+    if result.layer != "truncated" or not result.data:
+        return result
+    items = result.data.pop("items", None)
+    recovered_count = result.data.pop("_recovered_count", 0)
+    target_key = _TRUNCATED_KEY_MAP.get(stage)
+    if target_key and items is not None:
+        mapped = {target_key: items, "round": 1}
+        # schema 校验 mapped data
+        validator = _STAGE_VALIDATORS.get(stage)
+        if validator is not None:
+            err = validator(mapped)
+            if err is not None:
+                # 校验失败：返回失败
+                return ParseResult(
+                    ok=False,
+                    error=f"truncated recovery mapped schema failed: {err}",
+                    raw=result.raw,
+                )
+        result.data[target_key] = items
+        result.data["_recovered_count"] = recovered_count
+        result.data["round"] = 1
+    return result
+
+
+# ==============================================================================
 # 5 阶段 parse 函数
 # ==============================================================================
 
 
 def parse_idea_generator_output(raw: str) -> ParseResult:
-    """IdeaGenerator 输出解析"""
-    return parse_json_3layer(raw, _validate_idea_generator)
+    """IdeaGenerator 输出解析（带截断恢复）"""
+    result = parse_json_3layer(raw, _validate_idea_generator)
+    return _apply_truncation_mapping(result, "idea_generator")
 
 
 def parse_formula_translator_output(raw: str) -> ParseResult:
-    """FormulaTranslator 输出解析"""
-    return parse_json_3layer(raw, _validate_formula_translator)
+    """FormulaTranslator 输出解析（带截断恢复）"""
+    result = parse_json_3layer(raw, _validate_formula_translator)
+    return _apply_truncation_mapping(result, "formula_translator")
 
 
 def parse_evaluator_output(raw: str) -> ParseResult:
-    """Evaluator 输出解析"""
-    return parse_json_3layer(raw, _validate_evaluator)
+    """Evaluator 输出解析（带截断恢复）"""
+    result = parse_json_3layer(raw, _validate_evaluator)
+    return _apply_truncation_mapping(result, "evaluator")
 
 
 def parse_reflector_output(raw: str) -> ParseResult:
-    """Reflector 输出解析"""
-    return parse_json_3layer(raw, _validate_reflector)
+    """Reflector 输出解析（带截断恢复）"""
+    result = parse_json_3layer(raw, _validate_reflector)
+    return _apply_truncation_mapping(result, "reflector")
+
+
+def parse_critic_output(raw: str) -> ParseResult:
+    """Critic 输出解析（带截断恢复）"""
+    result = parse_json_3layer(raw, _validate_critic)
+    return _apply_truncation_mapping(result, "critic")
 
 
 def parse_critic_output(raw: str) -> ParseResult:

@@ -127,6 +127,7 @@ class AlphaGptWorkflow:
         data: Any = None,
         data_path: Optional[str] = None,
         llm_client: Optional[Any] = None,
+        output_dir: Optional[str] = None,
     ) -> None:
         self.config = config
         self.data = data
@@ -134,6 +135,13 @@ class AlphaGptWorkflow:
         # llm_client=None → 使用 _mock_llm_response (Stage 1)
         # llm_client=LLMGateway → 使用真实 LLM (Stage 2)
         self.llm_client = llm_client
+        # 完整保存 LLM 原始输出（用于调试截断/解析失败）
+        self.output_dir = output_dir
+        self._llm_raw_dir: Optional[Any] = None
+        if output_dir:
+            from pathlib import Path
+            self._llm_raw_dir = Path(output_dir) / "llm_raw"
+            self._llm_raw_dir.mkdir(parents=True, exist_ok=True)
         self.state = AlphaGptState(
             objective=config.objective,
             iterations_total=config.iterations,
@@ -546,20 +554,64 @@ class AlphaGptWorkflow:
     # ------------------------------------------------------------------
 
     def _call_llm(self, agent_id: str, prompt: str) -> str:
-        """调用 LLM（mock 时返回预定义 JSON）"""
-        if self.llm_client is not None:
-            # 根据 agent_id 选择温度
-            temperature = self._get_temperature_for_agent(agent_id)
+        """调用 LLM（mock 时返回预定义 JSON）
 
-            # 兼容旧接口: complete(agent_id, prompt)
+        若 output_dir 已设置，会把每次 LLM 调用的完整 prompt/response 持久化到
+        {output_dir}/llm_raw/{agent_id}_{round_idx}_{ts}.json，方便后续分析
+        截断、解析失败等问题。
+        """
+        import inspect
+        import json
+        import time as _time
+        from pathlib import Path
+
+        temperature = self._get_temperature_for_agent(agent_id)
+        ts = int(_time.time() * 1000)
+
+        # 实际调用 LLM（或 mock）
+        if self.llm_client is not None:
             if hasattr(self.llm_client, 'complete'):
-                return self.llm_client.complete(
-                    agent_id=agent_id, prompt=prompt, temperature=temperature
+                # 兼容不同 mock 接口（部分 mock 不接受 temperature 关键字）
+                try:
+                    sig = inspect.signature(self.llm_client.complete)
+                    if "temperature" in sig.parameters:
+                        raw = self.llm_client.complete(
+                            agent_id=agent_id, prompt=prompt, temperature=temperature
+                        )
+                    else:
+                        raw = self.llm_client.complete(agent_id=agent_id, prompt=prompt)
+                except (TypeError, ValueError):
+                    raw = self.llm_client.complete(agent_id=agent_id, prompt=prompt)
+            else:
+                raw = self.llm_client(prompt)
+        else:
+            raw = _mock_llm_response(agent_id, prompt, self.state, self.config)
+
+        # 完整持久化（无截断）
+        if self._llm_raw_dir is not None:
+            try:
+                round_idx = self.state.round_idx_hint
+                safe_agent = agent_id.replace("/", "_").replace(" ", "_")
+                out_file = self._llm_raw_dir / f"r{round_idx}_{safe_agent}_{ts}.json"
+                out_file.write_text(
+                    json.dumps(
+                        {
+                            "agent_id": agent_id,
+                            "round_idx": round_idx,
+                            "temperature": temperature,
+                            "prompt": prompt,
+                            "response": raw,
+                            "response_length": len(raw),
+                            "ts": ts,
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                    encoding="utf-8",
                 )
-            # 兼容 LLMGateway: __call__(prompt)
-            return self.llm_client(prompt)
-        # 默认 mock：返回最小 valid JSON（让 workflow 可端到端跑通）
-        return _mock_llm_response(agent_id, prompt, self.state, self.config)
+            except Exception as exc:
+                logger.warning("保存 LLM raw 失败: %s", exc)
+        return raw
 
     def _get_temperature_for_agent(self, agent_id: str) -> float:
         """根据 agent_id 返回对应的温度参数"""

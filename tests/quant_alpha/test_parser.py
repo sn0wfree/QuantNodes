@@ -199,5 +199,69 @@ class TestFormulaOperatorValidation:
         assert "ts_std" in ALLOWED_OPERATORS
 
 
+# ==============================================================================
+# 截断恢复 (P2)
+# ==============================================================================
+
+
+class TestTruncationRecovery:
+    """测试 LLM 输出被 max_tokens 截断时的恢复能力"""
+
+    def test_formula_translator_truncated_mid_list(self):
+        """LLM 输出在 formula 列表中间被截断"""
+        raw = '{"round": 1, "formulas": [' \
+            '{"id": "F-1-1", "idea_id": "I-1-1", "formula": "rank(close)"}, ' \
+            '{"id": "F-1-2", "idea_id": "I-1-2", "formula": "ts_mean(close, 5)"}, ' \
+            '{"id": "F-1-3", "idea_id": "I-1-3", "formula": "sub(close, ts_'
+        r = parse_formula_translator_output(raw)
+        assert r.ok
+        assert r.layer == "truncated"
+        assert "formulas" in r.data
+        assert len(r.data["formulas"]) == 2
+        assert r.data["formulas"][0]["formula"] == "rank(close)"
+        assert r.data["formulas"][1]["formula"] == "ts_mean(close, 5)"
+        assert r.data["_recovered_count"] == 2
+
+    def test_idea_generator_truncated(self):
+        raw = '{"round": 1, "ideas": [' \
+            '{"id": "I-1-1", "name": "反转", "category": "reversal"}, ' \
+            '{"id": "I-1-2", "name": "动量", "category": "momen'
+        r = parse_idea_generator_output(raw)
+        assert r.ok
+        assert r.layer == "truncated"
+        assert "ideas" in r.data
+        assert len(r.data["ideas"]) == 1
+        assert r.data["ideas"][0]["id"] == "I-1-1"
+
+    def test_evaluator_truncated(self):
+        raw = '{"round": 1, "evaluations": [' \
+            '{"formula_id": "F-1-1", "status": "success"}, ' \
+            '{"formula_id": "F-1-2", "stat'
+        r = parse_evaluator_output(raw)
+        assert r.ok
+        assert r.layer == "truncated"
+        assert "evaluations" in r.data
+        assert len(r.data["evaluations"]) == 1
+
+    def test_no_bracket_returns_failure(self):
+        """没有任何 {} 或 [] 时应返回失败"""
+        raw = "Just some text without any JSON"
+        r = parse_formula_translator_output(raw)
+        assert not r.ok
+        assert "3 layers" in r.error
+
+    def test_empty_input(self):
+        r = parse_formula_translator_output("")
+        assert not r.ok
+
+    def test_recovered_count_recorded(self):
+        """截断恢复后 _recovered_count 应记录恢复数量"""
+        raw = '{"formulas": [{"id": "F1", "idea_id": "I1", "formula": "rank(x)"}]}'
+        # 正常 JSON 不应触发截断恢复
+        r = parse_formula_translator_output(raw)
+        assert r.ok
+        assert r.layer == "schema"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

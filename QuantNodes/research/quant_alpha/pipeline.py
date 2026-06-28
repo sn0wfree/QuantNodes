@@ -668,6 +668,7 @@ class AlphaPipeline:
                 config=config,
                 data=data,
                 llm_client=llm_client,
+                output_dir=self.config.output_dir,
             )
             return workflow.run()
 
