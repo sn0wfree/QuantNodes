@@ -1,28 +1,28 @@
 ---
 type: Factor
-name: FORMULA-1-3
-formula: "rank(div(ts_std(close, 20), ts_mean(close, 20)))"
+name: FORMULA-1-5
+formula: "rank(sub(close, ts_mean(close, 10)) / ts_mean(close, 10))"
 source: auto_research
 category: other
-tags: [alpha-pipeline, ir=-0.053, logic=volatility]
-ic_mean: -0.006138521508093471
+tags: [alpha-pipeline, ir=-0.087, logic=momentum]
+ic_mean: -0.010391447044603732
 ic_std: 0.0
-icir: -0.05349365845976675
+icir: -0.08728248918414529
 rank_ic_mean: 0.0
 created_at: 2026-06-28T12:00:14.899978
 ---
 
-# FORMULA-1-3
+# FORMULA-1-5
 
 ## 因子公式
 
 ```
-rank(div(ts_std(close, 20), ts_mean(close, 20)))
+rank(sub(close, ts_mean(close, 10)) / ts_mean(close, 10))
 ```
 
 ## 来源逻辑
 
-**逻辑名称**: `volatility`
+**逻辑名称**: `momentum`
 **逻辑类型**: 量化因子
 **方向**: -（IR 负向预测）
 
@@ -30,13 +30,13 @@ rank(div(ts_std(close, 20), ts_mean(close, 20)))
 
 | 指标 | 值 |
 |------|-----|
-| IC Mean | -0.006138521508093471 |
-| IC IR | -0.05349365845976675 |
-| 绝对 IR | 0.0535 |
+| IC Mean | -0.010391447044603732 |
+| IC IR | -0.08728248918414529 |
+| 绝对 IR | 0.0873 |
 
 ## 因子描述
 
-波动率均值比因子
+价格偏离均线因子 - 短期价格相对均线的偏离
 
 ## 评估方法
 
@@ -57,8 +57,8 @@ rank(div(ts_std(close, 20), ts_mean(close, 20)))
 
 ```yaml
 factor:
-  name: FORMULA-1-3
-  formula: "rank(div(ts_std(close, 20), ts_mean(close, 20)))"
+  name: FORMULA-1-5
+  formula: "rank(sub(close, ts_mean(close, 10)) / ts_mean(close, 10))"
   direction: -1
   weight: 0.1
 ```

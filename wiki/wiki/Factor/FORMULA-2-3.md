@@ -1,31 +1,64 @@
 ---
 type: Factor
 name: FORMULA-2-3
-formula: "FORMULA-2-3"
+formula: "rank(close / ts_mean(close, 20) - 1)"
 source: auto_research
 category: other
-tags: [alpha-pipeline, ir=0.000]
-ic_mean: 0.0
+tags: [alpha-pipeline, ir=0.098, logic=momentum]
+ic_mean: 0.01107014310099657
 ic_std: 0.0
-icir: 0.0
+icir: 0.09818688821236937
 rank_ic_mean: 0.0
-created_at: 2026-06-27T10:18:33.377493
+created_at: 2026-06-28T12:00:14.899978
 ---
+
+# FORMULA-2-3
+
+## 因子公式
+
+```
+rank(close / ts_mean(close, 20) - 1)
+```
+
+## 来源逻辑
+
+**逻辑名称**: `momentum`
+**逻辑类型**: 量化因子
+**方向**: +（IR 正向预测）
+
 ## 单因子表现
+
 | 指标 | 值 |
 |------|-----|
-| IC Mean | 0.0 |
-| IC Std | 0.0 |
-| IC IR | 0.0 |
-| Rank IC Mean | 0.0 |
+| IC Mean | 0.01107014310099657 |
+| IC IR | 0.09818688821236937 |
+| 绝对 IR | 0.0982 |
+
+## 因子描述
+
+20日动量因子 - 衡量中期价格趋势强度
+
+## 评估方法
+
+- **数据源**: A 股市场 2023 年全量数据（5380 只股票）
+- **前瞻期**: 5 日 / 20 日 forward return
+- **评估窗口**: 全市场横截面
+- **评估时间**: 2026-06-28
 
 ## 相关性
-暂无
+
+暂无（待后续 MCTS 去重后填充）
 
 ## 使用记录
-暂无
+
+暂无（待策略集成后填充）
 
 ## 策略配置 (YAML)
+
 ```yaml
-# 暂无
+factor:
+  name: FORMULA-2-3
+  formula: "rank(close / ts_mean(close, 20) - 1)"
+  direction: +1
+  weight: 0.1
 ```
