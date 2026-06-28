@@ -248,7 +248,7 @@ class TestTruncationRecovery:
         raw = "Just some text without any JSON"
         r = parse_formula_translator_output(raw)
         assert not r.ok
-        assert "3 layers" in r.error
+        assert "4 layers" in r.error
 
     def test_empty_input(self):
         r = parse_formula_translator_output("")
@@ -261,6 +261,145 @@ class TestTruncationRecovery:
         r = parse_formula_translator_output(raw)
         assert r.ok
         assert r.layer == "schema"
+
+
+# ==============================================================================
+# Layer 4: _find_last_valid_json (fix/explanation-truncation)
+# ==============================================================================
+
+
+class TestFindLastValidJson:
+    """Layer 4: 找最后一个满足 schema 的 JSON 候选"""
+
+    def test_truncated_then_thinking_then_complete_json(self):
+        """LLM "截断 JSON + thinking + 重写 JSON" 模式"""
+        raw = (
+            '{\n  "round": 1, "formulas": [{"id": "F1", "idea_'
+            '\n\nActually, let me re-output:\n\n'
+            '```json\n'
+            '{"round": 1, "formulas": [{"id": "F1", "idea_id": "I1", '
+            '"formula": "rank(x)"}]}\n'
+            '```'
+        )
+        r = parse_formula_translator_output(raw)
+        assert r.ok, f"Parse failed: {r.error}"
+        assert r.layer == "last_valid"
+        assert len(r.data["formulas"]) == 1
+        assert r.data["formulas"][0]["id"] == "F1"
+        assert r.data["formulas"][0]["formula"] == "rank(x)"
+
+    def test_multiple_json_objects_takes_last_valid(self):
+        """多个 JSON 对象，选最后一个满足 schema 的"""
+        raw = (
+            '{"foo": "bar"}\n'  # 第一个：不含 formulas，schema 失败
+            '\n---\n'
+            '{"ideas": [{"id": "X1", "name": "n1", "category": "c"}]}\n'  # 第二个：含 ideas 但不是 formulas
+            '\n---\n'
+            '{"round": 1, "formulas": [{"id": "F1", "idea_id": "I1", "formula": "rank(close)"}]}\n'  # 第三个：完整
+        )
+        r = parse_formula_translator_output(raw)
+        assert r.ok
+        assert r.layer == "last_valid"
+        assert r.data["formulas"][0]["id"] == "F1"
+
+    def test_no_valid_json(self):
+        """无有效 JSON"""
+        raw = "just some text without JSON"
+        r = parse_formula_translator_output(raw)
+        assert not r.ok
+        assert "4 layers" in r.error
+
+    def test_nested_json_ignored_inner_dicts(self):
+        """内嵌 dict（被外层 dict 包含）应被过滤"""
+        raw = json.dumps({
+            "round": 1,
+            "formulas": [
+                {"id": "F1", "idea_id": "I1", "formula": "rank(x)",
+                 "explanation": "first formula"}
+            ]
+        })
+        r = parse_formula_translator_output(raw)
+        assert r.ok
+        # 应该 Layer 1 (schema) 直接通过，不需要 Layer 4
+        assert r.layer == "schema"
+
+    def test_minimum_keys_filter(self):
+        """只含 1 个 key 的 dict 应被排除"""
+        raw = (
+            '{"round": 1}\n'  # 只有 1 个 key，应被排除
+            '\n---\n'
+            '{"round": 1, "formulas": [{"id": "F1", "idea_id": "I1", "formula": "rank(close)"}]}\n'
+        )
+        r = parse_formula_translator_output(raw)
+        assert r.ok
+        assert r.layer == "last_valid"
+        assert "formulas" in r.data
+
+
+# ==============================================================================
+# P2: _validate_formula_translator 强化 (fix/explanation-truncation)
+# ==============================================================================
+
+
+class TestValidateFormulaTranslatorP2:
+    """P2 强化：idea_id optional + explanation truncate"""
+
+    def test_idea_id_optional_fallback_empty(self):
+        """缺失 idea_id 应 fallback 空串，不报错"""
+        raw = json.dumps({
+            "formulas": [
+                {"id": "F1", "formula": "rank(close)"}  # 缺 idea_id
+            ]
+        })
+        r = parse_formula_translator_output(raw)
+        assert r.ok
+        assert r.data["formulas"][0]["idea_id"] == ""
+
+    def test_explanation_truncated_to_200_chars(self):
+        """explanation 超过 200 chars 应截断"""
+        long_expl = "x" * 500
+        raw = json.dumps({
+            "formulas": [
+                {
+                    "id": "F1",
+                    "idea_id": "I1",
+                    "formula": "rank(x)",
+                    "explanation": long_expl,
+                }
+            ]
+        })
+        r = parse_formula_translator_output(raw)
+        assert r.ok
+        expl = r.data["formulas"][0]["explanation"]
+        assert len(expl) == 200
+        assert expl.endswith("...")
+
+    def test_explanation_under_200_unchanged(self):
+        """explanation < 200 chars 不变"""
+        short_expl = "Short explanation"  # 17 chars
+        raw = json.dumps({
+            "formulas": [
+                {
+                    "id": "F1",
+                    "idea_id": "I1",
+                    "formula": "rank(x)",
+                    "explanation": short_expl,
+                }
+            ]
+        })
+        r = parse_formula_translator_output(raw)
+        assert r.ok
+        assert r.data["formulas"][0]["explanation"] == short_expl
+
+    def test_formula_missing_still_fails(self):
+        """formula 字段缺失仍应 fail（这是必需字段）"""
+        raw = json.dumps({
+            "formulas": [
+                {"id": "F1", "idea_id": "I1"}  # 缺 formula
+            ]
+        })
+        r = parse_formula_translator_output(raw)
+        assert not r.ok
 
 
 if __name__ == "__main__":

@@ -243,6 +243,14 @@ class AlphaGptWorkflow:
         data = parsed.data or {}
         formulas_data = data.get("formulas", [])
 
+        # P1 (fix/explanation-truncation): post-process explanation 字段
+        # 强制截断到 200 chars，防止 LLM 在 explanation 中塞结构化字段导致 JSON 膨胀
+        for fd in formulas_data:
+            if isinstance(fd, dict) and "explanation" in fd:
+                expl = fd["explanation"]
+                if isinstance(expl, str) and len(expl) > 200:
+                    fd["explanation"] = expl[:197] + "..."
+
         # Tier 1+2: 解析 thinking
         thinking_record = None
         if thinking:
@@ -494,10 +502,12 @@ class AlphaGptWorkflow:
     # ------------------------------------------------------------------
 
     def _build_idea_prompt(self, round_idx: int, prev_reflection: Any) -> str:
+        # P3 (fix/explanation-truncation): 使用 "rationale" 而非 "description"
+        # 避免 LLM 混淆 description 与 formula-translator 的 explanation 字段
         schema = (
             '{"round": 1, "ideas": ['
             '{"id": "IDEA-1-1", "name": "20日反转", "category": "reversal", '
-            '"description": "经济直觉1-2句", "expected_direction": "long", '
+            '"rationale": "经济直觉1-2句（与formula explanation区分）", "expected_direction": "long", '
             '"suggested_lookback": 20, "a_share_compatible": true, '
             '"orthogonal_to": ["IDEA-1-2"], "complexity_hint": "simple"}'
             ']}'
@@ -508,9 +518,10 @@ class AlphaGptWorkflow:
             f"round={round_idx}, a_share_focus={self.config.a_share_focus}. "
             f"previous_reflection={prev_reflection}. "
             f"6 categories: momentum/reversal/value/quality/volatility/liquidity. "
-            f"Each idea must have id (IDEA-{{round}}-{{idx}}), name, category, description "
-            f"(<150 chars, brief!), expected_direction (long/short/both), suggested_lookback, "
-            f"a_share_compatible, orthogonal_to, complexity_hint (simple/medium/complex). "
+            f"Each idea must have id (IDEA-{{round}}-{{idx}}), name, category, "
+            f"rationale (经济直觉 <150 chars, brief!), expected_direction (long/short/both), "
+            f"suggested_lookback, a_share_compatible, orthogonal_to, "
+            f"complexity_hint (simple/medium/complex). "
             f"Output STRICT JSON (no markdown, no code blocks) matching this schema: {schema}"
         )
 

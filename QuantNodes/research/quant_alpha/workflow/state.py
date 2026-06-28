@@ -33,11 +33,13 @@ class IdeaRecord:
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any], round_idx: int) -> "IdeaRecord":
+        # P3 (fix/explanation-truncation): 兼容 "rationale" (新) 和 "description" (旧)
+        rationale_or_desc = d.get("rationale") or d.get("description", "")
         return cls(
             id=d.get("id", ""),
             name=d.get("name", ""),
             category=d.get("category", "unknown"),
-            description=d.get("description", ""),
+            description=rationale_or_desc,
             expected_direction=d.get("expected_direction", "long"),
             suggested_lookback=int(d.get("suggested_lookback", 20)),
             a_share_compatible=bool(d.get("a_share_compatible", True)),

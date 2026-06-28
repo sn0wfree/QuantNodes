@@ -65,11 +65,13 @@ def parse_json_3layer(
     raw: str,
     schema_validator: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
 ) -> ParseResult:
-    """3 层降级 JSON 解析
+    """4 层降级 JSON 解析
 
     Layer 1: 直接 json.loads + schema 校验
     Layer 2: 正则提取首个 { ... } 块 + 重新解析
-    Layer 3: 失败 → 返回 error（上层可重试 LLM）
+    Layer 3: truncated recovery (扫描内层完整子对象)
+    Layer 4: 找最后一个满足 schema 的 JSON 候选 (处理
+             "截断 JSON + thinking + 重写 JSON" 模式)
 
     Args:
         raw: LLM 输出文本
@@ -110,6 +112,13 @@ def parse_json_3layer(
             return ParseResult(ok=True, data=obj, layer="regex", raw=raw)
 
     if not _json_ok:
+        # Layer 4 (优先): 找最后一个满足 schema 的完整 JSON
+        # 处理 LLM "截断 JSON + thinking + 重写 JSON" 模式
+        last = _find_last_valid_json(raw, schema_validator)
+        if last is not None:
+            return ParseResult(ok=True, data=last, layer="last_valid", raw=raw)
+
+        # Layer 3 (fallback): 截断恢复
         truncated = _recover_truncated_json(raw, schema_validator)
         if truncated is not None:
             return ParseResult(
@@ -118,9 +127,78 @@ def parse_json_3layer(
 
     return ParseResult(
         ok=False,
-        error="Cannot parse JSON after 3 layers (full raw in ParseResult.raw)",
+        error="Cannot parse JSON after 4 layers (full raw in ParseResult.raw)",
         raw=raw,
     )
+
+
+def _find_last_valid_json(
+    raw: str,
+    schema_validator: Optional[Callable[[Dict[str, Any]], Optional[str]]] = None,
+) -> Optional[Dict[str, Any]]:
+    """扫描所有 JSON 候选对象，返回最后一个满足 schema 的。
+
+    处理 LLM "截断 JSON + thinking + 重写 JSON" 模式：
+    ```
+    {
+      "round": 1, ...   ← 第一次输出，被 max_tokens 截断
+    }
+    Actually, ...
+    ```json
+    {"round": 1, "formulas": [...]}   ← 第二次完整输出
+    ```
+    ```
+
+    Greedy regex `\{[\s\S]*\}` 会匹配从第一个 `{` 到最后一个 `}`，跨过两个
+    JSON，导致解析失败。本函数扫描所有可能的 JSON 起始位置，收集所有
+    可解的 dict，然后选**最后一个**（最可能是 LLM 重写的完整版本）。
+
+    过滤规则：
+    1. 必须是 dict（非 list / 单值）
+    2. 至少 2 个 key（排除只含元数据如 `{"round": 1}` 的 dict）
+    3. 通过 schema_validator（如果有）
+
+    Args:
+        raw: LLM 输出文本
+        schema_validator: 可选 schema 校验函数
+
+    Returns:
+        满足条件的最后一个 dict，或 None
+    """
+    if not raw:
+        return None
+    decoder = json.JSONDecoder()
+    candidates: List[Dict[str, Any]] = []
+    n = len(raw)
+
+    for i, ch in enumerate(raw):
+        if ch != "{":
+            continue
+        # 快速排除：前一个字符是字母/数字说明这是内嵌的 dict（不是顶层）
+        # 顶层 JSON 起始位置前通常是空白/换行/`{`/`[`/`,` 等
+        if i > 0:
+            prev = raw[i - 1]
+            if prev.isalnum() or prev == '"':
+                continue
+        try:
+            obj, end = decoder.raw_decode(raw, i)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        if len(obj) < 2:
+            # 排除只含元数据的 dict (如 {"round": 1})
+            continue
+        if schema_validator is not None:
+            try:
+                err = schema_validator(obj)
+            except Exception:
+                err = "validator exception"
+            if err is not None:
+                continue
+        candidates.append(obj)
+
+    return candidates[-1] if candidates else None
 
 
 def _recover_truncated_json(
@@ -220,7 +298,13 @@ def _validate_idea_generator(obj: Dict[str, Any]) -> Optional[str]:
 
 
 def _validate_formula_translator(obj: Dict[str, Any]) -> Optional[str]:
-    """FormulaTranslator 输出 schema"""
+    """FormulaTranslator 输出 schema
+
+    P2 (fix/explanation-truncation) 强化：
+    - idea_id 改为 optional（缺失时 fallback 空串）
+    - explanation 字段超 200 chars 强制截断
+    - formula 字段缺失直接 fail
+    """
     if "formulas" not in obj:
         return "missing 'formulas'"
     formulas = obj["formulas"]
@@ -231,8 +315,14 @@ def _validate_formula_translator(obj: Dict[str, Any]) -> Optional[str]:
     for i, f in enumerate(formulas):
         if not isinstance(f, dict):
             return f"formulas[{i}] not dict"
-        if "formula" not in f or "idea_id" not in f:
-            return f"formulas[{i}] missing formula/idea_id"
+        if "formula" not in f:
+            return f"formulas[{i}] missing formula"
+        # 容忍缺失 idea_id（fallback 空串）
+        f.setdefault("idea_id", "")
+        # 双重防御：explanation 超 200 chars 截断
+        if "explanation" in f and isinstance(f["explanation"], str):
+            if len(f["explanation"]) > 200:
+                f["explanation"] = f["explanation"][:197] + "..."
     return None
 
 

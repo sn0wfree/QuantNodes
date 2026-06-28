@@ -151,6 +151,58 @@ class TestWorkflowE2E:
         for f in result.final_pool:
             assert "fallback" in f.selection_reason.lower() or "IR=" in f.selection_reason
 
+    def test_formula_translator_recovers_from_truncated_pattern(self, sample_data):
+        """P0 修复：formula-translator 输出 "截断 JSON + 重写 JSON" 模式应恢复"""
+        import json
+        from QuantNodes.research.quant_alpha.workflow.alpha_gpt import AlphaGptWorkflow, AlphaGptConfig
+
+        truncated_pattern = (
+            '{\n  "round": 1, "formulas": [{"id": "F1", "idea_'
+            '\n\nActually, the JSON was truncated. Let me re-output:\n\n'
+            '```json\n'
+            '{"round": 1, "formulas": [{"id": "F1", "idea_id": "I1", '
+            '"formula": "rank(close)"}]}\n'
+            '```'
+        )
+
+        class TruncationMockLLM:
+            def __init__(self):
+                self.call_count = 0
+
+            def complete(self, agent_id, prompt, temperature=None):
+                self.call_count += 1
+                if "idea-generator" in agent_id:
+                    return json.dumps({
+                        "ideas": [{
+                            "id": "I1",
+                            "name": "reversal",
+                            "category": "reversal",
+                            "rationale": "20-day reversal",
+                        }]
+                    })
+                if "formula-translator" in agent_id:
+                    return truncated_pattern
+                return "{}"
+
+        config = AlphaGptConfig(
+            objective="test",
+            iterations=1,
+            pool_size=1,
+            forward_returns=[1],
+        )
+        workflow = AlphaGptWorkflow(
+            config=config,
+            data=sample_data,
+            llm_client=TruncationMockLLM(),
+        )
+        result = workflow.run()
+
+        # 关键断言：公式应该被恢复（不是 0 公式）
+        assert result.total_formulas >= 1, (
+            "P0 fix failed: truncated JSON pattern not recovered"
+        )
+        assert any("rank(close)" in f.formula for f in workflow.state.all_formulas)
+
     def test_custom_llm_client_called(self, sample_data):
         """注入的 llm_client 应该被调用"""
         client = MockLLMClient(responses={
