@@ -451,18 +451,30 @@ class AlphaGptWorkflow:
     # ------------------------------------------------------------------
 
     def _build_idea_prompt(self, round_idx: int, prev_reflection: Any) -> str:
+        schema = (
+            '{"round": 1, "ideas": ['
+            '{"id": "IDEA-1-1", "name": "20日反转", "category": "reversal", '
+            '"description": "经济直觉1-2句", "expected_direction": "long", '
+            '"suggested_lookback": 20, "a_share_compatible": true, '
+            '"orthogonal_to": ["IDEA-1-2"], "complexity_hint": "simple"}'
+            ']}'
+        )
         prompt = (
-            f"Read .agent/agents/alpha-gpt-idea-generator.md. "
+            f"You are the Alpha-GPT IdeaGenerator. "
             f"Generate {self.config.pool_size} alpha ideas for objective={self.config.objective!r}. "
             f"round={round_idx}, a_share_focus={self.config.a_share_focus}. "
             f"previous_reflection={prev_reflection}. "
+            f"6 categories: momentum/reversal/value/quality/volatility/liquidity. "
+            f"Each idea must have id (IDEA-{{round}}-{{idx}}), name, category, description, "
+            f"expected_direction (long/short/both), suggested_lookback, a_share_compatible, "
+            f"orthogonal_to, complexity_hint (simple/medium/complex). "
+            f"Output STRICT JSON (no markdown, no code blocks) matching this schema: {schema}"
         )
 
         # 注入自定义反馈（用于多轮迭代）
         if self.config.custom_feedback:
             prompt += f"\n\n## 历史反馈（来自上一轮 MCTS 搜索）\n{self.config.custom_feedback}\n"
 
-        prompt += f"Output STRICT JSON only."
         return prompt
 
     def _build_formula_prompt(
@@ -472,13 +484,24 @@ class AlphaGptWorkflow:
         available_ops: List[str],
         data_columns: List[str],
     ) -> str:
+        schema = (
+            '{"round": 1, "formulas": ['
+            '{"id": "FORMULA-1-1", "idea_id": "IDEA-1-1", '
+            '"formula": "rank(-ts_mean(returns, 20))", '
+            '"complexity": 3, "a_share_compatible": true, '
+            '"explanation": "20日反转因子"}'
+            ']}'
+        )
         prompt = (
-            f"Read .agent/agents/alpha-gpt-formula-translator.md. "
+            f"You are the Alpha-GPT FormulaTranslator. "
             f"Translate these ideas to polars formulas. round={round_idx}. "
             f"ideas={ideas_payload}. "
             f"a_share_focus={self.config.a_share_focus}. "
-            f"CRITICAL: Use ONLY function call format like op(arg1, arg2). "
-            f"NO arithmetic operators (+,-,*,/). NO missing parentheses. "
+            f"Each formula must have id (FORMULA-{{round}}-{{idx}}), idea_id, "
+            f"formula (function call format like op(arg1, arg2)), complexity, "
+            f"a_share_compatible, explanation. "
+            f"CRITICAL: Use ONLY function call format. NO arithmetic operators (+,-,*,/). "
+            f"NO missing parentheses. Output STRICT JSON (no markdown) matching: {schema}. "
         )
 
         # 注入 Γ 约束（更清晰的格式）
@@ -530,23 +553,43 @@ class AlphaGptWorkflow:
         return prompt
 
     def _build_reflector_prompt(self, round_idx: int, evaluations: List[Dict[str, Any]]) -> str:
+        schema = (
+            '{"round": 1, "analysis": {"best_categories": ["reversal"], '
+            '"worst_categories": ["liquidity"], "key_insights": ["..."]}, '
+            '"formula_feedback": [{"formula_id": "FORMULA-1-1", "formula": "...", '
+            '"verdict": "keep", "reason": "...", "improvements": ["..."]}]}'
+        )
         return (
-            f"Read .agent/agents/alpha-gpt-reflector.md. "
+            f"You are the Alpha-GPT Reflector. "
             f"Reflect on round {round_idx} evaluations. "
             f"evaluations={evaluations}. "
-            f"Output STRICT JSON only."
+            f"Output STRICT JSON (no markdown) with: round, analysis (best_categories, "
+            f"worst_categories, key_insights), formula_feedback (formula_id, formula, "
+            f"verdict (keep/mutate/drop), reason, improvements). "
+            f"Schema: {schema}"
         )
 
     def _build_critic_prompt(
         self, all_evaluations: List[Dict[str, Any]], all_reflections: List[Dict[str, Any]]
     ) -> str:
+        schema = (
+            '{"final_pool": [{"rank": 1, "formula_id": "FORMULA-1-1", '
+            '"formula": "...", "metrics": {"ic_mean": 0.045, "ir": 2.05, '
+            '"sharpe": 1.65, "max_drawdown": -0.123}, '
+            '"selection_reason": "...", "risk_notes": ["..."], '
+            '"category": "reversal", "round_discovered": 1}], '
+            '"summary": {"total_evaluated": 50}}'
+        )
         return (
-            f"Read .agent/agents/alpha-gpt-critic.md. "
+            f"You are the Alpha-GPT Critic. "
             f"Select final top-{self.config.top_k} from all rounds. "
             f"min_ir_threshold={self.config.min_ir_threshold}. "
             f"max_mutual_ic_threshold={self.config.max_mutual_ic_threshold}. "
             f"all_evaluations={all_evaluations}. all_reflections={all_reflections}. "
-            f"Output STRICT JSON only."
+            f"Output STRICT JSON (no markdown) with: final_pool (rank, formula_id, "
+            f"formula, metrics (ic_mean, ir, sharpe, max_drawdown), selection_reason, "
+            f"risk_notes, category, round_discovered), summary. "
+            f"Schema: {schema}"
         )
 
     # ------------------------------------------------------------------

@@ -185,15 +185,17 @@ class LLMGateway(LLMClientBase):
     ) -> str:
         """同步调用 LLM, 返回字符串结果。
 
-        兼容 alpha_gpt.py 的 llm_client.complete(agent_id, prompt) 调用。
+        对于 alpha-gpt 系列 agent_id，直接走 OpenAI 兼容 API（无 nanobot
+        agent 开销），避免 SOUL.md + tool 定义 + session history 导致
+        prompt 膨胀到 30K+ tokens。
 
-        Note: 同步接口返回纯文本 (工具调用已被 LLM 整合到 content 中)。
-        如需工具调用详情, 请使用 chat() 或 run(with_tool_events=True)。
-
-        支持重试机制和超时控制。
+        其他 agent_id 走 nanobot agent.chat() 路径。
         """
-        agent = self._ensure_agent()
+        # alpha-gpt 系列直接走轻量 API
+        if agent_id.startswith("alpha-gpt-") or agent_id == "default":
+            return self._complete_direct(prompt, temperature)
 
+        agent = self._ensure_agent()
         if agent is None:
             return self._fallback._call_api(
                 [Message(role=MessageRole.USER, content=prompt)]
@@ -238,6 +240,57 @@ class LLMGateway(LLMClientBase):
 
         # 所有重试都失败
         raise last_error
+
+    # ─── 轻量直接调用（alpha-gpt 专用） ───
+
+    def _complete_direct(self, prompt: str, temperature: Optional[float] = None) -> str:
+        """直接调 OpenAI 兼容 API，不经过 nanobot agent。
+
+        避免 SOUL.md + tool 定义 + session history 导致 prompt 膨胀。
+        同时清理 MiniMax M3 的 <think> 标签。
+        """
+        import os
+        import re as _re
+        try:
+            from openai import OpenAI
+        except ImportError:
+            from QuantNodes.ai.llm.null import NullLLMClient
+            return NullLLMClient().canned_response
+
+        agent = self._ensure_agent()
+        provider = getattr(getattr(agent, "_loop", None), "provider", None) if agent else None
+        api_key = getattr(provider, "api_key", None) or os.environ.get("QUANTNODES__LLM__API_KEY")
+        api_base = getattr(provider, "api_base", None) or os.environ.get("QUANTNODES__LLM__BASE_URL")
+        model = getattr(provider, "default_model", None) or os.environ.get("QUANTNODES__LLM__MODEL", "minimax-M3")
+
+        if not api_key:
+            return "[_complete_direct] no API key configured"
+
+        client = OpenAI(api_key=api_key, base_url=api_base, timeout=self._llm_config.timeout)
+        temp = temperature if temperature is not None else 0.7
+
+        for attempt in range(self._llm_config.max_retries + 1):
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temp,
+                    max_tokens=16384,
+                )
+                content = resp.choices[0].message.content or ""
+                # 清理 <think> 标签
+                content = _re.sub(r"<think>[\s\S]*?</think>", "", content).strip()
+                # 清理 <think>...</think> 变体
+                content = _re.sub(r"<think>[^<]*(?:<(?!/thinking)[^<]*)*</think>", "", content).strip()
+                return content
+            except Exception as e:
+                if attempt < self._llm_config.max_retries:
+                    import time as _time
+                    _time.sleep(self._llm_config.retry_delay * (2 ** attempt))
+                    continue
+                raise
+
+        return ""
 
     # ─── 接口 C: callable 兼容 ───
 
