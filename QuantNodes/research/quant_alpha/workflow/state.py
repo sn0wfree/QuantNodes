@@ -25,6 +25,11 @@ class IdeaRecord:
     orthogonal_to: List[str] = field(default_factory=list)
     complexity_hint: str = "simple"
     round_idx: int = 1
+    # 思维链字段（Tier 1+2：feature/thinking-chain）
+    thinking: Optional[str] = None
+    hypothesis: Optional[str] = None
+    mechanism: Optional[str] = None
+    mentioned_ops: List[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any], round_idx: int) -> "IdeaRecord":
@@ -52,6 +57,8 @@ class IdeaRecord:
             "a_share_compatible": self.a_share_compatible,
             "orthogonal_to": self.orthogonal_to,
             "complexity_hint": self.complexity_hint,
+            "hypothesis": self.hypothesis,
+            "mentioned_ops": self.mentioned_ops,
         }
 
 
@@ -65,6 +72,10 @@ class FormulaRecord:
     round_discovered: int
     complexity: int = 0
     a_share_compatible: bool = True
+    # 思维链字段（Tier 1+2：feature/thinking-chain）
+    thinking: Optional[str] = None
+    hypothesis: Optional[str] = None
+    mentioned_ops: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -74,6 +85,8 @@ class FormulaRecord:
             "round_discovered": self.round_discovered,
             "complexity": self.complexity,
             "a_share_compatible": self.a_share_compatible,
+            "hypothesis": self.hypothesis,
+            "mentioned_ops": self.mentioned_ops,
         }
 
 
@@ -110,12 +123,16 @@ class ReflectionRecord:
     round_idx: int
     verdicts: List[Dict[str, Any]] = field(default_factory=list)
     suggestions: Dict[str, Any] = field(default_factory=dict)
+    # 思维链字段（Tier 1+2：feature/thinking-chain）
+    thinking: Optional[str] = None
+    key_insights: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "round": self.round_idx,
             "formula_feedback": self.verdicts,
             "next_round_suggestions": self.suggestions,
+            "key_insights": self.key_insights,
         }
 
 

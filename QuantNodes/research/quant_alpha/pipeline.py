@@ -439,6 +439,47 @@ class AlphaPipeline:
         self.vocab = OperatorVocab.default()
         self.wiki = WikiFactorProxy(config.wiki_path)
         self._start_time: float = 0.0
+        # Tier 4 (feature/thinking-chain): 算子先验
+        self._op_prior = self._init_op_prior()
+
+    def _init_op_prior(self):
+        """初始化 OpPrior（从 output_dir/op_prior.json 加载历史）。"""
+        from QuantNodes.research.quant_alpha.mcts.op_prior import OpPrior
+        if not self.config.output_dir:
+            return OpPrior()
+        prior_path = Path(self.config.output_dir) / "op_prior.json"
+        if prior_path.exists():
+            try:
+                prior = OpPrior.load(prior_path)
+                logger.info(
+                    "[Pipeline] Loaded OpPrior: %d ops, %d updates from %s",
+                    len(prior.weights), prior.total_updates, prior_path,
+                )
+                return prior
+            except Exception as e:
+                logger.warning("[Pipeline] Failed to load OpPrior: %s", e)
+        return OpPrior()
+
+    def _save_op_prior(self) -> None:
+        """持久化 OpPrior 到 output_dir/op_prior.json。"""
+        if not self.config.output_dir:
+            return
+        try:
+            from QuantNodes.research.quant_alpha.mcts.op_prior import OpPrior
+            prior_path = Path(self.config.output_dir) / "op_prior.json"
+            self._op_prior.save(prior_path)
+        except Exception as e:
+            logger.warning("[Pipeline] Failed to save OpPrior: %s", e)
+
+    def _update_op_prior_from_mcts(self, mcts_result) -> None:
+        """从 MCTS 结果更新 OpPrior（用所有 valid_nodes 的 IR）。"""
+        import re as _re
+        if mcts_result is None:
+            return
+        for node in mcts_result.valid_nodes:
+            ops = _re.findall(r"\b([a-zA-Z_]\w*)\s*\(", node.formula)
+            ir = node.metadata.get("ir", 0.0)
+            self._op_prior.update(ops, ir)
 
     def run(self, data: pl.DataFrame) -> PipelineResult:
         """运行流水线
@@ -690,17 +731,25 @@ class AlphaPipeline:
                 code_column=self.config.code_column,
                 structured_logic=self.config.structured_logic,
                 llm_client=self._build_llm_client(),
+                op_prior=self._op_prior,  # Tier 4
+                prior_mix=0.5,  # Tier 4
             )
 
             cache = MCTSCache(MCTSCacheConfig(enabled=True))
             search = MCTSSearch(config=config, cache=cache)
 
-            return search.search(
+            result = search.search(
                 data=data,
                 seed_formulas=seed_formulas,
                 date_column=self.config.date_column,
                 code_column=self.config.code_column,
             )
+
+            # Tier 4: 用本轮 MCTS 有效节点更新 OpPrior
+            self._update_op_prior_from_mcts(result)
+            self._save_op_prior()
+
+            return result
 
         except Exception as e:
             logger.error("[Pipeline] MCTS 失败: %s", e)

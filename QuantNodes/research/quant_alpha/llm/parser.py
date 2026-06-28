@@ -439,4 +439,147 @@ __all__ = [
     "validate_formula_operators",
     "extract_operators",
     "ALLOWED_OPERATORS",
+    "ThinkingRecord",
+    "parse_thinking_block",
 ]
+
+
+# ==============================================================================
+# 思维链结构化解析（Tier 1+2：feature/thinking-chain）
+# ==============================================================================
+
+
+@dataclass
+class ThinkingRecord:
+    """从 LLM <think> 块提取的结构化推理字段。
+
+    Attributes:
+        raw: 原始 thinking 文本
+        hypothesis: 经济假设（一句话）
+        mechanism: 经济学机制（为什么有效）
+        operator_rationale: 算子选择理由
+        parameter_rationale: 参数选择理由
+        risk: 风险因素
+        suggested_ops: LLM 显式建议的算子（SUGGESTED_OPS 字段）
+        mentioned_ops: thinking 文本中提及的、属于 op_vocab 的算子
+        key_insights: 反射器输出的核心洞察列表
+        next_round_focus: 反射器建议的下轮焦点
+        risk_patterns: 反射器发现的失效模式
+        selection_criteria: 评论家选择标准
+        diversity: 评论家多样性考虑
+        risk_filters: 评论家风险过滤
+    """
+
+    raw: str = ""
+    hypothesis: str = ""
+    mechanism: str = ""
+    operator_rationale: str = ""
+    parameter_rationale: str = ""
+    risk: str = ""
+    suggested_ops: List[str] = field(default_factory=list)
+    mentioned_ops: List[str] = field(default_factory=list)
+    # 反射器（reflector）专用
+    key_insights: List[str] = field(default_factory=list)
+    next_round_focus: str = ""
+    risk_patterns: str = ""
+    # 评论家（critic）专用
+    selection_criteria: str = ""
+    diversity: str = ""
+    risk_filters: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "raw": self.raw,
+            "hypothesis": self.hypothesis,
+            "mechanism": self.mechanism,
+            "operator_rationale": self.operator_rationale,
+            "parameter_rationale": self.parameter_rationale,
+            "risk": self.risk,
+            "suggested_ops": self.suggested_ops,
+            "mentioned_ops": self.mentioned_ops,
+            "key_insights": self.key_insights,
+            "next_round_focus": self.next_round_focus,
+            "risk_patterns": self.risk_patterns,
+        }
+
+
+def parse_thinking_block(
+    thinking_text: Optional[str],
+    op_vocab: Optional[set] = None,
+) -> ThinkingRecord:
+    """从 LLM <think> 块提取结构化字段。
+
+    Tier 1+2 实现：解析 LLM 在 thinking 块中按结构化指令输出的字段。
+    所有字段都是 Optional → 缺失时返回空串/空 list，向后兼容。
+
+    Args:
+        thinking_text: <think> 块的文本（不含标签）
+        op_vocab: 算子词表（用于 mentioned_ops 过滤）
+
+    Returns:
+        ThinkingRecord
+    """
+    if not thinking_text:
+        return ThinkingRecord(raw="")
+
+    result = ThinkingRecord(raw=thinking_text)
+
+    field_pattern = (
+        r"(?:^|\n)\s*[-*]?\s*"
+        r"(HYPOTHESIS|MECHANISM|OPERATOR_RATIONALE|"
+        r"PARAMETER_RATIONALE|RISK|"
+        r"KEY_INSIGHTS|NEXT_ROUND_FOCUS|RISK_PATTERNS|"
+        r"SELECTION_CRITERIA|DIVERSITY|RISK_FILTERS)\s*:\s*"
+        r"(.+?)(?=\n\s*[-*]?[A-Z_]+:|$)"
+    )
+    matches = re.findall(field_pattern, thinking_text, re.DOTALL)
+    for key, value in matches:
+        value = value.strip()
+        if key == "HYPOTHESIS":
+            result.hypothesis = value
+        elif key == "MECHANISM":
+            result.mechanism = value
+        elif key == "OPERATOR_RATIONALE":
+            result.operator_rationale = value
+        elif key == "PARAMETER_RATIONALE":
+            result.parameter_rationale = value
+        elif key == "RISK":
+            result.risk = value
+        elif key == "KEY_INSIGHTS":
+            # 反射器专用，存为 key_insights list
+            result.key_insights = [
+                line.strip().lstrip("-*").strip()
+                for line in value.split("\n")
+                if line.strip() and not line.strip().startswith("NEXT")
+            ]
+        elif key == "NEXT_ROUND_FOCUS":
+            result.next_round_focus = value
+        elif key == "RISK_PATTERNS":
+            result.risk_patterns = value
+        elif key == "SELECTION_CRITERIA":
+            result.selection_criteria = value
+        elif key == "DIVERSITY":
+            result.diversity = value
+        elif key == "RISK_FILTERS":
+            result.risk_filters = value
+
+    # SUGGESTED_OPS 是单行字段（值不应跨行）
+    ops_match = re.search(r"SUGGESTED_OPS:\s*([^\n]+)", thinking_text)
+    if ops_match:
+        result.suggested_ops = [
+            s.strip() for s in ops_match.group(1).split(",") if s.strip()
+        ]
+
+    if op_vocab:
+        # 提取算子提及：两种方式
+        # 1) 出现在 SUGGESTED_OPS 列表中（已在 suggested_ops 中）
+        # 2) 出现在 text 中作为算子调用（带括号）
+        # 3) 作为独立单词出现在文本中（用于 narrative mention）
+        ops_called = set(re.findall(r"\b([a-zA-Z_]\w*)\s*\(", thinking_text))
+        ops_words = set(re.findall(r"\b([a-zA-Z_]\w*)\b", thinking_text))
+        all_mentioned = ops_called | ops_words
+        result.mentioned_ops = sorted(
+            op for op in all_mentioned if op in op_vocab
+        )
+
+    return result

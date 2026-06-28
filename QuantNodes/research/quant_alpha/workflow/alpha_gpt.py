@@ -196,14 +196,32 @@ class AlphaGptWorkflow:
             else None
         )
         prompt = self._build_idea_prompt(round_idx, prev_reflection)
-        raw = self._call_llm("alpha-gpt-idea-generator", prompt)
+        raw, thinking = self._call_llm("alpha-gpt-idea-generator", prompt)
         parsed = parse_idea_generator_output(raw)
         if not parsed.ok:
             logger.warning("idea-generator parse failed: %s", parsed.error)
             return []
         data = parsed.data or {}
         ideas_data = data.get("ideas", [])[: self.config.pool_size]
-        return [IdeaRecord.from_dict(i, round_idx) for i in ideas_data]
+
+        # Tier 1+2: 解析 thinking → ThinkingRecord
+        thinking_record = None
+        if thinking:
+            from QuantNodes.research.quant_alpha.llm.parser import parse_thinking_block
+            op_vocab = set(self._get_available_operators())
+            thinking_record = parse_thinking_block(thinking, op_vocab=op_vocab)
+
+        ideas = []
+        for i in ideas_data:
+            idea = IdeaRecord.from_dict(i, round_idx)
+            if thinking:
+                idea.thinking = thinking
+                if thinking_record:
+                    idea.hypothesis = thinking_record.hypothesis or None
+                    idea.mechanism = thinking_record.mechanism or None
+                    idea.mentioned_ops = list(thinking_record.mentioned_ops)
+            ideas.append(idea)
+        return ideas
 
     def _step_formula_translator(
         self,
@@ -217,13 +235,27 @@ class AlphaGptWorkflow:
         data_columns = self._get_data_columns()
         prev_ideas = self._serialize_ideas_for_translator(ideas)
         prompt = self._build_formula_prompt(round_idx, prev_ideas, available_ops, data_columns)
-        raw = self._call_llm("alpha-gpt-formula-translator", prompt)
+        raw, thinking = self._call_llm("alpha-gpt-formula-translator", prompt)
         parsed = parse_formula_translator_output(raw)
         if not parsed.ok:
             logger.warning("formula-translator parse failed: %s", parsed.error)
             return []
         data = parsed.data or {}
         formulas_data = data.get("formulas", [])
+
+        # Tier 1+2: 解析 thinking
+        thinking_record = None
+        if thinking:
+            from QuantNodes.research.quant_alpha.llm.parser import parse_thinking_block
+            thinking_record = parse_thinking_block(thinking, op_vocab=set(available_ops))
+
+        # 共享 thinking 给所有 formulas（同一轮 translator 调用）
+        shared_thinking = thinking or None
+        shared_hypothesis = (thinking_record.hypothesis if thinking_record else "") or None
+        shared_mentioned_ops = (
+            list(thinking_record.mentioned_ops) if thinking_record else []
+        )
+
         result = []
         for i, fd in enumerate(formulas_data):
             formula_str = fd.get("formula", "")
@@ -238,16 +270,19 @@ class AlphaGptWorkflow:
                     logger.info("Γ 校验失败，丢弃公式: %s - %s", formula_str, reason)
                     continue
 
-            result.append(
-                FormulaRecord(
-                    formula_id=f"FORMULA-{round_idx}-{i+1}",
-                    idea_id=fd.get("idea_id", ""),
-                    formula=formula_str,
-                    round_discovered=round_idx,
-                    complexity=fd.get("complexity", 0),
-                    a_share_compatible=fd.get("a_share_compatible", True),
-                )
+            formula_record = FormulaRecord(
+                formula_id=f"FORMULA-{round_idx}-{i+1}",
+                idea_id=fd.get("idea_id", ""),
+                formula=formula_str,
+                round_discovered=round_idx,
+                complexity=fd.get("complexity", 0),
+                a_share_compatible=fd.get("a_share_compatible", True),
             )
+            if shared_thinking:
+                formula_record.thinking = shared_thinking
+                formula_record.hypothesis = shared_hypothesis
+                formula_record.mentioned_ops = shared_mentioned_ops
+            result.append(formula_record)
         return result
 
     def _step_evaluator(
@@ -316,7 +351,7 @@ class AlphaGptWorkflow:
         """Step 4: spawn reflector"""
         evals_dict = [e.to_dict() for e in evaluations]
         prompt = self._build_reflector_prompt(round_idx, evals_dict)
-        raw = self._call_llm("alpha-gpt-reflector", prompt)
+        raw, thinking = self._call_llm("alpha-gpt-reflector", prompt)
         parsed = parse_reflector_output(raw)
         if not parsed.ok:
             logger.warning("reflector parse failed: %s", parsed.error)
@@ -326,18 +361,26 @@ class AlphaGptWorkflow:
                 suggestions={},
             )
         data = parsed.data or {}
-        return ReflectionRecord(
+        record = ReflectionRecord(
             round_idx=round_idx,
             verdicts=data.get("formula_feedback", []),
             suggestions=data.get("next_round_suggestions", {}),
         )
+        # Tier 1+2: 提取 insights
+        if thinking:
+            record.thinking = thinking
+            analysis = data.get("analysis", {})
+            key_insights = analysis.get("key_insights", [])
+            if isinstance(key_insights, list):
+                record.key_insights = [str(s) for s in key_insights]
+        return record
 
     def _run_critic(self) -> None:
         """Step 5: spawn critic（仅末轮）"""
         all_evals = [e.to_dict() for e in self.state.all_evaluations]
         all_refl = [r.to_dict() for r in self.state.all_reflections]
         prompt = self._build_critic_prompt(all_evals, all_refl)
-        raw = self._call_llm("alpha-gpt-critic", prompt)
+        raw, _thinking = self._call_llm("alpha-gpt-critic", prompt)
         parsed = parse_critic_output(raw)
         if not parsed.ok:
             logger.warning("critic parse failed: %s", parsed.error)
@@ -471,6 +514,25 @@ class AlphaGptWorkflow:
             f"Output STRICT JSON (no markdown, no code blocks) matching this schema: {schema}"
         )
 
+        # Tier 2: 结构化推理指令（在 <think> 块中输出推理）
+        available_ops_summary = ", ".join(self._get_available_operators()[:30])
+        thinking_template = (
+            "\n\n## 推理要求 (Tier 2: Structured Reasoning)\n"
+            "在生成 JSON 之前，先在 <think> 块中按以下结构输出你的推理：\n"
+            "```\n"
+            "<think>\n"
+            "HYPOTHESIS: <一句话经济假设，如 'A 股散户过度反应导致 20 日反转'>\n"
+            "MECHANISM: <为什么在 A 股有效，提及 T+1/散户主导/涨跌停等特殊约束>\n"
+            f"OPERATOR_RATIONALE: <为什么选这些算子，从 {available_ops_summary} 等中选>\n"
+            "PARAMETER_RATIONALE: <为什么这个窗口参数，如 20 日对应学术文献经典窗口>\n"
+            "RISK: <什么情况下因子会失效，如 流动性危机 / 政策切换 / ST 股扰动>\n"
+            "SUGGESTED_OPS: <逗号分隔的算子名，如 rank,ts_mean,div>\n"
+            "</think>\n"
+            "```\n"
+            "然后输出 JSON（不要 markdown 包装）。thinking 内容会被保留用于下游 MCTS 引导。\n"
+        )
+        prompt += thinking_template
+
         # 注入自定义反馈（用于多轮迭代）
         if self.config.custom_feedback:
             prompt += f"\n\n## 历史反馈（来自上一轮 MCTS 搜索）\n{self.config.custom_feedback}\n"
@@ -502,6 +564,22 @@ class AlphaGptWorkflow:
             f"a_share_compatible, explanation. "
             f"CRITICAL: Use ONLY function call format. NO arithmetic operators (+,-,*,/). "
             f"NO missing parentheses. Output STRICT JSON (no markdown) matching: {schema}. "
+        )
+
+        # Tier 2: 公式翻译也用 thinking 块说明算子选择
+        prompt += (
+            "\n\n## 推理要求 (Tier 2)\n"
+            "在 JSON 前用 <think> 块说明：\n"
+            "```\n"
+            "<think>\n"
+            "HYPOTHESIS: <该 idea 的核心经济假设，引用 idea.description>\n"
+            "MECHANISM: <公式如何捕捉该机制>\n"
+            "OPERATOR_RATIONALE: <为什么用这些算子>\n"
+            "PARAMETER_RATIONALE: <为什么用这些窗口/参数>\n"
+            "RISK: <公式的潜在失效模式>\n"
+            "SUGGESTED_OPS: <公式中实际使用的算子列表>\n"
+            "</think>\n"
+            "```\n"
         )
 
         # 注入 Γ 约束（更清晰的格式）
@@ -566,7 +644,14 @@ class AlphaGptWorkflow:
             f"Output STRICT JSON (no markdown) with: round, analysis (best_categories, "
             f"worst_categories, key_insights), formula_feedback (formula_id, formula, "
             f"verdict (keep/mutate/drop), reason, improvements). "
-            f"Schema: {schema}"
+            f"Schema: {schema}\n\n"
+            f"## 推理要求 (Tier 2)\n"
+            f"在 JSON 前用 <think> 块说明：\n"
+            f"<think>\n"
+            f"KEY_INSIGHTS: <3-5 条本轮核心洞察，列出成功/失败模式>\n"
+            f"NEXT_ROUND_FOCUS: <下一轮应聚焦的方向，如某类算子/参数/逻辑>\n"
+            f"RISK_PATTERNS: <本轮发现的失效模式，下轮需规避>\n"
+            f"</think>"
         )
 
     def _build_critic_prompt(
@@ -589,31 +674,55 @@ class AlphaGptWorkflow:
             f"Output STRICT JSON (no markdown) with: final_pool (rank, formula_id, "
             f"formula, metrics (ic_mean, ir, sharpe, max_drawdown), selection_reason, "
             f"risk_notes, category, round_discovered), summary. "
-            f"Schema: {schema}"
+            f"Schema: {schema}\n\n"
+            f"## 推理要求 (Tier 2)\n"
+            f"在 JSON 前用 <think> 块说明选 top-{self.config.top_k} 的标准。\n"
+            f"<think>\n"
+            f"SELECTION_CRITERIA: <你如何权衡 IR/IC/sharpe/drawdown>\n"
+            f"DIVERSITY: <如何保证 final_pool 的类别/算子多样性>\n"
+            f"RISK_FILTERS: <剔除了什么类型的因子（过拟合/高换手/低 IC decay 等）>\n"
+            f"</think>"
         )
 
     # ------------------------------------------------------------------
     # LLM 调用（mock 友好）
     # ------------------------------------------------------------------
 
-    def _call_llm(self, agent_id: str, prompt: str) -> str:
-        """调用 LLM（mock 时返回预定义 JSON）
+    def _call_llm(self, agent_id: str, prompt: str) -> Tuple[str, str]:
+        """调用 LLM（mock 时返回预定义 JSON），返回 (content, thinking) tuple。
 
         若 output_dir 已设置，会把每次 LLM 调用的完整 prompt/response 持久化到
         {output_dir}/llm_raw/{agent_id}_{round_idx}_{ts}.json，方便后续分析
         截断、解析失败等问题。
+
+        如果 LLM client 是 LLMGateway 且支持 ``complete_with_thinking``，
+        则同时返回 thinking 块（MiniMax M3 的 <think>...</think>）。
         """
         import inspect
         import json
         import time as _time
         from pathlib import Path
+        from QuantNodes.ai.llm.gateway import LLMGateway
 
         temperature = self._get_temperature_for_agent(agent_id)
         ts = int(_time.time() * 1000)
 
+        thinking = ""
+        raw = ""
+
         # 实际调用 LLM（或 mock）
         if self.llm_client is not None:
-            if hasattr(self.llm_client, 'complete'):
+            # Tier 1: LLMGateway 路径 → 同时获取 thinking
+            if isinstance(self.llm_client, LLMGateway) and hasattr(
+                self.llm_client, 'complete_with_thinking'
+            ):
+                persist_dir = str(self._llm_raw_dir) if self._llm_raw_dir else None
+                raw, thinking = self.llm_client.complete_with_thinking(
+                    agent_id=agent_id, prompt=prompt,
+                    temperature=temperature,
+                    persist_thinking_dir=persist_dir,
+                )
+            elif hasattr(self.llm_client, 'complete'):
                 # 兼容不同 mock 接口（部分 mock 不接受 temperature 关键字）
                 try:
                     sig = inspect.signature(self.llm_client.complete)
@@ -645,6 +754,8 @@ class AlphaGptWorkflow:
                             "prompt": prompt,
                             "response": raw,
                             "response_length": len(raw),
+                            "thinking": thinking,
+                            "thinking_length": len(thinking),
                             "ts": ts,
                         },
                         ensure_ascii=False,
@@ -654,7 +765,7 @@ class AlphaGptWorkflow:
                 )
             except Exception as exc:
                 logger.warning("保存 LLM raw 失败: %s", exc)
-        return raw
+        return raw, thinking
 
     def _get_temperature_for_agent(self, agent_id: str) -> float:
         """根据 agent_id 返回对应的温度参数"""

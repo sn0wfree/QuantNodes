@@ -245,6 +245,42 @@ class ExtensionOpPool:
             )
         return self.rng.choice(ops)
 
+    def sample_weighted(
+        self,
+        op_prior: Optional[Any] = None,
+        mix_ratio: float = 0.5,
+        category: Optional[str] = None,
+    ) -> ExtensionOp:
+        """按 OpPrior 权重采样一个操作（Tier 4: feature/thinking-chain）。
+
+        Args:
+            op_prior: OpPrior 实例（None 时回退到均匀采样）
+            mix_ratio: 0.0=纯均匀, 1.0=纯先验
+            category: 可选 category 过滤
+
+        Returns:
+            ExtensionOp 实例
+        """
+        if category:
+            ops = self._by_category.get(category, [])
+        else:
+            ops = self.ops
+        if not ops:
+            raise ValueError(
+                f"No operations available"
+                f"{f' in category {category}' if category else ''}"
+            )
+        if op_prior is None:
+            return self.rng.choice(ops)
+
+        # 加权采样
+        op_names = [op.name for op in ops]
+        weights = op_prior.mix(op_names, mix_ratio=mix_ratio)
+        # numpy choice 用概率
+        import numpy as _np
+        idx = int(_np.random.choice(len(ops), p=weights))
+        return ops[idx]
+
     def sample_window(self) -> int:
         """随机选一个窗口"""
         return self.rng.choice(self.windows)

@@ -241,13 +241,65 @@ class LLMGateway(LLMClientBase):
         # 所有重试都失败
         raise last_error
 
+    def complete_with_thinking(
+        self,
+        agent_id: str = "default",
+        prompt: str = "",
+        temperature: Optional[float] = None,
+        persist_thinking_dir: Optional[str] = None,
+    ) -> Tuple[str, str]:
+        """调用 LLM 同时返回 content 和 thinking（用于 Tier 1+2 思维链利用）。
+
+        行为与 ``complete()`` 类似，但额外返回 ``thinking`` 块（如果存在）
+        并可选择持久化到 ``persist_thinking_dir`` 目录。
+
+        Args:
+            agent_id: agent 标识（影响 dispatch 路径 + 持久化文件名）
+            prompt: 用户 prompt
+            temperature: 采样温度
+            persist_thinking_dir: 持久化 thinking 的目录（None=不持久化）
+
+        Returns:
+            (content, thinking) tuple
+        """
+        if agent_id.startswith("alpha-gpt-") or agent_id == "default":
+            return self._complete_direct(
+                prompt,
+                temperature,
+                return_thinking=True,
+                persist_thinking_dir=persist_thinking_dir,
+                agent_id=agent_id,
+            )
+
+        # 其他 agent 走 nanobot 路径（thinking 通常为空）
+        content = self.complete(agent_id=agent_id, prompt=prompt, temperature=temperature)
+        return content, ""
+
     # ─── 轻量直接调用（alpha-gpt 专用） ───
 
-    def _complete_direct(self, prompt: str, temperature: Optional[float] = None) -> str:
+    def _complete_direct(
+        self,
+        prompt: str,
+        temperature: Optional[float] = None,
+        *,
+        return_thinking: bool = False,
+        persist_thinking_dir: Optional[str] = None,
+        agent_id: Optional[str] = None,
+    ) -> Union[str, Tuple[str, str]]:
         """直接调 OpenAI 兼容 API，不经过 nanobot agent。
 
         避免 SOUL.md + tool 定义 + session history 导致 prompt 膨胀。
         同时清理 MiniMax M3 的 <think> 标签。
+
+        Args:
+            prompt: 输入 prompt
+            temperature: 采样温度
+            return_thinking: 是否返回 (content, thinking) tuple
+            persist_thinking_dir: 持久化 thinking 的目录（None=不持久化）
+            agent_id: agent 标识（用于持久化文件名）
+
+        Returns:
+            str (default) 或 (content, thinking) tuple（return_thinking=True）
         """
         import os
         import re as _re
@@ -255,6 +307,8 @@ class LLMGateway(LLMClientBase):
             from openai import OpenAI
         except ImportError:
             from QuantNodes.ai.llm.null import NullLLMClient
+            if return_thinking:
+                return NullLLMClient().canned_response, ""
             return NullLLMClient().canned_response
 
         agent = self._ensure_agent()
@@ -264,6 +318,8 @@ class LLMGateway(LLMClientBase):
         model = getattr(provider, "default_model", None) or os.environ.get("QUANTNODES__LLM__MODEL", "minimax-M3")
 
         if not api_key:
+            if return_thinking:
+                return "[_complete_direct] no API key configured", ""
             return "[_complete_direct] no API key configured"
 
         client = OpenAI(api_key=api_key, base_url=api_base, timeout=self._llm_config.timeout)
@@ -277,11 +333,30 @@ class LLMGateway(LLMClientBase):
                     temperature=temp,
                     max_tokens=16384,
                 )
-                content = resp.choices[0].message.content or ""
-                # 清理 <think> 标签
-                content = _re.sub(r"<think>[\s\S]*?</think>", "", content).strip()
-                # 清理 <think>...</think> 变体
+                raw_content = resp.choices[0].message.content or ""
+
+                # 提取 thinking 块（保留）
+                thinking = ""
+                think_match = _re.search(r"<think>([\s\S]*?)</think>", raw_content)
+                if think_match:
+                    thinking = think_match.group(1).strip()
+
+                # 清理 content 中的 <think> 标签
+                content = _re.sub(r"<think>[\s\S]*?</think>", "", raw_content).strip()
                 content = _re.sub(r"<think>[^<]*(?:<(?!/thinking)[^<]*)*</think>", "", content).strip()
+
+                # 持久化 thinking（如需要）
+                if persist_thinking_dir and thinking and agent_id:
+                    from pathlib import Path
+                    import time as _time
+                    persist_path = Path(persist_thinking_dir)
+                    persist_path.mkdir(parents=True, exist_ok=True)
+                    ts = int(_time.time() * 1000)
+                    fname = f"{agent_id}_thinking_{ts}.txt"
+                    (persist_path / fname).write_text(thinking, encoding="utf-8")
+
+                if return_thinking:
+                    return content, thinking
                 return content
             except Exception as e:
                 if attempt < self._llm_config.max_retries:

@@ -79,6 +79,9 @@ class MCTSSearchConfig:
     # PR-5: 结构化逻辑与 LLM 客户端（用于一致性评分）
     structured_logic: Optional[Any] = None
     llm_client: Optional[Any] = None
+    # Tier 4 (feature/thinking-chain): 算子先验 + 混合权重
+    op_prior: Optional[Any] = None  # OpPrior 实例
+    prior_mix: float = 0.5  # 0.0=纯均匀, 1.0=纯先验
 
 
 class MCTSSearch:
@@ -278,9 +281,15 @@ class MCTSSearch:
             # 根节点：已经添加种子节点，无需扩展
             return None
 
-        # 随机选一个扩展操作
+        # 随机选一个扩展操作（Tier 4: 加权采样 if OpPrior configured）
         try:
-            op = self.op_pool.sample()
+            if self.config.op_prior is not None:
+                op = self.op_pool.sample_weighted(
+                    op_prior=self.config.op_prior,
+                    mix_ratio=getattr(self.config, 'prior_mix', 0.5),
+                )
+            else:
+                op = self.op_pool.sample()
         except ValueError:
             return None
 
@@ -416,6 +425,7 @@ class MCTSSearch:
             code_column=self.config.code_column,
             llm_client=self.config.llm_client,
             structured_logic=self.config.structured_logic,
+            hypothesis=node.metadata.get("hypothesis"),  # Tier 2
         )
         self._feedback_cache[node.formula] = fb
 
