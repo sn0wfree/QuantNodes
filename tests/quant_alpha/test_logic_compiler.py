@@ -18,6 +18,7 @@ from QuantNodes.research.quant_alpha.logic_mining.models import (
 )
 from QuantNodes.research.quant_alpha.logic_mining.compiler import (
     CompiledConstraint,
+    check_sign_hint,
     compile_to_constraint,
     extract_operators,
     extract_variables,
@@ -410,3 +411,64 @@ class TestIntegration:
         d = gamma.to_dict()
         assert "rank" in d["operator_whitelist"]
         assert d["sign_constraint"] == -1
+
+
+# ==============================================================================
+# Test Class: check_sign_hint (Phase 1 红→绿回归测试)
+# ==============================================================================
+
+
+class TestCheckSignHint:
+    """check_sign_hint 单元测试
+
+    V8 暴露 bug: direction=-1 时, 无负向标记的公式仍被接受 (宽松兜底)。
+    这导致 sign_constraint=-1 接受全正 IR 公式 (e.g. intraday_reversal)。
+
+    修复后, direction=-1 必须有负向标记 (- / sign(- / sub(0) 才接受。
+    红→绿对照: test_positive_rejected_for_direction_minus1
+    """
+
+    def test_negative_prefix_dash_accepted_for_direction_minus1(self):
+        """formula 以 - 开头 + direction=-1 → True"""
+        assert check_sign_hint("-ts_mean(close, 20)", -1) is True
+
+    def test_sign_neg_accepted_for_direction_minus1(self):
+        """formula 包含 sign(-...) + direction=-1 → True"""
+        assert check_sign_hint("sign(-ts_corr(close, vol, 10))", -1) is True
+
+    def test_sub_zero_accepted_for_direction_minus1(self):
+        """formula 包含 sub(0, ...) + direction=-1 → True"""
+        assert check_sign_hint("sub(0, ts_mean(close, 20))", -1) is True
+
+    def test_positive_rejected_for_direction_minus1(self):
+        """formula 无负向标记 + direction=-1 → False (V8 回归保护)
+
+        修复前: 宽松兜底 return True (bug)
+        修复后: return False
+        """
+        # rank(close) - 纯正向, 无任何负向标记
+        assert check_sign_hint("rank(close)", -1) is False
+        # ts_mean(close, 20) - 也是纯正向
+        assert check_sign_hint("ts_mean(close, 20)", -1) is False
+        # div(sub(a, b), c) - 嵌套但顶层无负向
+        assert check_sign_hint("div(sub(close, ts_mean(close, 20)), std)", -1) is False
+
+    def test_direction_plus1_always_accepted(self):
+        """direction=+1 宽松模式, 任何 formula 都接受"""
+        assert check_sign_hint("rank(close)", 1) is True
+        assert check_sign_hint("-rank(close)", 1) is True
+        assert check_sign_hint("ts_mean(close, 20)", 1) is True
+
+    def test_direction_none_always_accepted(self):
+        """direction=None 表示不约束, 任何 formula 都接受"""
+        assert check_sign_hint("rank(close)", None) is True
+        assert check_sign_hint("-rank(close)", None) is True
+        assert check_sign_hint("any_formula(...)", None) is True
+
+    def test_whitespace_around_neg_prefix_accepted(self):
+        """formula 以 - 开头, 含空格也接受"""
+        assert check_sign_hint("  -ts_mean(close, 20)", -1) is True
+
+    def test_sign_with_space_accepted(self):
+        """sign( -...) 含空格的变体也接受"""
+        assert check_sign_hint("sign( -ts_corr(close, vol, 10))", -1) is True
