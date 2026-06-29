@@ -74,32 +74,26 @@ def _find_last_valid_json(raw, schema_validator=None):
 
 **预期效果**：mean_reversion / volatility 失败 → 成功。
 
-### 防御层 P1：explanation post-process
+### 防御层 P2：Schema validator 强化（智能拆分版）
 
-**目标**：LLM 即使写出 500 字 explanation，代码强制截到 200 字
+**目标**：让 `_validate_formula_translator` 容忍字段缺失，并对过长的 `explanation` 做智能处理
 
-**改动**：`QuantNodes/research/quant_alpha/workflow/alpha_gpt.py:_step_formula_translator`
+**改动**：`QuantNodes/research/quant_alpha/llm/parser.py`
 
-在 parse 成功后，对 formulas_data 列表处理：
-
-```python
-# Post-process: 强制截断 explanation 到 200 chars
-for fd in formulas_data:
-    if isinstance(fd, dict) and "explanation" in fd:
-        expl = fd["explanation"]
-        if isinstance(expl, str) and len(expl) > 200:
-            fd["explanation"] = expl[:197] + "..."
-```
-
-**预期效果**：未来如果 LLM 再违反长度约束，输出体积被限制 → 减少截断概率。
-
-### 防御层 P2：Schema validator 强化
-
-**目标**：让 `_validate_formula_translator` 容忍字段缺失/过长
-
-**改动**：`QuantNodes/research/quant_alpha/llm/parser.py:_validate_formula_translator`
+**档位设计**（智能 3 档）：
+- **档 1**：含结构化标记（HYPOTHESIS/MECHANISM/OPERATOR_RATIONALE/PARAMETER_RATIONALE/RISK/SUGGESTED_OPS/FORMULA）→ 拆分为 `explanation` (summary) + `explanation_detail` (detail)
+- **档 2**：超长但无结构化 → 截断到 200 字符
+- **档 3**：短小干净 → 保留原样
 
 ```python
+# 模块级常量
+_STRUCTURED_MARKERS_RE = re.compile(
+    r"\b(HYPOTHESIS|MECHANISM|OPERATOR_RATIONALE|PARAMETER_RATIONALE|"
+    r"RISK|SUGGESTED_OPS|FORMULA|HYPOTHESES)\s*:",
+    re.IGNORECASE,
+)
+_MAX_EXPLANATION_LEN = 200
+
 def _validate_formula_translator(obj):
     if "formulas" not in obj:
         return "missing 'formulas'"
@@ -113,14 +107,49 @@ def _validate_formula_translator(obj):
             return f"formulas[{i}] missing formula"
         # 容忍缺失 idea_id
         f.setdefault("idea_id", "")
-        # 双重防御：截断 explanation
+        # 智能 explanation 处理 (3 档)
         if "explanation" in f and isinstance(f["explanation"], str):
-            if len(f["explanation"]) > 200:
-                f["explanation"] = f["explanation"][:197] + "..."
+            expl = f["explanation"]
+            match = _STRUCTURED_MARKERS_RE.search(expl)
+            if match:
+                # 档 1: 含结构化标记 → 拆分为 summary + detail
+                split_pos = match.start()
+                f["explanation"] = expl[:split_pos].strip()
+                f["explanation_detail"] = expl[split_pos:]
+            elif len(expl) > _MAX_EXPLANATION_LEN:
+                # 档 2: 普通超长 → 截断
+                f["explanation"] = expl[:_MAX_EXPLANATION_LEN - 3] + "..."
+            # 档 3: 短小干净 → 保留（无操作）
     return None
 ```
 
-**预期效果**：LLM 输出不规范时也能 accept 有效公式。
+**真实案例**（V5 mean_reversion 444 字符）：
+```python
+# 输入
+explanation = "20日价格反转因子。HYPOTHESIS: A股散户...MECHANISM: sub(close, ts_mean(close,20))..."
+
+# 档 1 处理后
+explanation = "20日价格反转因子。"  # 标记之前的干净摘要
+explanation_detail = "HYPOTHESIS: A股散户...MECHANISM: sub(close, ts_mean(close,20))..."  # 完整保留
+```
+
+**关键改进（vs 旧 P2）**：
+- 旧 P2：粗暴截断到 200 字符（破坏结构化内容）
+- 新 P2：智能拆分，**两边信息都不丢**
+- explanation 字段保持 summary 角色
+- explanation_detail 字段承担 detail 角色
+
+### ~~防御层 P1~~（已删除）
+
+**原目标**：LLM 即使写出 500 字 explanation，代码强制截到 200 字
+
+**删除原因**：
+- P1 与 P2 做完全相同的事（重复防御）
+- V6 实测 P1 0 触发（解释短小干净）
+- P2 已升级为更智能的拆分版，P1 完全冗余
+
+**删除时间**：refactor/smart-p2 分支
+**影响**：0（V6 实际不依赖 P1）
 
 ### 防御层 P3：idea-generator 字段重命名
 

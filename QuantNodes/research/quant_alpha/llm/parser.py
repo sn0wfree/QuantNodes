@@ -300,9 +300,13 @@ def _validate_idea_generator(obj: Dict[str, Any]) -> Optional[str]:
 def _validate_formula_translator(obj: Dict[str, Any]) -> Optional[str]:
     """FormulaTranslator 输出 schema
 
-    P2 (fix/explanation-truncation) 强化：
+    P2 升级 (refactor/smart-p2): 智能 explanation 处理 (3 档)
+    - 档 1: 含结构化标记 → 拆分为 summary (explanation) + detail (explanation_detail)
+    - 档 2: 超长但无结构化 → 截断到 200 chars
+    - 档 3: 短小干净 → 保留原样
+
+    其他强化：
     - idea_id 改为 optional（缺失时 fallback 空串）
-    - explanation 字段超 200 chars 强制截断
     - formula 字段缺失直接 fail
     """
     if "formulas" not in obj:
@@ -319,10 +323,19 @@ def _validate_formula_translator(obj: Dict[str, Any]) -> Optional[str]:
             return f"formulas[{i}] missing formula"
         # 容忍缺失 idea_id（fallback 空串）
         f.setdefault("idea_id", "")
-        # 双重防御：explanation 超 200 chars 截断
+        # P2 升级: 智能 explanation 处理 (3 档)
         if "explanation" in f and isinstance(f["explanation"], str):
-            if len(f["explanation"]) > 200:
-                f["explanation"] = f["explanation"][:197] + "..."
+            expl = f["explanation"]
+            match = _STRUCTURED_MARKERS_RE.search(expl)
+            if match:
+                # 档 1: 含结构化标记 → 拆分为 summary + detail
+                split_pos = match.start()
+                f["explanation"] = expl[:split_pos].strip()
+                f["explanation_detail"] = expl[split_pos:]
+            elif len(expl) > _MAX_EXPLANATION_LEN:
+                # 档 2: 普通超长 → 截断
+                f["explanation"] = expl[:_MAX_EXPLANATION_LEN - 3] + "..."
+            # 档 3: 短小干净 → 保留（无操作）
     return None
 
 
@@ -383,6 +396,15 @@ def _validate_critic(obj: Dict[str, Any]) -> Optional[str]:
 # ==============================================================================
 # 截断恢复后的字段映射
 # ==============================================================================
+
+
+# P2 升级 (refactor/smart-p2): 智能 explanation 处理的模块级常量
+_STRUCTURED_MARKERS_RE = re.compile(
+    r"\b(HYPOTHESIS|MECHANISM|OPERATOR_RATIONALE|PARAMETER_RATIONALE|"
+    r"RISK|SUGGESTED_OPS|FORMULA|HYPOTHESES)\s*:",
+    re.IGNORECASE,
+)
+_MAX_EXPLANATION_LEN = 200
 
 
 # 截断恢复时把 "items" 重命名为对应 stage 的字段

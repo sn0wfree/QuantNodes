@@ -98,7 +98,7 @@ V5 parser 用 `re.search(r"\{[\s\S]*\}")` 匹配从**第一个 `{` 到最后一�
 
 **实测**：V5 mean_reversion 真实响应（2261 chars）现在能恢复 3 个完整公式。
 
-#### P1: explanation post-process（预防性）
+#### ~~P1: explanation post-process（预防性）~~ (refactor/smart-p2 后已删除)
 
 `alpha_gpt.py:_step_formula_translator` 在 parse 成功后强制截断：
 
@@ -108,14 +108,22 @@ for fd in formulas_data:
         fd["explanation"] = fd["explanation"][:197] + "..."
 ```
 
-**效果**：即使 LLM 再违反长度约束，输出体积被限制。
+**删除原因**（见 `refactor/smart-p2` 分支）：
+- P1 与 P2 做完全相同的事（重复防御）
+- V6 实测 P1 0 触发
+- P2 已升级为智能拆分版，P1 完全冗余
 
-#### P2: Schema validator 强化（防御性）
+#### P2: Schema validator 强化（智能拆分，refactor/smart-p2 后升级）
 
-`_validate_formula_translator` 强化：
-- `idea_id` 字段：从 required 改为 optional（`setdefault("idea_id", "")`）
-- `explanation` 字段：> 200 chars 强制截断（与 P1 双重防御）
+`_validate_formula_translator` 升级（v2 智能拆分）：
+- `idea_id` 字段：optional（`setdefault("idea_id", "")`）
+- `explanation` 字段 3 档处理：
+  - 档 1：含结构化标记 → 拆分为 `explanation` (summary) + `explanation_detail` (detail)
+  - 档 2：超长但无结构化 → 截断到 200 chars
+  - 档 3：短小干净 → 保留原样
 - `formula` 字段：保持 required（核心字段）
+
+**关键改进**：信息不丢失（explanation_detail 完整保留结构化内容）
 
 #### P3: 字段重命名（结构清晰化）
 

@@ -401,6 +401,64 @@ class TestValidateFormulaTranslatorP2:
         r = parse_formula_translator_output(raw)
         assert not r.ok
 
+    # === refactor/smart-p2 升级测试: 智能 3 档 explanation 处理 ===
+
+    def test_hypothesis_marker_splits_to_detail(self):
+        """档 1: 含 HYPOTHESIS 标记 → 拆分为 summary + detail"""
+        raw = json.dumps({
+            "formulas": [{
+                "id": "F1",
+                "idea_id": "I1",
+                "formula": "rank(x)",
+                "explanation": (
+                    "20日反转因子。"
+                    "HYPOTHESIS: A股散户过度反应..."
+                    "MECHANISM: sub(close, ts_mean(close,20))..."
+                ),
+            }]
+        })
+        r = parse_formula_translator_output(raw)
+        f = r.data["formulas"][0]
+        # summary: 标记之前的干净内容
+        assert f["explanation"] == "20日反转因子。"
+        # detail: 标记及之后的完整内容
+        assert f["explanation_detail"].startswith("HYPOTHESIS:")
+        assert "MECHANISM:" in f["explanation_detail"]
+        # formula 字段保持
+        assert f["formula"] == "rank(x)"
+
+    def test_marker_at_start_creates_empty_summary(self):
+        """边界: 标记在字符串开头 → summary 为空"""
+        raw = json.dumps({
+            "formulas": [{
+                "id": "F1",
+                "idea_id": "I1",
+                "formula": "rank(x)",
+                "explanation": "HYPOTHESIS: 短内容但有标记",
+            }]
+        })
+        r = parse_formula_translator_output(raw)
+        f = r.data["formulas"][0]
+        assert f["explanation"] == ""
+        assert f["explanation_detail"] == "HYPOTHESIS: 短内容但有标记"
+
+    def test_split_idempotent(self):
+        """P2 多次调用结果一致（_find_last_valid_json 也会调 validator）"""
+        raw = json.dumps({
+            "formulas": [{
+                "id": "F1",
+                "idea_id": "I1",
+                "formula": "rank(x)",
+                "explanation": "简述。HYPOTHESIS: 内容",
+            }]
+        })
+        r1 = parse_formula_translator_output(raw)
+        r2 = parse_formula_translator_output(raw)
+        f1 = r1.data["formulas"][0]
+        f2 = r2.data["formulas"][0]
+        assert f1["explanation"] == f2["explanation"]
+        assert f1["explanation_detail"] == f2["explanation_detail"]
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
