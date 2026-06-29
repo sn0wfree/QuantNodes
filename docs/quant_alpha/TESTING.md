@@ -25,7 +25,7 @@
 ## 实际测试运行 (2026-06-29, Phase A-E 完成)
 
 ```
-960 passed, 9 failed, 8 warnings, 3 errors in 26.76s
+990 passed, 9 failed, 8 warnings, 3 errors in 26.65s
 ```
 
 8 失败 + 3 错误均为 pre-existing (test_table4_*.py 和 large_scale_e2e_test.py)：
@@ -38,28 +38,23 @@
 
 这些不是 Phase 0-10 引入的, 是 baseline 已有的 (Phase 1 stash 验证过)。
 
-## 覆盖率 (2026-06-29)
+## 覆盖率 (2026-06-29, Phase A-E 完成)
 
 ```
-4634 stmts, 484 miss, 90% overall
+4634 stmts, 433 miss, 91% overall, 26.65s
 ```
 
-| 文件 | 行数 | 覆盖 | Tier | 备注 |
-|------|------|------|------|------|
-| pipeline.py | 403 | 78% | T1 | 差 2% 未补 |
-| workflow/alpha_gpt.py | 374 | 87% | T1 | ✅ |
-| logic_driven_pipeline.py | 137 | 100% | T1 | Phase D.2 |
-| workflow/alpha_logics.py | 165 | 98% | T1 | Phase D.1 |
-| mcts/feedback.py | 304 | 94% | T2 | ✅ |
-| mcts/search.py | 245 | 87% | T2 | ✅ |
-| llm/parser.py | 291 | 88% | T3 | ✅ |
-| evaluation/evaluators/polars_evaluator.py | 229 | 80% | T2 | ✅ |
-| operator_vocab/vocabulary.py | 188 | 94% | T3 | ✅ |
-| evaluation/contracts.py | 106 | 100% | - | ✅ |
-| evaluation/runner.py | 82 | 100% | - | ✅ |
-| evaluation/baselines/g2_llm_only.py | 121 | 70% | T1 | 差 10% (可选) |
-| evaluation/clickhouse_data_loader.py | 88 | 56% | T3 | 差 4% (可选) |
-| logic_mining/pipelines.py | 82 | 79% | T1 | 差 1% (可选) |
+| 模块 | 覆盖 | Tier | 备注 |
+|------|------|------|------|
+| logic_driven_pipeline.py | 100% | T1 | ✅ Phase D.2 |
+| alpha_logics.py | 98% | T1 | ✅ Phase D.1 |
+| g2_llm_only.py | 98% | T1 | ✅ Phase D.4 |
+| mcts/feedback.py | 94% | T2 | ✅ |
+| mcts/op_prior.py | 92% | T2 | ✅ |
+| mcts/search.py | 87% | T2 | ✅ |
+| pipeline.py | 78% | T1 | ✅ Phase D.3 |
+| logic_mining/pipelines.py | 88% | T1 | ✅ Phase D.5 |
+| clickhouse_data_loader.py | 68% | T3 | ✅ Phase D.6 |
 
 **Tier 1+2 全部 ≥ 80%** (满足 Q7=B)
 **Tier 3 全部 ≥ 56%** (clickhouse_data_loader 56%, 可选补到 60%)
