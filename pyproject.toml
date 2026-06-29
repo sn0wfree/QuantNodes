@@ -68,6 +68,25 @@ markers = [
     "slow: Slow running tests",
 ]
 
+[tool.coverage.run]
+source = ["QuantNodes/research/quant_alpha"]
+omit = [
+    "*/__pycache__/*",
+    "*/archive/*",
+    "*/_legacy_3c/*",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+show_missing = false
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
