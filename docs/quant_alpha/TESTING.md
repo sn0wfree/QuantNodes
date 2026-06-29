@@ -2,20 +2,44 @@
 
 ## 总览
 
-| 阶段 | 状态 | 测试增量 | 累计 |
-|------|------|---------|------|
-| 起始 (V8 之后) | ✅ | - | 116 |
-| Phase 1: sign_hint bug fix | ✅ | +6 | 122 |
-| Phase 2: Operator property | ✅ | +67 | 189 |
-| Phase 3: LLM failure modes | ✅ | +23 | 212 |
-| Phase 4: Evaluator edge cases | ✅ | +26 | 238 |
-| Phase 5: MCTS coverage | ✅ | +29 | 267 |
-| Phase 6: EarlyStopping | ✅ | +24 | 291 |
-| Phase 7: Thinking-chain | ✅ | +16 | 307 |
-| Phase 8: Logic compiler | ✅ | +31 | 338 |
-| Phase 9: 集成 + 回归 | ✅ | +44 | 382 |
-| Phase 10: 修 e2e + CI | ✅ | (pre-existing fixes) | 382 |
-| **总计** | **✅** | **+266** | **382** |
+| 阶段 | 状态 | 测试增量 (本阶段新增文件) | 累计 (本分支新增) |
+|------|------|---------------------------|-----------------|
+| 起始 (V8 之后) | ✅ | - | - |
+| Phase 1: sign_hint bug fix | ✅ | +8 (test_logic_compiler.TestCheckSignHint) | +8 |
+| Phase 2: Operator property | ✅ | +67 (test_operator_vocab_property.py) | +75 |
+| Phase 3: LLM failure modes | ✅ | +23 (test_llm_failures.py) | +98 |
+| Phase 4: Evaluator edge cases | ✅ | +26 (test_evaluator_methods.py) | +124 |
+| Phase 5: MCTS coverage | ✅ | +29 (test_mcts_feedback_channels.py) | +153 |
+| Phase 6: EarlyStopping | ✅ | +24 (test_early_stopping.py) | +177 |
+| Phase 7: Thinking-chain | ✅ | +16 (test_thinking_chain_integration.py) | +193 |
+| Phase 8: Logic compiler | ✅ | +31 (test_logic_compiler_extended.py) | +224 |
+| Phase 9: 集成 + 回归 | ✅ | +44 (3 个新文件) | +268 |
+| Phase 10: 修 e2e + CI | ✅ | (pre-existing fixes) | +268 |
+| **总计** | **✅** | **+205 in 10 new files** | **+268 total** |
+
+## 实际测试运行 (2026-06-29)
+
+排除 hanging `test_table4_real.py::test_generate_factors_with_mock_llm` (pre-existing):
+
+```
+882 passed, 8 failed, 8 warnings, 3 errors in 13.78s
+```
+
+8 失败 + 3 错误均为 pre-existing (在 test_table4_*.py 和 large_scale_e2e_test.py):
+- test_table4_edge_cases.py: 4 failed
+- test_table4_evaluator.py: 2 failed
+- test_table4_extended.py: 1 failed
+- test_operator_vocab.py: 1 failed (deprecation warning check)
+- large_scale_e2e_test.py: 3 errors
+
+这些不是 Phase 0-10 引入的, 是 baseline 已有的 (Phase 1 stash 验证过)。
+
+## 性能
+
+- **总时间**: 13.78s (远小于 5 分钟预算)
+- **平均**: ~16ms/test
+- **最慢**: integration 测试 (real LLM 调用) 需 < 30s/case
+- **CI 预算**: 5 分钟 (目标), 实际 ~14s, 留 ~4.5 分钟 buffer
 
 ## 运行测试
 
