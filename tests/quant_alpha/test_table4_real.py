@@ -212,8 +212,12 @@ class TestG2LlmOnlyLLM:
         g2 = G2LlmOnly(n=5)
         assert g2._llm_client is None
 
+    @pytest.mark.timeout(10)
     def test_generate_factors_with_mock_llm(self):
-        """G2 有 llm_client 时调用 LLM 生成公式。"""
+        """G2 有 llm_client 时调用 LLM 生成公式。
+
+        pytest-timeout: 10s 强制结束 (避免 LLMGateway async hang)
+        """
         # Mock LLM 返回有效公式列表
         mock_response = '["rank(-ts_mean(returns, 20))", "ts_std(close, 10)", "delta(close, 5)"]'
         agent = FakeAgent(response=mock_response)
