@@ -672,3 +672,49 @@ class TestDeprecationWarnings:
         output = result.stderr
         # Phase C 后，4 个旧模块的 warnings 来自 _legacy_3c 内部（import-time）
         assert "_legacy_3c" in output or "已弃用" in output or "已归档" in output
+
+
+# ==============================================================================
+# Test Class N: 列名 alias (LLM 友好)
+# ==============================================================================
+
+
+class TestColumnAlias:
+    """列名 alias 测试 (vol/volume 等)
+
+    LLM 倾向用语义化名称 (volume/turnover), data 列名更短 (vol/amount)。
+    vocabulary.build_namespace 应注入 alias, 让两种命名都能跑通。
+    """
+
+    def test_volume_alias_injected(self, vocab: OperatorVocab, sample_data: pl.DataFrame):
+        """data 有 vol 时, namespace 也应暴露 volume"""
+        ns = vocab.build_namespace(data=sample_data, date_column="date", code_column="code")
+        assert "vol" in ns
+        assert "volume" in ns
+        # 两者应指向同一 Series
+        assert ns["volume"].equals(ns["vol"])
+
+    def test_volume_alias_evaluates(self, vocab: OperatorVocab, sample_data: pl.DataFrame):
+        """使用 volume 别名的公式应能求值（不再 NameError）"""
+        result = vocab.evaluate("volume + 1", sample_data)
+        assert result is not None
+        assert result.shape[0] == sample_data.shape[0]
+
+    def test_vol_still_works_after_alias(self, vocab: OperatorVocab, sample_data: pl.DataFrame):
+        """短名 vol 在 alias 注入后仍可用（向后兼容）"""
+        result = vocab.evaluate("vol + 1", sample_data)
+        assert result is not None
+        assert result.shape[0] == sample_data.shape[0]
+
+    def test_volume_and_vol_yield_same_result(self, vocab: OperatorVocab, sample_data: pl.DataFrame):
+        """两套命名应得到完全一致的 Series"""
+        r_vol = vocab.evaluate("ts_mean(vol, 3)", sample_data)
+        r_volume = vocab.evaluate("ts_mean(volume, 3)", sample_data)
+        # 长度应相同，且非空位置应一致
+        assert r_vol.shape == r_volume.shape
+        # 用 to_list 比较数值
+        v_list = [x for x in r_vol.to_list() if x is not None]
+        vol_list = [x for x in r_volume.to_list() if x is not None]
+        assert len(v_list) == len(vol_list)
+        diffs = [abs(a - b) for a, b in zip(v_list, vol_list)]
+        assert max(diffs) < 1e-9 if diffs else True

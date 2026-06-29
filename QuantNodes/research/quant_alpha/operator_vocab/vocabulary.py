@@ -230,6 +230,16 @@ class OperatorVocab:
         for col in data.columns:
             namespace[col] = data[col]
 
+        # 列名 alias: LLM 倾向用语义化名称（volume/turnover），data 列名更短
+        # 加 alias 让 LLM 生成公式时两种命名都能跑通
+        # mapping: alias（注入namespace的名字）<- col（data列名）
+        _col_aliases = {
+            "volume": "vol",       # 成交量（LLM 友好名 volume, data 列名 vol）
+        }
+        for alias, col in _col_aliases.items():
+            if col in data.columns and alias not in data.columns:
+                namespace[alias] = data[col]
+
         # 注入 returns 快捷方式
         if "close" in data.columns:
             close = data["close"]
