@@ -7,10 +7,9 @@ V5 暴露问题：mean_reversion / volatility 失败 0 因子，根因：
 - LLM "截断 JSON + thinking + 重写 JSON" 模式被 greedy regex 误判
 - explanation 字段膨胀导致 JSON 截断
 
-V6 修复（4 层防御）：
+V6 修复（3 层防御，refactor/smart-p2 后 P1 已合并到 P2）：
 - P0: parser._find_last_valid_json() 找最后一个满足 schema 的 JSON
-- P1: alpha_gpt._step_formula_translator 强制截断 explanation > 200 chars
-- P2: parser._validate_formula_translator 容忍 idea_id 缺失 + 双重截断
+- P2: parser._validate_formula_translator 智能 explanation 处理 (3 档)
 - P3: idea-generator prompt 使用 "rationale" 而非 "description" 避免字段混淆
 
 设置与 V4/V5 完全相同（4 逻辑 × 3 ideas × MCTS 20），
@@ -123,7 +122,7 @@ def run_for_logic(
 ) -> dict:
     """为单个逻辑跑 V6 (with 4 层防御)"""
     print(f"\n{'=' * 60}")
-    print(f"V6 - 逻辑: {logic_name} (P0+P1+P2+P3)")
+    print(f"V6 - 逻辑: {logic_name} (P0+P2+P3)")
     print(f"{'=' * 60}")
 
     gamma = compile_to_constraint(logic, source_logic=logic_name)
@@ -265,11 +264,10 @@ def main():
 
     summary = {
         "version": "V6",
-        "description": "4-logic E2E with 4-layer defense (P0+P1+P2+P3)",
+        "description": "4-logic E2E with 3-layer defense (P0+P2+P3, after refactor/smart-p2)",
         "fixes_applied": [
             "P0: parser._find_last_valid_json() - recover truncated-then-restyled JSON",
-            "P1: alpha_gpt post-process explanation > 200 chars",
-            "P2: parser._validate_formula_translator - idea_id optional, explanation truncate",
+            "P2: parser._validate_formula_translator - smart explanation splitting (3 tiers)",
             "P3: idea-generator prompt uses 'rationale' (not 'description')",
         ],
         "total_logics": len(logics),

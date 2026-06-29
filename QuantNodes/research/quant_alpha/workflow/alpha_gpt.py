@@ -243,14 +243,6 @@ class AlphaGptWorkflow:
         data = parsed.data or {}
         formulas_data = data.get("formulas", [])
 
-        # P1 (fix/explanation-truncation): post-process explanation 字段
-        # 强制截断到 200 chars，防止 LLM 在 explanation 中塞结构化字段导致 JSON 膨胀
-        for fd in formulas_data:
-            if isinstance(fd, dict) and "explanation" in fd:
-                expl = fd["explanation"]
-                if isinstance(expl, str) and len(expl) > 200:
-                    fd["explanation"] = expl[:197] + "..."
-
         # Tier 1+2: 解析 thinking
         thinking_record = None
         if thinking:
