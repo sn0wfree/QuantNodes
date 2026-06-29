@@ -36,7 +36,9 @@
 | Baseline | 2026-06-29 | ~30% | 旧 .coverage (evaluation only) |
 | **Phase B** | 2026-06-29 | **85.6%** | 修 hanging + 全量测量 |
 | **Phase D.1** | 2026-06-29 | **88%** | alpha_logics 44→98% |
-| Phase D.2+ | TBD | 目标 90%+ | 补 5 个剩余文件 |
+| **Phase D.2** | 2026-06-29 | **89%** | logic_driven_pipeline 50→100% |
+| **Phase D.3** | 2026-06-29 | **90%** | pipeline 71→78%, 21 tests |
+| Phase D.4-6 | TBD | 目标 91%+ | g2_llm_only / pipelines / clickhouse |
 
 ## 红→绿对照
 
