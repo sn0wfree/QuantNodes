@@ -477,3 +477,43 @@ class TestBuildSummary:
         assert summary["best_n_factors"] == 0
         assert summary["logic_driven_factors"] == 0
         assert summary["mcts_enhanced"] is False
+
+
+# ==============================================================================
+# Phase D.5: logic_mining/pipelines.py _call_llm coverage (79→80%)
+# ==============================================================================
+
+
+class TestCallLlm:
+    """Test _call_llm from logic_mining/pipelines.py (lines 62-73)."""
+
+    def test_no_client_returns_default(self):
+        """No client → return default."""
+        from QuantNodes.research.quant_alpha.logic_mining.pipelines import _call_llm
+        result = _call_llm(None, "agent", "prompt", "default")
+        assert result == "default"
+
+    def test_client_with_complete_method(self):
+        """Client with complete() → call complete."""
+        from QuantNodes.research.quant_alpha.logic_mining.pipelines import _call_llm
+        mock_client = MagicMock()
+        mock_client.complete.return_value = "llm response"
+        result = _call_llm(mock_client, "agent", "test prompt", "default")
+        assert result == "llm response"
+        mock_client.complete.assert_called_once_with(agent_id="agent", prompt="test prompt")
+
+    def test_client_callable(self):
+        """Client is callable → call it directly."""
+        from QuantNodes.research.quant_alpha.logic_mining.pipelines import _call_llm
+        mock_client = MagicMock(spec=[])  # no 'complete' attribute
+        mock_client.return_value = "callable response"
+        result = _call_llm(mock_client, "agent", "test prompt", "default")
+        assert result == "callable response"
+
+    def test_client_exception_returns_default(self):
+        """Client raises exception → fallback to default."""
+        from QuantNodes.research.quant_alpha.logic_mining.pipelines import _call_llm
+        mock_client = MagicMock()
+        mock_client.complete.side_effect = RuntimeError("LLM failed")
+        result = _call_llm(mock_client, "agent", "prompt", "default")
+        assert result == "default"
