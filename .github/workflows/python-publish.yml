@@ -10,6 +10,7 @@ jobs:
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       id-token: write  # for PyPI trusted publishing (OIDC); falls back to token below
     steps:
