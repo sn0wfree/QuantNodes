@@ -1,0 +1,98 @@
+The user wants me to generate 3 alpha ideas for the objective "Apply logic price_volume_divergence" in round 1, focused on A-shares. The categories are momentum/reversal/value/quality/volatility/liquidity.
+
+Let me think about price-volume divergence. This is a classic technical analysis concept where price movement and volume movement diverge, often signaling reversals. The key idea is:
+- Price up + Volume down = bearish divergence (price rising on weak volume, likely to reverse)
+- Price down + Volume up = bullish divergence? Or bearish? Actually:
+  - Price down + Volume up could signal capitulation (bullish reversal) OR strong downtrend continuation
+  - Price up + Volume down = weak rally, bearish reversal signal
+  - Price up + Volume up = strong uptrend (confirmation)
+  - Price down + Volume down = weak downtrend, possible reversal up
+
+For A-shares specifically:
+- T+1 constraint means we can't sell same day, making intraday price-volume dynamics more important
+- Retail-dominated market means more emotional reactions, divergence signals might be more pronounced
+- 涨跌停 (price limits) can distort volume signals
+- ST stocks have additional constraints
+
+Let me think of 3 ideas across different categories:
+
+1. **Reversal category**: Classic price-volume divergence reversal
+   - Compute price change over 20 days, and volume change over 20 days
+   - When price is up but volume is down (negative divergence), expect reversal down → short
+   - When price is down but volume is up (positive divergence/capitulation), expect reversal up → long
+   - This is a reversal strategy
+
+2. **Momentum category**: Price-volume confirmation momentum
+   - When both price and volume move together (up with up, or down with down), trend continues
+   - Long when price up + volume up, short when price down + volume down
+   - This uses volume as confirmation, classic momentum with volume filter
+
+3. **Liquidity category**: Volume divergence from price as liquidity signal
+   - When price moves but volume doesn't confirm, it's a sign of weak participation
+   - Could be a liquidity/quality filter
+   - Stocks where price moves without volume support are likely to underperform
+
+Let me design these more concretely:
+
+**Idea 1: Bearish Volume Divergence Short (Reversal)**
+- Lookback: 20 days
+- Compute: rank(ts_corr(close, volume, 20)) or simpler: sign(returns) vs sign(volume_change)
+- When price up but volume down over 20 days → short
+- Orthogonal to confirmation momentum
+
+**Idea 2: Price-Volume Confirmation Momentum (Momentum)**
+- Lookback: 20 days
+- When both price and volume trend up together → long
+- Uses volume as confirmation filter on momentum
+- This is actually a momentum factor
+
+**Idea 3: Volume-Price Trend (Quality/Liquidity)**
+- When volume increases but price stays flat or down → distribution/selling pressure
+- Capture stocks being accumulated (volume up, price flat → future upside)
+- This is a quality/liquidity based factor
+
+Let me think about A-share specific mechanisms:
+- T+1 means cannot sell after buying same day, so daily price-volume dynamics are critical
+- Retail dominance (~60-70% retail trading) means more emotional, divergence signals stronger
+- 涨跌停 ±10% (20% for ChiNext) limits can cause volume spikes at limits
+- ST stocks have ±5% limits and should be filtered
+
+Operators to use:
+- ts_rank, ts_mean, ts_corr
+- rank
+- correlation between close returns and volume changes
+- abs() for divergence magnitude
+
+Let me finalize:
+
+**IDEA-1-1: Volume-Price Divergence Reversal (Reversal)**
+- HYPOTHESIS: A股散户主导，价格上涨若伴随成交量萎缩，预示上涨动能不足，将出现反转
+- MECHANISM: 散户追涨杀跌行为导致无量上涨不可持续；T+1约束下，成交量是真实参与度的代理变量
+- OPERATOR_RATIONALE: Use ts_corr to measure price-volume relationship, rank for cross-sectional comparison
+- PARAMETER_RATIONALE: 20日是学术文献中常用的中期反转窗口
+- RISK: 牛市中强者恒强，无量上涨可能持续；政策驱动行情可能压制反转信号
+- SUGGESTED_OPS: ts_corr, rank, ts_mean, abs
+
+**IDEA-1-2: Price-Volume Confirmation Momentum (Momentum)**
+- HYPOTHESIS: 价量齐升的股票在A股市场中具有持续性，因为确认信号吸引更多资金跟进
+- MECHANISM: 价量齐升反映真实资金流入，A股散户的跟风行为放大趋势；T+1下需要更强信号才进场
+- OPERATOR_RATIONALE: Use multiply of price return and volume change to capture confirmation
+- PARAMETER_RATIONALE: 20日窗口捕捉中期趋势
+- RISK: 趋势末端可能出现"量价背离"导致反转
+- SUGGESTED_OPS: rank, ts_mean, mul, ts_rank
+
+**IDEA-1-3: Volume Expansion Without Price Follow-through (Volatility/Liquidity)**
+- HYPOTHESIS: 成交量放大但价格未跟随的股票，暗示主力出货，未来表现疲软
+- MECHANISM: A股市场中"放量不涨"是典型的主力派发信号；T+1约束下，主力更难隐藏出货意图
+- OPERATOR_RATIONALE: Compute z-score of volume change vs price change ratio
+- PARAMETER_RATIONALE: 10-20日窗口捕捉近期主力动向
+- RISK: 底部放量可能预示反转而非派发；需要结合价格位置判断
+- SUGGESTED_OPS: ts_std, rank, ts_zscore, div
+
+Let me think about orthogonality:
+- IDEA-1-1 (reversal/divergence) and IDEA-1-2 (confirmation momentum) are inverse signals
+- IDEA-1-3 is different - it focuses on volume expansion without price move
+
+For the JSON output, I need to make sure each idea has all required fields and is orthogonally distinct.
+
+Let me structure the final response with thinking block first, then JSON.

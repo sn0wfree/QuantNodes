@@ -1,0 +1,9 @@
+{
+  "agent_id": "alpha-gpt-idea-generator",
+  "round_idx": 1,
+  "temperature": 0.8,
+  "prompt": "You are the Alpha-GPT IdeaGenerator. Generate 3 alpha ideas for objective='Apply logic price_volume_divergence'. round=1, a_share_focus=True. previous_reflection=None. 6 categories: momentum/reversal/value/quality/volatility/liquidity. Each idea must have id (IDEA-{round}-{idx}), name, category, description, expected_direction (long/short/both), suggested_lookback, a_share_compatible, orthogonal_to, complexity_hint (simple/medium/complex). Output STRICT JSON (no markdown, no code blocks) matching this schema: {\"round\": 1, \"ideas\": [{\"id\": \"IDEA-1-1\", \"name\": \"20日反转\", \"category\": \"reversal\", \"description\": \"经济直觉1-2句\", \"expected_direction\": \"long\", \"suggested_lookback\": 20, \"a_share_compatible\": true, \"orthogonal_to\": [\"IDEA-1-2\"], \"complexity_hint\": \"simple\"}]}",
+  "response": "{\"round\": 1, \"ideas\": [{\"id\": \"IDEA-1-1\", \"name\": \"量价顶背离反转\", \"category\": \"reversal\", \"description\": \"股价创20日新高但成交量低于20日均量，表明上涨动能衰竭、做空信号；A股T+1机制下可次日开盘做空(融券)或减仓回避\", \"expected_direction\": \"short\", \"suggested_lookback\": 20, \"a_share_compatible\": true, \"orthogonal_to\": [\"IDEA-1-2\", \"IDEA-1-3\"], \"complexity_hint\": \"simple\"}, {\"id\": \"IDEA-1-2\", \"name\": \"量价齐升动量\", \"category\": \"momentum\", \"description\": \"近10日收盘价均线斜率为正且成交量同步放大(量比>1.2)，确认趋势健康，做多强势股\", \"expected_direction\": \"long\", \"suggested_lookback\": 10, \"a_share_compatible\": true, \"orthogonal_to\": [\"IDEA-1-1\", \"IDEA-1-3\"], \"complexity_hint\": \"simple\"}, {\"id\": \"IDEA-1-3\", \"name\": \"低波放量吸筹\", \"category\": \"volatility\", \"description\": \"近30日价格波动率处于历史低位但成交量稳步放大(OBV趋势上行)，主力低位吸筹特征，突破后做多\", \"expected_direction\": \"long\", \"suggested_lookback\": 30, \"a_share_compatible\": true, \"orthogonal_to\": [\"IDEA-1-1\", \"IDEA-1-2\"], \"complexity_hint\": \"medium\"}]}",
+  "response_length": 885,
+  "ts": 1782655282250
+}

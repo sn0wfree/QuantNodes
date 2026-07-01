@@ -1,0 +1,38 @@
+The user wants me to select the top-3 from all rounds. Let me analyze the data:
+
+Only 3 formulas were evaluated:
+1. FORMULA-1-1: `rank(-ts_std(close, 20))` - IR: 0.113, IC_mean: 0.0138
+2. FORMULA-1-2: `rank(-ts_std(div(close, ts_mean(close, 60)), 60))` - IR: 0.102, IC_mean: 0.0095
+3. FORMULA-1-3: `rank(-div(ts_std(close, 5), ts_std(close, 60)))` - IR: -0.019, IC_mean: -0.0014
+
+All IRs are below the min_ir_threshold of 0.05? Let me check:
+- FORMULA-1-1: IR = 0.113 > 0.05 ✓
+- FORMULA-1-2: IR = 0.102 > 0.05 ✓
+- FORMULA-1-3: IR = -0.019 < 0.05 ✗ (also negative)
+
+So FORMULA-1-3 should be excluded.
+
+For mutual IC threshold of 0.7 - we only have 3 formulas, so we can't really compute mutual IC easily from what's given. I'll assume they're not highly correlated based on different operators.
+
+Since we only have 3 formulas and one fails the IR threshold, we can only select top 2 that pass the criteria. But the user asked for top-3, so I'll select all that pass.
+
+Let me think about the metrics. We don't have sharpe or max_drawdown data, so I need to note those as N/A or estimated.
+
+Let me also note that only 3 formulas were evaluated (total_evaluated: 3, not 50 as the summary template suggests).
+
+Let me structure the response properly.
+
+For categories:
+- FORMULA-1-1: negative volatility → reversal (low vol tends to revert)
+- FORMULA-1-2: normalized negative vol → reversal/volatility
+- FORMULA-1-3: vol ratio → volatility structure (excluded)
+
+All are from round 1.
+
+For risk notes:
+- Low absolute IC across the board
+- High IC std relative to IC mean
+- FORMULA-1-3 has negative IR
+- Limited time-series validation
+
+Let me construct the JSON.

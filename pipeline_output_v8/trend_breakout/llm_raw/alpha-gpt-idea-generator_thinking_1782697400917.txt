@@ -1,0 +1,50 @@
+The user wants me to generate 3 alpha ideas for the objective 'Apply logic trend_breakout' in round 1, with A-share focus. Let me think through this carefully.
+
+The objective is "trend_breakout" - this suggests strategies that capture breakouts from trends. In A-shares, there are specific constraints:
+- T+1 trading rule
+- 涨跌停 (price limits, typically ±10% for main board, ±20% for ChiNext/STAR)
+- 散户主导 (retail-dominated)
+- 高换手 (high turnover)
+
+Let me think about 3 diverse ideas spanning the 6 categories (momentum/reversal/value/quality/volatility/liquidity):
+
+1. **Momentum-based breakout**: Classic trend breakout using N-day high/low break. This is a momentum idea. The idea would be: stocks breaking above recent highs tend to continue trending due to self-reinforcing buying pressure from trend followers and FOMO.
+
+2. **Volatility-adjusted breakout**: A breakout that accounts for volatility - using Bollinger-style or volatility-normalized bands. This captures quality/volatility dimension. Stocks that break out with relatively low volatility tend to have more sustainable trends.
+
+3. **Liquidity-driven breakout**: Breakout with volume confirmation. In A-shares, volume is critical because T+1 rule means you can't immediately sell, so accumulation patterns matter. Stocks breaking out on high relative volume show strong institutional commitment.
+
+Let me structure each one with the required reasoning:
+
+**IDEA-1-1: Trend Breakout (Donchian-style)**
+- HYPOTHESIS: A股趋势突破后有持续性，因为涨跌停制度使趋势一旦形成难以快速反转
+- MECHANISM: T+1+涨跌停约束下，追涨杀跌行为被锁定，突破信号更持久
+- OPERATOR_RATIONALE: 用ts_max计算N日高点，rank横截面排序，div归一化
+- PARAMETER_RATIONALE: 20日经典窗口（学术文献常用）
+- RISK: 假突破频繁，尤其在震荡市
+- SUGGESTED_OPS: ts_max, rank, div, sub
+
+**IDEA-1-2: Volatility-Normalized Breakout**
+- HYPOTHESIS: 突破强度需考虑自身波动，相同价格突破对低波动股票意义更大
+- MECHANISM: A股波动率聚集明显，归一化突破可过滤噪声信号
+- OPERATOR_RATIONALE: ts_mean/ts_std计算Z-score形式突破
+- PARAMETER_RATIONALE: 20日价格窗口+20日波动窗口
+- RISK: 波动率突变导致信号失效
+- SUGGESTED_OPS: ts_mean, ts_std, div, rank
+
+**IDEA-1-3: Volume-Confirmed Breakout**
+- HYPOTHESIS: 成交量放大的突破更可靠，反映真实资金流入
+- MECHANISM: A股散户主导下，量价配合突破识别度更高，可过滤无量假突破
+- OPERATOR_RATIONALE: rank成交量变化+价格突破组合
+- PARAMETER_RATIONALE: 10日量价窗口
+- RISK: 政策切换或主力对倒造成假量
+- SUGGESTED_OPS: rank, ts_mean, div, ts_corr
+
+Let me make sure these are orthogonal to each other:
+- IDEA-1-1: pure price breakout
+- IDEA-1-2: volatility-normalized breakout
+- IDEA-1-3: volume-confirmed breakout
+
+They're naturally orthogonal because they use different signals (price only, price+volatility, price+volume).
+
+Now let me write the detailed thinking block and JSON output.

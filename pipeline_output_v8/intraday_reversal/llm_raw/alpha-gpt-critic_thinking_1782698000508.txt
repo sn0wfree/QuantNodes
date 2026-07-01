@@ -1,0 +1,30 @@
+Let me analyze the three formulas to select the top-3 based on the criteria provided.
+
+Looking at the evaluations:
+1. FORMULA-1-1: ic_mean=0.0096, ir=0.084, status=success
+2. FORMULA-1-2: ic_mean=0.0095, ir=0.078, status=success
+3. FORMULA-1-3: ic_mean=0.0141, ir=0.110, status=success
+
+All three have IR values well below the min_ir_threshold of 0.05? Wait, the threshold is 0.05 and all IRs are above 0.05 (0.084, 0.078, 0.110). Actually let me re-read: "min_ir_threshold=0.05". So IR must be >= 0.05.
+
+All three pass the IR threshold check. However, looking more critically:
+- IC means are all very low (around 0.01), suggesting weak predictive power
+- IC decay shows FORMULA-1-3 has the best decay (20-day: 0.081), followed by FORMULA-1-2 (0.033), and FORMULA-1-1 (0.025)
+
+For mutual IC threshold (max_mutual_ic_threshold=0.7), we only have 3 formulas, so they should all pass as there's no indication they exceed 0.7 correlation.
+
+Since we need top-3 and there are only 3 formulas, I'll rank them all but note the concerns about weak signals.
+
+Ranking:
+1. FORMULA-1-3 - highest IR (0.110), highest IC (0.0141), best IC decay
+2. FORMULA-1-1 - second highest IR (0.084), reversal pattern
+3. FORMULA-1-2 - third highest IR (0.078), mean-reversion pattern
+
+Note: Since sharpe and max_drawdown aren't provided in the evaluations, I'll need to estimate them or note them as not available.
+
+Categories:
+- FORMULA-1-1: reversal (negative of close-open mean)
+- FORMULA-1-2: reversal (negative deviation from 20-day mean)
+- FORMULA-1-3: volatility/reversal (negative of squared returns mean)
+
+Let me construct the JSON output.

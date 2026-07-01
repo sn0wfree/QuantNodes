@@ -1,0 +1,18 @@
+The user wants me to act as the Alpha-GPT Critic and select the final top-3 from all rounds. However, looking at the data provided:
+
+- All three formulas (FORMULA-1-1, FORMULA-1-2, FORMULA-1-3) have status: "failed"
+- All have ic_mean: 0.0, ic_std: 0.0, ir: 0.0
+- All have error_msg about unsupported operations
+
+The thresholds are:
+- min_ir_threshold = 0.05
+- max_mutual_ic_threshold = 0.7
+
+Since all formulas failed (status: "failed"), they all have IR = 0.0, which is below the min_ir_threshold of 0.05. Therefore, no formulas pass the IR filter.
+
+The final_pool should be empty. I should not select any formulas that failed evaluation or don't meet the minimum IR threshold.
+
+Let me structure my response:
+
+1. Think block explaining selection criteria
+2. JSON output with empty final_pool and appropriate summary

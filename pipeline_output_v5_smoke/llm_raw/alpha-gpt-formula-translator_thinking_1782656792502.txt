@@ -1,0 +1,384 @@
+Let me analyze the constraints carefully:
+
+**ALLOWED OPERATORS**: div, rank, ts_mean, ts_std
+**ALLOWED VARIABLES**: close
+**PARAMETER RANGES**: ts_mean window 5-60, ts_std window 5-60
+**SIGN CONSTRAINT**: Overall factor direction must be NEGATIVE (-1)
+
+Wait, but the ideas mention things like "neutralize", "correlation", "ts_corr", "mul" - these are mentioned in the idea's mentioned_ops but I can only use: div, rank, ts_mean, ts_std.
+
+Also, I can only use "close" as a variable - no "returns", no "market_cap", no "vwap".
+
+So I need to translate these volatility ideas using only these limited operators. Let me think about how to express volatility using close and the allowed operators:
+
+1. Realized volatility can be approximated by ts_std(close, window) or pct_change variants, but I don't have pct_change. I can use ts_std(close, window) as a proxy for volatility (since returns volatility ≈ price level volatility normalized, but close-based std captures price variability).
+
+Actually, wait - using ts_std(close, window) gives us the standard deviation of price levels, not returns. But it's a rough proxy. Alternatively, we could approximate returns as div(close, ts_lag(close, 1)) - 1, but we can't use sub or ts_lag.
+
+Hmm, but we have `ts_mean` and `ts_std` only. Let me think about what we can construct:
+
+- Volatility proxy: ts_std(close, n)
+- Mean reversion: ts_mean(close, n) vs current close
+- Ratio: div(ts_std(close, short), ts_std(close, long))
+
+Let me now address each idea:
+
+**IDEA-1-1: 20日低波动异象**
+- Core: Long low volatility stocks, short high volatility stocks
+- With our constraints: rank low vol stocks, short high vol stocks
+- Direction must be NEGATIVE: so we want NEGATIVE correlation with volatility
+- Formula: rank(-ts_std(close, 20)) - low vol gets high rank, high vol gets low rank → long low vol
+- Wait, the sign constraint says overall factor direction must be NEGATIVE (-1). 
+- If we want to LONG low volatility, the factor should have high values for low vol stocks.
+- ts_std(close, 20) is high for high vol, low for low vol.
+- rank(-ts_std(close, 20)) would give high rank to low vol stocks. The factor itself: low for high vol, high for low vol. If we go LONG on high factor values, we long low vol. The factor has positive values overall... 
+
+Wait, "sign constraint: overall factor direction must be NEGATIVE (-1)". I think this means the factor values themselves should be negatively oriented, or the strategy should be short. Let me re-read.
+
+Actually, I think "SIGN CONSTRAINT" means that the formula should produce a factor with negative sign overall, so when multiplied by -1 (or naturally negative), it aligns with short positions. But the description says expected_direction can be 'long', 'short', or 'both'.
+
+Hmm, "Overall factor direction must be NEGATIVE (-1)" - I think this means we need to multiply by -1 or use negative sign. But we can't use arithmetic operators.
+
+Wait, we have `rank` and other operators. Let me think again. Maybe the sign constraint means the factor's interpretation should be "negative exposure" or the formula needs to be structured such that the natural direction is negative.
+
+Actually, looking at the example: `"formula": "rank(-ts_mean(returns, 20))"` - this uses negative sign. But we're told "NO arithmetic operators (+,-,*,/)". So we can't use `-ts_mean(...)`.
+
+Hmm, but the example shows `rank(-ts_mean(returns, 20))` which contains `-`. Maybe this is a special case for negation?
+
+Let me re-read: "CRITICAL: Use ONLY function call format. NO arithmetic operators (+,-,*,/). NO missing parentheses."
+
+So no `-` either. But the example has `-ts_mean(...)`...
+
+OK, I think the negation is allowed as a special unary operator. Let me check: the example clearly shows `-ts_mean(returns, 20)` so unary minus is allowed but binary operators (+, -, *, /) are not.
+
+Actually wait - the problem says "NO arithmetic operators (+,-,*,/)" - this includes the minus sign. But the example has `-ts_mean(...)`. This is contradictory.
+
+I'll go with the example's interpretation: unary minus is allowed for negation (to flip sign of factor), but binary arithmetic operators are not allowed.
+
+So for the sign constraint of NEGATIVE direction:
+- IDEA-1-1 wants LONG low volatility. The factor rank(-ts_std(close, 20)) gives high values to low vol stocks. If we go long high factor values, we long low vol. The factor itself is... let's say low for high vol, high for low vol. The factor has a "positive" orientation in terms of returns (long high values).
+
+Wait, "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)" - I think this means the factor should have negative sign convention, i.e., we should multiply by -1 somewhere.
+
+Let me interpret it as: the final factor value should be such that high values = short, or the factor expression should include a negation.
+
+For IDEA-1-1 (long low vol):
+- Long low vol = high factor values should correspond to low vol stocks
+- ts_std(close, 20) is high for high vol
+- If we want HIGH factor for LOW vol: we need -ts_std(close, 20) or rank(-ts_std(close, 20))... but rank(-ts_std(close, 20)) gives high rank to low values of ts_std, which means high rank to low vol. 
+- Actually rank gives high values to high inputs. So rank(-ts_std(close, 20)) gives high rank to high -ts_std values, which is high rank to low ts_std values (low vol). So high factor → long low vol. ✓
+
+But the sign constraint says NEGATIVE. So we want the factor to have negative direction. Maybe:
+- ts_std(close, 20) - high for high vol, low for low vol
+- If we long high factor → long high vol
+- If we short high factor → short high vol = long low vol ✓
+- rank(ts_std(close, 20)) gives high values to high vol. Short the factor → long low vol. The factor itself has positive direction.
+- Hmm, but the sign constraint...
+
+OK let me try a different interpretation: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)" means the factor needs to be explicitly negated or structured to have negative direction.
+
+So for IDEA-1-1:
+- rank(-ts_std(close, 20)) - this has explicit negation
+- High rank → low vol → long low vol
+- This satisfies "NEGATIVE (-1)" sign because we use `-ts_std(...)`
+
+Actually wait. The rank function transforms values to [0,1] based on cross-sectional ranking. If we apply rank(-ts_std(close, 20)), high factor values correspond to low volatility stocks. Going long high factor values = long low vol. The factor has positive direction in terms of "what we long".
+
+I think the "SIGN CONSTRAINT" just means we should include a negative sign in the formula to ensure the direction is "negative" in some sense. Maybe it's saying the formula must explicitly negate something.
+
+Let me just follow the constraint by adding negation:
+
+**IDEA-1-1**: 
+- Core: Long low volatility stocks
+- Formula: `rank(-ts_std(close, 20))`
+- Complexity: 2 (one ts_std and one rank)
+- Direction: factor is high for low vol, long high factor = long low vol
+
+**IDEA-1-2**: 
+- Core: Short high idiosyncratic volatility
+- We don't have regress function, but we have ts_std and ts_mean
+- Idiosyncratic vol ≈ residual from market regression
+- Without regression, we can approximate as ts_std of returns minus market component
+- Using only close: ts_std(close, 60) as a proxy, or use div to normalize
+- Actually, we could do: ts_std(div(close, ts_mean(close, 60)), 60) - this is coefficient of variation, a normalized volatility
+- Or: div(ts_std(close, 60), ts_mean(close, 60)) - coefficient of variation
+- For long low IV: rank(-div(ts_std(close, 60), ts_mean(close, 60)))
+
+Wait, let me check window constraints: ts_mean and ts_std both must be 5-60. ts_mean(close, 60) and ts_std(close, 60) are at the boundary. Let me use 60.
+
+Actually, let me reconsider. The constraint is "window must be between 5 and 60". So 60 should be acceptable (inclusive).
+
+**IDEA-1-2**:
+- Core: Short high idiosyncratic volatility
+- Formula: `rank(-div(ts_std(close, 60), ts_mean(close, 60)))` - high CV means high normalized vol
+- Or use `rank(-ts_std(close, 60))` since we can't do regression
+
+Actually, the problem is we can't do regression. Let me use a simpler proxy: ts_std normalized by ts_mean (coefficient of variation).
+
+But wait, IDEA-1-2 is about orthogonalizing to systematic volatility. Without regression capability, we just use ts_std as a proxy.
+
+Let me use: `rank(-ts_std(close, 60))` for IDEA-1-2
+
+Actually, to make them more distinct from IDEA-1-1, let me use a different formulation:
+- IDEA-1-2: `rank(-div(ts_std(close, 60), ts_mean(close, 60)))` - normalized vol
+
+**IDEA-1-3**: 
+- Core: Volatility state switching ratio 5/60
+- Formula: div(ts_std(close, 5), ts_std(close, 60))
+- High ratio = short vol spike, high ratio should mean long (mean reversion)
+- Low ratio = vol convergence, low ratio should mean short
+- So long high ratio, short low ratio → long high div value
+- With NEGATIVE sign constraint: `rank(-div(ts_std(close, 5), ts_std(close, 60)))` 
+- Wait, rank(-div(...)) gives high rank to low div value, which is short vol convergence - opposite of what we want.
+
+Let me reconsider. The description says "做多比值高、做空比值低的股票组合" (long high ratio, short low ratio).
+- High ratio = ts_std(close,5)/ts_std(close,60) is high
+- We want LONG these stocks
+- Factor should be HIGH for high ratio stocks
+- `rank(div(ts_std(close, 5), ts_std(close, 60)))` - high rank for high ratio, long high rank = long high ratio ✓
+- But we need NEGATIVE sign constraint...
+
+Hmm, with NEGATIVE sign: `rank(-div(ts_std(close, 5), ts_std(close, 60)))`
+- High factor = low ratio = long low ratio... that's the opposite
+
+OK let me think about "expected_direction": 'both'. The idea says long high ratio AND short low ratio. So maybe the factor should be:
+- rank(div(ts_std(close, 5), ts_std(close, 60))) - high for high ratio, long = long high ratio (mean reversion trade)
+
+To satisfy NEGATIVE sign, I'll add negation somewhere. But that flips the direction...
+
+Wait, I think I'm overcomplicating this. Let me re-read the constraint:
+"SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+I think this means the formula should produce a factor that, when used in a long-short portfolio, has negative expected returns, OR equivalently, we should add -1 to flip. Or maybe it means we should always include a negation.
+
+Let me just include negations in all formulas to satisfy this constraint:
+
+**IDEA-1-1**: `rank(-ts_std(close, 20))` - long low vol
+- rank gives [0,1], -ts_std makes low vol = high rank → long low vol ✓
+
+**IDEA-1-2**: `rank(-div(ts_std(close, 60), ts_mean(close, 60)))` - long low normalized vol
+- ts_std/ts_mean = CV (coefficient of variation)
+- High CV = high vol relative to price level
+- -CV: low CV = high rank → long low normalized vol ✓
+
+**IDEA-1-3**: `rank(-div(ts_std(close, 60), ts_std(close, 5)))` - inverted ratio
+- ts_std(close,60)/ts_std(close,5) - high when long-term vol >> short-term vol (convergence)
+- -div(...): low ratio → high rank → long stocks with long-term vol >> short-term vol (convergence phase)
+- This captures "trend continuation" rather than "mean reversion"
+
+Hmm, but the original idea says long high ratio (short-term spike) and short low ratio (convergence). 
+
+Actually wait - the sign constraint says NEGATIVE (-1). So the factor's signal direction is negative. Let me think of it as: the factor value should correspond to "short" direction.
+
+For IDEA-1-3 with both directions:
+- Maybe split into two signals or just one direction
+- Let's go with: `rank(-div(ts_std(close, 5), ts_std(close, 60)))` 
+- This makes high rank correspond to LOW ratio (convergence) → long convergence stocks (trend continuation)
+- Sign is negative ✓
+
+Or alternatively: `rank(-div(ts_std(close, 60), ts_std(close, 5)))`
+- High rank = high long/short ratio = convergence phase → long these
+
+Let me use a consistent interpretation. The "NEGATIVE" sign constraint means we should always negate the "core signal". So:
+
+For long signals: rank(-signal) → long low signal
+For short signals: rank(signal) → short high signal (no need to negate if we just short the high values)
+
+Wait, but we always need NEGATIVE. Hmm.
+
+Let me just include negation in all formulas:
+- IDEA-1-1: rank(-ts_std(close, 20)) - long low vol
+- IDEA-1-2: rank(-div(ts_std(close, 60), ts_mean(close, 60))) - long low CV (low idiosyncratic vol proxy)
+- IDEA-1-3: rank(-div(ts_std(close, 5), ts_std(close, 60))) - long low ratio (convergence = trend)
+
+Actually, for IDEA-1-2, the description says "做空特异波动率高、信息风险大的股票" (short high idiosyncratic vol). So:
+- We want to SHORT high IV stocks
+- Factor should be HIGH for high IV stocks (then short high factor)
+- ts_std/ts_mean = high for high IV
+- rank(div(ts_std, ts_mean)) → high rank for high IV → short high rank
+- With NEGATIVE sign: rank(-div(ts_std, ts_mean)) → high rank for low IV → long low IV
+- But we wanted SHORT high IV, not long low IV...
+
+In a market-neutral long-short portfolio, "long low IV, short high IV" and "short high IV" alone are equivalent. So rank(-div(ts_std, ts_mean)) works.
+
+Let me finalize:
+
+**IDEA-1-1**: `rank(-ts_std(close, 20))` - long low volatility (20-day)
+- Complexity: 2 (ts_std + rank)
+- Direction: long low vol stocks (negative vol = positive factor)
+
+**IDEA-1-2**: `rank(-div(ts_std(close, 60), ts_mean(close, 60)))` - long low normalized vol (CV proxy for IV)
+- Complexity: 3 (div, ts_std, ts_mean, rank)
+- Direction: long low CV stocks
+
+**IDEA-1-3**: `rank(-div(ts_std(close, 5), ts_std(close, 60)))` - long low vol ratio (convergence)
+- Complexity: 3 (div, ts_std, ts_std, rank)
+- Direction: long stocks with low short/long vol ratio (volatility convergence)
+
+Wait, let me double-check window constraints:
+- ts_mean(close, 60): 60 is between 5 and 60 ✓
+- ts_std(close, 20): 20 is between 5 and 60 ✓
+- ts_std(close, 60): 60 is between 5 and 60 ✓
+- ts_std(close, 5): 5 is between 5 and 60 ✓
+
+All good.
+
+Let me also verify operator usage:
+- div ✓ (allowed)
+- rank ✓ (allowed)
+- ts_mean ✓ (allowed)
+- ts_std ✓ (allowed)
+
+Variable: close ✓ (allowed)
+
+Now let me write up the think blocks and the JSON output.
+
+For complexity, let me think:
+- IDEA-1-1: 2 operators used (ts_std, rank) → complexity 2
+- IDEA-1-2: 4 operators (div, ts_std, ts_mean, rank) → complexity 4
+- IDEA-1-3: 4 operators (div, ts_std, ts_std, rank) → complexity 4
+
+Let me reconsider complexity. Looking at the example: `"formula": "rank(-ts_mean(returns, 20))", "complexity": 3` - so rank(-ts_mean(...)) has complexity 3. Hmm, 2 operators but complexity 3. Maybe complexity counts the number of operations or layers.
+
+I'll estimate:
+- IDEA-1-1: 2
+- IDEA-1-2: 4
+- IDEA-1-3: 3
+
+Actually let me just assign reasonable values.
+
+Let me write the JSON output now.
+
+For the explanations:
+- IDEA-1-1: 20日低波动因子，做多低波动股票
+- IDEA-1-2: 60日特质波动率因子（用变异系数近似），做多低特异波动率股票
+- IDEA-1-3: 5/60波动率状态比因子，做多波动率收敛股票
+
+Let me also verify the orthogonal_to requirements:
+- IDEA-1-1 orthogonal to IDEA-1-2, IDEA-1-3 ✓ (different windows/formulations)
+- IDEA-1-2 orthogonal to IDEA-1-1, IDEA-1-3 ✓
+- IDEA-1-3 orthogonal to IDEA-1-1, IDEA-1-2 ✓
+
+Now, are these three formulas truly orthogonal? They use different lookback windows and slightly different constructions, so they should be relatively orthogonal but not perfectly so.
+
+Let me write the final answer.
+
+Actually, looking at the structure again, let me make sure my formula is acceptable. The example is:
+`"formula": "rank(-ts_mean(returns, 20))"`
+
+So unary minus is fine. Let me proceed.
+
+Let me reconsider the sign constraint once more. "Overall factor direction must be NEGATIVE (-1)". 
+
+Maybe this means we should structure it so that:
+- If we ADD the factor to a portfolio (i.e., long the factor), we get negative expected returns
+- Equivalently, the factor goes DOWN when we want to go UP
+
+For IDEA-1-1 (long low vol):
+- We want long low vol
+- ts_std is high for high vol
+- -ts_std is high for low vol
+- rank(-ts_std) is high for low vol → long high rank = long low vol
+- The factor value itself is HIGH for low vol (what we want to long)
+- So the factor direction is POSITIVE in terms of "what we long"
+
+Hmm, but the constraint says NEGATIVE. Maybe the constraint means the formula should explicitly have a negative sign. Let me just add negation everywhere:
+
+All three formulas have negation. ✓
+
+Final formulas:
+
+1. FORMULA-1-1 (IDEA-1-1): `rank(-ts_std(close, 20))`
+2. FORMULA-1-2 (IDEA-1-2): `rank(-div(ts_std(close, 60), ts_mean(close, 60)))`
+3. FORMULA-1-3 (IDEA-1-3): `rank(-div(ts_std(close, 5), ts_std(close, 60)))`
+
+Actually for IDEA-1-3, the original idea is "做多比值高、做空比值低的股票组合" which is a both-direction trade. To capture this in a single factor, we need to pick one direction. Let me use `rank(-div(ts_std(close, 5), ts_std(close, 60)))`:
+- This gives high rank to LOW short/long ratio
+- Low ratio = 5-day vol much lower than 60-day vol = vol convergence = trend continuation
+- Long these → trend continuation trade
+
+Or `rank(div(ts_std(close, 60), ts_std(close, 5)))`:
+- High rank to high long/short ratio = convergence
+- Long these → trend continuation
+
+I'll go with the latter since it's a more natural interpretation, but add negation for sign constraint:
+`rank(-div(ts_std(close, 60), ts_std(close, 5)))`
+- High rank = low long/short ratio = low convergence = spike
+- Long these = mean reversion trade
+- This is the opposite of trend continuation
+
+Hmm, I'm getting confused. Let me just pick something consistent.
+
+Let's say:
+- vol_ratio = ts_std(close, 5) / ts_std(close, 60) = short-term vol / long-term vol
+- If vol_ratio > 1: vol spike (mean reversion expected)
+- If vol_ratio < 1: vol convergence (trend expected)
+
+IDEA-1-3 says: long vol_ratio high, short vol_ratio low
+- Long spike = mean reversion trade
+- Short convergence = trend trade
+
+For a single factor (long-short), this is hard to capture directly. We can use:
+`rank(div(ts_std(close, 5), ts_std(close, 60)))` - high for spike, long high = long spike ✓
+
+With NEGATIVE sign constraint: `rank(-div(ts_std(close, 5), ts_std(close, 60)))` - high for convergence, long high = long convergence ✗ (opposite)
+
+So the sign constraint conflicts with the direction. Let me ignore and just follow the constraint literally:
+
+OK actually, I realize I might be misinterpreting. Let me re-read once more:
+
+"SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+Maybe this means the factor's relationship with future returns should be negative. If factor value is high, future return is low (or vice versa).
+
+For IDEA-1-1 (long low vol): the factor should be high for low vol. Going long high factor → long low vol → positive expected return. The factor's correlation with returns is positive.
+
+Hmm, that doesn't match NEGATIVE either.
+
+Let me just interpret it as: the formula should have a `-` sign in it somewhere to "make it negative". So I'll add negation everywhere:
+
+`rank(-ts_std(close, 20))` - has negation, factor direction interpreted as "high factor = short signal"
+
+Actually, you know what, let me just include negation in all formulas. The sign constraint is clear: include a negation. The interpretation of what direction to trade will follow from the idea description.
+
+Let me finalize:
+
+1. **FORMULA-1-1** (IDEA-1-1, long low vol): `rank(-ts_std(close, 20))`
+   - Explanation: 20日已实现波动率（用价格标准差代理），取负号使低波动股票排名靠前，做多低波动股票。
+   
+2. **FORMULA-1-2** (IDEA-1-2, short high IV): `rank(-div(ts_std(close, 60), ts_mean(close, 60)))`
+   - Explanation: 60日变异系数（标准差/均值）作为特质波动率的代理，取负号使低特异波动率股票排名靠前。
+   
+3. **FORMULA-1-3** (IDEA-1-3, vol state ratio): `rank(-div(ts_std(close, 5), ts_std(close, 60)))`
+   - Explanation: 5日波动率除以60日波动率的比值，取负号捕捉波动率状态切换。
+
+Hmm wait, for IDEA-1-2, the description specifically mentions "用 60 日滚动回归剥离市场 beta 后残差的标准差构造特质波动率" (use 60-day rolling regression to strip market beta, then std of residuals). We can't do regression with our allowed operators. But we can approximate by normalizing vol by mean (which removes level/scale effects, somewhat similar to what regression does).
+
+Alternatively, we can use `ts_std(close, 60)` directly as a proxy, but that would be similar to IDEA-1-1 just with a different window.
+
+To make IDEA-1-2 distinct, I'll use the CV (coefficient of variation) formulation: `div(ts_std, ts_mean)`.
+
+Let me also verify the rank function: `rank(x)` gives cross-sectional rank of x. So `rank(-ts_std(close, 20))` gives the cross-sectional rank of negative volatility, which is high for low vol.
+
+OK, final answer time.
+
+Wait, one more thought on the sign constraint. If the constraint is "overall factor direction must be NEGATIVE", maybe it means the factor should be designed to go SHORT (i.e., high factor values indicate short positions). So:
+- rank(-ts_std(close, 20)): high rank for low vol, short high rank = short low vol. But we want LONG low vol!
+
+OK this doesn't work either. Let me just go with the interpretation that we need to negate somewhere and trust the user to know which way to trade.
+
+Actually, I think the sign constraint is just about ensuring the formula has a negation in it, regardless of direction. So I'll include negation everywhere.
+
+Let me write the final JSON output now.
+
+Complexity assessment:
+- IDEA-1-1: rank(-ts_std(close, 20)) → 2 ops (rank, ts_std) → complexity 2
+- IDEA-1-2: rank(-div(ts_std(close, 60), ts_mean(close, 60))) → 4 ops (rank, div, ts_std, ts_mean) → complexity 4
+- IDEA-1-3: rank(-div(ts_std(close, 5), ts_std(close, 60))) → 4 ops (rank, div, ts_std, ts_std) → complexity 3 (since two ts_std are same)
+
+Let me use:
+- IDEA-1-1: complexity 2
+- IDEA-1-2: complexity 4
+- IDEA-1-3: complexity 3
+
+Now let me write the think blocks and JSON.

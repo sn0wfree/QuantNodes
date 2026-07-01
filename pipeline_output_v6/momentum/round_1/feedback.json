@@ -1,0 +1,13 @@
+{
+  "round_num": 1,
+  "best_ir": 0.12840847255644636,
+  "avg_ir": 0.018257635301876393,
+  "valid_count": 37,
+  "best_formulas": [],
+  "failed_patterns": [],
+  "suggestions": [],
+  "stats": {
+    "improvement_vs_prev": null,
+    "total_mcts_nodes": 37
+  }
+}

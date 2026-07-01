@@ -1,0 +1,684 @@
+Let me analyze the constraints carefully:
+
+1. ALLOWED OPERATORS: div, mul, rank, sign, sub, ts_corr
+2. ALLOWED VARIABLES: open, volume
+3. PARAMETER RANGES: ts_corr window must be between 5 and 30
+4. SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)
+5. Use ONLY function call format, NO arithmetic operators
+6. explanation must be <80 characters, no structured fields
+
+Let me translate each idea:
+
+**IDEA-1-1: 量价背离反转 (Price up but volume shrinking = short)**
+- Price rising, volume declining = buying exhaustion
+- Expected direction: short (negative)
+- Lookback: 20
+- Mechanism: When price goes up but volume goes down, this is bearish divergence
+- Using ts_corr(open, volume, 20) - when price and volume are correlated (going same direction), this is healthy. When diverging (price up, volume down), correlation should be low or negative.
+- Wait, for short direction, we want to short when divergence happens. If correlation between price and volume is low/negative, that's divergence.
+- Actually, let me think again. "Price up but volume shrinking" means open is going up but volume is going down. The correlation between open changes and volume would be low or negative during divergence.
+- For a short signal: we want the factor to be positive when divergence occurs (since we expect negative returns). Wait no, we need the factor to be negative when we expect negative returns? No wait, sign constraint says factor must be NEGATIVE direction (-1).
+- The factor direction being negative means: higher factor value = more negative expected returns? Or the factor itself should produce negative values?
+- "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)" - I think this means the factor should be negated so that it has negative correlation with future returns. Since we want to short (expect negative returns), the factor should be positive when returns are expected to be negative.
+
+Wait, let me reconsider. In quant factors, "direction" typically refers to the sign of the relationship between factor and returns. A factor with direction "short" or "-1" means: when factor is high, future returns are low (short the high factor values).
+
+Actually, in this context, I think "NEGATIVE direction" means the factor should be negated, i.e., the raw signal should be multiplied by -1 to get the final factor. This is because for "short" ideas, we want high factor values to predict low returns.
+
+So for IDEA-1-1 (short), we want the factor to predict low future returns, so the formula should be negated.
+
+Let me think about each:
+
+**IDEA-1-1: Short signal for price-volume divergence**
+- Mechanism: When open is rising but volume is falling (divergence), expect reversal downward
+- Using ts_corr(open, volume, 20) - this gives the correlation. If open and volume move together, correlation is high. If diverging, correlation is low.
+- Wait, but the idea is about "price up but volume down". This is a specific pattern, not just low correlation. But with our limited operators, we can use correlation.
+- Actually, if open is trending up and volume is trending down, the correlation would be negative or low.
+- For short: we want high factor when expecting negative returns
+- If we use ts_corr(open, volume, 20), when correlation is low/negative, that means divergence, which is bearish
+- So the factor should be high when ts_corr is low
+- Factor = sign(-ts_corr(rank(open), rank(volume), 20))
+- This makes the factor negative when correlation is positive, positive when correlation is negative
+- Wait, with sign constraint of -1, we multiply by -1
+- sign(-ts_corr(...)) - the outer sign ensures the factor is in [-1, 1], and the negation ensures direction is -1
+- Actually, let me use: sign(sub(0, ts_corr(rank(open), rank(volume), 20))) which is equivalent to -ts_corr
+- Or just use sign(-ts_corr(...)) - but we can't use - operator
+
+Wait, "NO arithmetic operators (+,-,*,/)" - but we have sub. So sub(0, x) = -x.
+
+For IDEA-1-1:
+- ts_corr(rank(open), rank(volume), 20) - measures price-volume correlation
+- When this is low/negative, there's divergence (bearish)
+- For short direction, we want factor to be high when expecting negative returns
+- So factor = sign(sub(0, ts_corr(rank(open), rank(volume), 20))) = -ts_corr
+- Formula: sign(sub(0, ts_corr(rank(open), rank(volume), 20)))
+
+Hmm, but sign(sub(0, x)) = sign(-x) = -sign(x). So this is essentially -sign(ts_corr).
+
+Let me reconsider. The idea is:
+- Price up + volume down = bearish divergence = expect price to fall = short
+- ts_corr(open, volume, 20) is positive when they move together, negative when they diverge
+- When ts_corr is negative (divergence), we want to short, so factor should be high
+- Factor = -ts_corr would be high when correlation is negative
+- But sign(-ts_corr) would be -1 when correlation is positive, +1 when negative
+
+For a short factor (predicts negative returns), we want:
+- High factor value → low future returns
+- So when divergence (negative correlation), factor should be high
+- Factor = -ts_corr achieves this
+
+Formula: sign(sub(0, ts_corr(rank(open), rank(volume), 20)))
+
+Actually, using sign() at the end standardizes to [-1, 1]. Let me just use sub directly.
+
+For IDEA-1-1:
+Formula: sub(0, ts_corr(rank(open), rank(volume), 20))
+This gives negative values when correlation is positive (healthy trend), and positive values when correlation is negative (divergence/bearish). For short direction, high factor = expect negative returns. ✓
+
+But wait, we need to wrap in sign() for the constraint? Let me re-read.
+
+"SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+I think this means the final factor should have a negative sign relationship with returns. So we need to negate the signal.
+
+Actually, I think the constraint means the formula should output values that, when used for ranking, predict negative returns. So for a short idea, the formula should be negated.
+
+Let me finalize:
+
+**IDEA-1-1 (short, divergence):**
+- Raw: ts_corr(rank(open), rank(volume), 20) - positive when correlated, negative when diverging
+- Divergence (negative correlation) = bearish = short
+- For short direction: high factor = expect negative returns
+- So we want factor to be high when ts_corr is negative
+- Factor = -ts_corr = sub(0, ts_corr(...))
+- Formula: sign(sub(0, ts_corr(rank(open), rank(volume), 20)))
+
+**IDEA-1-2 (long, resonance):**
+- Price up + volume up = healthy trend = long
+- ts_corr positive = resonance = bullish
+- For long direction... wait, the constraint says SIGN must be NEGATIVE
+- "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+Hmm, but IDEA-1-2 expects long direction. The constraint says direction must be negative. This is a conflict.
+
+Let me re-read: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+I think this means the factor formula itself should be negated (multiplied by -1). So regardless of the idea's expected_direction, the formula output should be negated.
+
+This means for IDEA-1-2 (long), even though the idea suggests long, we need to negate the signal. This is a bit confusing, but I'll follow the constraint.
+
+Wait, maybe the constraint means the factor should be constructed such that it has a negative sign in front, i.e., -factor. This would flip the direction.
+
+For IDEA-1-2 (long, resonance):
+- ts_corr positive = resonance = bullish = long
+- But we need to negate
+- Factor = -ts_corr
+- When correlation is positive (resonance), factor is negative
+- This would mean we short when there's resonance, which contradicts the idea
+
+This is confusing. Let me re-read the problem.
+
+"Each formula must have id (FORMULA-{round}-{idx}), idea_id, formula (function call format like op(arg1, arg2)), complexity, a_share_compatible, explanation."
+
+"sign(-ts_corr(rank(open), rank(volume), 10))" - this is the example.
+
+The example uses sign(-ts_corr(...)). The negation is in the formula. The "NEGATIVE direction" constraint means we need to put a -1 sign on the factor.
+
+I think the interpretation is: the final factor should be constructed as -1 * raw_signal. This ensures the factor has a "negative" direction in terms of the formula structure.
+
+For all three ideas, regardless of expected_direction, the formula should be negated.
+
+But wait, that doesn't make sense for a long idea. If we negate a long signal, it becomes a short signal.
+
+Let me look at the example again: "sign(-ts_corr(rank(open), rank(volume), 10))"
+- ts_corr is positive when open and volume are correlated
+- -ts_corr is negative when they're correlated
+- sign(-ts_corr) is -1 when correlated, +1 when not correlated
+
+Hmm, maybe the constraint is about the sign of the coefficient, not the interpretation. In factor models, the sign indicates the direction of the trade. Negative sign means we go short on high factor values.
+
+I think the safest interpretation is: the formula should include a negation (sub(0, x) or similar) to ensure the output has a negative relationship with the intended signal.
+
+Let me just follow the constraint literally: include a negation in the formula.
+
+**IDEA-1-1 (short, divergence):**
+- Divergence: ts_corr is low/negative
+- Short means: high factor = expect negative returns
+- Factor = sub(0, ts_corr(rank(open), rank(volume), 20)) makes factor positive when ts_corr is negative (divergence)
+- This aligns with short: high factor when divergence, expect negative returns
+- Formula: sub(0, ts_corr(rank(open), rank(volume), 20))
+
+**IDEA-1-2 (long, resonance):**
+- Resonance: ts_corr is positive
+- Long means: high factor = expect positive returns
+- Factor = ts_corr(rank(open), rank(volume), 10) makes factor positive when resonance
+- But constraint says direction must be NEGATIVE
+- So we negate: sub(0, ts_corr(rank(open), rank(volume), 10))
+- This makes factor positive when ts_corr is negative (no resonance), which contradicts the long idea
+- But we follow the constraint
+
+Hmm, this is tricky. Let me re-read the constraint one more time.
+
+"SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+I think this is a meta-constraint that overrides the individual idea directions. The system wants all factors to be constructed with a negative sign. This might be for diversification or to test the model's ability to follow constraints.
+
+So for all formulas, I'll include a negation.
+
+**IDEA-1-1 (short, divergence, lookback 20):**
+- Core: price-volume divergence predicts reversal down
+- ts_corr(rank(open), rank(volume), 20) measures co-movement
+- Divergence = low/negative correlation
+- For short: want high factor when divergence
+- Negate: sub(0, ts_corr(rank(open), rank(volume), 20))
+- Formula: sub(0, ts_corr(rank(open), rank(volume), 20))
+
+**IDEA-1-2 (long, resonance, lookback 10):**
+- Core: price-volume resonance predicts continuation up
+- ts_corr(rank(open), rank(volume), 10) measures co-movement
+- Resonance = high positive correlation
+- For long: want high factor when resonance
+- But must negate: sub(0, ts_corr(rank(open), rank(volume), 10))
+- Formula: sub(0, ts_corr(rank(open), rank(volume), 10))
+
+Wait, but if we negate a long signal, it becomes a short signal. The idea says "long" but the formula would be short. This seems wrong.
+
+Let me reconsider. Maybe "NEGATIVE direction" means the factor should be negated in the formula structure, but the semantic meaning depends on the idea. In other words, the formula is the raw alpha, and when combined with the -1 sign, it gives the final factor.
+
+For IDEA-1-2 (long):
+- Raw alpha: ts_corr(open, volume, 10) - positive when resonance
+- Final factor: -1 * ts_corr - negative when resonance
+- This means: when resonance, factor is low. Low factor = long position?
+- In quant, typically rank by factor: top quintile = long, bottom quintile = short
+- If factor is -1 * resonance, then high resonance = low factor = bottom quintile = short
+- This contradicts the long idea
+
+I'm overthinking this. Let me just include the negation as required and trust that the system knows what it's doing. The constraint is explicit: "Overall factor direction must be NEGATIVE (-1)".
+
+Actually, I realize the example "sign(-ts_corr(rank(open), rank(volume), 10))" shows the negation within the sign() function. The sign() function standardizes to [-1, 1], and the negation flips the meaning.
+
+Let me think about this differently. In alpha factor design:
+- A "positive" factor: higher value → higher future returns → go long
+- A "negative" factor: higher value → lower future returns → go short
+
+The constraint says direction must be NEGATIVE. So all our factors should be "negative" factors: higher value → lower future returns.
+
+For IDEA-1-1 (short, divergence):
+- Divergence predicts negative returns
+- Higher divergence = more negative returns expected
+- We want factor to be high when divergence is high
+- ts_corr is low/negative when diverging
+- -ts_corr is high when diverging
+- Factor = -ts_corr = sub(0, ts_corr(...))
+- High factor = high divergence = negative returns ✓
+
+For IDEA-1-2 (long, resonance):
+- Resonance predicts positive returns
+- Higher resonance = more positive returns expected
+- We want factor to be high when resonance is high
+- ts_corr is high when resonating
+- But we need to negate: -ts_corr
+- This makes factor high when ts_corr is negative (no resonance)
+- High factor = no resonance = ... this doesn't align with the long idea
+
+This is confusing. The constraint forces us to negate all signals, which flips the semantic meaning.
+
+Maybe the constraint is designed to test if we can follow instructions even when they conflict with the idea's direction. Or maybe I'm misunderstanding the constraint.
+
+Let me look at the example one more time: "sign(-ts_corr(rank(open), rank(volume), 10))"
+
+This formula:
+- Computes correlation between rank(open) and rank(volume) over 10 days
+- Negates it
+- Takes sign
+- Result: -1 when correlated, +1 when not correlated
+
+If we interpret this as a factor: high value (+1) means no correlation, low value (-1) means correlated.
+- For a "negative direction" factor: high value = short
+- So: no correlation = short, correlated = long
+- This aligns with the idea that correlation (resonance) is good (long), and no correlation is bad (short)
+
+Wait! That's actually the correct interpretation for IDEA-1-2 (long, resonance):
+- Resonance (high correlation) = good = long
+- No resonance (low correlation) = bad = short
+- sign(-ts_corr) = +1 when not correlated, -1 when correlated
+- For negative direction factor: high value = short
+- sign(-ts_corr) = +1 (high) when not correlated → short ✓
+- sign(-ts_corr) = -1 (low) when correlated → long ✓
+
+So the negation in the formula, combined with the negative direction interpretation, actually aligns with the long idea for IDEA-1-2!
+
+Let me verify with IDEA-1-1:
+- Divergence (negative correlation) = bad = short
+- Resonance (positive correlation) = good = long
+- sign(-ts_corr) = +1 when ts_corr is negative (divergence) → short ✓
+- sign(-ts_corr) = -1 when ts_corr is positive (resonance) → long ✓
+
+This works! The "negative direction" constraint means the factor is interpreted as: high value = short. The negation in the formula ensures that the signal aligns with this interpretation.
+
+So the pattern is:
+- For "short" ideas: the bad condition (which we want to short) should map to high factor values
+- For "long" ideas: the good condition (which we want to long) should map to low factor values (so bottom quintile = long)
+
+Both are achieved by negating the raw signal.
+
+Let me finalize:
+
+**IDEA-1-1 (short, divergence, lookback 20):**
+- Divergence = low/negative ts_corr
+- For negative direction factor: high value = short
+- We want divergence → high factor → short
+- -ts_corr: high when ts_corr is negative (divergence) → high factor → short ✓
+- Formula: sub(0, ts_corr(rank(open), rank(volume), 20))
+
+**IDEA-1-2 (long, resonance, lookback 10):**
+- Resonance = high positive ts_corr
+- For negative direction factor: low value = long
+- We want resonance → low factor → long
+- -ts_corr: low when ts_corr is positive (resonance) → low factor → long ✓
+- Formula: sub(0, ts_corr(rank(open), rank(volume), 10))
+
+**IDEA-1-3 (short, volume on decline, lookback 30):**
+- "放量下跌" = high volume on price decline = institutional selling
+- Mechanism: when open is declining and volume is high, it's bearish
+- Using our limited operators: we can use correlation or div/mul
+- ts_corr(open, volume, 30): when both move together (open down, volume up = negative correlation? or positive?)
+- Wait, if open goes down and volume goes up, that's a negative correlation
+- For negative direction factor: high value = short
+- -ts_corr: high when ts_corr is negative (open down, volume up) → high factor → short ✓
+- Formula: sub(0, ts_corr(rank(open), rank(volume), 30))
+
+Actually, for IDEA-1-3, the idea is specifically about "下跌放量" (decline with high volume). This is when price goes down and volume goes up simultaneously. The correlation between open and volume would be negative in this case (they move in opposite directions).
+
+So:
+- ts_corr(open, volume) is negative when open down + volume up (bearish)
+- -ts_corr is positive in this case
+- For negative direction factor: high value = short
+- High factor when bearish → short ✓
+
+Formula: sub(0, ts_corr(rank(open), rank(volume), 30))
+
+Let me also consider using mul or div for IDEA-1-3 to capture the "decline with high volume" pattern more explicitly. But with our limited operators (div, mul, rank, sign, sub, ts_corr), the options are limited.
+
+Actually, I can use rank(open) and rank(volume) and then use div or mul to create a ratio. But the idea is about correlation, not ratio.
+
+Let me think about mul: mul(rank(open), rank(volume))
+- When both are high (open up, volume up): mul is high
+- When both are low: mul is low
+- When open up, volume down: mul is moderate
+- When open down, volume up: mul is moderate
+- This doesn't capture the specific "decline with high volume" pattern
+
+ts_corr is better for capturing the co-movement pattern.
+
+Let me also consider using div:
+- div(rank(volume), rank(open)): high when volume high relative to open
+- This captures "high volume relative to price"
+- For decline with high volume: open is low, volume is high, so ratio is high
+- For advance with high volume: open is high, volume is high, ratio is moderate
+
+This could work for IDEA-1-3:
+- div(rank(volume), rank(open)) is high when volume is high relative to open
+- For "decline with high volume": open rank is low, volume rank is high, ratio is high
+- For negative direction factor: high value = short
+- High ratio → high factor → short ✓
+
+But this doesn't distinguish between "decline with high volume" and "any time volume is high relative to open". The correlation approach is more specific.
+
+I'll stick with ts_corr for all three.
+
+Let me also think about the sign() wrapper. The example uses sign(-ts_corr(...)). Should I wrap in sign()?
+
+The sign() function standardizes the output to [-1, 1]. This is useful for making the factor more robust to outliers. The example uses it, so I'll use it too.
+
+Formula format: sign(sub(0, ts_corr(rank(open), rank(volume), N)))
+
+Or: sign(sub(0, ts_corr(rank(open), rank(volume), N)))
+
+Wait, sign() takes a single argument. Let me check: sign(x) returns -1, 0, or 1 based on the sign of x.
+
+sign(sub(0, ts_corr(rank(open), rank(volume), 20))) = sign(-ts_corr(...))
+
+This is equivalent to the example formula pattern.
+
+Let me finalize all three:
+
+**FORMULA-1-1 (IDEA-1-1):**
+- Formula: sign(sub(0, ts_corr(rank(open), rank(volume), 20)))
+- Complexity: 3 (sign, sub, ts_corr, rank, rank = 5 operators, but nested)
+- Wait, complexity is subjective. Let me count operators: sign, sub, ts_corr, rank, rank = 5 unique operators used
+- Actually, looking at the example: "rank(-ts_mean(returns, 20))" has complexity 3
+- The example has 2 operators: rank, ts_mean. But complexity is 3.
+- Maybe complexity is the nesting depth or total operator count.
+- For our formula: sign(sub(0, ts_corr(rank(open), rank(volume), 20)))
+  - Depth: 4 (sign → sub → ts_corr → rank)
+  - Operators: sign, sub, ts_corr, rank (rank used twice)
+  - I'll say complexity 4
+
+**FORMULA-1-2 (IDEA-1-2):**
+- Formula: sign(sub(0, ts_corr(rank(open), rank(volume), 10)))
+- Complexity: 4
+
+**FORMULA-1-3 (IDEA-1-3):**
+- Formula: sign(sub(0, ts_corr(rank(open), rank(volume), 30)))
+- Complexity: 4
+
+Wait, these are all the same structure. Let me differentiate them.
+
+For IDEA-1-3, I could use a different approach. The idea is "放量下跌" (volume expansion on decline). This is specifically about the interaction between price decline and volume increase.
+
+Using mul: mul(rank(open), rank(volume))
+- When open is high (price up), volume high: product is very high
+- When open is low (price down), volume high: product is low * high = moderate
+- When open is high, volume low: product is high * low = moderate
+- When both low: product is low
+
+This doesn't capture the specific pattern.
+
+Using div: div(rank(volume), rank(open))
+- When volume high, open low (decline with volume): ratio is high
+- When volume high, open high: ratio is moderate
+- When volume low, open low: ratio is moderate
+- When both moderate: ratio is moderate
+
+This captures "high volume relative to low price" = decline with volume. For negative direction factor, high ratio = short. This works for IDEA-1-3.
+
+But wait, div(rank(volume), rank(open)) is also high when volume is just generally high and open is just generally low, regardless of the specific pattern. It doesn't capture the temporal co-movement.
+
+ts_corr is better for capturing the co-movement pattern. Let me stick with ts_corr for all three.
+
+Actually, let me think more carefully about IDEA-1-3. The idea says "下跌放量反映机构知情交易者出货". This is about institutional selling on decline. The key signal is: when price drops AND volume surges simultaneously.
+
+ts_corr captures this: when open and volume move in opposite directions (negative correlation), it suggests divergence. In the context of decline with volume, this would be a negative correlation.
+
+For a negative direction factor: high value = short
+-ts_corr: high when ts_corr is negative (divergence/decline with volume) → high factor → short ✓
+
+This works. Let me keep ts_corr for all three.
+
+But to differentiate, let me use different lookback windows as specified:
+- IDEA-1-1: 20
+- IDEA-1-2: 10
+- IDEA-1-3: 30
+
+And the formulas are structurally similar but with different windows.
+
+Actually, for IDEA-1-3, I could also consider using mul or div to make it more distinct. Let me try:
+
+div(rank(volume), rank(open))
+- High when volume > open (relatively)
+- For "decline with volume": open is declining (low rank), volume is high (high rank) → ratio is high
+- For "advance with volume": open is high (high rank), volume is high (high rank) → ratio is moderate
+- For "decline without volume": open low, volume low → ratio is moderate
+- For "advance without volume": open high, volume low → ratio is low
+
+So div(rank(volume), rank(open)) is specifically high when volume is high relative to open. This captures the "放量" (volume expansion) aspect.
+
+For negative direction: sub(0, div(rank(volume), rank(open)))
+- High when volume < open (relatively)
+- Low when volume > open (relatively)
+- For "decline with volume": high volume, low open → ratio high → sub(0, high) = low → low factor → long (for negative direction)
+- This contradicts the short idea!
+
+Wait, let me reconsider. For negative direction factor: high value = short, low value = long.
+
+If div(rank(volume), rank(open)) is high when volume > open (decline with volume), and we want to short this, we need high factor value. So we should NOT negate. But the constraint says we must negate.
+
+If we negate: sub(0, div(...)) = -div(...)
+- High when volume < open
+- Low when volume > open
+- For "decline with volume": low factor → long (for negative direction)
+- This is wrong!
+
+So div doesn't work well with the negation constraint for this idea.
+
+Let me go back to ts_corr. The correlation approach naturally handles the negation:
+- ts_corr negative = decline with volume (or advance without volume)
+- -ts_corr positive = decline with volume
+- For negative direction: high value = short
+- High -ts_corr → high factor → short ✓
+
+This works. I'll use ts_corr for all three.
+
+Actually, wait. For IDEA-1-2 (long, resonance):
+- Resonance = high positive ts_corr
+- -ts_corr is negative (low) when resonance
+- For negative direction: low value = long
+- Low -ts_corr → low factor → long ✓
+
+This also works! The negation flips the meaning, which aligns with the negative direction interpretation.
+
+So for all three ideas, the formula sign(sub(0, ts_corr(rank(open), rank(volume), N))) works correctly when interpreted as a negative direction factor.
+
+Let me finalize:
+
+**FORMULA-1-1 (IDEA-1-1, short, divergence, 20):**
+- Formula: sign(sub(0, ts_corr(rank(open), rank(volume), 20)))
+- Explanation: 20日量价相关性取负，背离时因子走高→做空
+
+**FORMULA-1-2 (IDEA-1-2, long, resonance, 10):**
+- Formula: sign(sub(0, ts_corr(rank(open), rank(volume), 10)))
+- Explanation: 10日量价相关性取负，共振时因子走低→做多
+
+**FORMULA-1-3 (IDEA-1-3, short, volume on decline, 30):**
+- Formula: sign(sub(0, ts_corr(rank(open), rank(volume), 30)))
+- Explanation: 30日量价负相关取负，放量下跌因子走高→做空
+
+Wait, the explanations are too long. Let me shorten them to <80 characters.
+
+"20日量价相关性取负，背离时因子走高→做空" - this is around 20 characters, well under 80.
+
+Actually, let me count: "20日量价相关性取负，背离时因子走高→做空" - that's about 20 characters. Fine.
+
+Let me also check the complexity hint:
+- IDEA-1-1: simple
+- IDEA-1-2: simple
+- IDEA-1-3: medium
+
+For complexity in the output, I need to assign a number. Looking at the example: "rank(-ts_mean(returns, 20))" has complexity 3.
+
+My formulas have 4 levels of nesting and 4-5 operators. I'll assign:
+- FORMULA-1-1: complexity 4
+- FORMULA-1-2: complexity 4
+- FORMULA-1-3: complexity 4 (or 5 for medium hint)
+
+Actually, the complexity_hint in the ideas might be different from the complexity in the output. Let me just use consistent numbers.
+
+Let me also verify the operator usage:
+- FORMULA-1-1 uses: sign, sub, ts_corr, rank, rank - all allowed ✓
+- FORMULA-1-2 uses: sign, sub, ts_corr, rank, rank - all allowed ✓
+- FORMULA-1-3 uses: sign, sub, ts_corr, rank, rank - all allowed ✓
+
+Variables used: open, volume - both allowed ✓
+
+ts_corr window: 20, 10, 30 - all between 5 and 30 ✓ (30 is at the boundary, which should be fine)
+
+Sign constraint: all formulas have sub(0, ...) which negates the signal, making the direction negative ✓
+
+Let me write the final JSON.
+
+Actually, I realize I should double-check the negation. The constraint says "Overall factor direction must be NEGATIVE (-1)". 
+
+If I have sign(sub(0, ts_corr(...))), this is sign(-ts_corr(...)) = -sign(ts_corr(...)).
+- When ts_corr > 0: sign = +1, -sign = -1
+- When ts_corr < 0: sign = -1, -sign = +1
+- When ts_corr = 0: sign = 0, -sign = 0
+
+So the factor is +1 when correlation is negative (divergence), -1 when correlation is positive (resonance).
+
+For a negative direction factor (high value = short):
+- +1 (high) when diverging → short ✓ (for IDEA-1-1)
+- -1 (low) when resonating → long ✓ (for IDEA-1-2)
+
+This aligns with the ideas. The "NEGATIVE direction" constraint means the factor is interpreted as: high values predict low returns (short the high values).
+
+All good. Let me write the JSON.
+
+One more check: the example formula "sign(-ts_corr(rank(open), rank(volume), 10))" has the negation inside sign(). My formula "sign(sub(0, ts_corr(rank(open), rank(volume), 10)))" achieves the same thing using sub(0, x) instead of -x, since we can't use the - operator.
+
+This is correct.
+
+Now for the think block, I need to provide:
+- HYPOTHESIS
+- MECHANISM
+- OPERATOR_RATIONALE
+- PARAMETER_RATIONALE
+- RISK
+- SUGGESTED_OPS
+
+Let me draft this for each idea.
+
+For IDEA-1-1:
+- HYPOTHESIS: When price rises but volume shrinks over 20 days, it indicates buying exhaustion. In A-share T+1 market, retail selling pressure concentrates the next day, forming a short-term top.
+- MECHANISM: ts_corr(rank(open), rank(volume), 20) measures the co-movement. When price and volume diverge, correlation is low/negative. Negating makes the factor high during divergence, triggering short signal.
+- OPERATOR_RATIONALE: rank() normalizes open and volume to comparable scales. ts_corr() captures the temporal co-movement pattern. sub(0, ...) negates for negative direction. sign() standardizes output.
+- PARAMETER_RATIONALE: 20-day lookback captures medium-term divergence patterns, matching the idea's suggestion.
+- RISK: In strong bull markets, divergence can persist for extended periods, causing premature short signals.
+- SUGGESTED_OPS: sign, sub, ts_corr, rank
+
+For IDEA-1-2:
+- HYPOTHESIS: When price and volume rise together (resonance), it reflects genuine capital inflow, making the trend more sustainable. False breakouts in A-share high-frequency rotation tend to reverse quickly.
+- MECHANISM: ts_corr(rank(open), rank(volume), 10) measures short-term co-movement. High positive correlation indicates resonance. Negating makes the factor low during resonance, which (under negative direction interpretation) means long.
+- OPERATOR_RATIONALE: Same as IDEA-1-1 but with shorter window for capturing short-term momentum.
+- PARAMETER_RATIONALE: 10-day lookback captures short-term resonance, suitable for momentum signals.
+- RISK: Short-term correlation can be noisy, leading to false signals in choppy markets.
+- SUGGESTED_OPS: sign, sub, ts_corr, rank
+
+For IDEA-1-3:
+- HYPOTHESIS: When price declines with high volume, it signals institutional informed selling, a leading indicator of fundamental deterioration. Should be avoided (shorted).
+- MECHANISM: ts_corr(rank(open), rank(volume), 30) over 30 days. When open declines and volume expands, correlation is negative. Negating makes factor high during this pattern, triggering short.
+- OPERATOR_RATIONALE: rank() for scale normalization. ts_corr() for co-movement. sub(0, ...) for negation. sign() for standardization.
+- PARAMETER_RATIONALE: 30-day lookback captures the institutional selling pattern over a longer horizon, reducing noise.
+- RISK: Not all volume-price divergences are institutional selling; could be index rebalancing or other non-fundamental flows.
+- SUGGESTED_OPS: sign, sub, ts_corr, rank
+
+Now let me write the final output.
+
+Wait, I need to make sure the explanation is <80 characters and doesn't contain structured fields.
+
+"20日量价相关性取负，背离时因子走高→做空" - let me count: 2+1+2+1+2+1+1+2+1+1+2+1+2 = approximately 20 characters. Fine.
+
+"10日量价相关性取负，共振时因子走低→做多" - similar, fine.
+
+"30日量价负相关取负，放量下跌因子走高→做空" - similar, fine.
+
+Actually, let me be more precise:
+"20日量价相关性取负，背离时因子走高→做空" = 20 chars (Chinese chars are 1 each, digits are 1 each, symbols are 1 each)
+- 20 (2) + 日 (1) + 量 (1) + 价 (1) + 相 (1) + 关 (1) + 性 (1) + 取 (1) + 负 (1) + ， (1) + 背 (1) + 离 (1) + 时 (1) + 因 (1) + 子 (1) + 走 (1) + 高 (1) + → (1) + 做 (1) + 空 (1) = 20 chars
+
+Fine.
+
+Let me finalize the JSON output.
+
+Actually, I want to double-check one thing. The constraint says "NO arithmetic operators (+,-,*,/)". I'm using sub(0, x) which is a function call, not an operator. So this should be fine.
+
+Also, "NO missing parentheses" - let me verify all parentheses are balanced.
+
+sign(sub(0, ts_corr(rank(open), rank(volume), 20)))
+- sign( - 1 open
+  - sub( - 2 open
+    - 0, - 
+    - ts_corr( - 3 open
+      - rank( - 4 open
+        - open - 
+      - ), - close rank
+      - rank( - 5 open
+        - volume - 
+      - ), - close rank
+      - 20 - 
+    - ) - close ts_corr
+  - ) - close sub
+- ) - close sign
+
+Balanced ✓
+
+OK, let me write the final output.
+
+One more thought: the complexity numbers. Looking at the example: "rank(-ts_mean(returns, 20))" has complexity 3. This has 2 unique operators (rank, ts_mean) and 2 levels of nesting. So complexity 3 might mean: number of operators + 1, or something else.
+
+My formulas have 4 unique operators (sign, sub, ts_corr, rank) and 4 levels of nesting. I'll assign complexity 4.
+
+Actually, let me count operators in the example: rank, ts_mean = 2 operators. But complexity is 3. Maybe complexity = number of operators + 1 (for the nesting level)?
+
+Or maybe complexity = total function calls:
+- rank(-ts_mean(returns, 20)) has 2 function calls: rank and ts_mean. But complexity is 3.
+
+Hmm, maybe complexity = number of operators in the expression tree:
+- rank(ts_mean(...)) - ts_mean is a child of rank. 
+- rank has 1 child (ts_mean)
+- ts_mean has 2 children (returns, 20)
+- Total nodes: 1 (rank) + 1 (ts_mean) + 2 (returns, 20) = 4
+- But complexity is 3.
+
+Maybe complexity = number of operators only:
+- rank, ts_mean = 2
+- +1 for the negation?
+- = 3
+
+In my formula: sign, sub, ts_corr, rank, rank (rank used twice but counted once) = 4 operators.
+- +1 for the negation?
+- = 5?
+
+Or maybe complexity = nesting depth:
+- rank(ts_mean(...)) = depth 2, complexity 3?
+- sign(sub(0, ts_corr(rank(open), rank(volume), 20))) = depth 4, complexity should be 5?
+
+I'm not sure about the exact formula for complexity. Let me just assign reasonable numbers:
+- FORMULA-1-1: complexity 4
+- FORMULA-1-2: complexity 4
+- FORMULA-1-3: complexity 4 (or 5 for medium hint)
+
+Actually, IDEA-1-3 has complexity_hint "medium", so I should assign a higher complexity. But since the formulas are structurally similar, I'll keep them all at 4 or differentiate slightly.
+
+Let me use:
+- FORMULA-1-1: complexity 3 (simple)
+- FORMULA-1-2: complexity 3 (simple)
+- FORMULA-1-3: complexity 4 (medium)
+
+This aligns with the complexity hints.
+
+Final JSON:
+
+{
+  "round": 1,
+  "formulas": [
+    {
+      "id": "FORMULA-1-1",
+      "idea_id": "IDEA-1-1",
+      "formula": "sign(sub(0, ts_corr(rank(open), rank(volume), 20)))",
+      "complexity": 3,
+      "a_share_compatible": true,
+      "explanation": "20日量价相关性取负，背离时因子走高→做空"
+    },
+    {
+      "id": "FORMULA-1-2",
+      "idea_id": "IDEA-1-2",
+      "formula": "sign(sub(0, ts_corr(rank(open), rank(volume), 10)))",
+      "complexity": 3,
+      "a_share_compatible": true,
+      "explanation": "10日量价相关性取负，共振时因子走低→做多"
+    },
+    {
+      "id": "FORMULA-1-3",
+      "idea_id": "IDEA-1-3",
+      "formula": "sign(sub(0, ts_corr(rank(open), rank(volume), 30)))",
+      "complexity": 4,
+      "a_share_compatible": true,
+      "explanation": "30日量价负相关取负，放量下跌因子走高→做空"
+    }
+  ]
+}
+
+Let me verify one more time:
+- All formulas use only allowed operators: div, mul, rank, sign, sub, ts_corr ✓
+- All formulas use only allowed variables: open, volume ✓
+- ts_corr windows: 20, 10, 30 - all between 5 and 30 ✓
+- Sign constraint: all formulas have sub(0, ...) negation ✓
+- Function call format ✓
+- No arithmetic operators ✓
+- Parentheses balanced ✓
+- explanation < 80 characters ✓
+- No structured fields in explanation ✓
+- a_share_compatible: true ✓
+
+All checks pass. Final output.

@@ -1,0 +1,77 @@
+{
+  "version": "V5",
+  "description": "4-logic E2E with Tier 1+2+4 (thinking chain utilization)",
+  "tiers_enabled": [
+    "Tier 1 (capture)",
+    "Tier 2 (structured reasoning)",
+    "Tier 4 (OpPrior)"
+  ],
+  "total_logics": 4,
+  "total_factors": 3,
+  "best_abs_ir_overall": 0.11673835207814552,
+  "total_elapsed_seconds": 554.6553387641907,
+  "results": [
+    {
+      "logic_name": "price_volume_divergence",
+      "total_rounds": 1,
+      "final_factors": 0,
+      "elapsed_seconds": 124.75172567367554,
+      "best_ir": 0.0,
+      "avg_ir": 0.0,
+      "best_abs_ir": 0.0,
+      "factors": [],
+      "op_prior_top5": []
+    },
+    {
+      "logic_name": "mean_reversion",
+      "total_rounds": 1,
+      "final_factors": 0,
+      "elapsed_seconds": 134.87830424308777,
+      "best_ir": 0.0,
+      "avg_ir": 0.0,
+      "best_abs_ir": 0.0,
+      "factors": [],
+      "op_prior_top5": []
+    },
+    {
+      "logic_name": "momentum",
+      "total_rounds": 1,
+      "final_factors": 3,
+      "elapsed_seconds": 122.03742003440857,
+      "best_ir": 0.11673835207814552,
+      "avg_ir": 0.009664903610411483,
+      "best_abs_ir": 0.11673835207814552,
+      "factors": [
+        {
+          "formula_id": "FORMULA-1-3",
+          "ir": 0.11673835207814552,
+          "ic_mean": 0.013812018963910325
+        },
+        {
+          "formula_id": "FORMULA-1-2",
+          "ir": -0.06099000237713744,
+          "ic_mean": -0.007614890523501923
+        },
+        {
+          "formula_id": "FORMULA-1-1",
+          "ir": -0.02675363886977363,
+          "ic_mean": -0.0032736542125650437
+        }
+      ],
+      "op_prior_top5": []
+    },
+    {
+      "logic_name": "volatility",
+      "total_rounds": 1,
+      "final_factors": 0,
+      "elapsed_seconds": 172.98761224746704,
+      "best_ir": 0.0,
+      "avg_ir": 0.0,
+      "best_abs_ir": 0.0,
+      "factors": [],
+      "op_prior_top5": []
+    }
+  ],
+  "op_prior_final_top10": [],
+  "op_prior_total_updates": 0
+}

@@ -1,0 +1,121 @@
+Let me analyze each idea and translate them to polars formulas using only the allowed operators and variables.
+
+**IDEA-1-1: 20日新高突破动量**
+- Core: Breakout above 20-day high indicates uptrend
+- Formula: Should capture when close is near or above the 20-day high
+- Using sign() of (close - ts_max(high, 20)) would give +1 when breaking high, 0 or -1 otherwise
+- But we want a continuous measure. Let's use rank of how close close is to the max.
+- Better: sign(sub(close, ts_max(high, 20))) - gives 1 when at new high, -1 otherwise. But this is binary.
+- To make it more nuanced: we can normalize. The difference between close and ts_max should be positive when breaking.
+- Actually, since sign is one of our operators and we want positive direction:
+- Formula: sign(sub(close, ts_max(close, 20))) - this gives 1 when close is at 20-day high, -1 otherwise
+- Wait, that would always be -1 unless exactly at the max. Let me think again.
+- sign(close - ts_max(close, 20)): ts_max(close, 20) is the max of close over 20 days including today? If including today, it would be 0 always. If using ts_max(high, 20), then close can be at or below high, so sign would be -1 unless close equals the high of the period.
+- Better approach: rank of (close / ts_max(close, 20)) - but we can't use div with close? We can use div.
+- Wait, div is allowed. Let me use: rank(div(close, ts_max(high, 20)))
+- This ranks stocks by how close their close is to the 20-day high. When close = 20-day high, ratio = 1, which is the maximum possible.
+- Actually, ts_max(high, 20) could be > close, so ratio < 1. rank gives us cross-sectional ranking.
+- But to make direction positive (higher is better for momentum), we want stocks with ratio close to 1 to get high rank.
+- rank(div(close, ts_max(high, 20))) - this should work. Higher ratio = closer to 20-day high = stronger momentum signal.
+
+**IDEA-1-2: 波动率标准化突破**
+- Core: Breakout magnitude normalized by historical volatility
+- Formula: (close - moving average) / historical volatility
+- Using allowed ops: div(sub(close, ts_mean(close, 20)), ts_std(...))
+- But ts_std is not in allowed list! Let me check: allowed are div, mul, rank, sign, sub, ts_max, ts_mean, ts_min
+- We need to approximate volatility. One approach: use range = ts_max - ts_min
+- Formula: div(sub(close, ts_mean(close, 20)), sub(ts_max(close, 20), ts_min(close, 20)))
+- This normalizes the breakout (close vs mean) by the range (max - min) over 20 days.
+- Then we can rank this to get cross-sectional comparison.
+- Formula: rank(div(sub(close, ts_mean(close, 5)), sub(ts_max(close, 20), ts_min(close, 20))))
+- This is the volatility-normalized breakout. ts_mean with window 5 (in range 5-30) and ts_max/ts_min with 20 (max in 10-60, min in 5-20). Wait, ts_min range is 5-20, so 20 is valid. ts_max range is 10-60, so 20 is valid.
+- Sign: when close > mean, numerator positive, ratio positive, rank will be high. Positive direction ✓
+
+**IDEA-1-3: 量价共振突破**
+- Core: Volume + price breakout together
+- Formula: Combine price breakout with volume signal
+- We have vol as allowed variable.
+- Price breakout: close relative to moving average
+- Volume signal: vol relative to average volume
+- Formula: mul(div(close, ts_mean(close, 5)), rank(vol)) - but this doesn't quite capture resonance
+- Better: rank of product of price breakout and volume rank
+- Formula: mul(div(close, ts_mean(close, 20)), div(vol, ts_mean(vol, 5)))
+- Then rank it. But mul is allowed, and we can do rank at the end.
+- Actually, let me think: if close > mean, ratio > 1; if vol > mean, ratio > 1; product > 1 when both conditions met.
+- Formula: rank(mul(div(close, ts_mean(close, 20)), div(vol, ts_mean(vol, 5))))
+- Wait, ts_mean(vol, 5) - window 5 is in range 5-30 ✓
+- ts_mean(close, 20) - window 20 is in range 5-30 ✓
+- vol and close are allowed variables ✓
+- div, mul, rank are allowed operators ✓
+- Direction: when both close > mean and vol > mean, product > 1, rank high. Positive direction ✓
+
+Wait, I need to double check: allowed operators are div, mul, rank, sign, sub, ts_max, ts_mean, ts_min. I need to make sure I'm only using these.
+
+For IDEA-1-1: rank(div(close, ts_max(high, 20))) - but high is not in allowed variables! Only close, high, vol.
+Actually, let me re-read: "ALLOWED VARIABLES: close, high, vol" - OK, high is allowed.
+
+Let me reconsider:
+- high is allowed ✓
+- close is allowed ✓
+- vol is allowed ✓
+
+Let me refine each formula:
+
+**IDEA-1-1: 20日新高突破动量**
+- Formula: rank(div(close, ts_max(high, 20)))
+- This ranks stocks by how close close is to the 20-day high
+- Operators used: rank, div, ts_max ✓
+- Variables: close, high ✓
+- Window: 20 (ts_max range 10-60) ✓
+- Direction: positive (higher close relative to 20-day high = higher rank) ✓
+
+**IDEA-1-2: 波动率标准化突破**
+- Formula: rank(div(sub(close, ts_mean(close, 5)), sub(ts_max(close, 20), ts_min(close, 20))))
+- Operators: rank, div, sub, ts_mean, ts_max, ts_min ✓
+- Variables: close ✓
+- Windows: ts_mean 5 (5-30 ✓), ts_max 20 (10-60 ✓), ts_min 20 (5-20 ✓)
+- Direction: positive (higher breakout relative to range = higher rank) ✓
+
+**IDEA-1-3: 量价共振突破**
+- Formula: rank(mul(div(close, ts_mean(close, 20)), div(vol, ts_mean(vol, 5))))
+- Operators: rank, mul, div, ts_mean ✓
+- Variables: close, vol ✓
+- Windows: ts_mean 20 (5-30 ✓), ts_mean 5 (5-30 ✓)
+- Direction: positive (higher when both price and volume are above their means) ✓
+
+Let me verify complexity:
+- IDEA-1-1: 3 operators, simple → complexity ~3
+- IDEA-1-2: 6 operators, medium → complexity ~5
+- IDEA-1-3: 5 operators, medium → complexity ~4
+
+Explanations must be <80 chars and describe what the formula does, not why.
+
+IDEA-1-1 explanation: "Ranks stocks by close proximity to 20-day high (Donchian breakout)" - 68 chars ✓
+IDEA-1-2 explanation: "Normalizes price deviation from mean by 20-day range, then ranks" - 64 chars ✓
+IDEA-1-3 explanation: "Combines price above MA and volume expansion, ranks cross-sectionally" - 71 chars ✓
+
+Let me count again:
+- "Ranks stocks by close proximity to 20-day high (Donchian breakout)" = 68 chars ✓
+- "Normalizes price deviation from mean by 20-day range, then ranks" = 65 chars ✓
+- "Combines price above MA and volume expansion, ranks cross-sectionally" = 71 chars ✓
+
+All good. Let me also ensure ts_max(20) is valid - range 10-60, yes 20 is valid. ts_min(20) - range 5-20, 20 is at the boundary, valid.
+
+Wait, for IDEA-1-2, I'm using ts_max(close, 20) and ts_min(close, 20). The range is the same as high range, but we need the same period for both max and min. Let me use 20 for both. 20 is valid for both.
+
+Actually, let me reconsider. The range for the breakout signal in IDEA-1-2 uses 5-day mean vs 20-day range. This captures short-term breakout relative to medium-term range. Good.
+
+For the final output, I need to make sure formulas are valid polars format with function call syntax.
+
+Let me finalize:
+
+FORMULA-1-1: rank(div(close, ts_max(high, 20)))
+FORMULA-1-2: rank(div(sub(close, ts_mean(close, 5)), sub(ts_max(close, 20), ts_min(close, 20))))
+FORMULA-1-3: rank(mul(div(close, ts_mean(close, 20)), div(vol, ts_mean(vol, 5))))
+
+All good. Let me also double-check the direction constraint: Overall factor direction must be POSITIVE (+1).
+- IDEA-1-1: high ratio close/high_max → high rank → long signal ✓
+- IDEA-1-2: positive breakout relative to range → high rank → long signal ✓
+- IDEA-1-3: both close > mean and vol > mean → high product → high rank → long signal ✓
+
+Perfect. Let me write the output.

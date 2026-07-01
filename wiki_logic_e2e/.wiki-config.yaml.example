@@ -1,0 +1,28 @@
+# Wiki Configuration
+# See docs/CONFIG_GUIDE.md for details
+
+# Override default directories
+# directories:
+#   raw: raw
+#   wiki: wiki
+
+# Override database name
+# database:
+#   name: ".llmwikify.db"
+
+# Orphan detection exclusions
+# orphan_detection:
+#   exclude_patterns:
+#     - '^\d{4}-\d{2}-\d{2}$'  # Date pages
+#     - '^meeting-.*'             # Meeting notes
+#   exclude_frontmatter:
+#     - redirect_to
+#   archive_directories:
+#     - 'archive'
+#     - 'logs'
+
+# MCP server settings
+# mcp:
+#   host: 127.0.0.1
+#   port: 8765
+#   transport: stdio

@@ -1,0 +1,30 @@
+{
+  "total_factors": 6,
+  "total_elapsed": 495.0546033382416,
+  "results": [
+    {
+      "logic_name": "price_volume_divergence",
+      "final_factors": 0,
+      "best_ir": 0.0,
+      "elapsed_seconds": 124.32348203659058
+    },
+    {
+      "logic_name": "mean_reversion",
+      "final_factors": 0,
+      "best_ir": 0.0,
+      "elapsed_seconds": 260.75355792045593
+    },
+    {
+      "logic_name": "momentum",
+      "final_factors": 3,
+      "best_ir": 0.05264874638877286,
+      "elapsed_seconds": 59.17062783241272
+    },
+    {
+      "logic_name": "volatility",
+      "final_factors": 3,
+      "best_ir": -0.11269840497000337,
+      "elapsed_seconds": 50.80671739578247
+    }
+  ]
+}

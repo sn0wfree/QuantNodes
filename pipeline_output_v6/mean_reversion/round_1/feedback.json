@@ -1,0 +1,56 @@
+{
+  "round_num": 1,
+  "best_ir": 0.05349365845976675,
+  "avg_ir": 0.020144995587966653,
+  "valid_count": 11,
+  "best_formulas": [],
+  "failed_patterns": [
+    {
+      "formula": "log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "log(log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10)))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "log(log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10)))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "log(log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10)))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "log(log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10)))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "log(log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10)))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "log(log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10)))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "log(ts_corr(ts_rank(rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20))), 5), open, 10))",
+      "reason": "FAIL: value"
+    }
+  ],
+  "suggestions": [
+    "避免以下失败模式: FAIL: value, FAIL: value, FAIL: value"
+  ],
+  "stats": {
+    "improvement_vs_prev": null,
+    "total_mcts_nodes": 35
+  }
+}

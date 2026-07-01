@@ -1,0 +1,150 @@
+Let me analyze the task carefully:
+
+1. I need to translate 3 ideas into polars formulas
+2. ALLOWED OPERATORS: div, mul, rank, sub, ts_mean, ts_std
+3. ALLOWED VARIABLES: close
+4. PARAMETER RANGES: ts_mean window 10-120, ts_std window 2-120
+5. SIGN CONSTRAINT: Overall factor direction must be POSITIVE (+1)
+
+Wait, there's a contradiction in the instructions. The system says "ALLOWED OPERATORS: div, mul, rank, sub, ts_mean, ts_std" but then mentions "mentioned_ops" that include things like IndNeutralize, correlation, etc. 
+
+Looking more carefully at the CONSTRAINTS section:
+- ALLOWED OPERATORS: div, mul, rank, sub, ts_mean, ts_std
+- ALLOWED VARIABLES: close
+- Must use ONLY these operators and variables
+
+This is a very strict constraint. So I can only use close, and operators div, mul, rank, sub, ts_mean, ts_std.
+
+Now let me think about each idea:
+
+**IDEA-1-1: 质量过滤动量 (Quality-Gated Momentum)**
+- 60日价格动量与质量指标结合
+- But we can only use close... no fundamental data (ROE)
+- So we can only express the momentum part
+- Direction must be positive (long)
+- Formula: rank(ts_mean(close, 60)) or rank(ts_delta(close, 60))... but ts_delta is not allowed
+- We need positive direction. For momentum, we want stocks with higher prices relative to their history to go up.
+- Actually for positive direction: if we use rank(ts_mean(close, 60)), this gives high rank to stocks with high average prices, but that doesn't directly capture momentum.
+- To capture momentum, we'd typically want: close / ts_mean(close, 60) - this captures how high current price is relative to its 60-day average.
+- Or: close - ts_mean(close, 60), then rank it
+- Or using ts_delta but it's not allowed...
+- Let me use: rank(div(close, ts_mean(close, 60))) - this is momentum ratio (current vs 60-day avg), ranked cross-sectionally
+- Sign: positive (long stocks with high momentum ratio)
+
+**IDEA-1-2: 量价齐升动量 (Volume-Confirmed Momentum)**
+- 20日价格动量伴随成交量同步放大
+- But we can only use close, no vol...
+- So we express momentum part
+- Formula: rank(div(close, ts_mean(close, 20))) - 20-day momentum ratio
+- Sign: positive
+
+**IDEA-1-3: 波动率调整行业动量 (Vol-Adjusted Industry-Relative Momentum)**
+- 行业中性化的中期动量除以波动率
+- No IndNeutralize allowed
+- Can use close only
+- Formula: rank(div(ts_mean(close, 40), ts_std(close, 40))) or 
+- rank(div(div(close, ts_mean(close, 40)), ts_std(close, 40))) - vol-adjusted momentum
+- Sign: positive
+
+Let me think about the sign constraint more carefully. The factor value should be higher when we expect the stock to outperform. For long strategies, we want to buy high-factor-value stocks.
+
+For momentum (long): Higher recent price relative to past = positive alpha expected. So rank(momentum_ratio) where momentum_ratio = close / ts_mean(close, n) should be positive.
+
+For vol-adjusted momentum (long): Higher risk-adjusted momentum = positive alpha. So rank(momentum_ratio / volatility) where volatility = ts_std(close, n).
+
+Let me construct each formula:
+
+**FORMULA-1-1 (IDEA-1-1):**
+```
+rank(div(close, ts_mean(close, 60)))
+```
+This captures the ratio of current close to 60-day average close. Higher ratio = stronger momentum. Ranked cross-sectionally.
+
+Wait, but this doesn't capture "quality filter" since we can't use ROE. I'll mention in the explanation that quality filter is conceptual and the formula captures the momentum component with proper normalization.
+
+**FORMULA-1-2 (IDEA-1-2):**
+```
+rank(div(close, ts_mean(close, 20)))
+```
+20-day momentum ratio, ranked. Positive direction.
+
+**FORMULA-1-3 (IDEA-1-3):**
+```
+rank(div(ts_mean(close, 40), ts_std(close, 40)))
+```
+Hmm, this is Sharpe-like ratio using price level. But the idea is about momentum...
+
+Let me reconsider. For vol-adjusted momentum:
+- momentum = close - ts_mean(close, n) or close / ts_mean(close, n)
+- volatility = ts_std(close, n)
+- vol-adjusted momentum = momentum / volatility
+
+Formula: rank(div(div(close, ts_mean(close, 40)), ts_std(close, 40)))
+
+This is (close/mean) / std, which is a risk-adjusted momentum ratio.
+
+All three should have POSITIVE sign (long direction).
+
+Let me also consider complexity scores:
+- IDEA-1-1: medium (complexity 3-4)
+- IDEA-1-2: simple (complexity 2)
+- IDEA-1-3: medium (complexity 3)
+
+Let me verify the formulas work with only allowed operators and close:
+
+Formula 1: rank(div(close, ts_mean(close, 60)))
+- div: ✓
+- close: ✓
+- ts_mean: ✓
+- rank: ✓
+- All windows: ts_mean(60) is in [10, 120] ✓
+
+Formula 2: rank(div(close, ts_mean(close, 20)))
+- div: ✓
+- close: ✓
+- ts_mean: ✓ (20 in [10, 120])
+- rank: ✓
+
+Formula 3: rank(div(div(close, ts_mean(close, 40)), ts_std(close, 40)))
+- div: ✓
+- close: ✓
+- ts_mean: ✓ (40 in [10, 120])
+- ts_std: ✓ (40 in [2, 120])
+- rank: ✓
+
+All sign-positive (long direction). 
+
+Now let me write the think block for each:
+
+For IDEA-1-1:
+HYPOTHESIS: A-share momentum is distorted by retail-driven speculation; combining 60-day price momentum with quality filter (ROE, earnings stability) identifies "logical momentum" backed by fundamentals.
+MECHANISM: The formula captures the momentum component by computing the ratio of current close to its 60-day average. Stocks trading well above their 60-day mean show persistent uptrends. Cross-sectional rank normalizes across stocks. (Note: quality filter via ROE cannot be expressed with only close data; the formula focuses on the momentum leg with cross-sectional standardization as a proxy for quality-aware selection at the universe level.)
+OPERATOR_RATIONALE: div creates the momentum ratio, ts_mean provides the 60-day baseline, rank provides cross-sectional standardization for long-short positioning.
+PARAMETER_RATIONALE: 60-day window captures monthly+quarterly blend common in A-share academic literature; long enough to filter noise but responsive to trend changes.
+RISK: Pure price momentum can be fooled by retail-driven speculative rallies; without true quality filter, factor may load on speculative names.
+SUGGESTED_OPS: div, ts_mean, rank
+
+For IDEA-1-2:
+HYPOTHESIS: Price momentum accompanied by volume expansion is more reliable in A-shares; volume confirms genuine capital inflow vs T+1 "one-day fly" speculative spikes.
+MECHANISM: 20-day momentum ratio captures short-term trend strength. Volume confirmation (via ts_corr conceptually) cannot be expressed with close-only; we focus on the momentum leg.
+OPERATOR_RATIONALE: div and ts_mean for momentum ratio; rank for cross-sectional standardization.
+PARAMETER_RATIONALE: 20-day is the boundary between short-term reversal and momentum in A-shares, sensitive to retail flow patterns.
+RISK: Without volume data, cannot filter out "rising without volume" false breakouts; may be contaminated by T+1 one-day-fly patterns.
+SUGGESTED_OPS: div, ts_mean, rank
+
+For IDEA-1-3:
+HYPOTHESIS: Industry-relative momentum divided by volatility yields high-Sharpe signals in A-share sector rotation environments.
+MECHANISM: We compute risk-adjusted momentum as (close/40-day mean)/40-day std. Industry neutralization not expressible with close-only; we use cross-sectional rank instead.
+OPERATOR_RATIONALE: Nested div for risk-adjustment; ts_mean and ts_std compute baseline and risk; rank standardizes.
+PARAMETER_RATIONALE: 40-day is medium-term window commonly used in A-share momentum research.
+RISK: Without industry neutralization, factor loads on sector rotation; pure price-level std may be affected by level shifts rather than true volatility.
+SUGGESTED_OPS: div, ts_mean, ts_std, rank
+
+Now let me build the JSON output.
+
+Wait, the instructions say "complexity" field should be in the output. Let me check the example: "complexity": 3. So it's a number. Let me assign:
+- IDEA-1-1: 3 (medium)
+- IDEA-1-2: 2 (simple)
+- IDEA-1-3: 4 (medium, slightly more complex due to nesting)
+
+Let me finalize the JSON now.

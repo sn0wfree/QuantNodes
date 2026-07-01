@@ -1,0 +1,24 @@
+{
+  "round_num": 1,
+  "best_ir": 0.11028154720691474,
+  "avg_ir": 0.015993738799927482,
+  "valid_count": 17,
+  "best_formulas": [],
+  "failed_patterns": [
+    {
+      "formula": "ts_corr(rank(-sub(close, ts_mean(close, 20))), _fwd_ret_5d, 20)",
+      "reason": "FAIL: lookahead"
+    },
+    {
+      "formula": "ts_corr(rank(-sub(close, ts_mean(close, 20))), _fwd_ret_5d, 20)",
+      "reason": "FAIL: lookahead"
+    }
+  ],
+  "suggestions": [
+    "避免以下失败模式: FAIL: lookahead, FAIL: lookahead"
+  ],
+  "stats": {
+    "improvement_vs_prev": null,
+    "total_mcts_nodes": 19
+  }
+}

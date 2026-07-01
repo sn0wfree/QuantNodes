@@ -1,0 +1,35 @@
+Let me analyze the three formulas provided:
+
+1. **FORMULA-1-1**: `rank(-ts_std(close, 20))` - IR=0.1133, IC_mean=0.0138
+2. **FORMULA-1-2**: `rank(-div(ts_std(close, 60), ts_mean(close, 60)))` - IR=0.0915, IC_mean=0.0090
+3. **FORMULA-1-3**: `rank(-div(ts_std(close, 5), ts_std(close, 60)))` - IR=-0.0193, IC_mean=-0.0014
+
+Selection criteria:
+- All three have IR below min_ir_threshold=0.05... wait, let me recheck. The min_ir_threshold is 0.05. 
+  - FORMULA-1-1: IR=0.1133 > 0.05 ✓
+  - FORMULA-1-2: IR=0.0915 > 0.05 ✓
+  - FORMULA-1-3: IR=-0.0193 < 0.05 ✗ (should be excluded)
+- Max mutual IC threshold=0.7 - we only have 3 formulas, need to check pairwise IC but not provided
+- All three are technically in the "reversal/volatility" category (negative rank on volatility = bet on low volatility = reversal-type)
+
+FORMULA-1-3 should be excluded due to negative IR and very low IC.
+
+Between FORMULA-1-1 and FORMULA-1-2, FORMULA-1-1 has better IR (0.1133 vs 0.0915) and better IC (0.0138 vs 0.0090). FORMULA-1-1 also has better IC decay pattern (increasing: 0.014 → 0.031 → 0.079).
+
+Since we only have 2 valid formulas (FORMULA-1-1 and FORMULA-1-2), the top-3 will only have 2 entries. But the task says "Select final top-3" - I'll include the 2 valid ones and note that only 2 passed filters.
+
+Wait, the task says "Select final top-3 from all rounds" but there are only 3 formulas total, and one fails the IR threshold. Let me just include what's available and note the limitation.
+
+Categories:
+- FORMULA-1-1: Low volatility (20-day) reversal
+- FORMULA-1-2: Coefficient of variation (60-day) - low vol preference
+- FORMULA-1-3: Short-term vs long-term vol ratio
+
+Risk notes:
+- FORMULA-1-1: Despite best IR, absolute IR=0.11 is still quite low. High IC std (0.122) suggests high variance.
+- FORMULA-1-2: Lower IR and IC, but uses 60-day window for stability
+- FORMULA-1-3: Excluded due to negative IR
+
+Since I need to produce top-3 but only 2 are valid, I'll output 2 and note the third slot is empty or the formula was filtered. Actually, re-reading: "Select final top-3" - if only 2 pass, I'll output 2 and note in summary.
+
+Actually, let me be practical - output 2 valid entries, and mention the third was filtered.

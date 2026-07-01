@@ -1,0 +1,35 @@
+{
+  "total_factors": 6,
+  "total_elapsed": 1397.6400966644287,
+  "fix": "dedup sort key abs(overall_score)",
+  "results": [
+    {
+      "logic_name": "price_volume_divergence",
+      "final_factors": 0,
+      "best_ir": 0.0,
+      "best_abs_ir": 0.0,
+      "elapsed_seconds": 181.49433851242065
+    },
+    {
+      "logic_name": "mean_reversion",
+      "final_factors": 3,
+      "best_ir": 0.07754819110174828,
+      "best_abs_ir": 0.07754819110174828,
+      "elapsed_seconds": 934.4880173206329
+    },
+    {
+      "logic_name": "momentum",
+      "final_factors": 3,
+      "best_ir": 0.01436443010028812,
+      "best_abs_ir": 0.07754819110174828,
+      "elapsed_seconds": 213.31661915779114
+    },
+    {
+      "logic_name": "volatility",
+      "final_factors": 0,
+      "best_ir": 0.0,
+      "best_abs_ir": 0.0,
+      "elapsed_seconds": 68.34092998504639
+    }
+  ]
+}

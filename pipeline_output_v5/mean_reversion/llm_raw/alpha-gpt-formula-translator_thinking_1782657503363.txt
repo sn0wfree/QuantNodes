@@ -1,0 +1,349 @@
+Let me analyze each idea and translate them into polars formulas using only the allowed operators and variables.
+
+**Constraints:**
+- ALLOWED OPERATORS: div, rank, sign, sub, ts_mean, ts_std
+- ALLOWED VARIABLES: close
+- ts_mean window: 5-60
+- ts_std window: 5-60
+- SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)
+
+Wait, the SIGN CONSTRAINT says overall factor direction must be NEGATIVE. But let me look at the ideas:
+
+1. IDEA-1-1: 20日价格反转 - expected_direction: 'long' - buy past losers (biggest losers go up in future). So factor should be NEGATIVE (high factor = losers = future winners). Factor = -ts_mean(returns, 20) where returns ≈ ts_delta(close, 1)/ts_lag(close, 1). But we can only use close.
+
+Hmm, with only close variable, we need to derive returns. We can use ts_delta but it's not in the allowed operators. Let me re-check... allowed: div, rank, sign, sub, ts_mean, ts_std.
+
+So we need to compute returns somehow. With only close and allowed ops... we can't directly compute returns since we can't use ts_delta or ts_pct_change.
+
+Wait, let me think again. Maybe we should interpret the formulas differently. Perhaps we use close price directly as a reversal signal?
+
+Actually, for reversal, we can think about it as: stocks that had large price movements (up or down) tend to reverse. But with only ts_mean and close, we can compute rolling average price.
+
+For IDEA-1-1 (20-day price reversal):
+- Factor: -ts_mean(close, 20) — this would be negative because we're betting on stocks with low recent average price (losers) to rebound. Wait, but low average price doesn't necessarily mean it's a loser.
+- Actually, a more direct interpretation: use sign(sub(close, ts_mean(close, 20))) — stocks below their 20-day mean are losers and should bounce back. Factor = sign(sub(close, ts_mean(close, 20))) — but sign would make it discrete.
+
+Hmm, let me think about what's possible with only div, rank, sign, sub, ts_mean, ts_std and close.
+
+For reversal:
+- rank(sub(close, ts_mean(close, 20))) — cross-sectionally rank how far below the 20-day mean each stock is. High rank = far below mean = loser. For reversal, we want to buy losers, so this should be POSITIVE signal. But constraint says NEGATIVE.
+
+Wait, the SIGN CONSTRAINT is overall factor direction must be NEGATIVE. So we need to negate our desired signal to make it negative.
+
+Let me re-read: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+So the formula needs to have an overall negative sign.
+
+For IDEA-1-1 (reversal, long losers):
+- Want: buy stocks that went down a lot
+- Factor should rank losers HIGH (positive factor)
+- But constraint says factor must be NEGATIVE direction
+- So we negate: -rank(sub(close, ts_mean(close, 20)))
+
+Actually wait, let me reconsider. The "direction" in the formula context refers to the factor's relationship to returns. A negative factor means high factor value predicts low future returns (short signal), or low factor value predicts high future returns (long signal).
+
+So if expected_direction is 'long', the factor should predict positive returns. If 'short', negative. The SIGN CONSTRAINT forces the overall direction to be negative regardless of expected_direction.
+
+Let me think about this more carefully. In WorldQuant/Alphasim, a factor is computed, and then the system determines whether to long or short based on whether the factor is positively or negatively correlated with future returns. The "direction" tells you which way to trade it.
+
+The SIGN CONSTRAINT says the overall factor direction must be NEGATIVE. This means the factor value is negatively correlated with future returns. So high factor = low future returns.
+
+For IDEA-1-1 (buy losers / long reversal):
+- We want losers to have positive future returns
+- If we define factor = rank(close/ts_mean(close, 20)), then low ratio = loser = should have positive returns
+- We need factor to be negatively correlated with returns
+- So factor = -rank(close/ts_mean(close, 20)) — high factor = winner (relative to mean), but we expect winners to UNDERPERFORM (reversal), so high factor = low future returns ✓
+
+For IDEA-1-2 (short abnormal turnover reversal):
+- expected_direction: 'short'
+- We need factor direction to be negative (factor negatively correlated with returns)
+- Short means high factor = negative future returns
+- That matches negative direction! Good.
+
+For IDEA-1-3 (volatility mean reversion, both directions):
+- expected_direction: 'both'
+- Need negative direction
+
+Now, with only close variable and limited operators, how do we express these ideas?
+
+IDEA-1-1: 20-day price reversal
+- Need to measure recent price movement
+- ts_mean(close, 20) gives 20-day moving average
+- sub(close, ts_mean(close, 20)) gives deviation from mean
+- For reversal, buy losers (stocks below their MA) → we want this to be positive for longs
+- Factor with negative direction: -rank(sub(close, ts_mean(close, 20)))
+- Or use div(close, ts_mean(close, 20)) and rank it
+
+Let me go with: rank(sub(close, ts_mean(close, 20))) — but this needs to be negative. So -rank(sub(close, ts_mean(close, 20)))
+
+Wait, with only allowed operators: div, rank, sign, sub, ts_mean, ts_std. There's no negation operator. How do we negate?
+
+Hmm, we can use sub(0, x) to negate. But we don't have a constant 0. 
+
+We could use sign and the result is just ±1, not useful for negation.
+
+Actually, the SIGN CONSTRAINT might just mean the overall direction (correlation with returns), not literally adding a minus sign. Let me re-read: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+Hmm, I think this means we should design the formula so that when backtested, the factor is negatively correlated with forward returns. This means we need to invert what might seem intuitive.
+
+For reversal (IDEA-1-1):
+- The naive approach: rank losers high → positive correlation with returns (buy losers → win)
+- But constraint says negative direction → invert: rank winners high (which underperforms due to reversal)
+- Formula: rank(sub(close, ts_mean(close, 20))) — wait, sub gives close - mean. If close > mean (winner), sub is positive → high rank → high factor. High factor = winner = reversal says underperforms → negative correlation ✓
+
+So the formula rank(sub(close, ts_mean(close, 20))) naturally has the correct negative direction for reversal.
+
+Let me verify:
+- Stock A: close = 100, ts_mean(close, 20) = 90 (recent rally, winner) → sub = 10, high rank
+- Stock B: close = 80, ts_mean(close, 20) = 90 (recent drop, loser) → sub = -10, low rank
+- Reversal says A underperforms B
+- Factor is high for A, so high factor = underperformance = negative correlation with returns ✓
+
+So rank(sub(close, ts_mean(close, 20))) works for IDEA-1-1.
+
+For IDEA-1-2: Short abnormal turnover reversal
+- We don't have turnover/volume data, only close
+- We can only approximate with close
+- Hmm, this is tricky. The idea mentions 换手率 (turnover), but we only have close.
+- Maybe we can use volatility (ts_std of close) as a proxy for unusual activity?
+- High std = unusual price movement = proxy for high turnover
+- For reversal, high turnover stocks underperform
+- Factor: rank(ts_std(close, 10)) — high std = high factor = underperforms = negative direction ✓
+
+For IDEA-1-3: Volatility mean reversion (both)
+- Long low-vol stocks going to mean, short high-vol stocks spiking
+- We can use std relative to its mean or something
+- div(ts_std(close, 20), ts_std(close, 60)) — ratio of recent to longer std
+- High ratio = volatility spike = short signal
+- Low ratio = volatility compression = long signal
+- For "both" direction, we need one combined signal
+- Maybe: rank(div(ts_std(close, 20), ts_std(close, 60)))
+- High factor = volatility spike → underperforms (mean reversion) → negative direction ✓
+
+Let me finalize:
+
+**IDEA-1-1: 20日价格反转**
+Formula: rank(sub(close, ts_mean(close, 20)))
+- Captures: stocks above their 20-day mean (winners) vs below (losers)
+- For reversal, winners underperform → high factor = winner = underperforms
+- Direction: negative ✓
+
+**IDEA-1-2: 异常换手率反转**
+Since we don't have volume/turnover data, use volatility as proxy:
+Formula: rank(ts_std(close, 10))
+- High std = high activity = reversal target
+- Direction: negative ✓
+
+**IDEA-1-3: 波动率均值回复**
+Formula: rank(div(ts_std(close, 20), ts_std(close, 60)))
+- High ratio = recent vol spike → underperforms (mean reversion)
+- Direction: negative ✓
+
+Wait, let me double-check window constraints:
+- ts_mean: window between 5 and 60 ✓ (using 20)
+- ts_std: window between 5 and 60 ✓ (using 10, 20, 60)
+
+Let me also reconsider IDEA-1-2. The description says "做空近期换手率显著高于其20日均值的股票". We're shorting stocks with abnormal turnover. Short signal means high factor should predict negative returns. That's already negative direction. But with our formula rank(ts_std(close, 10)), high std = high factor = short = negative direction ✓.
+
+Actually, I want to think about whether we can incorporate the "above its mean" aspect more directly for IDEA-1-2. But with only close and limited ops, we can't directly express "turnover above its 20-day mean". Let me use std as proxy.
+
+Hmm wait, for IDEA-1-2, maybe I should use: rank(ts_std(close, 10)) is okay but the original idea was about abnormal turnover. The std measures volatility, not turnover per se. But they often correlate.
+
+Alternatively, I could think about it as: stocks with high recent volatility (deviating from normal) tend to reverse. So ts_std alone captures this.
+
+Let me also consider a different approach for IDEA-1-1:
+- sub(close, ts_mean(close, 20)) captures deviation
+- We want losers to have high factor (so we buy losers)
+- But constraint says negative direction (high factor = underperform)
+- So we want winners to have high factor → winners underperform
+- This matches: rank(sub(close, ts_mean(close, 20))) ✓
+
+OK let me write this up.
+
+Actually, let me reconsider the complexity ratings:
+- IDEA-1-1: simple (1 operator pair: rank(sub(...)))
+- IDEA-1-2: medium (rank(ts_std(...)))
+- IDEA-1-3: medium (rank(div(ts_std, ts_std)))
+
+Complexity could be measured as the depth/nesting of operations. Let me assign:
+- IDEA-1-1: 3 (nested: rank(sub(close, ts_mean(close, 20))))
+- IDEA-1-2: 2 (rank(ts_std(close, 10)))
+- IDEA-1-3: 4 (rank(div(ts_std(close, 20), ts_std(close, 60))))
+
+Or maybe just count operators:
+- IDEA-1-1: rank + sub + ts_mean = 3 operators
+- IDEA-1-2: rank + ts_std = 2 operators
+- IDEA-1-3: rank + div + ts_std + ts_std = 4 operators
+
+Let me use:
+- IDEA-1-1: complexity 3
+- IDEA-1-2: complexity 2
+- IDEA-1-3: complexity 4
+
+Now let me write the JSON output.
+
+Actually, I realize I should think more carefully about IDEA-1-3. The description says:
+"做多近期已实现波动率从高位向60日均值回落的股票、做空波动率脉冲式上升的股票"
+
+So long: stocks where recent vol is coming DOWN from high (toward 60-day mean)
+Short: stocks where vol is SPIKING up
+
+Both directions, but we need a single factor. We need to find a signal that captures this.
+
+Option 1: rank(div(ts_std(close, 20), ts_std(close, 60)))
+- High ratio = recent vol > longer vol = vol spiking → short signal → high factor = underperform
+- Low ratio = recent vol < longer vol = vol declining from high → long signal → low factor = perform well
+- This gives negative direction ✓
+
+Wait, but if recent vol is lower than longer vol, that could mean:
+1. Vol was high and is now declining (mean reversion from above) → long
+2. Vol is just generally low → not necessarily mean reversion
+
+The ratio captures both, but for mean reversion specifically from high, we want stocks where ts_std(close, 20) is much lower than ts_std(close, 60) (i.e., vol declining). Low ratio = long signal = low factor = perform well. So high factor = underperform → negative direction ✓.
+
+OK my formula works.
+
+Let me finalize.
+
+Final formulas:
+
+FORMULA-1-1: rank(sub(close, ts_mean(close, 20)))
+- IDEA-1-1, 20日价格反转
+- complexity 3
+- a_share_compatible: true
+
+FORMULA-1-2: rank(ts_std(close, 10))
+- IDEA-1-2, 异常换手率反转 (using std as proxy for activity)
+- complexity 2
+- a_share_compatible: true
+
+FORMULA-1-3: rank(div(ts_std(close, 20), ts_std(close, 60)))
+- IDEA-1-3, 波动率均值回复
+- complexity 4
+- a_share_compatible: true
+
+All have negative direction because high factor = winner/high-activity/vol-spike = underperforms (reversal/mean reversion).
+
+Let me also write the thinking blocks as required.
+
+Actually, re-reading the instructions: "In JSON front use <think> block to explain" - this seems to be a prompt for my thinking, which I'm already doing. The output should be just the JSON.
+
+Wait, the instructions say "在 JSON 前用 <think> 块说明" which means "before the JSON, use a think block to explain". Let me include the think blocks.
+
+Actually, looking at the system prompt: "If the thinking_mode is enabled, then you must always output a thinking block". So I should include thinking, but the final output should be the JSON.
+
+The user asks for both: a think block AND strict JSON. Let me structure it as think blocks first, then JSON.
+
+Actually, re-reading carefully: the output format is JSON. The think blocks are explanations for each formula. Let me put the think blocks in the explanation field or before the JSON.
+
+Hmm, the instruction says "在 JSON 前用 <think> 块说明" which is part of the prompt structure. I think the intent is:
+- Use think tags for reasoning
+- Output the JSON
+
+Let me just output the JSON with explanations in the explanation field, and put the detailed reasoning in the think block before the JSON.
+
+Let me also reconsider whether the formula structure makes sense. The instruction says "function call format like op(arg1, arg2)". So rank(sub(close, ts_mean(close, 20))) is correct.
+
+One more consideration: the SIGN CONSTRAINT. Does it require a literal minus sign? Or just the overall correlation direction? Looking at the constraint again: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)". The "-1" suggests correlation direction.
+
+Since we don't have a negation operator, I'll interpret it as "the factor must be negatively correlated with future returns". My formulas achieve this through the reversal/mean reversion logic.
+
+Let me write the final JSON.
+
+Wait, I should reconsider. For the sign constraint to be "NEGATIVE", it could mean:
+1. Factor is negatively correlated with returns (what I've been assuming)
+2. Factor has a literal minus sign in front
+
+If it's interpretation 2, I'd need a way to negate. With sub, I can do sub(0, x) but I don't have a constant. I could use sign to get ±1 but that loses information.
+
+Actually, looking at the allowed operators again: sub is allowed. But to negate, I need a 0 constant, which isn't provided.
+
+Hmm, but the example given is: "formula": "rank(-ts_mean(returns, 20))" — this uses a minus sign! But the example uses "returns" which isn't in our allowed variables.
+
+Wait, the example is just showing format. Let me re-read constraints: "ALLOWED OPERATORS: div, rank, sign, sub, ts_mean, ts_std". So sub is the only way to do subtraction. To negate x, I'd need to compute 0-x.
+
+But I don't have a constant 0. Unless... I can use sub(close, close) = 0? That's clever but not exactly clean.
+
+Actually, maybe the intent is:
+- Use sub(close, close) as a way to get 0
+- Then sub(sub(close, close), x) to negate x
+
+But this seems hacky. Let me think again.
+
+Actually, rethinking: the SIGN CONSTRAINT might be about the OVERALL direction of the alpha signal, not a literal minus sign. The constraint is there to ensure we don't accidentally create a long-only signal that's just a mirror of an existing one. By forcing negative direction, we're saying: "the factor should be constructed such that it has negative correlation with forward returns."
+
+Given that, my formulas are correct:
+- IDEA-1-1: rank(sub(close, ts_mean(close, 20))) — high factor = winner (close > mean) → reversal → underperform → negative correlation ✓
+- IDEA-1-2: rank(ts_std(close, 10)) — high factor = high activity → reversal → underperform → negative correlation ✓
+- IDEA-1-3: rank(div(ts_std(close, 20), ts_std(close, 60))) — high factor = vol spike → mean reversion → underperform → negative correlation ✓
+
+Let me write the final output.
+
+Actually, I want to double check by looking at the example in the instruction: "rank(-ts_mean(returns, 20))". This example DOES have a minus sign. So maybe minus signs are allowed?
+
+Looking at the constraints: "ALLOWED OPERATORS: div, rank, sign, sub, ts_mean, ts_std". And: "CRITICAL: Use ONLY function call format. NO arithmetic operators (+,-,*,/). NO missing parentheses."
+
+OK so NO arithmetic operators, which means no minus sign. The example with minus sign is just illustrating the format, not the allowed operators.
+
+So I need to construct formulas using only: div, rank, sign, sub, ts_mean, ts_std, with variable: close.
+
+For negation, I'd use sub(0, x) or some equivalent trick.
+
+Wait, actually I realize: the SIGN CONSTRAINT is about the overall direction. It's not requiring a literal minus sign. It's saying the factor should be designed to have negative correlation with future returns.
+
+Let me go with my current formulas. They all have negative correlation direction by design.
+
+Alright, final output:
+
+```json
+{
+  "round": 1,
+  "formulas": [
+    {
+      "id": "FORMULA-1-1",
+      "idea_id": "IDEA-1-1",
+      "formula": "rank(sub(close, ts_mean(close, 20)))",
+      "complexity": 3,
+      "a_share_compatible": true,
+      "explanation": "20日价格反转因子：使用收盘价相对20日均线的偏离度做截面排名。因子值高的股票为近期上涨的赢家（close高于均值），根据反转效应将跑输；因子值低的为输家，将跑输赢。最终因子与未来收益呈负相关，符合SIGN CONSTRAINT。"
+    },
+    {
+      "id": "FORMULA-1-2",
+      "idea_id": "IDEA-1-2",
+      "formula": "rank(ts_std(close, 10))",
+      "complexity": 2,
+      "a_share_compatible": true,
+      "explanation": "异常换手率反转因子（用波动率作为异常活动的代理）：用10日价格波动率作为异常交易活跃度的代理信号。高因子值股票近期波动大、散户过度参与，后续均值回复会跑输；低因子值股票活跃度正常，跑赢概率更高。因子方向为负。"
+    },
+    {
+      "id": "FORMULA-1-3",
+      "idea_id": "IDEA-1-3",
+      "formula": "rank(div(ts_std(close, 20), ts_std(close, 60)))",
+      "complexity": 4,
+      "a_share_compatible": true,
+      "explanation": "波动率均值回复因子：用20日波动率除以60日波动率衡量近期波动率的脉冲式上升。高比率表示近期波动率相对长期均值显著放大（脉冲式上升），后续均值回复将跑输，做空；低比率表示波动率从高位回落，长期持有将跑赢，做多。因子方向为负。"
+    }
+  ]
+}
+```
+
+Let me double-check formulas are syntactically correct:
+- "rank(sub(close, ts_mean(close, 20)))" — rank of sub of close and ts_mean of close with window 20 ✓
+- "rank(ts_std(close, 10))" — rank of ts_std of close with window 10 ✓
+- "rank(div(ts_std(close, 20), ts_std(close, 60)))" — rank of div of ts_std(close, 20) and ts_std(close, 60) ✓
+
+All windows are within 5-60 range. ✓
+Only allowed operators used. ✓
+Only close variable used. ✓
+All factors have negative direction. ✓
+
+Good, ready to output.
+
+Wait, I should also include the think blocks as requested. Let me include them properly.
+
+The instruction says "在 JSON 前用 <think> 块说明" — before the JSON, use think blocks. So I need to put think tags before the JSON output.
+
+Let me structure it as:
+```
+<think>
+[detailed reasoning]

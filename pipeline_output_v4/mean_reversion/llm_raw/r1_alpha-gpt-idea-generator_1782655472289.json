@@ -1,0 +1,9 @@
+{
+  "agent_id": "alpha-gpt-idea-generator",
+  "round_idx": 1,
+  "temperature": 0.8,
+  "prompt": "You are the Alpha-GPT IdeaGenerator. Generate 3 alpha ideas for objective='Apply logic mean_reversion'. round=1, a_share_focus=True. previous_reflection=None. 6 categories: momentum/reversal/value/quality/volatility/liquidity. Each idea must have id (IDEA-{round}-{idx}), name, category, description, expected_direction (long/short/both), suggested_lookback, a_share_compatible, orthogonal_to, complexity_hint (simple/medium/complex). Output STRICT JSON (no markdown, no code blocks) matching this schema: {\"round\": 1, \"ideas\": [{\"id\": \"IDEA-1-1\", \"name\": \"20日反转\", \"category\": \"reversal\", \"description\": \"经济直觉1-2句\", \"expected_direction\": \"long\", \"suggested_lookback\": 20, \"a_share_compatible\": true, \"orthogonal_to\": [\"IDEA-1-2\"], \"complexity_hint\": \"simple\"}]}",
+  "response": "{\"round\": 1, \"ideas\": [{\"id\": \"IDEA-1-1\", \"name\": \"5日超跌反转\", \"category\": \"reversal\", \"description\": \"过去5日跌幅最大的股票存在短期均值回复倾向，买入超跌品种博取反弹收益；A股散户情绪驱动下短期反转效应显著。\", \"expected_direction\": \"long\", \"suggested_lookback\": 5, \"a_share_compatible\": true, \"orthogonal_to\": [\"IDEA-1-2\", \"IDEA-1-3\"], \"complexity_hint\": \"simple\"}, {\"id\": \"IDEA-1-2\", \"name\": \"行业EP估值均值回复\", \"category\": \"value\", \"description\": \"行业内EP分位数最低的股票存在估值修复空间，买入低估、卖出高估组合，长期持有等待均值回复。\", \"expected_direction\": \"long\", \"suggested_lookback\": 60, \"a_share_compatible\": true, \"orthogonal_to\": [\"IDEA-1-3\", \"IDEA-1-1\"], \"complexity_hint\": \"medium\"}, {\"id\": \"IDEA-1-3\", \"name\": \"换手率均值回复\", \"category\": \"liquidity\", \"description\": \"换手率显著高于其20日均值的股票后续成交活跃度倾向于回归，做空高换手组合、做多低换手组合获取流动性均值回复收益。\", \"expected_direction\": \"short\", \"suggested_lookback\": 20, \"a_share_compatible\": true, \"orthogonal_to\": [\"IDEA-1-1\", \"IDEA-1-2\"], \"complexity_hint\": \"medium\"}]}",
+  "response_length": 891,
+  "ts": 1782655472289
+}

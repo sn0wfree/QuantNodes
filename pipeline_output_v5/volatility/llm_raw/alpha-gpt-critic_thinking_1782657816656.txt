@@ -1,0 +1,13 @@
+The user is asking me to act as "Alpha-GPT Critic" and select final top-3 from all rounds. However, the input shows:
+- `all_evaluations=[]` (empty)
+- `all_reflections=[]` (empty)
+- `min_ir_threshold=0.05`
+- `max_mutual_ic_threshold=0.7`
+
+Since there are no actual evaluations or reflections provided, I need to handle this case. The total_evaluated would be 0, but the summary template shows 50. Let me think about this carefully.
+
+Since no data is provided, I cannot actually select any top-3 formulas. I should return an empty final_pool and report total_evaluated as 0, or handle this gracefully.
+
+Actually, looking again, the prompt says "all_evaluations=[]. all_reflections=[]." This is the actual data - empty. I should produce valid JSON reflecting this reality - no formulas to select from.
+
+Let me produce the thinking block and then a valid JSON output with empty final_pool.

@@ -1,0 +1,121 @@
+The user wants me to generate 3 alpha ideas for the objective "Apply logic momentum" in round 1, focused on A-shares. Let me think about this carefully.
+
+The objective is "Apply logic momentum" - so we need momentum-based ideas that are logical/fundamental in nature, not just pure price momentum.
+
+Let me brainstorm 3 ideas across the 6 categories (momentum/reversal/value/quality/volatility/liquidity):
+
+1. **Momentum category**: Earnings surprise momentum - stocks that beat earnings expectations continue to outperform. In A-shares, this is relevant because earnings announcements drive momentum.
+
+2. **Quality-Momentum hybrid**: Fundamental quality combined with price momentum - high ROE stocks with positive momentum tend to continue.
+
+3. **Value-Momentum hybrid**: PE ratio improvement (earnings revision) as a momentum signal.
+
+Let me think about A-share specifics:
+- T+1 trading rule
+- Retail-dominated market (~60-70% retail)
+- 涨跌停 (price limits) ±10% for main board, ±20% for ChiNext
+- Quarterly earnings disclosures
+- ST stocks (special treatment)
+- Strong sector/rotation effects
+
+For "Apply logic momentum", I should focus on fundamental/logic-based momentum rather than pure price momentum.
+
+Let me draft 3 ideas:
+
+**Idea 1: Earnings Revision Momentum (Momentum)**
+- Track changes in consensus earnings forecasts
+- Stocks with upward earnings revisions tend to outperform
+- A-share: 业绩预告 / 研报一致预期
+- Use rank-based cross-sectional momentum on EPS revision
+
+**Idea 2: Profit Growth Momentum (Quality/Momentum)**
+- Stocks with accelerating profit growth
+- Compare current quarter YoY vs previous quarter YoY
+- A-share: 净利润同比增速变化
+- Logic: improving fundamentals drive continued outperformance
+
+**Idea 3: Analyst Attention Momentum (Momentum/Liquidity)**
+- Increase in analyst coverage or rating upgrades
+- A-share: 研报数量变化 / 评级上调
+- Logic: information diffusion drives momentum
+
+Let me refine these to be more orthogonal to each other:
+
+1. **IDEA-1-1**: 业绩超预期动量 (Earnings Surprise Momentum) - Momentum category
+2. **IDEA-1-2**: 盈利质量动量 (Profit Quality Momentum) - Quality category  
+3. **IDEA-1-3**: 换手率结构动量 (Turnover Structure Momentum) - Liquidity category
+
+Let me write the detailed reasoning:
+
+**Idea 1: 业绩预告超预期动量**
+HYPOTHESIS: A股中业绩预告超预期的股票在未来20-60日有显著超额收益，因为分析师和散户对盈利信息的反应滞后且持续。
+MECHANISM: A股散户主导+信息扩散慢，导致盈利公告后的价格漂移(drift)效应显著。T+1制度不阻碍，因为公告后下一个交易日即可反应但市场渐进定价。
+OPERATOR_RATIONALE: 需要横截面rank后做时间序列动量，用ts_rank捕捉持续性。
+PARAMETER_RATIONALE: 60日窗口覆盖业绩预告到正式报告的时间窗，也匹配分析师调整预期的节奏。
+RISK: 业绩"洗澡"和一次性损益会扭曲信号；ST股和借壳重组股需剔除。
+SUGGESTED_OPS: rank, ts_rank, delta, decay_linear
+
+**Idea 2: ROE改善动量**
+HYPOTHESIS: ROE环比改善的股票代表基本面拐点，A股对此反应不足，形成可延续的动量。
+MECHANISM: A股机构投资者占比提升但仍非主导，散户对财务质量变化的反应存在滞后，尤其季报披露窗口后的定价漂移。
+OPERATOR_RATIONALE: 需要季度频率的ROE变化，做时间序列上的rank。
+PARAMETER_RATIONALE: 4个季度(约240日)的ROE变化窗口，能区分趋势性改善与短期波动。
+RISK: 杠杆驱动的ROE改善会被误判；行业周期底部反弹可能被错误识别。
+SUGGESTED_OPS: ts_rank, delta, divide, rank
+
+**Idea 3: 量价配合动量**
+HYPOTHESIS: 价格上涨伴随成交量放大的股票动量更可持续，A股散户追涨杀跌模式下"放量上涨"信号质量较高。
+MECHANISM: A股涨跌停限制(±10%)导致突破需要成交量配合，放量突破后散户跟风延续趋势。但需排除一字板无量上涨。
+OPERATOR_RATIONALE: 成交量标准化+价格动量的乘积/比率，再用横截面rank。
+PARAMETER_RATIONALE: 20日窗口与经典动量窗口一致，且能覆盖完整周线。
+RISK: 高位放量滞涨(放量下跌)是反转信号需排除；题材股末端放量需警惕。
+SUGGESTED_OPS: rank, ts_mean, multiply, divide
+
+Now let me think about orthogonal_to - these three should be orthogonal to each other:
+- IDEA-1-1 (earnings surprise) vs others - different information source
+- IDEA-1-2 (ROE improvement) vs others - fundamental quality dimension
+- IDEA-1-3 (volume-price) vs others - market microstructure
+
+Orthogonal mapping:
+- IDEA-1-1 orthogonal to IDEA-1-2, IDEA-1-3
+- IDEA-1-2 orthogonal to IDEA-1-1, IDEA-1-3
+- IDEA-1-3 orthogonal to IDEA-1-1, IDEA-1-2
+
+Let me finalize and write the JSON.
+
+Actually, let me reconsider category assignments. The user says "Apply logic momentum" which suggests the main theme is momentum, but I should still use the 6 different categories to diversify.
+
+Let me reconsider:
+- Idea 1: Momentum (纯动量) - 业绩超预期动量
+- Idea 2: Quality (质量) - 盈利质量改善动量  
+- Idea 3: Liquidity (流动性) - 量价配合动量
+
+This gives diversity across categories while maintaining the momentum theme.
+
+Let me finalize:
+
+IDEA-1-1: 业绩预告超预期动量
+- category: momentum
+- expected_direction: long
+- suggested_lookback: 60
+- complexity_hint: medium (需要基本面数据)
+- a_share_compatible: true
+- orthogonal_to: ["IDEA-1-2", "IDEA-1-3"]
+
+IDEA-1-2: ROE趋势改善因子
+- category: quality
+- expected_direction: long
+- suggested_lookback: 60
+- complexity_hint: medium
+- a_share_compatible: true
+- orthogonal_to: ["IDEA-1-1", "IDEA-1-3"]
+
+IDEA-1-3: 量价齐升动量因子
+- category: liquidity
+- expected_direction: long
+- suggested_lookback: 20
+- complexity_hint: simple
+- a_share_compatible: true
+- orthogonal_to: ["IDEA-1-1", "IDEA-1-2"]
+
+Now I'll write the JSON output.

@@ -1,0 +1,418 @@
+Let me analyze the constraints carefully:
+
+1. ALLOWED OPERATORS: div, rank, sign, sub, ts_mean, ts_std
+2. ALLOWED VARIABLES: close
+3. PARAMETER RANGES: ts_mean window 5-60, ts_std window 5-60
+4. SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)
+
+So I can only use close price, and the operators div, rank, sign, sub, ts_mean, ts_std. The formulas must result in a negative factor direction.
+
+Let me think about each idea:
+
+**IDEA-1-1: 5日短期反转**
+- Core hypothesis: 5日超跌存在过度反应，次日情绪修复推动价格回归
+- Mechanism: Short-term reversal
+- With only close, operators div, rank, sign, sub, ts_mean, ts_std:
+  - Short-term reversal: -ts_mean(close, 5)/close... but we need negative direction
+  - Actually we can use rank(-ts_mean(returns, N)) but we don't have returns
+  - We only have close. We can compute returns as ts_delta(close, 1) but ts_delta is not allowed
+  - We can use sub(close, ts_lag(close, 1)) but ts_lag is not allowed
+  - Hmm, we can't directly compute returns with the allowed operators
+  
+Let me reconsider. With only close, div, rank, sign, sub, ts_mean, ts_std:
+- We can compute relative price: div(close, ts_mean(close, N)) - this gives price relative to N-day mean
+- For reversal, we want stocks that have gone down recently
+- ts_mean with window 5 makes sense for 5-day reversal
+- div(close, ts_mean(close, 5)) gives price relative to 5-day mean
+- rank(-div(close, ts_mean(close, 5))) or rank(sub(ts_mean(close,5), close))
+- For negative direction: rank(sub(ts_mean(close, 5), close)) - higher when price is below mean
+
+Let me formulate:
+- IDEA-1-1: rank(sub(ts_mean(close, 5), close)) - stocks with close below 5-day mean rank high. This is negative direction since it picks recent losers.
+
+Wait, but ts_mean window must be 5-60. 5 is allowed.
+
+**IDEA-1-2: 换手率加权反转**
+- Need turnover data, but we can only use close
+- This idea requires turnover (vol/amount), which we don't have access to
+- We need to approximate. Maybe use volume-related via close price volatility?
+- Actually we don't have vol either. Let me think...
+- We only have close. We could use ts_std of close as a proxy for volatility/liquidity
+- rank(sub(ts_mean(close, 20), close)) * sign(ts_std(close, 20))? But mul is not allowed
+- Hmm, without mul we can't combine factors
+- We can use div or sub to combine
+- Idea: div(rank(sub(ts_mean(close,20), close)), ts_std(close, 20)) - higher reversal signal divided by volatility
+- Wait, but if we divide by volatility, we get less for high-vol stocks. We want high-turnover stocks to amplify the reversal signal.
+- So maybe div(rank(sub(ts_mean(close,20), close)), rank(ts_std(close, 20))) or similar
+
+Let me think more carefully. The sign constraint says overall direction must be negative (-1).
+
+For IDEA-1-2: We want reversal amplified by turnover. Without turnover, use ts_std as proxy (higher std = higher trading activity proxy).
+- We want: high reversal × high turnover
+- With sub and div: maybe sub(rank(reversal), sub(0, rank(ts_std)))... but 0 is not a function
+- We can use sign(): sign(ts_std) would be positive mostly
+- Let me use: div(rank(sub(ts_mean(close,20), close)), sign(ts_std(close,20)))
+- Actually sign would give mostly +1, so this doesn't work
+- How about: rank(sub(ts_mean(close,20), close)) itself, but we want to amplify for high turnover
+- We could use: rank(div(sub(ts_mean(close,20), close), ts_std(close, 20)))
+  - This gives reversal relative to volatility - high when stock has fallen a lot relative to its volatility
+  - But the "liquidity weighting" idea wants to amplify reversal signal for high-turnover stocks
+  
+Let me try: sub(rank(sub(ts_mean(close,20), close)), rank(ts_std(close,20)))
+- This subtracts volatility rank from reversal rank
+- But we want amplification, not subtraction
+- Actually for "high turnover amplifies reversal", we could rank by reversal first then...
+- Maybe: div(rank(sub(ts_mean(close,20), close)), div(1, ts_std(close,20))) = mul(rank, ts_std) but mul not allowed
+- div(a, div(1,b)) = mul(a,b) which is not allowed
+
+Alternative: sub(sub(div(close, ts_mean(close,20)), 0), ts_std(close,20)) - this subtracts std but we need 0
+Hmm, we can't use constant 0.
+
+Let me think differently. The available ops are div, rank, sign, sub, ts_mean, ts_std.
+
+For "turnover-weighted reversal" idea, maybe:
+- rank(sub(ts_mean(close,20), close)) - basic reversal
+- Then combine with ts_std somehow
+
+Actually, let me just make a reasonable formula. Given the constraint of only using close and these operators:
+
+IDEA-1-2: rank(sub(div(close, ts_mean(close,20)), sign(ts_std(close,20))))
+- This doesn't quite make sense...
+
+Let me try: sub(rank(sub(ts_mean(close,20), close)), rank(ts_std(close,20)))
+- Reversal rank minus volatility rank
+- High when reversal is high AND volatility is low (low-vol reversal)
+- But the idea wants turnover-weighted
+
+Alternative interpretation: maybe ts_std(close,20) as liquidity proxy:
+- rank(div(sub(ts_mean(close,20), close), ts_std(close,20)))
+- Reversal divided by volatility - this is like a Sharpe-style reversal
+- High when stock has fallen a lot normalized by its volatility
+
+I think this last interpretation is better and more robust. Let me use:
+- For IDEA-1-2: rank(div(sub(ts_mean(close,20), close), ts_std(close,20)))
+
+**IDEA-1-3: 52周新高距离反转**
+- Distance from 52-week high. Lookback 252 but ts_mean max is 60.
+- We can't use 252 window. So we need to approximate.
+- Maybe use ts_mean(close, 60) as proxy for longer-term average
+- Or use rank(div(ts_mean(close,60), close)) - ratio of mean to close
+- For reversal at long-term: rank(sub(ts_mean(close,60), close))
+- Direction: when price is well below long-term mean, rank should be high
+- sub(ts_mean(close,60), close) is high when close is below mean → reversal signal
+- rank(sub(ts_mean(close,60), close)) gives negative direction (long losers)
+
+Let me finalize:
+
+**IDEA-1-1**: rank(sub(ts_mean(close, 5), close))
+- Explanation: "5日反转因子"
+- Complexity: 2 (simple)
+- Direction: NEGATIVE (picks losers, which should rebound → long = positive return)
+
+**IDEA-1-2**: rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20)))
+- Explanation: "换手率(波动率)加权反转"
+- Complexity: 3 (medium)
+- Direction: NEGATIVE
+
+**IDEA-1-3**: rank(sub(ts_mean(close, 60), close))
+- Explanation: "60日长期反转(52周新高距离近似)"
+- Complexity: 2 (simple)
+- Direction: NEGATIVE
+
+Wait, let me reconsider IDEA-1-2. The description says "用换手率加权放大流动性信号中的反转特征". This means we want to amplify reversal signals for high-turnover stocks. 
+
+With ts_std as proxy for turnover/activity:
+- We want: reversal × turnover
+- Equivalent: reversal / (1/turnover)
+- But we can compute: div(reversal, div(1, ts_std)) = mul(reversal, ts_std) - not allowed
+- Alternative: div(sub(ts_mean, close), ts_std) gives reversal / volatility
+  - If we want reversal × volatility: this doesn't work
+  - But for normalization perspective, reversal/vol is like risk-adjusted reversal
+
+Actually, looking at the description again: "高换手率反映散户博弈激烈，回撤时反转更显著". The idea is that high turnover stocks have stronger reversal. So if we want to capture this, we should be picking stocks where both reversal AND turnover are high.
+
+We can't directly combine them with allowed ops. But we can rank by reversal divided by volatility (which is similar to a risk-adjusted measure) - this picks stocks that have fallen a lot relative to their recent price movements.
+
+Actually a cleaner approach: maybe just use rank on reversal weighted by volatility somehow.
+
+Hmm, with sub and div only, we can't really multiply. Let me think...
+
+What about: sub(rank(sub(ts_mean(close,20), close)), rank(ts_std(close,20)))
+- Wait, this would subtract. We want to add.
+- What about: sub(rank(ts_std(close,20)), rank(sub(close, ts_mean(close,20))))
+  - Wait the direction matters
+- sub(rank(sub(ts_mean(close,20), close)), rank(ts_std(close,20))): reversal rank minus vol rank
+  - High when reversal is high relative to vol → picks stocks that fell a lot relative to volatility
+  - But this penalizes high-vol stocks, which contradicts "high turnover amplifies reversal"
+
+Actually, the idea might be:
+- High turnover means lots of retail trading
+- When retail-heavy stocks drop, they bounce back harder
+- So we want: reversal_signal × turnover_proxy
+- We could compute this as: div(reversal_signal, 1/turnover_proxy) = mul but not allowed
+- Or: div(reversal_signal + turnover_proxy, ...) - but + is not allowed
+
+Let me just use: div(sub(ts_mean(close,20), close), ts_std(close,20))
+- This is reversal scaled by volatility
+- For the "liquidity-weighted reversal", this captures the idea that a 1-sigma drop in a high-vol stock is less informative than in a low-vol stock
+- Actually this is the opposite interpretation
+
+Alternative: I'll just use a simpler approach. Let me compute:
+- reversal = sub(ts_mean(close,20), close)  
+- liquidity = ts_std(close,20)
+- formula = rank(sub(div(reversal, sign(liquidity)), ...))
+
+Hmm, sign(ts_std) is mostly +1, so it doesn't help.
+
+Let me think of it this way - maybe use ratio differently:
+- div(reversal, div(close, ts_mean)) - some other ratio
+
+OK let me just go with: rank(div(sub(ts_mean(close,20), close), ts_std(close,20)))
+This captures risk-adjusted reversal (reversal / volatility). Higher value when the recent drop is large relative to normal fluctuations. This is a valid reversal signal that doesn't depend on turnover but rather on the significance of the drop.
+
+Actually, I realize the formula approach could be:
+- div(sub(ts_mean(close, 20), close), ts_std(close, 20))
+- For long-term reversal (IDEA-1-3 with 252d), we'd need a longer window but max is 60
+- So use ts_mean(close, 60) for IDEA-1-3 as best approximation
+
+Let me finalize:
+
+**IDEA-1-1** (5日短期反转, complexity: simple):
+- Formula: rank(sub(ts_mean(close, 5), close))
+- Explanation: "5日反转，买入5日均线下方的股票"
+- Direction: negative (rank high when price below mean, expect rebound)
+
+**IDEA-1-2** (换手率加权反转, complexity: medium):
+- Formula: rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20)))
+- Explanation: "20日反转除以波动率，风险调整反转信号"
+- Direction: negative (rank high when price dropped significantly relative to volatility)
+
+**IDEA-1-3** (52周新高距离反转, complexity: simple):
+- Formula: rank(sub(ts_mean(close, 60), close))
+- Explanation: "60日长期均值回归因子(近似52周距离)"
+- Direction: negative (rank high when price far below 60-day mean)
+
+Wait, for IDEA-1-2, I need to be careful about the direction. The expected_direction is 'long' and sign constraint says NEGATIVE direction. Long means we want to buy, and the factor should pick stocks that will rise. For reversal, stocks that have fallen should rise, so the factor should be high when stocks have fallen. 
+
+sub(ts_mean(close,20), close) is positive when close < ts_mean. So rank(sub(...)) gives high rank to stocks where close < ts_mean (i.e., recent losers). Buying these is a reversal/long-loser strategy. Direction: negative (i.e., factor increases as recent return decreases).
+
+For IDEA-1-2 with division by ts_std:
+- div(sub(ts_mean(close,20), close), ts_std(close,20))
+- When close < ts_mean and the drop is significant relative to vol, this is large
+- rank of this gives high rank to significant losers
+- Direction: negative ✓
+
+OK my formulas are correct. Let me write them out.
+
+Wait, let me re-verify complexity. The formula rank(sub(ts_mean(close, 5), close)) uses 3 operators (rank, sub, ts_mean). The example uses 3 operators with complexity 3. Let me count more carefully.
+
+Example: rank(-ts_mean(returns, 20)) has 2 operators but complexity 3 (which seems to count something else).
+
+Maybe complexity counts nesting depth or operator count differently. Let me just assign reasonable complexity based on the hint:
+- IDEA-1-1: simple → complexity 2
+- IDEA-1-2: medium → complexity 4
+- IDEA-1-3: simple → complexity 2
+
+Or maybe just count operators:
+- IDEA-1-1: 3 ops (rank, sub, ts_mean) → complexity 3
+- IDEA-1-2: 4 ops (rank, div, sub, ts_std, ts_mean) → 5 ops → complexity 5
+- IDEA-1-3: 3 ops → complexity 3
+
+Let me use the formula complexity as a measure of how complex the computation is:
+- IDEA-1-1: 3 (rank + sub + ts_mean)
+- IDEA-1-2: 5 (rank + div + sub + ts_mean + ts_std) - or maybe 4 if ts_mean isn't needed since we have sub + div
+
+Actually, let me re-read the example: "rank(-ts_mean(returns, 20))" has complexity 3.
+- This is rank(ts_mean) with negation
+- 2 operators but complexity 3
+
+So complexity might be = number of operators + 1, or just a subjective measure. Let me just use:
+- IDEA-1-1: 3
+- IDEA-1-2: 5  
+- IDEA-1-3: 3
+
+Let me also reconsider the explanation constraint - must be < 80 characters and NOT include HYPOTHESIS/MECHANISM structure.
+
+Final formulas:
+
+**FORMULA-1-1**: rank(sub(ts_mean(close, 5), close))
+- Explanation: "5日反转因子，捕捉短期超跌反弹"
+- Need to check: < 80 chars. "5日反转因子，捕捉短期超跌反弹" = 13 Chinese chars + punctuation, well under 80.
+
+**FORMULA-1-2**: rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20)))
+- Explanation: "20日反转除以波动率，风险调整反转信号"
+- "< 80 chars" ✓
+
+**FORMULA-1-3**: rank(sub(ts_mean(close, 60), close))
+- Explanation: "60日长期反转因子，捕获长期均值回归"
+- "< 80 chars" ✓
+
+Wait, for IDEA-1-3 the lookback is 252 but ts_mean max window is 60. So I'll use 60 as the closest allowed.
+
+Let me also think about whether the 52-week new high distance can be approximated differently:
+- div(close, ts_max(close, 252)) would be ideal but ts_max not allowed
+- We can only use ts_mean, so we use that
+
+Let me also check if I'm using sign anywhere useful... probably not needed.
+
+For a-share compatibility: all formulas use only close, so they're compatible. ✓
+
+Now let me also think about whether rank() alone is enough or if I need sign() or other things. The problem says the factor direction must be NEGATIVE. My factors rank high for stocks that have fallen, meaning they're "losers". If I long these (buy losers), I'm betting on reversal, which is consistent with a "negative" direction factor (factor value decreases as price increases). The 'expected_direction': 'long' means we want to go long when the factor is high.
+
+So the formulas are correct.
+
+Let me write the final JSON output now.
+
+Actually wait, I should double check the example more carefully:
+"rank(-ts_mean(returns, 20))" - this has "-" before ts_mean which is negation. Since sign_constraint says negative direction, perhaps this is the format expected.
+
+In our case, we have rank(sub(ts_mean, close)) which means ts_mean - close. When close is low (stock dropped), this is positive, so rank is high. The factor is "negative direction" because high factor value corresponds to low recent returns. ✓
+
+For IDEA-1-2: div(sub(ts_mean, close), ts_std) - high when close is far below mean relative to volatility. ✓ Negative direction.
+
+For IDEA-1-3: sub(ts_mean(close, 60), close) - high when close is far below 60-day mean. ✓ Negative direction.
+
+All good. Let me finalize.
+
+Oh wait, I need to put the think block before the JSON. Let me structure my response properly.
+
+Let me think about IDEA-1-2 once more. The "turnover-weighted" concept is hard to capture with just close. Let me think if there's a better way...
+
+Maybe: sub(rank(sub(ts_mean(close,20), close)), rank(ts_std(close,20)))
+- High reversal rank minus low volatility rank
+- This picks stocks that fell a lot (high reversal rank) AND have low volatility (low vol rank)
+- But the idea wants high-turnover stocks, not low-vol stocks
+
+Or: rank(sub(div(close, ts_mean(close,20)), div(1, ts_std(close,20))))
+- close/mean × ts_std = some kind of weighted measure
+- div(close, ts_mean) is close relative to mean (high when above mean)
+- div(1, ts_std) is inverse volatility (high for low-vol)
+- But this is positive for high price, low vol
+
+Hmm. Let me try: rank(div(sub(ts_mean(close,20), close), sign(ts_std(close,20))))
+- sub(ts_mean, close) is positive for losers
+- sign(ts_std) is mostly +1
+- So this is essentially rank(sub(ts_mean, close)) for most stocks
+- Not very useful
+
+I think the cleanest interpretation for "turnover-weighted reversal" with only close data is:
+- div(sub(ts_mean(close,20), close), ts_std(close,20))
+- This gives "abnormal reversal" - how much the stock dropped relative to its normal volatility
+- Higher = bigger drop relative to normal price movement = stronger reversal signal
+
+This is actually a reasonable proxy and captures the spirit of the idea (focus on the most significant reversal moves).
+
+Let me finalize and write the output.
+
+Actually, one more thought. For "turnover-weighted", maybe I should try:
+sub(div(sub(ts_mean(close,20), close), ts_std(close,20)), 0) - but can't use 0
+
+Or use sign to flip things:
+sign(sub(ts_mean(close,20), close)) × ts_std(close,20) - but mul not allowed
+
+I'll stick with div(sub, ts_std).
+
+Let me also think about whether to use rank on the outside. The problem is the formulas need to output a factor value, and using rank makes the cross-sectional comparison clear. The example uses rank too.
+
+Final formulas:
+
+1. FORMULA-1-1 (IDEA-1-1):
+   - Formula: rank(sub(ts_mean(close, 5), close))
+   - Explanation: "5日反转因子，买入5日均线下方的股票"
+   - Complexity: 3
+   - a_share_compatible: true
+   - Sign: negative (high when price < 5-day mean = loser = reversal target)
+
+2. FORMULA-1-2 (IDEA-1-2):
+   - Formula: rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20)))
+   - Explanation: "20日反转除以波动率，异常反转信号"
+   - Complexity: 4
+   - a_share_compatible: true
+   - Sign: negative
+
+3. FORMULA-1-3 (IDEA-1-3):
+   - Formula: rank(sub(ts_mean(close, 60), close))
+   - Explanation: "60日长期反转因子，近似52周新高距离"
+   - Complexity: 3
+   - a_share_compatible: true
+   - Sign: negative
+
+Let me write the response now.
+
+Wait, let me check explanation lengths in characters (each Chinese character counts as 1 char):
+- "5日反转因子，买入5日均线下方的股票" - about 20 chars, well under 80 ✓
+- "20日反转除以波动率，异常反转信号" - about 16 chars ✓
+- "60日长期反转因子，近似52周新高距离" - about 18 chars ✓
+
+All good. Now let me write the JSON output.
+
+Hmm, one more consideration for IDEA-1-2. Let me re-read: "高换手率反映散户博弈激烈，回撤时反转更显著；用换手率加权放大流动性信号中的反转特征". 
+
+The idea says "use turnover to weight and amplify reversal features in liquidity signal". So the formula should give more weight to high-turnover stocks. 
+
+With ts_std as proxy (since we don't have turnover):
+- If I want high-vol stocks to have stronger reversal signal, I could use:
+- div(reversal, ts_std) - this divides by vol, weakening signal for high-vol stocks (opposite of what we want)
+- div(reversal, div(1, ts_std)) = mul(reversal, ts_std) - this amplifies for high-vol stocks but mul is not allowed
+- sub(reversal, ts_std) - subtracts, doesn't make sense for amplification
+
+Hmm, all these have issues. Let me think differently.
+
+What about using the ratio of short-term to long-term std as a proxy for "abnormal trading activity":
+- div(ts_std(close, 5), ts_std(close, 60)) - high when recent vol > long-term vol (indicating increased activity)
+- But this is not necessarily turnover
+
+OK given the constraints, the cleanest approach is to interpret "turnover-weighted reversal" as "reversal normalized by volatility":
+- div(sub(ts_mean(close,20), close), ts_std(close,20))
+- This focuses on the most significant drops relative to normal price movement
+
+I'll go with this. The explanation can mention "风险调整" (risk-adjusted).
+
+Alright, let me write the output now.
+
+Actually one more idea for IDEA-1-2: what about using rank and sub to combine?
+sub(rank(sub(ts_mean(close,20), close)), div(rank(ts_std(close,20)), rank(ts_std(close,20))))
+- rank(ts_std)/rank(ts_std) = 1
+- So this is just rank(reversal) - 1 = rank(reversal) (since subtracting constant doesn't affect rank much in practice)
+
+OK that's silly. Let me stick with the div approach.
+
+Final answer:
+
+```json
+{
+  "round": 1,
+  "formulas": [
+    {
+      "id": "FORMULA-1-1",
+      "idea_id": "IDEA-1-1",
+      "formula": "rank(sub(ts_mean(close, 5), close))",
+      "complexity": 3,
+      "a_share_compatible": true,
+      "explanation": "5日反转因子，买入5日均线下方的股票"
+    },
+    {
+      "id": "FORMULA-1-2",
+      "idea_id": "IDEA-1-2",
+      "formula": "rank(div(sub(ts_mean(close, 20), close), ts_std(close, 20)))",
+      "complexity": 4,
+      "a_share_compatible": true,
+      "explanation": "20日反转除以波动率，异常反转信号"
+    },
+    {
+      "id": "FORMULA-1-3",
+      "idea_id": "IDEA-1-3",
+      "formula": "rank(sub(ts_mean(close, 60), close))",
+      "complexity": 3,
+      "a_share_compatible": true,
+      "explanation": "60日长期反转因子，近似52周新高距离"
+    }
+  ]
+}
+```
+
+Let me write the think block and then the JSON.
+
+For IDEA-1-3, since the lookback is 252 but max ts_mean window is 60, I should note this approximation. The formula uses 60-day mean as a proxy for long-term reference.
+
+Let me write the think tags now.

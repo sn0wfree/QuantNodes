@@ -1,0 +1,42 @@
+Let me analyze the situation carefully.
+
+All three formulas from Round 1 have status "failed" with IR = 0.0. The error messages indicate that `ts_corr` and `sub` operators are not supported in this evaluation system. The supported ops are: `['abs', 'neg', 'log', 'sign', 'sqrt', 'rank', 'zscore', 'winsorize']`.
+
+Since all formulas failed, there are NO viable formulas to select as top-3. The min_ir_threshold=0.05 and max_mutual_ic_threshold=0.7 would filter out any formula with IR < 0.05, and all three have IR = 0.0.
+
+However, the task says "Select final top-3 from all rounds" — but with only 3 formulas and all failing, I need to handle this gracefully.
+
+Let me think about what to do:
+
+1. All formulas failed due to unsupported operators
+2. None meet the min_ir_threshold of 0.05
+3. No reflections were generated (all_reflections is empty)
+
+The honest answer is that no formulas qualify. But the schema requires `final_pool` — I should return an empty final_pool and explain the situation in the summary.
+
+Actually, looking at the instructions again: "Select final top-3 from all rounds." If nothing qualifies, I should return an empty pool with a clear summary explaining why.
+
+Let me prepare the JSON output:
+
+- final_pool: [] (empty, since no formula meets thresholds)
+- summary: total_evaluated = 3, all failed due to unsupported operators
+
+Wait, but the schema shows an example with 3 entries. The task literally says "Select final top-3" — but if zero qualify, I should report zero. Let me be honest about this.
+
+SELECTION_CRITERIA: 
+- Primary gate: IR ≥ 0.05 (min_ir_threshold)
+- Secondary: IC mean stability and decay profile
+- Tertiary: mutual IC < 0.7 for diversity
+- All formulas must have status "success" with valid metrics
+
+DIVERSITY:
+- Would consider category (reversal, momentum, volume, volatility, etc.)
+- Would ensure different operators and logic structures
+- No viable candidates exist
+
+RISK_FILTERS:
+- Eliminated: all formulas with IR < 0.05
+- Eliminated: all formulas with execution errors (unsupported ops)
+- Eliminated: all formulas with status "failed"
+
+Since all 3 formulas failed and have IR = 0.0, the final pool must be empty.

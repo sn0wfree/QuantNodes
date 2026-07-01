@@ -1,0 +1,58 @@
+The user wants me to act as the Alpha-GPT Critic and select the final top-3 from all rounds. Let me analyze the evaluations provided.
+
+All 3 formulas come from Round 1:
+- FORMULA-1-1: `rank(ts_std(close, 20))` - IR: -0.113, IC: -0.0138
+- FORMULA-1-2: `rank(div(ts_std(close, 60), ts_mean(close, 60)))` - IR: -0.092, IC: -0.0090
+- FORMULA-1-3: `rank(div(ts_std(close, 20), ts_mean(close, 20)))` - IR: -0.050, IC: -0.0053
+
+All formulas have:
+- Negative IR (all below min_ir_threshold of 0.05 in absolute value, well actually they're negative)
+- The min_ir_threshold=0.05 - this is likely the minimum absolute IR. All three have |IR| > 0.05
+- IC means are all negative and small
+- No sharpe or max_drawdown data provided
+
+Let me check the criteria:
+- min_ir_threshold=0.05 - all have IR magnitude above this
+- max_mutual_ic_threshold=0.7 - only 3 formulas, need to check mutual IC
+
+Wait, all the ICs are negative. That's concerning - these are volatility-based factors that may be capturing mean-reversion or something else. The ir values are all negative meaning the IC is in the wrong direction or the factor is poorly calibrated.
+
+Actually, looking more carefully:
+- IR = IC_mean / IC_std
+- All IRs are negative meaning the factors have negative predictive power
+- |IR| ranges from 0.05 to 0.113
+
+The best among these (least negative IR) is FORMULA-1-3 with IR = -0.050.
+
+Since we only have 3 formulas and need top-3, I have to pick from these. But all have negative IR which means they're not useful as predictive factors. However, if we rank by absolute value of IR:
+1. FORMULA-1-1: |IR| = 0.113
+2. FORMULA-1-2: |IR| = 0.092
+3. FORMULA-1-3: |IR| = 0.050
+
+But negative IR means the factor is predicting in the wrong direction. This could be useful if we invert the signal, but typically we want positive IR.
+
+Hmm, actually I should interpret IR magnitude as the strength - higher absolute IR = stronger (but possibly wrong direction) signal. In alpha research, a strong negative IR can be inverted to become a positive factor.
+
+Let me think about diversity:
+- All three are volatility-based (ts_std or cv)
+- FORMULA-1-1: pure std
+- FORMULA-1-2: CV over 60 days
+- FORMULA-1-3: CV over 20 days
+
+For categories, these would be:
+- FORMULA-1-1: volatility
+- FORMULA-1-2: volatility (CV)
+- FORMULA-1-3: volatility (CV)
+
+No sharpe or max_drawdown data was provided, so I'll note that.
+
+Let me select the top 3 by absolute IR strength (since higher magnitude means stronger signal that could be inverted):
+1. FORMULA-1-1: |IR| = 0.113 (strongest)
+2. FORMULA-1-2: |IR| = 0.092
+3. FORMULA-1-3: |IR| = 0.050
+
+Actually, since all are negative IR and below 0.05 threshold... wait, the min_ir_threshold is 0.05 which I interpret as minimum |IR| required. All three pass this filter.
+
+The max_mutual_ic_threshold=0.7 - I don't have mutual IC data between formulas, but they use similar logic (volatility of close), so there might be high correlation. I should note this risk.
+
+Let me construct the response now.

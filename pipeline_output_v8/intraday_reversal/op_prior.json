@@ -1,0 +1,13 @@
+{
+  "weights": {
+    "rank": 0.2957749014499066,
+    "sub": 0.27321135933908347,
+    "ts_mean": 0.2957749014499066,
+    "mul": 0.41616892832414887
+  },
+  "alpha": 0.7,
+  "floor": 0.1,
+  "total_updates": 3,
+  "ir_threshold": 0.01,
+  "ir_full_strength": 0.5
+}

@@ -1,0 +1,24 @@
+{
+  "round_num": 2,
+  "best_ir": 0.09882961297485018,
+  "avg_ir": 0.0217540124240845,
+  "valid_count": 46,
+  "best_formulas": [],
+  "failed_patterns": [
+    {
+      "formula": "sign(rank(sub(sub(close, ts_mean(close, 20)), sub(close, ts_mean(close, 60)))))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(rank(sub(sub(close, ts_mean(close, 20)), sub(close, ts_mean(close, 60)))))",
+      "reason": "FAIL: value"
+    }
+  ],
+  "suggestions": [
+    "避免以下失败模式: FAIL: value, FAIL: value"
+  ],
+  "stats": {
+    "improvement_vs_prev": 0.0006427247624808119,
+    "total_mcts_nodes": 48
+  }
+}

@@ -1,0 +1,222 @@
+The user wants me to generate 3 alpha ideas for the objective 'Apply logic price_volume_divergence' with specific parameters. Let me think through this carefully.
+
+The objective is "Apply logic price_volume_divergence" - this means I need to find ideas based on the divergence between price and volume. This is a classic technical analysis concept where:
+- Price up but volume down = bearish divergence (weakening trend)
+- Price down but volume up = bullish divergence (potential reversal)
+- Or more nuanced: price movement not confirmed by volume
+
+For A-share market specifically:
+- T+1 trading constraint
+- Retail-dominated market (大量散户)
+- 涨跌停限制 (price limits ±10% for main board, ±20% for ChiNext/STAR)
+- High turnover, strong momentum effects
+- Policy-sensitive
+
+Let me design 3 ideas across different categories but all rooted in price-volume divergence:
+
+1. **Momentum/Reversal category**: Classic price-volume divergence
+   - Idea: Price makes new high but volume doesn't confirm → reversal signal
+   
+2. **Quality/Volatility category**: Volume-weighted price momentum with divergence detection
+   - Idea: When volatility is high but volume is low, suggests unstable moves
+   
+3. **Liquidity category**: Volume trend vs price trend divergence
+   - Idea: When volume is drying up despite price rising, signal weakening
+
+Let me make them more specific and orthogonal:
+
+IDEA-1-1: Price makes N-day high but volume below average → reversal
+- Category: reversal
+- Long/short: short (overbought divergence)
+- Lookback: 20-60 days
+- A-share compatible: yes (with adjustments for涨跌停)
+
+IDEA-1-2: Volume surge with price decline → accumulation/distribution
+- Category: momentum
+- Long/short: long (capitulation buying)
+- Lookback: 5-20 days
+- A-share compatible: yes
+
+IDEA-1-3: Negative volume divergence (price up, volume down for extended period)
+- Category: liquidity
+- Long/short: both
+- Lookback: 60-120 days
+- A-share compatible: yes
+
+Now let me think about the operator rationale and parameters more carefully.
+
+For A-share:
+- Need to handle涨跌停 (limit-up/limit-down) which create non-trading volume signals
+- Need to consider 换手率 (turnover rate) instead of raw volume for size-neutrality
+- T+1 means volume today reflects yesterday's positioning
+
+Let me structure the response:
+
+HYPOTHESIS: A股市场中，价格趋势若未得到成交量确认，往往预示趋势强度减弱或反转。价格新高伴随缩量是经典的看跌背离，而放量下跌可能是恐慌抛售后的反弹机会。
+
+MECHANISM: 
+- 散户主导市场容易出现"追涨杀跌"但缺乏持续性
+- 涨跌停机制导致单日成交量信号可能失真（无量涨停/跌停）
+- T+1约束意味着成交量包含隔夜信息
+
+OPERATOR_RATIONALE:
+- rank: cross-sectional comparison
+- ts_rank: time-series percentile
+- ts_corr: correlation between price and volume series
+- ts_mean/ts_std: baseline volume
+- delta: change
+- decay_linear: smooth
+
+PARAMETER_RATIONALE:
+- 20日: 月度窗口，A股学术文献常用
+- 60日: 季度窗口，捕捉中期背离
+- 5日: 周度窗口，捕捉短期反转
+
+RISK:
+- 政策市导致单边行情时，背离信号频繁失效
+- 流动性危机时，缩量本身是常态而非信号
+- ST股和停牌股数据失真
+
+Let me now write the three ideas more concretely:
+
+IDEA-1-1: 价量背离反转 (Price-Volume Divergence Reversal)
+- Category: reversal
+- Concept: ts_corr(price, volume) over lookback period is negative (price going up while volume going down, or vice versa)
+- Specifically: rank of negative correlation between price returns and volume changes
+- Lookback: 20 days
+- Expected direction: short (negative divergence signals reversal)
+- Orthogonal to: short-term momentum
+
+IDEA-1-2: 放量下跌反弹 (Volume Surge on Decline Rebound)
+- Category: momentum (or reversal)
+- Concept: When price drops with high volume, expect rebound (capitulation)
+- Lookback: 5-10 days
+- Expected direction: long
+- Orthogonal to: classic momentum
+
+IDEA-1-3: 量价齐升动量 (Price-Volume Confirmed Momentum)
+- Category: momentum
+- Concept: When both price and volume rise together, trend has strength
+- Lookback: 60 days
+- Expected direction: long
+- Orthogonal to: pure price momentum
+
+Wait, the user wants ideas ALL based on price_volume_divergence logic. Let me re-read: 'Apply logic price_volume_divergence'. So all three ideas should apply this logic but in different ways or across different categories.
+
+Let me revise:
+
+IDEA-1-1: 经典价量负相关背离 (Classic Negative Price-Volume Correlation Divergence)
+- Category: reversal
+- Logic: When price and volume move in opposite directions over lookback, expect reversal
+- Direction: both (price up + volume down = short; price down + volume up = long)
+- Lookback: 20
+- Orthogonal to: simple momentum
+
+IDEA-1-2: 量价同向动量 (Price-Volume Aligned Momentum)
+- Category: momentum
+- Logic: When price and volume both rise, momentum is confirmed and continues
+- Direction: long
+- Lookback: 60
+- Orthogonal to: pure price momentum, reversal
+
+IDEA-1-3: 缩量突破预警 (Low Volume Breakout Warning)
+- Category: volatility (or liquidity)
+- Logic: Price breaks out to new high but on low volume - false breakout signal
+- Direction: short
+- Lookback: 20-60
+- Orthogonal to: breakout momentum
+
+Let me think more carefully about complexity_hint and operator choices.
+
+Operators available from the list:
+- IndNeutralize (industry neutralize)
+- abs, add, aggr_count, aggr_max, aggr_mean, aggr_median, aggr_min, aggr_prod, aggr_quantile, aggr_std, aggr_sum, aggr_var
+- aggregate, applymap
+- arccos, arcsin, arctan
+- astype
+- blend
+- book_to_market
+- ceil
+- chg_ids
+- clip
+- combine
+- correlation
+- cos
+- covariance
+- cross_sectional_mean, cross_sectional_rank
+- And others not listed but commonly available in Alpha-GPT
+
+Wait, the list seems truncated. The common ones I know include: ts_mean, ts_std, ts_rank, ts_min, ts_max, ts_delta, ts_decay_linear, ts_corr, rank, sign, log, signed_power, etc.
+
+Let me write the final JSON response. I'll structure my thinking first:
+
+HYPOTHESIS: 价格走势若得不到成交量的确认，往往预示趋势强度衰减或反转。在A股散户主导、T+1及涨跌停约束下，价量背离信号具有较高有效性。
+
+MECHANISM:
+- 散户追涨杀跌但缺乏持续资金支撑，价格突破无量则易回落
+- 涨跌停导致单日信号失真，需用滚动窗口平滑
+- T+1使当日成交量反映前日情绪，存在滞后但仍是重要信号
+- 政策驱动行情时价量可能脱钩，需谨慎
+
+OPERATOR_RATIONALE:
+- ts_corr/correlation: 直接度量价量相关性
+- rank/cross_sectional_rank: 截面可比性
+- ts_mean: 成交量基准
+- ts_delta: 价量变化方向
+- decay_linear: 加权近期
+
+PARAMETER_RATIONALE:
+- 20日: 经典月度窗口，平衡信噪比
+- 60日: 季度趋势，捕捉中期背离
+- 5日: 周度，捕捉短期反转
+
+RISK:
+- 政策单边市失效
+- 缩量可能是流动性危机常态
+- ST/停牌股数据污染
+
+SUGGESTED_OPS: ts_corr, ts_rank, rank, ts_mean, ts_delta, decay_linear
+
+Now the three ideas:
+
+IDEA-1-1: 
+- Name: 20日价量负相关反转
+- Category: reversal
+- Rationale: 价量长时间负相关表明趋势缺乏量能支撑，易反转
+- Direction: both (negative correlation can signal either direction reversal)
+- Lookback: 20
+- A-share: true
+- Orthogonal: ["IDEA-1-2", "IDEA-1-3"]
+- Complexity: simple
+
+IDEA-1-2:
+- Name: 放量下跌反转
+- Category: momentum (or reversal)
+- Rationale: 恐慌抛售伴随放量后常现超跌反弹
+- Direction: long
+- Lookback: 5
+- A-share: true
+- Orthogonal: ["IDEA-1-3"]
+- Complexity: simple
+
+IDEA-1-3:
+- Name: 量价齐升中线动量
+- Category: momentum
+- Rationale: 价格与成交量同步上行表明趋势健康，可持续
+- Direction: long
+- Lookback: 60
+- A-share: true
+- Orthogonal: ["IDEA-1-1"]
+- Complexity: medium
+
+Let me finalize the JSON output. I should make sure the rationale is under 150 characters in Chinese.
+
+IDEA-1-1 rationale (under 150 chars): "20日窗口内价量负相关，价格上行无量配合或下跌放量均暗示趋势难持续，反转概率上升"
+
+IDEA-1-2 rationale: "短期放量阴线反映恐慌盘涌出，A股散户情绪释放后常现超跌反弹"
+
+IDEA-1-3 rationale: "60日量价同向上行表明资金与价格共振，中期趋势有量能支撑持续性强"
+
+Let me check orthogonality - the schema says orthogonal_to is an array of strings (idea IDs).
+
+Final JSON:

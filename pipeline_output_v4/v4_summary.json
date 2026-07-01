@@ -1,0 +1,98 @@
+{
+  "version": "V4",
+  "description": "4-logic E2E baseline (no thinking chain utilization)",
+  "total_logics": 4,
+  "total_factors": 9,
+  "best_abs_ir_overall": 0.12080949285582535,
+  "total_elapsed_seconds": 522.1645965576172,
+  "results": [
+    {
+      "logic_name": "price_volume_divergence",
+      "total_rounds": 1,
+      "final_factors": 0,
+      "elapsed_seconds": 190.0384874343872,
+      "best_ir": 0.0,
+      "avg_ir": 0.0,
+      "best_abs_ir": 0.0,
+      "factors": []
+    },
+    {
+      "logic_name": "mean_reversion",
+      "total_rounds": 1,
+      "final_factors": 3,
+      "elapsed_seconds": 82.62119650840759,
+      "best_ir": -0.02675363886977363,
+      "avg_ir": -0.06043894793545945,
+      "best_abs_ir": 0.11332590513900428,
+      "factors": [
+        {
+          "formula_id": "FORMULA-1-3",
+          "ir": -0.11332590513900428,
+          "ic_mean": -0.013839306745141347
+        },
+        {
+          "formula_id": "FORMULA-1-1",
+          "ir": -0.04123729979760043,
+          "ic_mean": -0.0047266271216693705
+        },
+        {
+          "formula_id": "FORMULA-1-2",
+          "ir": -0.02675363886977363,
+          "ic_mean": -0.0032736542125650437
+        }
+      ]
+    },
+    {
+      "logic_name": "momentum",
+      "total_rounds": 1,
+      "final_factors": 3,
+      "elapsed_seconds": 113.65301179885864,
+      "best_ir": 0.03870484747300316,
+      "avg_ir": 0.022808382598230596,
+      "best_abs_ir": 0.03870484747300316,
+      "factors": [
+        {
+          "formula_id": "FORMULA-1-2",
+          "ir": 0.03870484747300316,
+          "ic_mean": 0.0045945566374668316
+        },
+        {
+          "formula_id": "FORMULA-1-3",
+          "ir": 0.03314042938058394,
+          "ic_mean": 0.0026700392655880753
+        },
+        {
+          "formula_id": "FORMULA-1-1",
+          "ir": -0.003420129058895316,
+          "ic_mean": -0.00040116378469117343
+        }
+      ]
+    },
+    {
+      "logic_name": "volatility",
+      "total_rounds": 1,
+      "final_factors": 3,
+      "elapsed_seconds": 135.85157656669617,
+      "best_ir": 0.019272991331659797,
+      "avg_ir": -0.0505676483217914,
+      "best_abs_ir": 0.12080949285582535,
+      "factors": [
+        {
+          "formula_id": "FORMULA-1-3",
+          "ir": -0.12080949285582535,
+          "ic_mean": -0.014420650826284064
+        },
+        {
+          "formula_id": "FORMULA-1-1",
+          "ir": -0.050166443441208665,
+          "ic_mean": -0.005328170753380869
+        },
+        {
+          "formula_id": "FORMULA-1-2",
+          "ir": 0.019272991331659797,
+          "ic_mean": 0.0013838515979625195
+        }
+      ]
+    }
+  ]
+}

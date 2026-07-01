@@ -1,0 +1,158 @@
+The user wants me to generate 3 alpha ideas for intraday_reversal in A-share market, round 1. Let me think carefully about this.
+
+The objective is "Apply logic intraday_reversal" - so this is specifically about intraday reversal patterns, not standard multi-day reversal.
+
+Key A-share constraints to consider:
+- T+1 trading rule (can't sell same day you buy)
+- 10% daily price limit (5% for ST stocks)
+- Retail-dominated market (overreaction is common)
+- Lunch break 11:30-13:00
+- Intraday has morning session (9:30-11:30) and afternoon session (13:00-15:00)
+- Last 3 minutes (14:57-15:00) is closing call auction
+
+For intraday reversal, the classic patterns are:
+1. Open-to-close reversal: stocks that gap up/down and reverse during the day
+2. Morning-to-afternoon reversal: morning session direction reverses in afternoon
+3. Last hour reversal: late day reversal pattern
+4. VWAP deviation reversal: stocks far from VWAP tend to revert
+
+Let me design 3 ideas:
+
+1. **Morning-Afternoon Reversal (MORN_AFT_REV)**
+   - Logic: Stocks that dropped in morning tend to recover in afternoon (and vice versa) - retail overreaction in morning
+   - Use morning return (9:30-11:30) and afternoon return (13:00-15:00) as proxies
+   - In A-share, lunch break allows information digestion
+   - Long stocks with negative morning return (expect afternoon bounce)
+
+2. **Open-Close Intraday Reversal**
+   - Logic: Stocks that gap at open and reverse during day - similar to overnight reversal but intraday
+   - Use open-to-close minus open-to-some-time reversal
+   - Could use: -rank(open_to_10am_return) * sign(close_to_10am_return)
+
+3. **VWAP Reversion Intraday**
+   - Logic: Stocks that deviate significantly from intraday VWAP tend to revert
+   - Use (close - vwap) / vwap, then mean revert
+   - A-share retail behavior pushes prices away from VWAP, then reverts
+
+Let me also think about orthogonal_to and complexity:
+- These should be orthogonal to each other
+- Different lookback windows
+- Different operator combinations
+
+For the operator rationale, I should think about which BRAIN operators are available:
+- ts_*: time-series operators
+- rank: cross-sectional rank
+- IndNeutralize: industry neutralization
+- decay_linear, decay_exp: weighted averages
+- ts_argmax, ts_argmin: position of extremum
+- ts_mean, ts_std, ts_skew, ts_kurt
+- correlation
+- delta, delay
+- sign, abs
+- add, sub, mul, div
+
+For intraday_reversal, we don't have true intraday data typically, but we can simulate with:
+- open/close/high/low daily data
+- Use specific time proxies (but with daily data we only have O/H/L/C)
+
+Actually, the operator list doesn't include intraday-specific things, so I should focus on what we can do with daily OHLCV.
+
+Let me refine my ideas:
+
+**IDEA-1-1: Morning-Afternoon Reversal**
+- Approximate: morning move as sign(open-to-mid) or open vs close, but this is tricky with daily data
+- Better: use (open - low) / (high - low) as morning position proxy, then (high - close) / (high - low) for afternoon
+- Or: rank of (open - close) as a simple intraday reversal signal
+- Wait, "intraday reversal" - stocks that go down during day vs go up
+- Use: (high - close) - (open - low) or similar
+- Actually simpler: -rank(close) * sign(open - prev_close) = if gap up and price near low, expect bounce
+
+Let me think about it more carefully. Classic intraday reversal:
+- Mean reversion within the day: stocks that move a lot at open tend to reverse by close
+- Formula idea: (open/prev_close - 1) * (close/open - 1) < 0
+
+So: -sign(open/prev_close - 1) * sign(close/open - 1) when both same sign = bad, opposite = good
+
+Or in operator form:
+- ts_rank(close, d) might not capture this
+- Need: (open/delay(close,1) - 1) * (close/open - 1) → negative is reversal
+
+Let me think about practical implementations:
+
+**IDEA-1-1: 隔夜跳空+日内反转 (Gap-and-Reverse)**
+- Hypothesis: Stocks that gap up at open and continue up during day (no reversal) tend to reverse next day. Conversely, gap down + intraday decline (no reversal) also reverses.
+- Better: Focus on intraday-only reversal
+- Use: -sign(open/delay(close,1) - 1) * (close/open - 1) 
+  - If gap up (positive) and close > open (positive), both same sign, expect reversal next day = short
+  - If gap down and close < open, both same sign = short
+  - If gap up but close < open (intraday reversal already happened), less likely to reverse again
+- Operator: rank(delta(close,1)) * sign(close/open - 1) → captures intraday move direction
+
+Actually, let me look at this differently. For intraday reversal, the alpha should be:
+- Look at today's intraday return pattern
+- Predict next day's reversal
+
+A simple way: 
+- alpha = -rank(close/open)  → stocks that went up a lot today (close/open high) tend to reverse tomorrow
+- But this is just standard short-term reversal
+
+For TRUE intraday reversal, we want to capture the pattern within the day:
+- alpha = -sign(open/prev_close - 1) * (close/open) or similar
+
+Let me think about my 3 final ideas:
+
+**Idea 1: Gap-and-Continue Reversal**
+- Concept: Stocks that opened with a gap and continued in same direction (no intraday reversal) tend to mean-revert
+- Category: reversal
+- Formula idea: -sign(overnight_gap) * intraday_return_continuation
+- Expected: short stocks with positive gap + positive intraday return, long stocks with negative gap + negative intraday return
+- A-share rationale: T+1 means you can act on this signal next morning; 涨跌停 limits can cause "continuation then reversal" patterns
+
+**Idea 2: VWAP Distance Intraday Reversion**
+- Concept: Stocks closing far from typical price (proxy via (H+L+C)/3 or HLC) tend to revert
+- Use: -rank(abs(close - ts_mean(close, 5)) / ts_mean(close, 5))
+- Or: -ts_rank(close, 20) for short-term reversal but with intraday component
+- Better: combine intraday strength with multi-day context
+
+**Idea 3: Morning-Afternoon Session Reversal Proxy**
+- Use OHLC to estimate morning vs afternoon
+- (H+L)/2 as day midpoint proxy
+- If open > (H+L)/2 and close > open → strong up day, expect reversal
+- If open < (H+L)/2 and close < open → strong down day, expect reversal
+
+Let me write these up properly now.
+
+For each, I need:
+- HYPOTHESIS: one sentence
+- MECHANISM: A-share specific
+- OPERATOR_RATIONALE: which operators and why
+- PARAMETER_RATIONALE: why this lookback
+- RISK: failure modes
+- SUGGESTED_OPS: operator list
+
+Final 3 ideas:
+
+**IDEA-1-1: 跳空+日内同向反转 (Gap-Continue Reversal)**
+- Hypothesis: 跳空开盘后日内延续同向走势的股票倾向于次日反转（散户T+1套利）
+- Mechanism: A股T+1制度下，跳空+延续的"惯性幻觉"在次日被套牢盘和反向资金纠正
+- Operators: rank, sign, sub (for gap), div (returns)
+- Lookback: 5 (recent gap patterns)
+- Complexity: simple
+
+**IDEA-1-2: HLC中枢偏离反转 (HLC Midpoint Deviation Reversal)**
+- Hypothesis: 收盘价相对日内(H+L+C)/3中枢过度偏离的股票次日回弹
+- Mechanism: 用(H+L+C)/3估计VWAP代理；散户拉升/砸盘后回归正常估值
+- Operators: rank, abs, sub, ts_mean
+- Lookback: 20
+- Complexity: simple
+
+**IDEA-1-3: 早盘-尾盘反转模式 (Open-Close Intraday Reversal)**
+- Hypothesis: 开盘跳空方向与日内走势相反时，次日倾向延续反转后的方向
+- Mechanism: T+1下，开盘博弈充分定价信息，午后反转反映真实方向，次日延续
+- Operators: rank, sign, delta, ts_rank
+- Lookback: 10
+- Complexity: medium
+
+Let me make them more distinct and use different operators/orientations to ensure orthogonality.
+
+Let me write the final JSON now.

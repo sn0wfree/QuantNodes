@@ -1,0 +1,14 @@
+{
+  "weights": {
+    "rank": 0.24867052694993041,
+    "div": 0.24864300354406066,
+    "ts_mean": 0.24860898930801328,
+    "winsorize": 0.30752983522458444,
+    "ts_std": 0.308224715838707
+  },
+  "alpha": 0.7,
+  "floor": 0.1,
+  "total_updates": 7,
+  "ir_threshold": 0.01,
+  "ir_full_strength": 0.5
+}

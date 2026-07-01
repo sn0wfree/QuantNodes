@@ -1,0 +1,110 @@
+{
+  "version": "V6",
+  "description": "4-logic E2E with 4-layer defense (P0+P1+P2+P3)",
+  "fixes_applied": [
+    "P0: parser._find_last_valid_json() - recover truncated-then-restyled JSON",
+    "P1: alpha_gpt post-process explanation > 200 chars",
+    "P2: parser._validate_formula_translator - idea_id optional, explanation truncate",
+    "P3: idea-generator prompt uses 'rationale' (not 'description')"
+  ],
+  "total_logics": 4,
+  "total_factors": 9,
+  "best_abs_ir_overall": 0.12840847255644636,
+  "total_elapsed_seconds": 576.4364411830902,
+  "results": [
+    {
+      "logic_name": "price_volume_divergence",
+      "total_rounds": 1,
+      "final_factors": 0,
+      "elapsed_seconds": 156.1164002418518,
+      "best_ir": 0.0,
+      "avg_ir": 0.0,
+      "best_abs_ir": 0.0,
+      "factors": [],
+      "op_prior_top5": []
+    },
+    {
+      "logic_name": "mean_reversion",
+      "total_rounds": 1,
+      "final_factors": 3,
+      "elapsed_seconds": 131.70352983474731,
+      "best_ir": 0.05349365845976675,
+      "avg_ir": 0.04805452954168169,
+      "best_abs_ir": 0.05349365845976675,
+      "factors": [
+        {
+          "formula_id": "FORMULA-1-2",
+          "ir": 0.05349365845976675,
+          "ic_mean": 0.006138521508093471
+        },
+        {
+          "formula_id": "FORMULA-1-3",
+          "ir": 0.049432630367677866,
+          "ic_mean": 0.005958102052969257
+        },
+        {
+          "formula_id": "FORMULA-1-1",
+          "ir": 0.04123729979760045,
+          "ic_mean": 0.004726627121669372
+        }
+      ],
+      "op_prior_top5": []
+    },
+    {
+      "logic_name": "momentum",
+      "total_rounds": 1,
+      "final_factors": 3,
+      "elapsed_seconds": 88.51490807533264,
+      "best_ir": 0.12840847255644636,
+      "avg_ir": 0.060798372153330386,
+      "best_abs_ir": 0.12840847255644636,
+      "factors": [
+        {
+          "formula_id": "FORMULA-1-2",
+          "ir": 0.12840847255644636,
+          "ic_mean": 0.014919462447831109
+        },
+        {
+          "formula_id": "FORMULA-1-3",
+          "ir": 0.11497664628068223,
+          "ic_mean": 0.013956398699442586
+        },
+        {
+          "formula_id": "FORMULA-1-1",
+          "ir": -0.06099000237713744,
+          "ic_mean": -0.007614890523501923
+        }
+      ],
+      "op_prior_top5": []
+    },
+    {
+      "logic_name": "volatility",
+      "total_rounds": 1,
+      "final_factors": 3,
+      "elapsed_seconds": 200.10112476348877,
+      "best_ir": -0.050166443441208665,
+      "avg_ir": -0.08500973051473443,
+      "best_abs_ir": 0.11332590513900428,
+      "factors": [
+        {
+          "formula_id": "FORMULA-1-1",
+          "ir": -0.11332590513900428,
+          "ic_mean": -0.013839306745141347
+        },
+        {
+          "formula_id": "FORMULA-1-2",
+          "ir": -0.09153684296399031,
+          "ic_mean": -0.009046909860227206
+        },
+        {
+          "formula_id": "FORMULA-1-3",
+          "ir": -0.050166443441208665,
+          "ic_mean": -0.005328170753380869
+        }
+      ],
+      "op_prior_top5": []
+    }
+  ],
+  "op_prior_final_top10": [],
+  "op_prior_total_updates": 0
+}

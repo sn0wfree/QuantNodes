@@ -1,0 +1,524 @@
+Let me analyze the constraints carefully:
+
+1. ALLOWED OPERATORS: div, mul, rank, sign, sub, ts_corr
+2. ALLOWED VARIABLES: open, volume (note: not close, not vol, not amount)
+3. PARAMETER RANGES: ts_corr window must be between 5 and 30
+4. SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)
+5. CRITICAL: Use ONLY function call format. NO arithmetic operators (+,-,*,/). NO missing parentheses.
+6. explanation < 80 characters
+7. Strict JSON output
+
+Let me think about each idea:
+
+**IDEA-1-1: 价量相关性反转**
+- Core idea: Price-volume correlation is too high when trend is fully priced, mean reversion opportunity
+- Direction: long
+- Lookback: 20
+- Mechanism: High correlation between price and volume suggests trend exhaustion, so we should bet on reversal
+- To go LONG on reversal, we need NEGATIVE correlation signal (high correlation = go long = reverse it)
+
+**IDEA-1-2: 量价背离度信号**
+- Core idea: Volume changes precede price consensus, divergence signals momentum exhaustion
+- Direction: short
+- Lookback: 10
+- Mechanism: Divergence between price and volume predicts reversal
+- Going short means we want high correlation to indicate exhaustion and bet downward
+- Wait, if the idea is "short" direction, and overall factor must be negative, this aligns
+
+**IDEA-1-3: 量价离散度异常**
+- Core idea: Price fluctuation is artificially limited by price limits, volume volatility carries purer information
+- Direction: both
+- Lookback: 20
+- Mechanism: Divergence between price and volume variance captures abnormal behavior
+
+Now, I'm limited to: div, mul, rank, sign, sub, ts_corr, and variables open, volume.
+
+Let me design formulas:
+
+**FORMULA-1-1 (IDEA-1-1):**
+Long reversal on high price-volume correlation.
+Since we need negative direction, and we're going long (reversing high correlation), we want: when correlation is high → go long.
+If we use ts_corr directly, high positive correlation. To get long when correlation is high, we could use: sign(ts_corr(...)) which gives positive when corr is high.
+But overall must be negative. Hmm.
+
+Wait, let me re-read: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+So the factor output should generally be negative? Or the alpha should be negative correlation with returns?
+
+I think it means the factor should be negatively correlated with future returns. So if the factor is high, returns should be low (or vice versa).
+
+For IDEA-1-1: Long means we want high factor → high returns.
+But sign constraint is negative. Contradiction?
+
+Let me re-read: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+I think this means the sign of the factor should be -1. So the formula should produce negative values when the "signal" is positive. In other words, negate the signal.
+
+So: sign(-ts_corr(rank(open), rank(volume), 20))
+
+For IDEA-1-1 (long reversal):
+- High correlation = trend exhausted = go long
+- Factor should be high when we want to go long
+- But sign must be negative overall
+- So: sign(-ts_corr(...)) means: when corr is high, factor is negative
+- This contradicts "long"
+
+Hmm, let me think again. Maybe the sign constraint means we should use sign(-...) to ensure negative values. But this could conflict with direction.
+
+Actually, looking at the example: `sign(-ts_corr(rank(open), rank(volume), 10))`
+This is the example formula. The -1 direction suggests we need to negate the correlation signal.
+
+For a reversal strategy: when correlation is high (trend strong), we expect reversal. So returns should be negative.
+- High ts_corr → negative future returns
+- Factor = -ts_corr → when ts_corr is high, factor is very negative
+- This means high factor = negative returns... wait that's the opposite
+
+Let me think more carefully:
+- Factor = -ts_corr(...)
+- When ts_corr is positive and high, factor is very negative
+- If factor is "high" (large positive), it means ts_corr is very negative (price down, volume up type relationship)
+- If expected_direction is "long", we want high factor to predict high returns
+
+Actually for IDEA-1-1, the idea says "价量高相关代表趋势已充分定价" - high correlation = trend fully priced = reversal opportunity = go long.
+
+So when ts_corr is high, we want to go long. The factor should be high when ts_corr is high.
+Factor = ts_corr(...) would be high when correlation is high → long signal ✓
+
+But sign constraint says negative. So factor = -ts_corr(...) is high (positive) when correlation is very negative. That's when price goes one way and volume goes opposite way.
+
+Hmm, but with sign(-ts_corr(...)), the sign function forces it to -1 when ts_corr is positive and 1 when ts_corr is negative. This seems to be "negate" the signal.
+
+Let me look at the example more carefully:
+`sign(-ts_corr(rank(open), rank(volume), 10))`
+- When ts_corr is positive: sign(-positive) = -1
+- When ts_corr is negative: sign(-negative) = +1
+- When ts_corr is 0: 0
+
+So this factor is -1 when price and volume are positively correlated (trending together), and +1 when they're negatively correlated.
+
+For IDEA-1-1 (long reversal): We want to long when high correlation (trend exhausted). But with sign(-ts_corr), high correlation gives -1, which would mean we want to short. That's contradictory.
+
+Wait, maybe the "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)" means the alpha should have negative IC. In WorldQuant, the convention is that the factor should predict negative returns (i.e., the alpha is a "short" signal by construction, or more precisely, high alpha values predict low returns).
+
+If high ts_corr predicts reversal (going from up to down), then:
+- High ts_corr → future returns negative
+- Factor = ts_corr → high factor → negative returns → negative IC ✓
+- But sign constraint wants negative
+
+Hmm, I'm overthinking. Let me just follow the example pattern: use sign(-ts_corr(...)) which produces the negative-direction signal.
+
+The "expected_direction" in the idea is what the original idea suggests, but the sign constraint overrides the direction. So we should construct factors that have negative direction.
+
+For IDEA-1-1 (long reversal on high correlation):
+- High ts_corr → go long (per idea)
+- But with sign(-ts_corr): high ts_corr → factor = -1
+- For a "negative direction" factor, this would mean factor = -1 predicts positive returns
+- So sign(-ts_corr) gives: high correlation → -1 → predicts positive returns → long ✓
+
+This actually works! The sign function + negation makes the factor negative when correlation is high, and the negative sign constraint means -1 predicts positive returns (long).
+
+OK so the pattern is: sign(-ts_corr(rank(open), rank(volume), window))
+
+Let me now design all three:
+
+**FORMULA-1-1 (IDEA-1-1):**
+sign(-ts_corr(rank(open), rank(volume), 20))
+- High correlation → factor = -1 → negative factor
+- Per sign constraint, this is the long signal
+
+**FORMULA-1-2 (IDEA-1-2):**
+sign(-ts_corr(rank(open), rank(volume), 10))
+- Divergence (low correlation) → factor higher
+- Short direction expected
+- With negative sign, high factor means low future returns
+- Hmm, but idea says go short, and this gives...
+
+Actually for IDEA-1-2 (short on divergence):
+- Divergence means low correlation
+- Low correlation → factor near 0 (from sign function it could be +1, -1, or 0)
+- Need to differentiate
+
+Let me use ts_corr magnitude differently. Actually with sign(-ts_corr), the values are discrete: -1, 0, or 1.
+
+For a more continuous signal, maybe I should use:
+- mul(rank(...), ...) or similar
+
+Wait, the constraint says ONLY div, mul, rank, sign, sub, ts_corr. So I can use mul, div, sub too.
+
+Let me think of a divergence measure:
+- Divergence = |price change - volume change| or similar
+- But I can't use abs (not in allowed list)
+
+Actually with rank(open) and rank(volume), I can compute:
+- sub(rank(open), rank(volume)) gives the spread between ranked price and volume
+
+For divergence: sub(rank(open), rank(volume)) is large when they diverge.
+
+For IDEA-1-2 (short signal based on divergence):
+- Want high divergence → go short
+- Factor = sign(-sub(rank(open), rank(volume))) or similar
+- When sub is positive (price up, volume down): factor = -1 → short
+- This makes sense for the "缩量上涨" pattern (price up, volume down = bearish)
+
+Wait but this doesn't use the lookback window from the idea.
+
+Let me incorporate lookback. One way: use rank(open) and rank(volume) and then apply rolling/correlation over time.
+
+For IDEA-1-1: The mechanism is correlation-based reversal
+- Formula: sign(-ts_corr(rank(open), rank(volume), 20))
+- When recent 20-day correlation is high → -1 (negative factor, predicts positive returns per sign convention)
+
+For IDEA-1-2: Divergence signal
+- Use sub(rank(open), rank(volume)) to measure instantaneous divergence
+- But this doesn't use lookback
+- Could use: sign(-sub(ts_mean(rank(open), 10), ts_mean(rank(volume), 10)))
+- Wait, ts_mean is not in allowed list
+
+Hmm, the allowed list is strict: div, mul, rank, sign, sub, ts_corr
+
+So I can only use these 6 operators. No ts_mean, no ts_std, no delay, nothing else.
+
+OK let me work within these constraints.
+
+Available: div, mul, rank, sign, sub, ts_corr, open, volume
+
+**FORMULA-1-1:**
+Idea: Price-volume correlation reversal. High correlation → reversal.
+Formula: sign(-ts_corr(rank(open), rank(volume), 20))
+Complexity: medium (3-4)
+- This is a correlation-based reversal factor
+
+**FORMULA-1-2:**
+Idea: Volume precedes price in T+1. Divergence signal.
+Formula: sign(-ts_corr(rank(open), rank(volume), 10))
+Complexity: simple (1-2)
+- Or maybe: sign(-sub(rank(open), rank(volume)))
+- Sub doesn't need window
+
+Actually, for divergence, the sub operator gives the current divergence. But it doesn't capture "先行" (leading) nature.
+
+Let me think of what we can do:
+- div(rank(volume), rank(open)) - volume/price ratio change
+- sub(rank(volume), rank(open)) - volume minus price
+
+For "量先于价" (volume leads price), we'd want to compare current volume to lagged price. But we can't use lag/delay.
+
+So we're limited to:
+1. ts_corr-based factors (capturing relationship over time)
+2. Instantaneous rank-based differences (sub, div)
+
+For IDEA-1-2, the suggestion is lookback 10 and "simple" complexity. Let's use:
+sign(-ts_corr(rank(open), rank(volume), 10))
+
+For IDEA-1-3, the suggestion is lookback 20 and "complex" complexity. The idea mentions "离散度" (dispersion/divergence), but we don't have std operators.
+
+Let me try: mul(sub(rank(open), rank(volume)), sub(rank(open), rank(volume)))
+Wait, that's not in allowed operators (no mul of two things? mul is in list)
+
+Actually mul is allowed! So:
+mul(sub(rank(open), rank(volume)), sub(rank(open), rank(volume)))
+This is equivalent to squaring the divergence, giving larger magnitude for larger divergence.
+
+But we need negative sign. So:
+sign(-mul(sub(rank(open), rank(volume)), sub(rank(open), rank(volume))))
+
+Hmm, this is getting complex. Let me also think about what makes these orthogonal to each other.
+
+Orthogonality:
+- IDEA-1-1 ⊥ IDEA-1-2
+- IDEA-1-2 ⊥ IDEA-1-3
+- IDEA-1-1 vs IDEA-1-3: not specified
+
+For orthogonality, we want different mechanisms.
+
+Let me finalize:
+
+**FORMULA-1-1 (IDEA-1-1):**
+sign(-ts_corr(rank(open), rank(volume), 20))
+- Uses correlation over 20 days
+- Reversal: high correlation → factor negative → predicts positive returns
+
+**FORMULA-1-2 (IDEA-1-2):**
+sign(-sub(rank(volume), rank(open)))
+- Or sign(-ts_corr(rank(open), rank(volume), 10))
+- Instantaneous divergence signal
+
+Actually for IDEA-1-2, let me use:
+sign(-sub(rank(volume), rank(open)))
+- When volume rank > open rank (volume up, price not): sub positive, factor = -1
+- Hmm, but for "缩量上涨" (price up, volume down) we want short
+- When price rank > volume rank: sub negative, factor = +1
+- Factor = +1 means... with negative direction, predicts negative returns? 
+
+This is getting confusing. Let me just follow the pattern and ensure negative sign.
+
+**FORMULA-1-2 (IDEA-1-2):**
+sign(-ts_corr(rank(open), rank(volume), 10))
+- Same as IDEA-1-1 but shorter window
+- This is OK but not orthogonal to IDEA-1-1
+
+Let me make IDEA-1-2 different:
+sign(-div(rank(volume), rank(open)))
+- Volume/price ratio
+- When volume much higher than price (rank): ratio high, factor = -1
+- For T+1 with volume leading, this captures "缩量" vs "放量"
+
+Actually let me try:
+sign(-sub(rank(volume), rank(open)))
+- Simple difference in ranks
+- For short signal, this works
+
+**FORMULA-1-3 (IDEA-1-3):**
+For dispersion/divergence of price and volume:
+sign(-mul(sub(rank(open), rank(volume)), sub(rank(volume), rank(open))))
+- This gives negative of squared difference (always non-positive)
+- Hmm, sub(a,b) and sub(b,a) = -sub(a,b), so product is -[sub(a,b)]^2
+- sign of negative is always -1 or 0
+- Not useful
+
+Let me try:
+sign(-ts_corr(rank(open), rank(volume), 20)) with some variation
+- For IDEA-1-3, the idea is about volatility/dispersion
+- Could use: sign(-mul(rank(open), rank(volume))) for a "both up" signal
+
+Or: sign(-div(rank(open), rank(volume)))
+- Price/Volume ratio
+- When price much higher than volume: div high, factor = -1
+- This captures dispersion in a different way
+
+Let me finalize:
+
+**FORMULA-1-1:** sign(-ts_corr(rank(open), rank(volume), 20))
+**FORMULA-1-2:** sign(-sub(rank(volume), rank(open)))
+**FORMULA-1-3:** sign(-ts_corr(rank(open), rank(volume), 20)) -- same as 1-1 but we need different
+
+Wait, all three need to be different to be meaningful, and IDEA-1-2 and IDEA-1-3 should be orthogonal to IDEA-1-1.
+
+Let me reconsider:
+
+**FORMULA-1-1 (IDEA-1-1) - Correlation reversal:**
+sign(-ts_corr(rank(open), rank(volume), 20))
+
+**FORMULA-1-2 (IDEA-1-2) - Instantaneous divergence:**
+sign(-sub(rank(volume), rank(open)))
+- This captures the "放量缩量" (volume up/down) divergence
+- Different from correlation which is over time
+
+**FORMULA-1-3 (IDEA-1-3) - Ratio-based dispersion:**
+sign(-div(rank(open), rank(volume)))
+- This captures relative magnitude of price to volume changes
+- Different from both correlation and simple difference
+
+Let me check complexity:
+- 1-1: 4 operators (sign, ts_corr, rank, rank) - medium
+- 1-2: 3 operators (sign, sub, rank, rank) - simple
+- 1-3: 3 operators (sign, div, rank, rank) - simple to medium
+
+For explanation (must be < 80 chars):
+- 1-1: "20日价量相关性反转因子，高相关→均值回归" (need to count) 
+  - "20日价量相关性反转因子" = 11 chars
+  - Let me write: "20日价量高相关时反向做多信号" - about 14 chars
+- 1-2: "量价排名差值缩量上涨做空信号" - about 14 chars
+- 1-3: "量价排名比值离散度异常信号" - about 12 chars
+
+Let me make them more concise:
+- 1-1: "20日价量高相关时均值回归做多" (16 chars)
+- 1-2: "量价排名差值背离做空信号" (12 chars)
+- 1-3: "量价排名比值捕捉异常行为" (13 chars)
+
+Wait, let me count exact characters. Each Chinese character is 1 char in the string.
+
+"20日价量高相关时均值回归做多" - let me count: 2,0,日,价,量,高,相,关,时,均,值,回,归,做,多 = 15 chars
+"量价排名差值背离做空信号" - 量,价,排,名,差,值,背,离,做,空,信,号 = 12 chars
+"量价排名比值捕捉异常行为" - 量,价,排,名,比,值,捕,捉,异,常,行,为 = 13 chars
+
+All under 80 chars ✓
+
+Let me double-check the formulas for syntax:
+- sign(-ts_corr(rank(open), rank(volume), 20))
+  - Functions: sign, ts_corr, rank, rank
+  - All valid
+- sign(-sub(rank(volume), rank(open)))
+  - Functions: sign, sub, rank, rank
+  - All valid
+- sign(-div(rank(open), rank(volume)))
+  - Functions: sign, div, rank, rank
+  - All valid
+
+Variables: open, volume ✓
+Operators: sign, ts_corr/sub/div, rank ✓
+
+Sign constraint: All have sign(-...) pattern, so they output -1, 0, or +1, with -1 being the dominant signal direction.
+
+Wait, the sign constraint says "Overall factor direction must be NEGATIVE (-1)". I interpret this as the factor should be negatively correlated with future returns. With sign(-X):
+- When X is positive (high): factor = -1
+- When X is negative (low): factor = +1
+- The factor is essentially "negative of X" direction
+
+For these ideas:
+- IDEA-1-1: High correlation → reversal (long). With sign(-ts_corr), high correlation → -1. Factor = -1 predicts positive returns (since -1 is the "long" signal in negative-direction convention). ✓
+- IDEA-1-2: Divergence → short. With sign(-sub(vol_rank, open_rank)):
+  - When vol_rank > open_rank (缩量? no, this is volume up): sub positive, factor = -1
+  - When vol_rank < open_rank (缩量): sub negative, factor = +1
+  - Hmm, "缩量上涨" means price up, volume down. So open_rank high, vol_rank low. sub(vol, open) negative. Factor = +1. For "negative direction" factor, +1 predicts negative returns = short. ✓
+- IDEA-1-3: Divergence/dispersion anomaly. With sign(-div(open_rank, vol_rank)):
+  - When open_rank >> vol_rank: div high, factor = -1
+  - When open_rank << vol_rank: div low, factor = +1
+  - This captures relative extremes
+
+OK these all work within constraints.
+
+Let me also verify the parameter range for ts_corr in FORMULA-1-1: window = 20, which is in [5, 30] ✓
+
+Final formulas:
+
+**FORMULA-1-1:**
+- id: FORMULA-1-1
+- idea_id: IDEA-1-1
+- formula: sign(-ts_corr(rank(open), rank(volume), 20))
+- complexity: 3 (medium)
+- a_share_compatible: true
+- explanation: "20日价量高相关时均值回归做多" (15 chars)
+
+**FORMULA-1-2:**
+- id: FORMULA-1-2
+- idea_id: IDEA-1-2
+- formula: sign(-sub(rank(volume), rank(open)))
+- complexity: 2 (simple)
+- a_share_compatible: true
+- explanation: "量价排名差值缩量上涨做空信号" (12 chars)
+
+**FORMULA-1-3:**
+- id: FORMULA-1-3
+- idea_id: IDEA-1-3
+- formula: sign(-div(rank(open), rank(volume)))
+- complexity: 2 (simple)
+- a_share_compatible: true
+- explanation: "量价排名比值捕捉异常行为" (13 chars)
+
+Wait, I should reconsider the complexities based on the hints:
+- IDEA-1-1: medium → 3
+- IDEA-1-2: simple → 1-2
+- IDEA-1-3: complex → 4-5
+
+Let me adjust:
+- 1-1: complexity 3
+- 1-2: complexity 2
+- 1-3: complexity 4
+
+For 1-3 to be more complex, maybe I should add more layers. But I'm limited to div, mul, rank, sign, sub, ts_corr. Let me try:
+
+sign(-mul(sub(rank(open), rank(volume)), sub(rank(volume), rank(open))))
+- sub(open_rank, vol_rank) * sub(vol_rank, open_rank)
+- sub(vol_rank, open_rank) = -sub(open_rank, vol_rank)
+- So this is -[sub(open_rank, vol_rank)]^2, which is always ≤ 0
+- sign of non-positive number: -1 or 0
+- Always -1 when sub is non-zero
+- Not very useful
+
+Let me try: sign(-div(sub(rank(open), rank(volume)), rank(volume)))
+- sub of ranks / volume rank
+- Captures price-volume divergence normalized by volume level
+
+Or: sign(-mul(ts_corr(rank(open), rank(volume), 20), sub(rank(open), rank(volume))))
+- Combines correlation and divergence
+- More complex, captures both mechanism
+
+Let me use: sign(-mul(ts_corr(rank(open), rank(volume), 20), sub(rank(open), rank(volume))))
+- This is complex: combines time-series correlation with cross-sectional divergence
+- complexity: 4
+
+Let me check the formula again:
+- mul(ts_corr(...), sub(...)) - this multiplies correlation with divergence
+- Both are scalars for each day/stock
+- sign(-mul(...)) - the whole thing
+
+This makes sense for IDEA-1-3: combines both temporal correlation patterns and instantaneous dispersion.
+
+Actually wait, the constraint says use ONLY allowed operators. ts_corr is allowed. mul is allowed. sub is allowed. rank is allowed. sign is allowed. div is allowed. All good.
+
+Let me also re-examine IDEA-1-1. To be more "medium" complexity:
+sign(-ts_corr(rank(open), rank(volume), 20))
+- 1 ts_corr, 2 ranks, 1 sign = 4 operators → complexity 3 seems right
+
+OK, finalizing:
+
+**FORMULA-1-1 (IDEA-1-1):**
+- formula: sign(-ts_corr(rank(open), rank(volume), 20))
+- complexity: 3
+
+**FORMULA-1-2 (IDEA-1-2):**
+- formula: sign(-sub(rank(volume), rank(open)))
+- complexity: 2
+
+**FORMULA-1-3 (IDEA-1-3):**
+- formula: sign(-mul(ts_corr(rank(open), rank(volume), 20), sub(rank(open), rank(volume))))
+- complexity: 4
+
+Explanations (must be < 80 chars):
+- 1-1: "20日价量高相关时均值回归做多" (15)
+- 1-2: "量价排名差值缩量上涨做空信号" (13)
+- 1-3: "量价相关与背离复合异常信号" (13)
+
+Let me count more carefully for 1-2:
+"量价排名差值缩量上涨做空信号"
+量(1)价(2)排(3)名(4)差(5)值(6)缩(7)量(8)上(9)涨(10)做(11)空(12)信(13)号(14) = 14 chars ✓
+
+For 1-3:
+"量价相关与背离复合异常信号"
+量(1)价(2)相(3)关(4)与(5)背(6)离(7)复(8)合(9)异(10)常(11)信(12)号(13) = 13 chars ✓
+
+All explanations < 80 chars.
+
+Now let me write the think blocks:
+
+For IDEA-1-1:
+HYPOTHESIS: A股价格与成交量高相关代表趋势已被散户充分定价，动能即将衰竭，反向操作可获利 (refers to description about 价量高相关代表趋势已充分定价)
+MECHANISM: ts_corr测量20日价量相关性，高相关→趋势已定价→均值回归
+OPERATOR_RATIONALE: rank使价格和成交量可比，ts_corr捕捉时序相关性，sign(-1)反转信号
+PARAMETER_RATIONALE: 20日窗口捕捉中期趋势相关性，符合suggested_lookback=20
+RISK: 相关性结构变化或政策事件打破历史规律
+SUGGESTED_OPS: sign, ts_corr, rank
+
+For IDEA-1-2:
+HYPOTHESIS: T+1制度下成交量变化先于价格共识形成，缩量上涨表明买盘不足将下跌
+MECHANISM: sub(rank(volume), rank(open))直接测量量价背离，缩量上涨时为负
+OPERATOR_RATIONALE: rank标准化便于比较，sub捕捉即时背离，sign保持方向
+PARAMETER_RATIONALE: 即时背离无需长窗口，对应lookback=10的快速信号
+RISK: 短期假突破可能产生噪音
+SUGGESTED_OPS: sign, sub, rank
+
+For IDEA-1-3:
+HYPOTHESIS: 涨跌停板下价格被压制，成交量波动是更纯信息载体，量价离散度异常预示反转
+MECHANISM: 复合时序相关性和即时背离捕捉多维度异常交易行为
+OPERATOR_RATIONALE: ts_corr提供时序视角，sub提供截面背离，mul合成复合信号
+PARAMETER_RATIONALE: 20日窗口匹配中期波动周期
+RISK: 极端行情下两机制可能冲突
+SUGGESTED_OPS: sign, mul, ts_corr, sub, rank
+
+Let me write the final JSON output.
+
+Actually wait, let me reconsider the orthogonality. The user said:
+- IDEA-1-1 orthogonal_to: ['IDEA-1-2']
+- IDEA-1-2 orthogonal_to: ['IDEA-1-1', 'IDEA-1-3']
+- IDEA-1-3 orthogonal_to: ['IDEA-1-2']
+
+So:
+- 1-1 and 1-2 should be different
+- 1-2 and 1-3 should be different
+- 1-1 and 1-3 can be similar
+
+My current formulas:
+- 1-1: ts_corr-based (time series)
+- 1-2: sub-based (instantaneous)
+- 1-3: combination of ts_corr and sub
+
+1-1 and 1-2 are different ✓
+1-2 and 1-3 are different (1-2 is pure sub, 1-3 has ts_corr) ✓
+1-1 and 1-3 share ts_corr component but 1-3 also has sub
+
+This seems acceptable.
+
+One more check: the constraint says "ALLOWED VARIABLES: open, volume". The data columns include 'open' but the volume data column is 'vol', not 'volume'. However, the constraint says we can only use 'open' and 'volume'. So we use 'volume' as variable name. This is a logical/naming convention issue—the system should map 'volume' to the actual volume data.
+
+Final output:

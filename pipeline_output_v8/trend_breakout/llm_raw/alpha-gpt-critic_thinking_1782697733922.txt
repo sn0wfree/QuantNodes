@@ -1,0 +1,50 @@
+Let me analyze the three formulas to select the top-3 (or in this case, rank all 3 since there are only 3):
+
+1. **FORMULA-1-1**: `rank(div(close, ts_max(high, 20)))`
+   - IC mean: 0.0013
+   - IR: 0.013
+   - Very low IR, near zero predictive power
+
+2. **FORMULA-1-2**: `rank(div(sub(close, ts_mean(close, 5)), sub(ts_max(close, 20), ts_min(close, 20))))`
+   - IC mean: -0.0029
+   - IR: -0.026
+   - Negative IR, slight reverse predictive power
+
+3. **FORMULA-1-3**: `rank(mul(div(close, ts_mean(close, 20)), div(vol, ts_mean(vol, 5))))`
+   - IC mean: -0.0130
+   - IR: -0.160
+   - Negative IR, but higher magnitude - still weak signal
+
+Selection criteria:
+- min_ir_threshold=0.05: None of these pass! All IRs are below 0.05 in absolute value (or positive).
+- Wait, let me re-read: "min_ir_threshold=0.05" - this likely means |IR| should be >= 0.05? Or IR >= 0.05? Given that these are all weak, I should consider that none of them meet the threshold strictly.
+
+Actually, looking at the criteria:
+- min_ir_threshold=0.05: means we want IR >= 0.05
+- max_mutual_ic_threshold=0.7: means mutual IC between selected formulas should be <= 0.7
+
+None of the formulas have IR >= 0.05. FORMULA-1-3 has the highest |IR| at 0.16, but it's negative which means it's a reversal/contrarian signal.
+
+Since the task says "select final top-3 from all rounds" and there are only 3 formulas, I need to rank all 3. But with the IR threshold of 0.05, strictly none qualify. However, I should still rank them by relative quality.
+
+The best by |IR| is FORMULA-1-3 (0.16), but it's negative.
+FORMULA-1-2 is second by |IR| (0.026).
+FORMULA-1-1 is third (0.013).
+
+Since we're selecting top-3 and there are only 3, I'll include all 3 but note their weaknesses. Given that none meet the min_ir_threshold, I should flag this.
+
+Let me think about categories:
+- FORMULA-1-1: mean reversion (close vs 20-day high) - "reversal"
+- FORMULA-1-2: position in range (mean reversion) - "reversal" or "oscillator"
+- FORMULA-1-3: price trend × volume trend - "trend" or "momentum"
+
+For diversity, they actually cover different concepts, which is good.
+
+Risk notes:
+- All have very low IR, none meet the 0.05 threshold
+- IC decay shows weakness over time
+- Small sample of formulas evaluated
+
+Let me also note: since no sharpe and max_drawdown are provided in the evaluation, I need to note that. The task says output should include these in metrics. I'll use null or provide best estimates. Since they're not provided, I'll mark them as null or note unavailable.
+
+Let me structure the output properly.

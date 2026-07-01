@@ -1,0 +1,31 @@
+HYPOTHESIS: A股价格与成交量背离暗示趋势动能衰竭，反向/确认操作可获利
+MECHANISM: A股散户主导，T+1约束导致成交量变化领先于价格认知；涨停板限制使价格发现不完全，量价背离信号更可靠
+OPERATOR_RATIONALE: 需要同时处理价格和成交量序列，计算两者变化率的差异并做截面标准化
+PARAMETER_RATIONALE: 20日窗口平衡噪声与信号捕获能力，符合A股反转文献经典窗口
+RISK: 题材炒作期量价齐升时假信号；小票流动性差导致成交量噪声大
+SUGGESTED_OPS: ts_rank,ts_mean,correlation,rank,div
+
+让我生成3个关于价量背离的alpha想法：
+
+1. IDEA-1-1: 价量相关性反转 - 价量高相关代表趋势确认，低相关代表背离
+2. IDEA-1-2: 量先价后 - 成交量变化相对价格变化的领先滞后
+3. IDEA-1-3: 价量标准化背离 - 分别标准化价格和成交量变化率后作差
+
+类别：两个momentum/reversal，一个volatility
+
+让我设计：
+
+IDEA-1-1: name="价量相关反转", category="reversal"
+- 计算过去20日价格与成交量的滚动相关
+- 低相关代表趋势混乱，高相关代表趋势确认
+- 实际逻辑：截面上做rank反转
+
+IDEA-1-2: name="量价背离度", category="momentum"  
+- 涨时缩量、跌时放量作为看空信号
+- rank(Δprice) - rank(Δvolume) 的负值
+
+IDEA-1-3: name="量价离散度", category="volatility"
+- 价格波动与成交量波动的不一致程度
+- 适用于捕捉异常交易行为
+
+我来确保每个idea有经济直觉（rationale）与formula explanation区分开。

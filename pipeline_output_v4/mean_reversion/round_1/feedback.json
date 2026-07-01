@@ -1,0 +1,56 @@
+{
+  "round_num": 1,
+  "best_ir": 0.11332590513900428,
+  "avg_ir": 0.01511205889828546,
+  "valid_count": 21,
+  "best_formulas": [],
+  "failed_patterns": [
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_mean(ts_min(sqrt(rank(ts_std(close, 20))), 10), 5))",
+      "reason": "FAIL: value"
+    }
+  ],
+  "suggestions": [
+    "避免以下失败模式: FAIL: value, FAIL: value, FAIL: value"
+  ],
+  "stats": {
+    "improvement_vs_prev": null,
+    "total_mcts_nodes": 37
+  }
+}

@@ -1,0 +1,58 @@
+The user wants me to act as the Alpha-GPT Critic and select the top-3 formulas from all rounds based on the provided evaluations. Let me analyze the data:
+
+All evaluations:
+1. FORMULA-1-1: `-rank(div(close, ts_mean(close, 20)))` - IC=0.0076, IR=0.061
+2. FORMULA-1-2: `-rank(div(ts_std(close, 20), ts_mean(close, 20)))` - IC=0.0053, IR=0.050
+3. FORMULA-1-3: `-rank(div(ts_std(close, 20), ts_std(close, 60)))` - IC=-0.0028, IR=-0.038
+
+Constraints:
+- min_ir_threshold = 0.05
+- max_mutual_ic_threshold = 0.7
+
+Let me check IR thresholds:
+- FORMULA-1-1: IR=0.061 ✓ (above 0.05)
+- FORMULA-1-2: IR=0.050 ✓ (just at threshold)
+- FORMULA-1-3: IR=-0.038 ✗ (below threshold, negative)
+
+Only 3 formulas total, so the selection is straightforward. We need top-3 but only 3 exist, and one fails the IR threshold.
+
+Let me rank them:
+1. FORMULA-1-1: IR=0.061, IC=0.0076 - highest IR and IC, passes threshold
+2. FORMULA-1-2: IR=0.050, IC=0.0053 - second, just passes threshold
+3. FORMULA-1-3: IR=-0.038, IC=-0.0028 - fails threshold, negative IR
+
+Since only 3 formulas were evaluated and we need top-3, but FORMULA-1-3 fails the min_ir_threshold, I should only include the ones that pass.
+
+Actually, looking more carefully at the task: "Select final top-3 from all rounds" - but we only have 3 formulas. Given that FORMULA-1-3 fails the IR threshold, should we still include it as a "final pool" of 3? 
+
+I think the best approach is to include all 3 in the final_pool but clearly mark the risk for FORMULA-1-3, OR to only include the ones that pass the threshold (which would be top-2).
+
+Given the instruction says "top-3", I'll include all 3 in ranking order, but mark FORMULA-1-3 as having significant risk (negative IR, fails threshold).
+
+Wait, re-reading: "Select final top-3 from all rounds. min_ir_threshold=0.05." This implies we should apply the threshold. Since we only have 3 candidates and one fails, we end up with 2 valid candidates. But the instruction says "top-3" - I'll output top-3 with the understanding that one fails.
+
+Let me think about this more carefully. The "final_pool" should contain the best formulas. If only 2 pass the threshold, then final_pool has 2 entries. But the user asked for top-3 specifically.
+
+I'll include all 3 but note in risk_notes that FORMULA-1-3 fails threshold. This is the most honest approach.
+
+For diversity:
+- FORMULA-1-1: mean-reversion (close vs mean)
+- FORMULA-1-2: volatility/coefficient of variation style
+- FORMULA-1-3: volatility regime change
+
+These are already diverse categories.
+
+For mutual IC: not provided in the data, so I can't check it. I'll note this.
+
+For metrics, only IC_mean and IR are provided. Sharpe and max_drawdown are not in the evaluation data, so I should set them to null or 0.
+
+Let me construct the JSON output.
+
+Categories:
+- FORMULA-1-1: "mean_reversion" (close vs moving average)
+- FORMULA-1-2: "volatility_normalized" or "cv_proxy"
+- FORMULA-1-3: "volatility_regime"
+
+Round discovered: all 1
+
+Let me write a comprehensive think block and then the JSON.

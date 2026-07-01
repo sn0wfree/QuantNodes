@@ -1,0 +1,183 @@
+Let me analyze the constraints carefully:
+
+1. ALLOWED OPERATORS: div, rank, ts_mean, ts_std
+2. ALLOWED VARIABLES: close
+3. PARAMETER RANGES:
+   - ts_mean: window must be between 5 and 60
+   - ts_std: window must be between 5 and 60
+4. SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)
+5. Output STRICT JSON only
+
+Wait, the available_operators list includes many more operators, but the constraints say I MUST use ONLY: div, rank, ts_mean, ts_std. And variables must be ONLY close.
+
+But the ideas mention things like "ts_std of negative returns" and "rolling regression for IVOL" which would need conditional logic and regression. I need to translate these ideas using only the allowed operators and variables.
+
+Let me think about each idea:
+
+**IDEA-1-1: 下行波动率不对称**
+- Core idea: ratio of downside volatility to total volatility. Higher ratio = more left tail risk = lower future returns. Expected direction: SHORT.
+- Since I can only use div, rank, ts_mean, ts_std, and close, I can't directly compute conditional negative returns. But I can approximate downside volatility.
+- I need a NEGATIVE overall direction.
+- Formula: rank of (downside vol / total vol) → to make negative, I'd rank and negate, or the idea says short so higher ratio → lower returns.
+- Simplification: Use ts_std(returns, 20) as total vol, and approximate downside with some manipulation. Actually, since returns can be computed as ts_delta or pct_change of close... but I can't use those operators.
+- Hmm, but the only variable is close. I don't have direct access to returns.
+- Wait, maybe the framework implicitly treats close-based calculations as return proxies? Let me think...
+
+Actually, since I only have `close` as a variable and the operators div, rank, ts_mean, ts_std, I think the framework may automatically compute returns or I need to work with close directly.
+
+Let me reconsider. In polars/WorldQuant-style formula language, returns are often computed implicitly. But since I'm told to use only `close`, I should probably use close directly.
+
+For downside volatility, without conditional operators, I can approximate it. One common approach is:
+- downside_vol ≈ ts_std(returns) when returns < 0
+- Without if_then_else, I can't do this directly.
+
+Alternative: use rank to create a proxy. If I rank the ts_std, lower-ranked stocks have lower vol. But this loses the asymmetric aspect.
+
+Another approach: since I can use div, I could do something like:
+- ts_std(close, 5) / ts_std(close, 60) — this captures vol regime but not asymmetry.
+
+Given the strict constraints, let me design formulas that approximate the ideas as best as possible:
+
+**IDEA-1-1 (Short, downside vol asymmetry):**
+To make direction negative (short), higher value = lower future returns.
+Formula: rank(div(ts_std(close, 20), ts_mean(close, 20))) 
+Hmm, this doesn't capture asymmetry.
+
+Actually, let me think differently. In WorldQuant Brain, "returns" is often a built-in variable. But the constraints say only `close`. 
+
+Let me just use close-based volatility measures and ensure negative direction via rank and sign.
+
+For IDEA-1-1: 
+- I'll compute short-term vs long-term volatility ratio as a proxy. 
+- Higher ratio = more recent volatility spike = potential downside risk
+- rank(div(ts_std(close, 5), ts_std(close, 60))) — short the high ratio
+
+For IDEA-1-2 (Long, vol mean reversion):
+- Short vol / Long vol ratio. High = short vol spike → expect reversion → long
+- For long direction with negative sign constraint: I need the factor to be negative-correlated with returns.
+- Wait, "Overall factor direction must be NEGATIVE (-1)" — this means the alpha factor should have negative IC with future returns? Or the formula should produce negative values?
+
+Looking at the example: "rank(-ts_mean(returns, 20))" — the negative sign in front of ts_mean makes it a reversal factor (short-term reversal). The "NEGATIVE direction" likely means the formula expression should carry a negative sign or the logic should imply negative relationship.
+
+Actually, re-reading: "Overall factor direction must be NEGATIVE (-1)" — I think this means the alpha signal should predict negative returns, i.e., be a short signal. Or it could mean the formula should literally have a negation.
+
+Given the example has "rank(-ts_mean(returns, 20))", the negative is applied to ts_mean. So "NEGATIVE direction" means the formula should produce a signal where higher values predict lower returns (short signal).
+
+So for all three ideas, the factor should be a short signal (higher alpha = lower future returns).
+
+**IDEA-1-1 (short signal):** Higher downside vol ratio → lower future returns. 
+Formula: rank(ts_std(close, 20)) — higher vol → short. Simple.
+
+But to capture asymmetry, I could do:
+rank(div(ts_std(close, 10), ts_std(close, 60))) — short-term vol relative to long-term. High ratio = recent vol spike = potential downside.
+
+**IDEA-1-2 (originally long, but must be negative direction):**
+The idea says long low ratio. If I must make it negative direction, I could flip it: short high ratio.
+Formula: rank(div(ts_std(close, 5), ts_std(close, 60))) — short high ratio.
+
+**IDEA-1-3 (originally long low IVOL, but must be negative direction):**
+Short high IVOL. 
+Formula: rank(ts_std(close, 60)) — short high vol stocks.
+
+Let me refine these to be more distinctive and capture the essence of each idea:
+
+**FORMULA-1-1 (IDEA-1-1):**
+Downside vol asymmetry → short signal
+- Use short-term vol / long-term vol ratio. When short-term vol is high relative to long-term, it often reflects panic/downside moves.
+- Higher ratio → more downside risk → short
+- Formula: rank(div(ts_std(close, 5), ts_std(close, 60)))
+
+**FORMULA-1-2 (IDEA-1-2):**
+Vol breakout mean reversion → originally long low ratio, but must be negative
+- Short high ratio (vol breakout)
+- Formula: rank(div(ts_std(close, 10), ts_std(close, 60)))
+
+**FORMULA-1-3 (IDEA-1-3):**
+Low IVOL premium → originally long low IVOL, but must be negative
+- Short high IVOL (idiosyncratic vol)
+- Formula: rank(ts_std(close, 60))
+
+Wait, but the sign constraint says "Overall factor direction must be NEGATIVE (-1)". This might mean I literally need to put a negative sign or use rank in a specific way. Let me re-examine the example:
+
+"rank(-ts_mean(returns, 20))" — here rank is applied to -ts_mean. The negative is inside the rank.
+
+So "NEGATIVE direction" means the signal should be a short signal. Higher alpha = lower future returns. This is achieved by having the natural ordering be "bad stocks have high values".
+
+For IDEA-1-1: higher downside vol → short. Natural ordering: high ts_std → short. rank(ts_std(close, 20)) gives rank where high vol = high rank. If the strategy is to short high rank stocks, the alpha has negative IC with returns. So direction is negative. ✓
+
+For IDEA-1-2: higher vol ratio → short (in this adapted version). rank(div(ts_std(close,5), ts_std(close,60))) gives high values to high ratio stocks. Shorting these = negative IC. ✓
+
+For IDEA-1-3: higher IVOL → short. rank(ts_std(close, 60)) gives high values to high vol stocks. Shorting these = negative IC. ✓
+
+All three are negative direction. Good.
+
+Now let me make them more distinct:
+
+**FORMULA-1-1:** 
+rank(ts_std(close, 20)) — simple short-vol factor (captures downside risk via total vol)
+
+Actually, to better capture the asymmetry idea, I could use the ratio of short to long vol:
+rank(div(ts_std(close, 10), ts_std(close, 60))) — this captures vol regime changes
+
+**FORMULA-1-2:**
+rank(div(ts_std(close, 5), ts_mean(close, 60))) — uses ts_mean as denominator (vol relative to price level)
+
+Hmm, let me think more carefully. The ideas are distinct:
+1. Downside vol asymmetry — short
+2. Vol mean reversion — long (adapted to short)
+3. Low IVOL premium — long (adapted to short)
+
+To make them orthogonal, they should use different windows or structures.
+
+Let me finalize:
+
+**FORMULA-1-1 (IDEA-1-1, downside vol asymmetry, short):**
+- Concept: short-term vol / long-term vol ratio captures recent risk increase
+- Formula: rank(div(ts_std(close, 10), ts_std(close, 60)))
+- Complexity: 3 (nested functions, div + rank + two ts_std)
+
+**FORMULA-1-2 (IDEA-1-2, vol breakout, short adaptation):**
+- Concept: very short-term vol vs medium-term vol, short the breakout
+- Formula: rank(div(ts_std(close, 5), ts_std(close, 30)))
+- Complexity: 3
+
+**FORMULA-1-3 (IDEA-1-3, low IVOL, short adaptation):**
+- Concept: long-term vol as IVOL proxy, short high vol
+- Formula: rank(ts_std(close, 60))
+- Complexity: 2
+
+Wait, I need to double-check the complexity hint from the ideas:
+- IDEA-1-1: medium
+- IDEA-1-2: simple
+- IDEA-1-3: complex
+
+But with the constraints (only 4 operators, 1 variable), all formulas will be relatively simple. Let me assign complexity based on nesting depth:
+- Simple: 1-2 operators
+- Medium: 2-3 operators
+- Complex: 3-4 operators
+
+FORMULA-1-1: rank(div(ts_std(close, 10), ts_std(close, 60))) — 3 levels, medium complexity → 3
+FORMULA-1-2: rank(div(ts_std(close, 5), ts_std(close, 30))) — 3 levels, simple → 2
+FORMULA-1-3: rank(ts_std(close, 60)) — 2 levels, but idea says complex → I'll add one more layer
+
+For IDEA-1-3, to make it more complex while staying within constraints:
+rank(div(ts_std(close, 60), ts_mean(close, 60))) — vol relative to price level → 3 levels, complex → 3
+
+Let me finalize the three formulas. All must be negative direction (short signal):
+
+1. FORMULA-1-1: rank(div(ts_std(close, 10), ts_std(close, 60))) — short-term vol breakout vs long-term, captures downside vol asymmetry
+2. FORMULA-1-2: rank(div(ts_std(close, 5), ts_std(close, 30))) — very short vol vs medium vol, vol breakout mean reversion (short)
+3. FORMULA-1-3: rank(div(ts_std(close, 60), ts_mean(close, 60))) — long-term vol relative to price level, IVOL proxy (short)
+
+All are negative direction because higher values → short.
+
+Let me verify parameter ranges:
+- ts_std(close, 10): 10 in [5,60] ✓
+- ts_std(close, 60): 60 in [5,60] ✓
+- ts_std(close, 5): 5 in [5,60] ✓
+- ts_std(close, 30): 30 in [5,60] ✓
+- ts_mean(close, 60): 60 in [5,60] ✓
+
+All good.
+
+Let me write the think blocks and then the JSON.

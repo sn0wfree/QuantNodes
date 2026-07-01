@@ -1,0 +1,24 @@
+{
+  "round_num": 1,
+  "best_ir": 0.09818688821236937,
+  "avg_ir": 0.017889817810927813,
+  "valid_count": 45,
+  "best_formulas": [],
+  "failed_patterns": [
+    {
+      "formula": "sign(rank(sub(close, ts_mean(close, 60))))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(rank(sub(close, ts_mean(close, 60))))",
+      "reason": "FAIL: value"
+    }
+  ],
+  "suggestions": [
+    "避免以下失败模式: FAIL: value, FAIL: value"
+  ],
+  "stats": {
+    "improvement_vs_prev": null,
+    "total_mcts_nodes": 47
+  }
+}

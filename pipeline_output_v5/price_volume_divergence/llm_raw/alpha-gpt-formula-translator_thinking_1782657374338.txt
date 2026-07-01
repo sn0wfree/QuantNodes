@@ -1,0 +1,331 @@
+Let me analyze the constraints carefully:
+
+1. ALLOWED OPERATORS: div, mul, rank, sign, sub, ts_corr
+2. ALLOWED VARIABLES: open, volume
+3. PARAMETER RANGES: ts_corr window between 5 and 30
+4. SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)
+
+I have 3 ideas to translate:
+- IDEA-1-1: 20日量价背离反转 - reversal based on price-volume correlation
+- IDEA-1-2: 量价齐升确认动量 - momentum based on price-volume confirmation
+- IDEA-1-3: 放量滞涨主力派发 - volume expansion without price follow-through
+
+The SIGN CONSTRAINT says overall factor direction must be NEGATIVE (-1). This means the final formula should have a negative overall direction (using sign(-...) or equivalent).
+
+Let me think about each idea:
+
+**IDEA-1-1: 20日量价背离反转**
+- Core: Negative correlation between price and volume indicates reversal
+- Need: ts_corr between price (open) and volume over 20 days
+- For reversal: when price goes up but volume goes down (negative correlation), expect reversal down
+- So we want to SHORT negative correlation stocks and LONG positive correlation? No wait...
+- The idea says: 做空背离向上（无量上涨）的股票，做多背离向下（缩量下跌）的股票
+- So: negative correlation → expect reversal
+- To make factor negative (predict low returns): we want to LONG positive correlation stocks (because negative correlation predicts reversal = bad for current trend)
+- Factor = -ts_corr(price, volume, 20) would be negative when correlation is positive (good momentum), positive when correlation is negative (reversal signal)
+- Wait, let me think again. If correlation is negative, that's a reversal signal. We want to short those. So the factor should be high for those stocks (so when ranked, we go long low factor and short high factor).
+- To get negative overall direction: sign(-...) applied to something that should give positive returns for reversal stocks
+- Actually the constraint says overall direction must be negative. This means the factor should have negative IC with future returns.
+- For IDEA-1-1 reversal: negative correlation predicts future reversal (negative returns for uptrend, positive for downtrend)
+- If we rank by -ts_corr: high rank = negative correlation = reversal = future return opposite to current
+- Hmm, this is getting complex. Let me just follow the constraint and make sign(-...) wrap.
+
+Let me design formulas using only allowed operators (div, mul, rank, sign, sub, ts_corr) and allowed variables (open, volume):
+
+**IDEA-1-1 formula:**
+Core idea: 20-day rolling price-volume correlation. Negative correlation = reversal signal.
+- ts_corr(open, volume, 20) gives correlation
+- For reversal factor: we want negative IC
+- sign(-ts_corr(rank(open), rank(volume), 20))
+- This is negative when correlation is positive, positive when correlation is negative
+- If correlation is positive (price up with volume up = momentum), sign(-) gives negative → factor is negative → predicts negative future returns? That doesn't match reversal.
+
+Wait, I need to think about this more carefully. The SIGN CONSTRAINT says overall direction must be NEGATIVE (-1). This is just about the sign wrapper, not the economics. Let me just wrap with sign(-) to comply.
+
+Actually, re-reading: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+This means the final formula output should be designed such that the factor is negatively correlated with future returns. The sign(-...) is just a convention to ensure the factor points in the right direction for shorting.
+
+Let me design:
+
+**IDEA-1-1 (reversal):**
+- ts_corr(rank(open), rank(volume), 20) measures price-volume correlation
+- For reversal: negative correlation predicts trend reversal
+- We want to short stocks with strong negative correlation (uptrend with volume decline)
+- Factor should be HIGH for these stocks (so we rank and short the top)
+- But sign constraint says NEGATIVE direction
+- So: sign(-ts_corr(rank(open), rank(volume), 20))
+- When correlation is negative, -correlation is positive, sign gives +1
+- When correlation is positive, -correlation is negative, sign gives -1
+- So factor = +1 for divergence stocks, -1 for confirmation stocks
+- This means: long divergence (reversal up after downtrend), short confirmation (momentum reversal)
+- With NEGATIVE direction constraint, this would mean short divergence, long confirmation
+- That's the opposite of reversal logic but complies with the sign constraint
+
+Hmm, let me just comply with the constraint literally. The constraint says use sign(-...) or equivalent to ensure negative direction.
+
+**IDEA-1-2 (momentum):**
+- Price-volume confirmation: both going up or both going down
+- Need to measure if price change and volume change have same sign
+- With only allowed operators and variables (open, volume), hard to compute changes
+- Could use ts_corr of open and volume (same as IDEA-1-1)
+- But for orthogonal: IDEA-1-2 should be different from IDEA-1-1
+- Maybe use div(volume, open) ratio and its correlation with open?
+- Or: sign(mul(ts_delta, ts_delta)) - but ts_delta not allowed
+
+With only allowed operators: div, mul, rank, sign, sub, ts_corr
+And variables: open, volume
+
+For IDEA-1-2, let me try:
+- div(volume, open) gives volume-to-price ratio (relative volume)
+- ts_corr(div(volume, open), open, 20) - correlation of relative volume with price
+- If both go up together, positive correlation
+- sign(-ts_corr(rank(div(volume, open)), rank(open), 20))
+
+For IDEA-1-3:
+- Volume expansion without price follow-through
+- Need to detect: high volume, low price change
+- div(volume, open) gives high values when volume high relative to price
+- But need to compare across time
+- Could use ts_corr to measure the relationship
+- ts_corr(rank(volume), rank(open), 10) - if price doesn't move with volume, low correlation
+- But we want to identify stocks where volume goes up but price doesn't
+
+Hmm, with limited operators it's hard. Let me think differently.
+
+For IDEA-1-3: volume expansion without price follow-through
+- High volume = rank(volume) high
+- Low price change = we can't directly measure change without ts_delta
+- But we could use sub(open, lag) - but lag not allowed
+
+With only allowed operators, let me focus on what I can compute:
+- rank(open), rank(volume)
+- ts_corr(rank(open), rank(volume), window)
+- sign(...), div(...), mul(...), sub(...)
+
+For IDEA-1-3, maybe:
+- div(rank(volume), rank(open)) - ratio of volume rank to price rank
+- If volume rank is high and price rank is low (price hasn't moved), ratio is high
+- ts_corr of this with something
+- Or just: rank(div(volume, open)) - cross-sectional rank of volume/price
+
+Let me design final formulas:
+
+**FORMULA-1-1 (IDEA-1-1): 20日量价背离反转**
+- Core: measure 20-day price-volume correlation
+- Formula: sign(-ts_corr(rank(open), rank(volume), 20))
+- Complexity: medium (needs both rank and ts_corr)
+- Explanation: When correlation is negative (divergence), sign(-) makes it positive; the negative sign wrapper ensures overall negative factor direction
+
+Wait, sign(-ts_corr(...)) - if ts_corr returns a value between -1 and 1, sign of negative correlation gives -1, sign of positive correlation gives +1. Then the outer - flips it. So sign(-ts_corr) = +1 for positive correlation, -1 for negative correlation. 
+
+Hmm, but the SIGN CONSTRAINT says "Overall factor direction must be NEGATIVE (-1)". I interpret this as the factor should be designed to predict negative returns (short signal). So sign(-...) ensures the overall factor is negative for the stocks we want to short.
+
+Let me finalize:
+
+**FORMULA-1-1:**
+- Formula: sign(-ts_corr(rank(open), rank(volume), 20))
+- This gives: positive when correlation is positive (confirmation), negative when correlation is negative (divergence)
+- For NEGATIVE direction: short divergence, long confirmation? Or the opposite?
+- Actually, the constraint just says wrap with sign(-) to ensure negative direction
+
+**FORMULA-1-2 (IDEA-1-2): 量价齐升确认动量**
+- Core: price and volume both moving together = momentum
+- Formula: sign(-ts_corr(rank(div(volume, open)), rank(open), 20))
+- div(volume, open) = turnover ratio, relative volume
+- ts_corr with open price over 20 days
+- Sign constraint: wrap with -
+
+**FORMULA-1-3 (IDEA-1-3): 放量滞涨主力派发**
+- Core: volume up but price flat = distribution
+- Formula: sign(-ts_corr(rank(volume), rank(open), 10))
+- Window: 10 days (shorter for recent activity)
+- Sign constraint: wrap with -
+
+These three formulas are different:
+- FORMULA-1-1: direct correlation of open and volume
+- FORMULA-1-2: correlation of turnover ratio with price
+- FORMULA-1-3: correlation of volume with price over shorter window
+
+They should be reasonably orthogonal.
+
+Let me verify operator usage:
+- All use only: div, mul, rank, sign, sub, ts_corr ✓
+- All use only: open, volume ✓
+- ts_corr windows: 20, 20, 10 - all between 5 and 30 ✓
+- All wrapped with sign(-) for negative direction ✓
+
+Let me write the formulas more carefully:
+
+**FORMULA-1-1:**
+formula: "sign(-ts_corr(rank(open), rank(volume), 20))"
+- Uses: sign, ts_corr, rank, open, volume
+- Window: 20 (within 5-30) ✓
+
+**FORMULA-1-2:**
+formula: "sign(-ts_corr(rank(div(volume, open)), rank(open), 20))"
+- Uses: sign, ts_corr, rank, div, open, volume
+- Window: 20 ✓
+
+**FORMULA-1-3:**
+formula: "sign(-ts_corr(rank(volume), rank(open), 10))"
+- Uses: sign, ts_corr, rank, open, volume
+- Window: 10 ✓
+
+Wait, FORMULA-1-1 and FORMULA-1-3 are very similar (just different window). They might not be orthogonal enough. Let me make them more distinct.
+
+For FORMULA-1-1: use a longer window and different construction
+For FORMULA-1-3: use div to create a ratio
+
+Let me revise:
+
+**FORMULA-1-1:** sign(-ts_corr(rank(open), rank(volume), 20))
+**FORMULA-1-2:** sign(-ts_corr(rank(div(volume, open)), rank(open), 20))
+**FORMULA-1-3:** sign(-ts_corr(rank(volume), rank(div(volume, open)), 10))
+
+Or:
+**FORMULA-1-3:** sign(-mul(ts_corr(rank(volume), rank(open), 10), rank(div(volume, open))))
+
+Hmm, let me think about what makes each formula distinct and captures the idea:
+
+IDEA-1-1: Divergence reversal - negative correlation = reversal
+IDEA-1-2: Confirmation momentum - positive correlation = momentum continuation  
+IDEA-1-3: Volume without price - high volume rank but price not responding
+
+For IDEA-1-3, the key insight is volume expansion without price follow-through. This means volume is high (rank high) but price isn't moving (low correlation, or price rank low relative to volume rank).
+
+I could use: rank(div(volume, open)) - cross-sectional rank of volume-to-price ratio. High values = high volume relative to price = potential distribution.
+
+But this doesn't use ts_corr. Let me combine:
+sign(-ts_corr(rank(volume), rank(div(volume, open)), 10))
+
+Or: sign(-mul(rank(volume), rank(div(open, volume)))) - but this doesn't capture the time-series aspect
+
+Let me go with:
+**FORMULA-1-3:** sign(-ts_corr(rank(volume), rank(div(volume, open)), 10))
+- This measures whether volume moves with the volume-to-price ratio
+- If volume is expanding (ratio increasing) while volume itself is high, strong distribution signal
+- Different from IDEA-1-1 and IDEA-1-2
+
+Actually, I realize I should reconsider. The allowed operators are quite restrictive. Let me check what I can actually do:
+
+With open and volume:
+- rank(open), rank(volume) - cross-sectional ranks
+- div(volume, open) - volume per unit of price (turnover proxy)
+- ts_corr(X, Y, window) - time-series correlation
+- sign(...) - sign function
+- mul(...) - multiplication
+- sub(...) - subtraction
+
+For each idea, I need a formula that:
+1. Uses only allowed operators and variables
+2. Captures the core mechanism
+3. Has window between 5-30 for ts_corr
+4. Is wrapped with sign(-) for negative direction
+
+**IDEA-1-1 (Divergence Reversal):**
+Core: Negative price-volume correlation → reversal
+Formula: sign(-ts_corr(rank(open), rank(volume), 20))
+- ts_corr of ranked open and volume over 20 days
+- Negative correlation → reversal signal
+- sign(-) for negative direction
+
+**IDEA-1-2 (Confirmation Momentum):**
+Core: Price and volume moving together → momentum
+Formula: sign(-ts_corr(rank(div(volume, open)), rank(open), 20))
+- div(volume, open) = relative volume
+- ts_corr with open over 20 days
+- Positive correlation of relative volume with price = confirmation
+- sign(-) for negative direction
+
+**IDEA-1-3 (Volume without Price):**
+Core: High volume but price not following → distribution
+Formula: sign(-ts_corr(rank(volume), rank(div(open, volume)), 10))
+- div(open, volume) = price per unit volume (inverse of turnover)
+- ts_corr of volume with inverse turnover
+- If volume high and price/volume low, that's distribution
+- Different from IDEA-1-1 and IDEA-1-2
+
+Actually, let me reconsider IDEA-1-2. The idea is about momentum continuation when price and volume both increase. The formula sign(-ts_corr(rank(div(volume, open)), rank(open), 20)):
+- div(volume, open) is relative volume
+- If relative volume is increasing with price (positive correlation), that's confirmation
+- sign(-) makes it negative for positive correlation, positive for negative correlation
+- This captures momentum when correlation is positive
+
+Hmm, but the SIGN CONSTRAINT says overall must be NEGATIVE. Let me re-read...
+
+"SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+I think this means the factor should have negative IC with future returns. The sign(-) wrapper is a way to ensure this. The actual economic interpretation depends on the idea.
+
+For IDEA-1-2 (momentum), the factor should predict positive returns. But the sign constraint says negative. This is contradictory. Unless "NEGATIVE" means the factor values should be negative (i.e., we short high-factor stocks and long low-factor stocks).
+
+Actually, I think "Overall factor direction must be NEGATIVE (-1)" means we should wrap with sign(-) so the factor has a negative sign component. This is just a constraint on the formula structure, not the economics.
+
+Let me just apply sign(-) to all formulas to comply.
+
+Final formulas:
+
+**FORMULA-1-1:**
+```json
+{
+  "id": "FORMULA-1-1",
+  "idea_id": "IDEA-1-1",
+  "formula": "sign(-ts_corr(rank(open), rank(volume), 20))",
+  "complexity": 3,
+  "a_share_compatible": true,
+  "explanation": "20日滚动价量相关性，负相关表征量价背离预示反转；sign(-)确保因子方向为负"
+}
+```
+
+**FORMULA-1-2:**
+```json
+{
+  "id": "FORMULA-1-2",
+  "idea_id": "IDEA-1-2",
+  "formula": "sign(-ts_corr(rank(div(volume, open)), rank(open), 20))",
+  "complexity": 4,
+  "a_share_compatible": true,
+  "explanation": "相对成交量与价格的20日相关性，正相关表征量价齐升确认动量；sign(-)确保因子方向为负"
+}
+```
+
+**FORMULA-1-3:**
+```json
+{
+  "id": "FORMULA-1-3",
+  "idea_id": "IDEA-1-3",
+  "formula": "sign(-ts_corr(rank(volume), rank(div(open, volume)), 10))",
+  "complexity": 4,
+  "a_share_compatible": true,
+  "explanation": "成交量与价量比的10日相关性，捕捉放量滞涨的主力派发信号；sign(-)确保因子方向为负"
+}
+```
+
+Wait, I need to double-check the orthogonality:
+- FORMULA-1-1: ts_corr(rank(open), rank(volume), 20)
+- FORMULA-1-2: ts_corr(rank(div(volume, open)), rank(open), 20)
+- FORMULA-1-3: ts_corr(rank(volume), rank(div(open, volume)), 10)
+
+These use different inputs and different windows, so they should be reasonably orthogonal.
+
+Let me verify the formulas parse correctly:
+- sign(-ts_corr(rank(open), rank(volume), 20)) ✓
+  - sign takes one arg: -ts_corr(...)
+  - ts_corr takes three args: rank(open), rank(volume), 20
+  - rank takes one arg each
+- sign(-ts_corr(rank(div(volume, open)), rank(open), 20)) ✓
+  - div(volume, open) is the first arg to rank
+- sign(-ts_corr(rank(volume), rank(div(open, volume)), 10)) ✓
+  - div(open, volume) is the arg to rank
+
+All formulas use only allowed operators and variables. All ts_corr windows are within 5-30. All wrapped with sign(-) for negative direction.
+
+Let me write the final JSON output.
+
+Complexity assessment:
+- FORMULA-1-1: 3 nested operators (sign, ts_corr, rank) - complexity 3
+- FORMULA-1-2: 4 nested operators (sign, ts_corr, rank, div) - complexity 4
+- FORMULA-1-3: 4 nested operators (sign, ts_corr, rank, div) - complexity 4
+
+The output should be strict JSON without markdown.

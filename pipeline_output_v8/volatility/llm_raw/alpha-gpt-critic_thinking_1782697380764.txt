@@ -1,0 +1,99 @@
+Let me analyze the three formulas and select the top 3 based on the criteria.
+
+All three formulas are from Round 1 and use similar logic - they're all reversal-type factors based on negative volatility (low volatility tends to outperform, or rather, ranking negatively on ts_std).
+
+Let me evaluate each:
+
+1. **FORMULA-1-1**: `rank(-ts_std(close, 20))`
+   - IC mean: 0.0138
+   - IR: 0.1133
+   - IC decay: 1→0.0138, 5→0.0308, 20→0.0787 (strong IC decay improvement)
+   - Status: success
+
+2. **FORMULA-1-2**: `rank(-div(ts_std(close, 5), ts_std(close, 20)))`
+   - IC mean: -0.0014 (negative!)
+   - IR: -0.0232 (negative!)
+   - This is essentially flat/slightly negative. Should be filtered out.
+
+3. **FORMULA-1-3**: `rank(-ts_std(close, 60))`
+   - IC mean: 0.0144
+   - IR: 0.1208
+   - IC decay: 1→0.0144, 5→0.0318, 20→0.0815 (strong IC decay improvement)
+   - Status: success
+
+Selection criteria:
+- min_ir_threshold = 0.05 → FORMULA-1-2 fails (IR = -0.02)
+- max_mutual_ic_threshold = 0.7 → FORMULA-1-1 and FORMULA-1-3 are highly correlated (both are just different lookback versions of the same concept). Their mutual IC would likely be very high.
+- IR is quite low for all (0.11-0.12), which is marginal.
+
+FORMULA-1-2 should be excluded because IR is negative (below min_ir_threshold of 0.05).
+
+Between 1-1 and 1-3, they are very similar in logic. 1-3 has slightly better IC and IR. But both are essentially the same factor with different lookback windows.
+
+Since the user only provided 3 formulas and all are from round 1, and we need top-3, but FORMULA-1-2 fails the IR threshold, I should:
+1. Include FORMULA-1-3 (best IR/IC)
+2. Include FORMULA-1-1 (second best, different lookback for diversity)
+3. Need a third - but 1-2 fails. 
+
+Wait, the task says "Select final top-3 from all rounds" but only 3 formulas exist. If 1-2 fails the IR threshold, I should either:
+- Not include it (pool of 2)
+- Include it with strong risk warnings
+
+Let me follow the strict criteria. min_ir_threshold=0.05, and 1-2 has IR of -0.023 which is below 0.05, so it fails. I should exclude it.
+
+For sharpe and max_drawdown, these weren't provided in the input. I need to note that or use null. Let me use the available metrics and note missing ones.
+
+Actually, looking at the schema, it asks for sharpe and max_drawdown but they aren't provided. I'll need to indicate them as null or estimate. Since they're not provided, I'll use null.
+
+Let me finalize:
+
+Top 3 (all that pass filters):
+1. FORMULA-1-3 (best IR = 0.121, best IC = 0.0144, strong IC decay)
+2. FORMULA-1-1 (IR = 0.113, IC = 0.0138, strong IC decay)
+3. FORMULA-1-2 should be excluded due to negative IR below threshold.
+
+Actually, since only 3 were evaluated and we need top-3, but one fails - I'll include it with a strong risk note that it failed the threshold. Or I can just list 2. Let me list 2 with clear explanation, or include all 3 with the failing one clearly marked.
+
+The instruction says "Select final top-3" - so I'll select the top 3 from the pool, with the understanding that one might fail threshold. I'll include all 3 but clearly note 1-2 fails.
+
+Actually, re-reading: the criteria are filters. If a formula fails the filter, it should be excluded. So I should only return those that pass. But the request asks for top-3... Let me include only the 2 that pass and note that 1-2 was filtered.
+
+Wait, I should follow the rules strictly. min_ir_threshold=0.05 means IR must be ≥ 0.05. FORMULA-1-2 has IR = -0.023, which fails. So it should be excluded from final_pool.
+
+I'll return 2 in final_pool and note this in summary.
+
+Hmm, but the user might expect 3. Let me just include all 3 with clear risk notes for the failing one, noting it's below threshold. The system says "STRICT JSON" so I should follow exactly what's needed.
+
+I'll include all 3 but make it clear 1-2 fails. Or just include 2. Let me think...
+
+The instruction says "Select final top-3" - if there's a filter that removes one, the final pool has 2. I'll go with 2 in final_pool.
+
+Actually, looking again at the instructions: "Select final top-3 from all rounds. min_ir_threshold=0.05. max_mutual_ic_threshold=0.7."
+
+The thresholds are filters. So only those passing both filters should be in the final pool. FORMULA-1-2 fails min_ir_threshold. So 2 remain.
+
+But for diversity and completeness, I might note the third as a filtered candidate. Let me just include 2.
+
+Actually, let me re-read once more... The user says "Select final top-3" - this could be interpreted as the instruction to select up to 3 top candidates. If filters remove some, then fewer remain. I'll include the 2 that pass.
+
+Let me also check mutual IC. FORMULA-1-1 and 1-3 are both rank(-ts_std(close, N)) with N=20 and N=60. These are highly correlated since they're measuring similar signals at different horizons. Mutual IC might be above 0.7. If so, I should only keep one.
+
+Without actual mutual IC data, I'll assume they might be correlated and note this as a risk. Given the constraint, I'll keep both but note the risk.
+
+Final decision:
+- Rank 1: FORMULA-1-3 (best metrics)
+- Rank 2: FORMULA-1-1 (close second, shorter lookback for diversity)
+- Rank 3: FORMULA-1-2 - exclude due to failing IR threshold
+
+Or just present 2 and explain. Let me go with 2 in final pool to be strict.
+
+Actually, you know what, the system prompt says "Select final top-3" which implies 3 should be selected if available. If filters eliminate one, I'll include 2 with a clear note. Let me write 2.
+
+Let me also think about categories. All three are reversal/low-volatility factors:
+- 1-1: low-volatility reversal (medium term)
+- 1-2: volatility ratio reversal  
+- 1-3: low-volatility reversal (long term)
+
+Since we only have these 3, the final pool is 2 (after filtering).
+
+Final answer: 2 in final_pool.

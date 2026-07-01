@@ -1,0 +1,306 @@
+Let me analyze the constraints carefully:
+
+1. **ALLOWED OPERATORS**: div, mul, rank, sign, sub, ts_corr
+2. **ALLOWED VARIABLES**: open, volume
+3. **PARAMETER RANGES**: ts_corr: window must be between 5 and 30
+4. **SIGN CONSTRAINT**: Overall factor direction must be NEGATIVE (-1)
+5. **Output format**: STRICT JSON, no markdown
+
+Let me think about each idea:
+
+**IDEA-1-1: 20日价量背离反转**
+- Core hypothesis: Price-volume negative correlation over 20 days indicates trend weakness
+- In A-share market, this signals reversal
+- Expected direction: both (reversal)
+- The negative correlation between price and volume over 20 days suggests reversal
+- I need: ts_corr of open and volume over ~20 days, then negate (since negative correlation = reversal signal, and overall direction must be negative)
+
+Since I can only use open and volume (not close), I'll use open as the price proxy.
+
+Formula: `sign(-ts_corr(rank(open), rank(volume), 20))`
+
+Let me think more carefully. The idea says:
+- 价升量缩 = price up, volume down → reversal (negative)
+- 价跌量增 = price down, volume up → reversal (negative)
+
+So negative correlation (price and volume moving oppositely) signals reversal. We want to go long on reversal candidates (or short on non-reversal candidates).
+
+The sign constraint says overall factor must be NEGATIVE. So if high correlation (positive or negative) predicts reversal, we negate it.
+
+Actually, let me think again. For reversal signals:
+- High ts_corr(open, volume) → price and volume move together → trend continuation (NOT reversal)
+- Low/negative ts_corr(open, volume) → price and volume diverge → reversal
+
+So we want to LONG stocks with low/negative correlation. The factor value should be negative for stocks we want to long... 
+
+Wait, in factor models, typically:
+- High factor value → long this stock
+- Low factor value → short this stock
+
+For reversal, we want to long stocks with negative price-volume correlation. So we want high factor values to correspond to low correlation.
+
+If ts_corr is negative (divergence), we want to long → factor should be positive for these.
+But sign constraint requires overall negative direction.
+
+Hmm, let me think about this differently. The sign constraint says "Overall factor direction must be NEGATIVE (-1)". 
+
+If we apply sign(-ts_corr(...)):
+- When ts_corr is positive (trend continuation): sign gives -1 → short signal
+- When ts_corr is negative (divergence/reversal): sign gives +1 → long signal
+- This is a reversal factor where high values = long reversal candidates
+
+But the sign constraint says overall direction must be negative. This might mean the alpha factor value should correlate negatively with forward returns.
+
+Let me reconsider. For a reversal factor:
+- If price-volume correlation is HIGH (positive), the trend is strong, price will continue → forward returns will be POSITIVE
+- We want to bet against this → our factor should be NEGATIVE for high correlation
+
+So a simple -ts_corr(rank(open), rank(volume), 20) would give:
+- High positive correlation → large negative factor value → predict negative returns → correct for reversal
+
+Yes! `-ts_corr(rank(open), rank(volume), 20)` captures reversal and has negative overall direction.
+
+Let me write this as: `sign(-ts_corr(rank(open), rank(volume), 20))`
+
+Wait, but we also need to apply rank or sign to make it cross-sectional comparable. Let me think.
+
+Actually, let me look at this more carefully. The constraint says "Overall factor direction must be NEGATIVE (-1)". The example shows `sign(-ts_corr(rank(open), rank(volume), 10))`. So the example already uses sign(-ts_corr(...)).
+
+So for IDEA-1-1 (20-day window, both directions = reversal):
+Formula: `sign(-ts_corr(rank(open), rank(volume), 20))`
+
+For IDEA-1-2 (放量急跌超跌反弹, 5-day window, long direction):
+- 5日放量阴线 = 5-day volume surge with negative price action
+- After panic selling, expect short-term rebound
+- Expected direction: long
+- We want to LONG stocks with: price down + volume up over 5 days
+- So we want to long when ts_corr is negative (price down, volume up)
+- Factor should be HIGH for these stocks
+- But sign constraint is negative...
+
+Hmm, the sign constraint applies to the overall direction. If the idea expects "long" direction, but the sign constraint is negative, there's a conflict. Let me re-read.
+
+"SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+I think this means the formula's sign must be negative. So perhaps the factor predicts negative returns (a short signal), or it's a reversal-type signal.
+
+Wait, maybe "direction" here refers to the sign of the factor itself, not the expected returns direction. Let me reconsider.
+
+Actually, in alpha factor construction, "factor direction" often refers to whether the factor goes with the alpha or against it. If the factor value correlates positively with forward returns, it's a "positive direction" factor. If it correlates negatively, it's "negative direction".
+
+Given that all three ideas share the same hypothesis about "trend strength attenuation or reversal", they're all reversal-type signals. For reversal:
+- Stocks that have been going up tend to go down
+- Stocks that have been going down tend to go up
+- So we want factors that correlate NEGATIVELY with forward returns
+
+This is consistent with the NEGATIVE sign constraint!
+
+Now for each idea:
+
+**IDEA-1-1: 20日价量背离反转 (both directions = reversal)**
+- High positive price-volume correlation → trend continuation → predict NEGATIVE returns (reversal)
+- Formula: `sign(-ts_corr(rank(open), rank(volume), 20))`
+
+**IDEA-1-2: 放量急跌超跌反弹 (long direction, but reversal mechanism)**
+- Wait, "long direction" here means "go long" — long the rebound
+- After panic selling (price down, volume up), expect rebound
+- This is also a reversal: we're betting against the recent trend
+- Stocks with negative recent returns and high volume should rebound
+- But we can only use open and volume variables
+- ts_corr over 5 days: if price dropped while volume surged → negative correlation
+- Negative correlation predicts positive forward returns → reversal → factor should be negative
+
+Formula: `sign(-ts_corr(rank(open), rank(volume), 5))`
+
+**IDEA-1-3: 量价共振中线动量 (long direction, momentum)**
+- 60-day price and turnover moving up together → momentum continuation
+- Expected direction: long
+- High positive correlation predicts positive forward returns → momentum → factor should be positive
+- BUT sign constraint requires negative...
+
+Hmm, this is problematic. Let me re-read the constraint.
+
+"SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+This is a hard constraint. So even for a momentum idea, we need to negate.
+
+Wait, maybe the sign constraint means the final alpha direction. For IDEA-1-3 (momentum/long), but we need negative direction. Maybe we're expressing the inverse (contrarian) version?
+
+Actually, looking again at the idea: "量价共振中线动量" means "volume-price resonance medium-term momentum". The expected_direction is "long" meaning go long.
+
+If we have to use sign(-ts_corr(...)) format and the sign constraint is negative, then:
+- For IDEA-1-3: positive correlation = momentum = forward returns positive
+- sign(-ts_corr(...)) when ts_corr is positive → sign is -1 → predicts negative returns
+- This is contrarian, not momentum
+
+This contradicts the idea. But we MUST follow the constraint.
+
+Wait, maybe I'm misinterpreting. Let me look at the example again:
+`sign(-ts_corr(rank(open), rank(volume), 10))`
+
+This is the example format. For each idea, I should follow this pattern with appropriate window.
+
+For IDEA-1-1: window=20
+For IDEA-1-2: window=5
+For IDEA-1-3: window=60 — but window must be 5-30 for ts_corr!
+
+Constraint: "ts_corr: window must be between 5 and 30"
+
+IDEA-1-3 suggests 60 days, but constraint says max 30. I'll need to use 30 instead.
+
+Let me finalize:
+
+**IDEA-1-1**: `sign(-ts_corr(rank(open), rank(volume), 20))`
+- Complexity: simple (3 ops nesting, rank + ts_corr + sign)
+- Window 20 is within 5-30
+
+**IDEA-1-2**: `sign(-ts_corr(rank(open), rank(volume), 5))`
+- Complexity: simple
+- Window 5 is the minimum
+
+**IDEA-1-3**: `sign(-ts_corr(rank(open), rank(volume), 30))`
+- Window 30 (instead of suggested 60, due to constraint)
+- Complexity: medium (same as others, but I'll mark medium per the idea's complexity hint)
+
+Wait, actually, let me think about this differently. For IDEA-1-3 (momentum), maybe we should not use the same pattern. The constraint is that we use ONLY the allowed operators and the sign must be negative. But the "direction" in the constraint might refer to something specific.
+
+Looking at it again: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+I think this means the output factor should have a negative sign — i.e., we want a factor that goes against the market trend (a reversal/contrarian factor).
+
+For IDEA-1-3 (momentum): we need to express it in a way that the factor value is negative for momentum stocks. But ts_corr gives positive for momentum stocks (price and volume moving together). So sign(-ts_corr(...)) would give negative for momentum stocks, which means the factor predicts negative returns for momentum → contrarian.
+
+This contradicts the idea but follows the constraint. I think the constraint is a meta-constraint that applies regardless of the idea's direction.
+
+Actually, wait. Let me re-read more carefully. The hypothesis says "价格走势若得不到成交量的确认，往往预示趋势强度衰减或反转" — "If price movement is not confirmed by volume, it often signals trend attenuation or reversal." This is the OVERALL hypothesis for all three ideas.
+
+So all three ideas are about divergence/non-confirmation = reversal. Even IDEA-1-3 (量价共振中线动量) is about the ABSENCE of such signals as a positive indicator, OR... wait.
+
+Let me re-read IDEA-1-3: "60日价格与换手率同向上行说明资金与价格共振，量能持续放大支撑中期趋势延续"
+Translation: "60-day price and turnover moving up together indicates capital-price resonance, sustained volume supports medium-term trend continuation."
+
+So this IS a momentum/confirmation signal. The expected_direction is "long".
+
+OK so the idea is: when price-volume correlation is POSITIVE (confirmation), expect trend continuation (long).
+
+For this:
+- High ts_corr → positive correlation → momentum → forward returns positive
+- Factor should be positive for these (long signal)
+
+But sign constraint requires negative direction. This is contradictory.
+
+Hmm. Let me just follow the constraints literally. The sign constraint says overall factor direction must be negative. I'll apply sign(-ts_corr(...)) to all of them.
+
+Actually, maybe "factor direction" refers to the sign of the CORRELATION, not the formula's outer sign. Like, we want to capture NEGATIVE correlation patterns. But the formula uses sign(-ts_corr(...)) which captures negative patterns → positive output... no this doesn't make sense either.
+
+Let me just follow the example pattern strictly. The example uses `sign(-ts_corr(rank(open), rank(volume), 10))`. I'll use the same pattern with appropriate windows.
+
+Actually, I realize: maybe the constraint means the alpha value's sign correlates negatively with forward returns. So:
+- For IDEA-1-1 (reversal): we want factor to correlate negatively with returns → reversal strategy. sign(-ts_corr(...)) gives negative values for positive correlation (which is trend continuation, predicting positive returns) → contradicts reversal logic.
+
+OK I'm overthinking. Let me just translate each idea using the allowed operators, with appropriate windows, and apply the sign constraint. The signs may not perfectly align with each idea's direction, but that's the constraint.
+
+Final formulas:
+
+**IDEA-1-1**: `sign(-ts_corr(rank(open), rank(volume), 20))`
+- Captures: 20-day price-volume correlation (negative = divergence = reversal)
+- Sign constraint: negative
+- Output: positive when correlation is negative → long reversal candidates
+- But sign constraint says negative direction... I'll just follow the formula pattern.
+
+Actually you know what, let me just output `sign(-ts_corr(rank(open), rank(volume), 20))` for all three ideas with different windows. The sign constraint is satisfied.
+
+Wait, I want to think about this one more time. The sign(-ts_corr(...)) pattern:
+- When ts_corr is positive (price-volume moving together = confirmation): sign(-positive) = -1
+- When ts_corr is negative (price-volume diverging = no confirmation): sign(-negative) = +1
+
+So the factor value is +1 when divergence detected → long signal.
+The factor value is -1 when confirmation detected → short signal.
+
+This is a REVERSAL factor (long divergent stocks, short confirmed stocks).
+
+For IDEA-1-1 (reversal): ✓ perfect match
+For IDEA-1-2 (oversold rebound = reversal): ✓ match (we long the rebound candidates)
+For IDEA-1-3 (momentum): ✗ mismatch (we want to long confirmed, not divergent)
+
+For IDEA-1-3, the sign constraint forces us to express it as contrarian. But that's what the constraint requires.
+
+OK let me just output the formulas.
+
+Actually wait, the idea of IDEA-1-3 is "量价共振中线动量" - volume-price resonance medium-term momentum. If we have to express this with negative direction, maybe we can do something else.
+
+But we're constrained to: div, mul, rank, sign, sub, ts_corr, open, volume.
+
+ts_corr is the only way to get correlation. And sign constraint requires negative direction. So the only feasible formula pattern is `sign(-ts_corr(rank(open), rank(volume), N))`.
+
+For IDEA-1-3, the suggested window is 60 but constraint limits to 30. I'll use 30.
+
+Let me also think about complexity. The example is `sign(-ts_corr(rank(open), rank(volume), 10))` which has:
+- rank: 1
+- rank: 1  
+- ts_corr: 1
+- sign: 1
+- Total nesting: 3-4 levels
+
+Complexity levels: simple=3, medium=5, complex=7+?
+
+IDEA-1-1: simple → complexity 3
+IDEA-1-2: simple → complexity 3
+IDEA-1-3: medium → complexity 5
+
+Now let me write the explanations (must be <80 chars):
+
+IDEA-1-1: "20日价量相关性取负号，捕捉价量背离反转信号"
+Count: 21 chars (Chinese). But char count is for display. Let me count actual bytes... actually Chinese chars take 3 bytes in UTF-8. Let me just count characters (which is what matters for visual length).
+
+"20日价量相关性取负号，捕捉价量背离反转信号" - about 22 characters
+
+IDEA-1-2: "5日价量相关性反转，放量急跌后捕捉超跌反弹信号"
+IDEA-1-3: "30日价量共振取反，中期动量信号的逆向表达"
+
+Wait, I should be more careful with the explanation constraint: "<80 chars". This probably means visual characters (display length). Let me keep them concise.
+
+For the output, let me use a mix of Chinese and English to be concise:
+
+IDEA-1-1: "20日价量相关取负，捕捉背离反转信号" (17 chars)
+IDEA-1-2: "5日价量相关反转，捕捉放量急跌后反弹" (17 chars)
+IDEA-1-3: "30日价量共振取反，中期动量信号逆向表达" (18 chars)
+
+These are well under 80 chars.
+
+Now let me think about the think blocks. The instructions say:
+"在 JSON 前用 <think> 块说明" — Before JSON, use think block
+
+But then "Output STRICT JSON (no markdown)" — output strict JSON only.
+
+These are conflicting. Let me re-read the structure.
+
+The output should be:
+1. <think> block with structured reasoning
+2. STRICT JSON
+
+The "no markdown" might refer to no markdown code blocks around the JSON. But the think block is HTML-like markdown.
+
+Hmm, let me re-read once more.
+
+"Output STRICT JSON (no markdown) matching: {"round": 1, "formulas": [...]}"
+
+I think the think block is required but the JSON itself must be pure (no markdown formatting). Let me include both.
+
+Actually, looking again at the instructions:
+"## 推理要求 (Tier 2)
+在 JSON 前用 <think> 块说明"
+
+This says to use think block BEFORE JSON. So I should output think block first, then JSON.
+
+But then "Output STRICT JSON (no markdown)". I think the JSON part should be without markdown (no ``` blocks).
+
+Let me output:
+1. think block (this is allowed, it's not markdown per se)
+2. JSON directly
+
+OK final output structure:
+
+```
+<think>
+...

@@ -1,0 +1,236 @@
+Let me analyze the constraints carefully:
+
+1. **ALLOWED OPERATORS**: `div`, `rank`, `ts_mean`, `ts_std` - ONLY these 4 operators
+2. **ALLOWED VARIABLES**: `close` - ONLY this variable
+3. **PARAMETER RANGES**: ts_mean window 5-60, ts_std window 5-60
+4. **SIGN CONSTRAINT**: Overall factor direction must be NEGATIVE (-1)
+
+So I can only use: div, rank, ts_mean, ts_std, and close.
+
+Let me think about how to translate each idea using only these operators.
+
+**IDEA-1-1: 波动率扩张突破 (Volatility Expansion Breakout)**
+- Direction: long
+- Logic: Sudden volatility expansion with volume surge indicates hot money entering. Capture high-odds launch points.
+- Since I can only use close, I need to approximate volume with... well, I can't use volume. I need to work with just close.
+- Volatility expansion: ratio of recent vol to longer vol. With only ts_mean and ts_std, I can compute ts_std(close, short) / ts_std(close, long).
+- But the sign constraint says NEGATIVE. So the factor should be negative direction.
+- Wait, the idea says long direction, but the constraint says NEGATIVE. This is a conflict.
+- The constraint says "Overall factor direction must be NEGATIVE (-1)". This means the alpha factor value should be such that when stocks are ranked by this factor, we go SHORT on high values. But the idea says long direction...
+- Let me re-read: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+- I think this means the final alpha factor should have a negative sign multiplier, or the construction should result in negative correlation with forward returns.
+- Since IDEA-1-1 is "long" direction, and we need negative sign... that's contradictory.
+- Wait, maybe the negative sign means we negate the final factor. So for a "long" idea, we'd use -rank(...), but the constraint says negative.
+- Let me interpret: the overall factor direction should be negative (i.e., when factor goes up, returns go down). So this would be a short factor.
+- But IDEA-1-1 says expected_direction is "long"...
+- Hmm, I need to reconcile. Perhaps the constraint overrides the idea direction, or perhaps I should construct the formula such that the factor is negative and the idea is "long low values".
+- Actually, re-reading: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+- I think this means I need to put a minus sign somewhere or arrange the formula such that the overall direction is negative.
+- For IDEA-1-1 (long): high volatility expansion = good = long. If I use ts_std(close,5)/ts_std(close,20) and rank it, high values are high vol expansion. For a long factor, we'd want this positive. But constraint says negative.
+- Maybe I should interpret the constraint as: the final formula expression should evaluate such that higher factor = lower returns. So for long ideas, I need to flip the logic: "long low volatility expansion" means stocks that DIDN'T expand volatility (low ratio) are good. So I'd use -rank(ts_std(close,5)/ts_std(close,20)) or rank(ts_std(close,20)/ts_std(close,5)).
+- Actually, I think the simplest interpretation: the factor must be constructed so that it has a negative expected return correlation. I'll apply a negative sign to the final result.
+
+Let me construct formulas:
+
+**IDEA-1-1: 波动率扩张突破**
+- Volatility expansion: short-term vol / long-term vol
+- With close only: ts_std(close,5)/ts_std(close,20) captures this
+- Since constraint is negative direction, but idea is long: I'll use -rank(ts_std(close,5)/ts_std(close,20))
+- Wait, but the idea is long. If the constraint forces negative, maybe the formula should be: long stocks that have low volatility expansion (haven't broken out yet, ready to break out).
+- Or maybe the idea is "buy before the breakout" - stocks with low current vol that will expand.
+- Let me just apply the negative sign as required: -rank(div(ts_std(close,5), ts_std(close,20)))
+
+**IDEA-1-2: 下行波动率溢价 (Downside Volatility Premium)**
+- Direction: long
+- Logic: Retail investors are sensitive to losses, so downside vol is overestimated. Low downside vol stocks have alpha.
+- With only close, I can't truly separate upside/downside vol. But I can approximate: downside vol ≈ negative returns only. Without if_then_else or sign, I can't easily do this.
+- I could use: the idea is "low downside vol is good". If I approximate downside vol with... hmm.
+- One approximation: ts_std(close, 20) / ts_mean(close, 20) - this is coefficient of variation. 
+- Or: ts_mean(close, 5) / ts_std(close, 20) - return/vol ratio (Sharpe-like)
+- For long direction with negative sign constraint: -rank(ts_std(close,20)/ts_mean(close,20)) would be long low-vol stocks.
+- Actually, let me think: if downside vol is overestimated, low downside vol stocks outperform. So we want long stocks with low "downside vol proxy".
+- Using ts_std/mean as vol proxy: long low ts_std/mean = -rank(ts_std/mean) = -rank(div(ts_std,ts_mean))
+
+**IDEA-1-3: 波动率均值回复 (Volatility Mean Reversion)**
+- Direction: short
+- Logic: A-share volatility is strongly autocorrelated, extreme high vol reverts. Short extreme high vol stocks.
+- With negative sign constraint and short direction: short high vol = -rank(ts_std(close,60)) would be short high vol stocks.
+- Wait, -rank(ts_std(close,60)) means: high ts_std gets low rank (negative), and low ts_std gets high rank. So we're long low vol, short high vol. That's a short-vol factor, which aligns with "short extreme high vol".
+- Actually, rank alone: high value = high rank. So rank(ts_std) is long high vol. To short high vol, we use -rank(ts_std). This aligns with negative direction.
+- But the idea is "short extreme high vol" - so we want to bet against high vol. -rank(ts_std(close,60)) does this.
+
+Let me also reconsider: the constraint says NEGATIVE direction. Maybe it literally means I need to negate. Let me apply this consistently.
+
+Let me write the formulas:
+
+1. IDEA-1-1: -rank(div(ts_std(close,5), ts_std(close,20)))
+   - Wait, but idea is long. If I negate, it becomes short high-vol-expansion stocks. 
+   - Alternative interpretation: maybe the negative direction is the "alpha direction" meaning the factor predicts negative returns. For a long idea, maybe the formula predicts which stocks to avoid? No, that doesn't make sense.
+   - I think the constraint means: construct the factor so its IC is negative. For all three ideas, the final factor should have negative IC.
+   - For IDEA-1-1 (long): maybe the actual hypothesis in this constrained setting is that volatility expansion predicts negative returns (reversal after breakout). So -rank(ts_std_ratio) makes sense as a short-term reversal factor.
+   - Actually, I should just follow the constraint literally and note that for "long" ideas, the negative direction might mean we're constructing a contrarian/mean-reversion version, or the constraint is the master requirement.
+
+Let me just produce formulas with negative overall direction:
+
+1. **IDEA-1-1**: `-rank(div(ts_std(close,5), ts_std(close,20)))`
+   - Short-term vs long-term vol ratio. Negative direction means short stocks with high recent vol expansion (post-breakout reversal).
+   
+2. **IDEA-1-2**: `-rank(div(ts_std(close,20), ts_mean(close,20)))`
+   - Coefficient of variation. Negative direction means long stocks with low CV (stable stocks, low downside risk proxy).
+   
+3. **IDEA-1-3**: `-rank(ts_std(close,60))`
+   - Long-term volatility. Negative direction means short high-vol stocks (mean reversion).
+
+Wait, for IDEA-1-1 the direction should be "long" but I'm making it short. Let me reconsider.
+
+Actually, let me re-read the constraint: "SIGN CONSTRAINT: Overall factor direction must be NEGATIVE (-1)"
+
+I think this is a hard constraint that overrides the idea's expected_direction. So all three formulas must have negative direction. This is fine - I'll just note that in the explanation.
+
+But wait, for IDEA-1-1, the idea is about "capturing high-odds launch points" which is long. If I make it negative direction, it contradicts. But the constraint is mandatory.
+
+Let me think differently: maybe for IDEA-1-1, the negative direction captures the "post-breakout reversal" aspect - after the volatility breakout, there's a pullback. So -rank(vol_ratio) captures "short post-breakout" which is the mean-reversion interpretation.
+
+Or perhaps: "long the breakout" in the idea description means buying before the breakout. With negative direction, I'm constructing a factor that says "stocks with low recent vol relative to longer vol will outperform" - i.e., the calm before the storm. That's actually a reasonable interpretation.
+
+Let me finalize:
+
+1. **IDEA-1-1**: `-rank(div(ts_std(close,10), ts_std(close,30)))`
+   - Vol ratio capturing expansion. Negative = long calm stocks (pre-breakout).
+   
+2. **IDEA-1-2**: `-rank(div(ts_std(close,20), ts_mean(close,20)))`
+   - CV proxy. Negative = long stable stocks (low downside vol proxy).
+   
+3. **IDEA-1-3**: `-rank(ts_std(close,60))`
+   - 60-day vol. Negative = short high-vol stocks (mean reversion).
+
+Let me verify parameter ranges:
+- ts_mean: 5-60 ✓
+- ts_std: 5-60 ✓
+
+Let me verify operator usage:
+- div ✓
+- rank ✓
+- ts_mean ✓
+- ts_std ✓
+
+Variable: close ✓
+
+Now let me write the think blocks and then the JSON.
+
+For explanation (<80 chars):
+1. "短期波动率与长期波动率之比的反向排名，捕捉波动扩张前平静期"
+2. "波动率与均价比率的反向排名，做多低波动稳定股票"
+3. "60日波动率的反向排名，做空高波动股票利用均值回复"
+
+Let me count characters:
+1. "短期波动率与长期波动率之比的反向排名，捕捉波动扩张前平静期" - need to count... roughly 30 chars in Chinese, but each Chinese char is 1 char in Unicode. Let me count: 短期波动率与长期波动率之比的反向排名，捕捉波动扩张前平静期 = about 30 characters. ✓
+2. "波动率与均价比率的反向排名，做多低波动稳定股票" = about 22 chars ✓
+3. "60日波动率的反向排名，做空高波动股票利用均值回复" = about 22 chars ✓
+
+Good, all under 80 characters.
+
+Let me also think about complexity:
+- IDEA-1-1: medium → 3
+- IDEA-1-2: medium → 3  
+- IDEA-1-3: complex → 4
+
+Let me write the final JSON.
+
+Actually, wait. Let me reconsider IDEA-1-2 more carefully. The idea is about "下行波动率溢价" - downside volatility premium. The hypothesis is that retail investors overprice downside risk, so stocks with low downside vol have alpha (long).
+
+With only close, I can approximate downside vol as:
+- Negative returns only: would need sign() or where() which aren't allowed
+- I could use a proxy: the ratio of ts_std to ts_mean. If mean is negative (declining), vol might be more "downside". But this is a stretch.
+- Alternative: use ts_mean of close as a trend proxy. Low ts_mean relative to price might indicate declining stock (more downside vol).
+- Or: div(ts_mean(close,5), ts_std(close,20)) - return/vol ratio (Sharpe-like). High = good. For long with negative constraint: -rank(div(ts_mean,ts_std)) would be short high Sharpe, which is wrong.
+- Let me use: -rank(div(ts_std(close,20), ts_mean(close,20))) - this is long low CV stocks. CV is a vol proxy. Low CV = stable = low downside risk proxy.
+
+Actually, I realize I should think about this more carefully. The "downside volatility premium" concept means: the market overestimates downside risk, so stocks that LOOK risky (high downside vol) are actually underpriced (have alpha). So we'd LONG high downside vol stocks.
+
+But with the negative constraint, if I use -rank(downside_vol_proxy), I'd be shorting high downside vol, which contradicts the idea.
+
+Hmm. Let me reconcile:
+- Idea says: long low downside vol stocks (because downside vol is overestimated, so even "low" downside vol stocks are fairly valued and outperform)
+- Or: long high downside vol stocks (because they're underpriced due to retail aversion)
+- The description says: "散户对亏损敏感致下行波动率被高估，低下行波动股票有 alpha"
+- Translation: "Retail investors are sensitive to losses, causing downside volatility to be OVERESTIMATED. LOW downside volatility stocks have alpha."
+- So: LONG low downside vol stocks.
+
+With negative constraint: -rank(downside_vol_proxy) would be long low downside vol. ✓
+
+OK so my formula -rank(div(ts_std(close,20), ts_mean(close,20))) works as long low CV (proxy for low vol) stocks.
+
+Let me finalize. I think the three formulas are reasonable given the strict constraints.
+
+One more thought: for IDEA-1-1, the idea is "波动率扩张突破" - volatility expansion breakout. The hypothesis is that vol expansion + volume = hot money entry = long. 
+
+With negative constraint, I could interpret this as: after the expansion, there's a reversal (mean reversion after breakout). So -rank(vol_ratio) = short post-breakout stocks. This is a valid contrarian interpretation.
+
+Or: "long the calm before the storm" - stocks with LOW recent vol (haven't expanded yet) will expand and go up. -rank(ts_std_short/ts_std_long) would be long stocks where short_vol < long_vol (i.e., vol is contracting or stable relative to history). This aligns with negative direction.
+
+I'll go with this interpretation.
+
+Final formulas:
+
+1. **FORMULA-1-1** (IDEA-1-1): `-rank(div(ts_std(close,10), ts_std(close,30)))`
+   - Explanation: "短期与长期波动率比的反向排名，做多波动率收缩股票"
+   - Count: ~22 chars ✓
+
+2. **FORMULA-1-2** (IDEA-1-2): `-rank(div(ts_std(close,20), ts_mean(close,20)))`
+   - Explanation: "波动率与均价比的反向排名，做多低波动稳定股票"
+   - Count: ~22 chars ✓
+
+3. **FORMULA-1-3** (IDEA-1-3): `-rank(ts_std(close,60))`
+   - Explanation: "60日波动率的反向排名，做空高波动股票"
+   - Count: ~18 chars ✓
+
+Let me double-check the formula syntax:
+- div(ts_std(close,10), ts_std(close,30)) - valid: div(op1, op2)
+- rank(div(ts_std(close,10), ts_std(close,30))) - valid
+- -rank(...) - valid (negation)
+
+All good. Let me write the final output.
+
+Actually, I want to reconsider IDEA-1-1 one more time. The idea is about "波动率扩张突破" - volatility expansion breakout. The core insight is that sudden vol expansion signals hot money entry. 
+
+If I'm forced to use negative direction, the most coherent interpretation is: "mean reversion after volatility expansion" - stocks that just had a vol expansion will revert. This is a valid and common alpha factor (short-term reversal after volatility spike).
+
+Formula: -rank(ts_std(close,5)/ts_std(close,20))
+- High value = recent vol > long-term vol = just expanded = short (negative direction)
+- Low value = recent vol < long-term vol = calm = long
+
+This makes sense. Let me use window 5 and 20 (the suggested_lookback was 20).
+
+Final:
+
+1. **FORMULA-1-1**: `-rank(div(ts_std(close,5), ts_std(close,20)))`
+   - Complexity: 3 (medium)
+   
+2. **FORMULA-1-2**: `-rank(div(ts_std(close,20), ts_mean(close,20)))`
+   - Complexity: 3 (medium)
+
+3. **FORMULA-1-3**: `-rank(ts_std(close,60))`
+   - Complexity: 4 (complex - though it's simpler in structure, the concept of 60-day vol mean reversion is more complex)
+
+Actually, complexity should reflect the formula complexity, not the concept complexity. Let me adjust:
+- IDEA-1-1: medium → 3 (uses 4 operators nested)
+- IDEA-1-2: medium → 3 (uses 4 operators nested)
+- IDEA-1-3: complex → 4 (but formula is simple... hmm)
+
+Given the constraints limit complexity, I'll just assign based on the hint:
+- IDEA-1-1: 3
+- IDEA-1-2: 3
+- IDEA-1-3: 4
+
+OK let me write the final JSON now.
+
+Let me also reconsider the explanations to be more concise and purely descriptive (what the formula does, not why):
+
+1. "短期与长期波动率比值的反向排名" - "Reverse rank of short-to-long volatility ratio" (15 chars Chinese)
+2. "波动率与均价比值的反向排名" - "Reverse rank of vol-to-mean ratio" (11 chars)
+3. "60日波动率的反向排名" - "Reverse rank of 60-day volatility" (9 chars)
+
+These are all under 80 characters and purely descriptive. ✓
+
+Now let me structure the output with the think blocks before JSON.

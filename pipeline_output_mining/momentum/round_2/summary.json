@@ -1,0 +1,8 @@
+{
+  "round_num": 2,
+  "elapsed_seconds": 259.123416185379,
+  "alphagpt_factors": 9,
+  "mcts_factors": 46,
+  "final_factors": 9,
+  "best_ir": 0.09882961297485018
+}

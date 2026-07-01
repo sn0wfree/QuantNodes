@@ -1,0 +1,21 @@
+Let me analyze the evaluation results and select the top-3 formulas.
+
+All three formulas have IR values below the min_ir_threshold of 0.05:
+- FORMULA-1-1: IR = 0.0412 (below 0.05)
+- FORMULA-1-2: IR = 0.0535 (above 0.05)
+- FORMULA-1-3: IR = 0.0494 (below 0.05)
+
+Only FORMULA-1-2 passes the min_ir_threshold of 0.05. However, the task asks me to select top-3, so I need to consider all of them but note the risk.
+
+Let me also check mutual IC - no mutual IC data is provided, so I can't filter on that.
+
+Let me rank them:
+1. FORMULA-1-2: IR=0.0535, IC=0.0061, IC std=0.1148 - passes IR threshold
+2. FORMULA-1-3: IR=0.0494, IC=0.0060, IC std=0.1205 - close to threshold, highest IC decay at day 20
+3. FORMULA-1-1: IR=0.0412, IC=0.0047, IC std=0.1146 - lowest IR
+
+All three are reversal-type factors (mean reversion: close vs ts_mean).
+
+Let me provide the final pool. Note that I need to estimate sharpe and max_drawdown since they're not provided. I'll mark them as null or estimate from available data. Since the data doesn't provide sharpe or max_drawdown, I should either omit them or set them to null. Looking at the schema, it asks for these metrics, so I'll set them to null since they're not in the evaluation data.
+
+Actually, re-reading the prompt - it says "metrics (ic_mean, ir, sharpe, max_drawdown)" - I should include them but note they're not directly evaluated. I'll set sharpe and max_drawdown to null.

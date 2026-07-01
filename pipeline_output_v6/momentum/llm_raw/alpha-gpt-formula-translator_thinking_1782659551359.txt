@@ -1,0 +1,143 @@
+Let me analyze the constraints carefully:
+
+1. **ALLOWED OPERATORS**: div, mul, rank, sub, ts_mean, ts_std (ONLY these)
+2. **ALLOWED VARIABLES**: close (ONLY this variable)
+3. **PARAMETER RANGES**: 
+   - ts_mean: window 10-120
+   - ts_std: window 2-120
+4. **SIGN CONSTRAINT**: Overall factor direction must be POSITIVE (+1)
+5. **a_share_focus**: True
+
+Now let me translate the three ideas:
+
+**IDEA-1-1**: 20日价格动量 (20-day price momentum)
+- Lookback: 20
+- Long direction
+- Core: 20-day price momentum capturing strong winners
+- Since I can only use close, returns aren't directly available but I can use ts_mean of close or the ratio
+
+Wait, the allowed variables only include 'close'. So I need to construct momentum from close prices.
+
+For momentum: `ts_mean(close, 20)` gives the 20-day average price. But I need momentum direction.
+
+Actually, let me think. If I use `close / ts_mean(close, 20)`, that gives a ratio where >1 means price is above average. But I can only use div, mul, rank, sub, ts_mean, ts_std.
+
+`div(close, ts_mean(close, 20))` - this gives price relative to 20-day mean
+Then `rank(...)` to cross-sectionally rank
+
+For positive direction:
+- If close > mean → above average → momentum → rank high → long → positive direction ✓
+
+For IDEA-1-1 (20-day price momentum):
+`rank(div(close, ts_mean(close, 20)))`
+
+For IDEA-1-2 (60-day earnings quality momentum):
+Wait, this is "盈利质量动量" but I can only use close. So I need to adapt to price-based proxy.
+- 60-day lookback
+- Use 60-day momentum with quality filter... but with only close, I can only do price-based
+- Could use ts_std to measure volatility (low vol = quality)
+- `div(close, ts_mean(close, 60))` for momentum
+- Subtract or divide by ts_std to penalize volatility
+
+Actually, the constraint says I can ONLY use those operators. Let me re-read.
+
+"ALLOWED OPERATORS: div, mul, rank, sub, ts_mean, ts_std"
+"ALLOWED VARIABLES: close"
+
+So I must only use these 6 operators and only 'close' as variable.
+
+For IDEA-1-2: 60-day earnings quality momentum
+- Quality could be proxied by lower volatility
+- `div(div(close, ts_mean(close, 60)), ts_std(close, 60))` 
+- This gives momentum divided by volatility
+- Higher ratio = stronger momentum with lower vol = quality
+- Then rank for cross-sectional comparison
+
+Wait, but the direction needs to be positive. Let me think...
+
+For momentum: if close > ts_mean(close, 20), the stock has gone up → we want to long
+`div(close, ts_mean(close, 20))` > 1 means up
+`rank(...)` → high rank means high momentum
+Long high rank → positive direction ✓
+
+For quality + momentum:
+- Quality proxy: low volatility → `ts_std(close, 60)` small
+- Momentum: `div(close, ts_mean(close, 60))` > 1 means up
+- Combined: `div(div(close, ts_mean(close, 60)), ts_std(close, 60))` 
+- Higher = better momentum with less volatility
+- Rank → long top → positive ✓
+
+For IDEA-1-3: 量价协同动量 (Volume-price momentum)
+But I can't use volume! Only close is allowed. So I need to proxy volume with price volatility/range.
+- 10-day lookback
+- 量价协同 = volume-price confirmation
+- Could use ts_std as volume proxy (volatility often correlates with volume)
+- Or the change in momentum
+
+Actually with only close:
+- Could use: `div(ts_mean(close, 5), ts_mean(close, 10))` for short-term momentum acceleration
+- Or: `div(div(close, ts_mean(close, 10)), ts_std(close, 10))` for momentum/vol ratio (price efficiency)
+
+For 量价协同, "量" (volume) is proxied by ts_std (volatility = trading activity proxy)
+"价" (price) momentum = close/mean
+So: `div(div(close, ts_mean(close, 10)), ts_std(close, 10))`
+Then rank
+
+Let me finalize:
+
+**IDEA-1-1 (20日价格动量)**:
+- Formula: `rank(div(close, ts_mean(close, 20)))`
+- Direction: positive (high rank = high momentum = long)
+- Complexity: 2
+
+**IDEA-1-2 (60日盈利质量动量)**:
+- Formula: `rank(div(div(close, ts_mean(close, 60)), ts_std(close, 60)))`
+- Direction: positive (high ratio = strong momentum + low vol)
+- Complexity: 3
+
+**IDEA-1-3 (量价协同动量)**:
+- Formula: `rank(div(div(close, ts_mean(close, 10)), ts_std(close, 10)))`
+- Direction: positive
+- Complexity: 3
+
+Let me verify parameter ranges:
+- ts_mean(close, 20): 20 in [10, 120] ✓
+- ts_mean(close, 60): 60 in [10, 120] ✓
+- ts_mean(close, 10): 10 in [10, 120] ✓
+- ts_std(close, 60): 60 in [2, 120] ✓
+- ts_std(close, 10): 10 in [2, 120] ✓
+
+All good.
+
+Sign verification:
+- IDEA-1-1: rank(close/mean_20) → higher rank = higher ratio = price above mean = winners → long → positive ✓
+- IDEA-1-2: rank(close/mean_60/std_60) → higher = more momentum with less vol → long → positive ✓
+- IDEA-1-3: rank(close/mean_10/std_10) → same logic → positive ✓
+
+Let me write the explanations (must be <80 chars, no structured fields):
+
+IDEA-1-1: "20日价格动量：股价/20日均价比率的横截面排名"
+Let me count: that's about... "20-day price momentum: cross-sectional rank of price/20-day mean ratio" 
+20日价格动量：股价相对20日均价比率排名 (about 24 chars in Chinese, fine)
+
+IDEA-1-2: "60日盈利质量动量：动量除以波动率衡量质量调整后趋势" 
+60日动量除以60日波动率再排名，捕捉质量调整动量
+
+IDEA-1-3: "10日量价协同：价格相对均线比率除以波动率再排名"
+
+Let me make sure < 80 chars each.
+
+Now I need to write think blocks for each, then output JSON.
+
+Let me structure the think block at the top covering all 3 ideas. The instruction says "在 JSON 前用 <think> 块说明" - so one think block before JSON.
+
+Let me write a comprehensive think block.
+
+Also need to include complexity numbers (1-5 range presumably).
+
+Complexity:
+- IDEA-1-1: simple, 2 operators nested (1 div + 1 rank) = complexity 2
+- IDEA-1-2: medium, 3 operators (div, div, rank) = complexity 3
+- IDEA-1-3: medium, 3 operators (div, div, rank) = complexity 3
+
+Let me format the final output.

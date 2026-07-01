@@ -1,0 +1,19 @@
+The user is asking me to select the final top-3 from all rounds of an Alpha-GPT critic process. However, the key issue is that `all_evaluations` and `all_reflections` are both empty lists `[]`. 
+
+Without any evaluation data, I cannot actually select meaningful top-3 formulas. Let me re-read the prompt carefully.
+
+"You are the Alpha-GPT Critic. Select final top-3 from all rounds. min_ir_threshold=0.05. max_mutual_ic_threshold=0.7. all_evaluations=[]. all_reflections=[]. Output STRICT JSON"
+
+The thresholds are given:
+- min_ir_threshold = 0.05
+- max_mutual_ic_threshold = 0.7
+
+But all_evaluations is empty and all_reflections is empty. This means there are no formulas to evaluate. I should output an empty final_pool and explain in the summary.
+
+Let me follow the required format:
+1. Think block first with selection criteria explanation
+2. Then strict JSON output (no markdown)
+
+Given empty data, I cannot fabricate formulas. I must be honest that there are no candidates. I'll output an empty final_pool with a summary explaining that total_evaluated is 0.
+
+Let me structure this properly.

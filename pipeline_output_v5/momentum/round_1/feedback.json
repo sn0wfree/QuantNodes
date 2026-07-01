@@ -1,0 +1,32 @@
+{
+  "round_num": 1,
+  "best_ir": 0.11673835207814552,
+  "avg_ir": 0.013187415499385242,
+  "valid_count": 33,
+  "best_formulas": [],
+  "failed_patterns": [
+    {
+      "formula": "sign(ts_min(rank(div(div(close, ts_mean(close, 40)), ts_std(close, 40))), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_min(rank(div(div(close, ts_mean(close, 40)), ts_std(close, 40))), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_min(rank(div(div(close, ts_mean(close, 40)), ts_std(close, 40))), 5))",
+      "reason": "FAIL: value"
+    },
+    {
+      "formula": "sign(ts_min(rank(div(div(close, ts_mean(close, 40)), ts_std(close, 40))), 5))",
+      "reason": "FAIL: value"
+    }
+  ],
+  "suggestions": [
+    "避免以下失败模式: FAIL: value, FAIL: value, FAIL: value"
+  ],
+  "stats": {
+    "improvement_vs_prev": null,
+    "total_mcts_nodes": 37
+  }
+}

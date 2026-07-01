@@ -1,0 +1,29 @@
+Let me analyze the given data carefully.
+
+We have 3 formulas from Round 1:
+- FORMULA-1-1: rank(div(ts_std(close, 10), ts_std(close, 60))) - IR: 0.0220, IC mean: 0.0016
+- FORMULA-1-2: rank(div(ts_std(close, 5), ts_std(close, 30))) - IR: 0.0011, IC mean: 0.000074
+- FORMULA-1-3: rank(div(ts_std(close, 60), ts_mean(close, 60))) - IR: -0.0915, IC mean: -0.0090
+
+All have very low IR values, well below typical thresholds. The min_ir_threshold is 0.05. None of them meet this threshold.
+
+Wait, let me re-read the instructions. The min_ir_threshold=0.05 means I need to filter formulas with IR >= 0.05. None of the three formulas meet this criterion.
+
+Since none meet the minimum IR threshold, I should return an empty final_pool or note that no formulas qualified.
+
+Let me check the max_mutual_ic_threshold=0.7 - with only 3 formulas, mutual IC isn't a major concern.
+
+Given the strict filtering criteria, the final_pool should be empty since no formula has IR >= 0.05.
+
+Let me think about this more carefully. The task says "Select final top-3 from all rounds." But the min_ir_threshold=0.05 should filter out underperforming factors. All three formulas have IR well below 0.05:
+- FORMULA-1-1: IR = 0.022
+- FORMULA-1-2: IR = 0.0011
+- FORMULA-1-3: IR = -0.0915
+
+The closest to passing is FORMULA-1-1, but it still fails the 0.05 threshold.
+
+I'll output an empty final_pool with an explanatory summary, since the task requires STRICT JSON.
+
+Wait, but the sharpe and max_drawdown aren't provided in the input data. I'll need to handle that - I'll mark them as null or not available.
+
+Let me structure the JSON properly. Since no formulas pass the threshold, final_pool should be empty.

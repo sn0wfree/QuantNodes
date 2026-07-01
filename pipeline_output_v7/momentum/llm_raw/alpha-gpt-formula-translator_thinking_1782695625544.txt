@@ -1,0 +1,288 @@
+Let me analyze each idea and translate them into polars formulas using only the allowed operators: div, mul, rank, sub, ts_mean, ts_std, and only the variable: close.
+
+**IDEA-1-1: 20日逻辑动量 (20-day logical momentum)**
+- Description: Medium-term 20-day window captures monthly trend, retail investors amplify momentum
+- Expected direction: long
+- Lookback: 20
+- The idea is to capture momentum over 20 days. Since we can only use close, I need to use returns or price changes. 
+
+Wait, I only have `close` as allowed variable and operators div, mul, rank, sub, ts_mean, ts_std. I cannot use `returns` directly. Let me think about how to construct a momentum signal.
+
+I can use:
+- `ts_delta(close, 20)` but ts_delta is not in allowed operators
+- I could compute returns as close/close_lag... but I don't have lag/shift operators
+- I can use `ts_mean` and `div` to create a ratio
+
+Actually, looking more carefully, I only have: div, mul, rank, sub, ts_mean, ts_std
+
+So I can do something like:
+- rank(ts_mean(close, 20)) - this would be a momentum proxy (higher recent mean = momentum)
+- Or use close / ts_mean(close, 20) to get price relative to recent average
+
+Wait, but the sign constraint says overall factor direction must be POSITIVE (+1). So for momentum (long winners), I want higher values to predict positive returns.
+
+For IDEA-1-1 (momentum, long direction):
+- rank(ts_mean(close, 20)) would be positive for stocks with high recent average price... but this isn't pure momentum
+- Better: close / ts_mean(close, 60) - stocks where current price is above long-term mean have positive momentum
+- Or: ts_mean(close, 20) / ts_mean(close, 60) - ratio of short to long term mean
+
+Let me go with: rank(mul(close, div(1, ts_mean(close, 60))))
+Or simpler: rank(div(close, ts_mean(close, 60)))
+
+Actually, since close/mean(close, 60) is a classic momentum measure, let me use that.
+
+For IDEA-1-2 (量价共振动量, volume-price resonance momentum):
+- Description: Volume-price co-movement confirms trend
+- But I don't have volume/variables other than close
+- I can use price volatility as a proxy: ts_std(close, 10) - higher volatility = more trading activity
+- Or combine: rank(div(close, ts_mean(close, 10))) - short-term momentum
+- Actually, the idea mentions volume confirmation. Since I only have close, I can use the relationship between short-term and long-term mean as a momentum proxy, and use ts_std to capture the volatility component.
+
+Formula for IDEA-1-2: rank(mul(div(close, ts_mean(close, 10)), sub(1, ts_std(close, 10))))
+Hmm, this is getting complex. Let me think more carefully.
+
+Actually, let me reconsider. I can only use div, mul, rank, sub, ts_mean, ts_std with close.
+
+For IDEA-1-2 (medium complexity, 10-day lookback):
+- Price momentum: close / ts_mean(close, 10)
+- Volatility (proxy for volume/activity): ts_std(close, 10) - this could be interpreted as recent volatility
+- Combine: multiply momentum by inverse of volatility? Or rank both?
+
+Let me use: rank(mul(div(close, ts_mean(close, 10)), div(ts_mean(close, 20), ts_std(close, 10))))
+
+For IDEA-1-3 (T+1 short-term reversal):
+- Description: 1-3 day reversal, buy losers
+- Lookback: 3
+- Direction: long (buy losers that will reverse up)
+- This means the factor should be NEGATIVE correlated with recent returns (buy recent losers)
+- But sign constraint says positive! So I need to flip the direction
+
+Wait, the sign constraint says "Overall factor direction must be POSITIVE (+1)". This means the factor's IC should be positive. If the strategy is "buy losers" (long losers), then the factor should be high for losers. So if I use -returns, that would be positive for losers.
+
+But I can only use close. So:
+- Recent return proxy: close / ts_mean(close, 3) - this is > 1 for recent winners, < 1 for recent losers
+- For reversal, I want to buy recent losers, so I want the factor to be HIGH when close/ts_mean(close, 3) is LOW
+- Factor = -rank(close/ts_mean(close, 3))? But sub is allowed, so I could do:
+- sub(2, rank(div(close, ts_mean(close, 3)))) - this reverses the rank
+
+Or simpler: rank(div(ts_mean(close, 3), close)) - higher when close is low relative to mean (losers)
+
+Wait, for reversal buying losers:
+- If close < mean(close, 3), then mean(close, 3)/close > 1, so the stock is a "loser"
+- Higher mean(close, 3)/close = more of a loser = should be bought for reversal
+- So rank(mean(close, 3)/close) gives positive signal to losers ✓
+
+Let me finalize:
+
+**IDEA-1-1 (20日逻辑动量):**
+Formula: rank(div(close, ts_mean(close, 60)))
+Logic: Current price relative to 60-day mean. Higher ratio = more upward momentum. Long direction.
+Complexity: 2 (simple, one ratio + rank)
+
+Actually wait, the lookback is 20, not 60. Let me use 20.
+But with just 20-day mean, this is more like "above 20-day average" which is a classic momentum signal.
+
+Formula: rank(div(close, ts_mean(close, 20)))
+Hmm, but this is more of a "breakout" signal. For pure momentum, I might want to compare current to past.
+
+Since I can only use close, and the allowed operators don't include shift/lag, I can't compute returns directly. Let me use:
+rank(div(close, ts_mean(close, 60))) - current vs 60-day mean
+or
+rank(div(ts_mean(close, 20), ts_mean(close, 60))) - 20-day mean vs 60-day mean
+
+The second is more like a "momentum" signal (short MA above long MA). Let me use that.
+
+Wait, but the lookback suggested is 20. Let me use 20 as the main window.
+
+For IDEA-1-1, the description says "20日窗口捕捉月度趋势" - 20-day window captures monthly trend.
+
+Formula: rank(div(ts_mean(close, 20), ts_mean(close, 60)))
+This is medium complexity. Let me check complexity_hint: 'simple'
+
+For simple:
+rank(div(close, ts_mean(close, 20))) - breakout above 20-day mean
+
+Let me go with: rank(div(close, ts_mean(close, 20)))
+Complexity: 2
+
+**IDEA-1-2 (量价共振动量):**
+Complexity: medium
+Description: Volume-price co-movement. Since no volume, I use price-based proxies.
+Formula: rank(mul(div(close, ts_mean(close, 10)), div(ts_mean(close, 20), ts_std(close, 10))))
+
+Wait, this might not make sense. Let me think again.
+
+For "volume-price resonance":
+- Price momentum: close / ts_mean(close, 10) - how much above short-term mean
+- Volume proxy: ts_std(close, 10) - volatility as volume proxy
+- We want high momentum AND high volume
+
+If I multiply close/mean(close, 10) by std(close, 10), high momentum + high volatility = high score. But this isn't right because high std doesn't necessarily mean high volume.
+
+Let me try: rank(mul(div(close, ts_mean(close, 10)), ts_std(close, 10)))
+This gives high values to stocks that are both above their mean and have high volatility. This is a "momentum with activity confirmation" signal.
+
+Actually, that's positive for momentum direction. Let me use this.
+
+**IDEA-1-3 (T+1短期反转):**
+Complexity: simple
+Lookback: 3
+Direction: long (buy losers for reversal)
+Formula: rank(div(ts_mean(close, 3), close))
+This is high when close < mean(close, 3), i.e., for losers. For reversal, we buy losers, so this is positive direction.
+
+Wait, but the sign constraint is POSITIVE. Let me verify:
+- If close drops, mean(close, 3)/close increases → rank is high → factor is high → predicts positive returns (reversal) ✓
+
+Good, this works.
+
+Now let me check parameter ranges:
+- ts_mean: window between 10 and 120
+- ts_std: window between 2 and 120
+
+For IDEA-1-1: ts_mean(close, 20) - window 20, OK
+For IDEA-1-2: ts_mean(close, 10), ts_mean(close, 20), ts_std(close, 10) - all OK
+For IDEA-1-3: ts_mean(close, 3) - window 3, NOT OK (must be >= 10)
+
+I need to adjust IDEA-1-3. The lookback is 3, but minimum is 10. Let me use 10 as the minimum:
+Formula: rank(div(ts_mean(close, 10), close))
+
+This is still a reversal signal but with a slightly longer window. Or I can interpret the 3-day reversal as part of a 10-day window for ts_mean.
+
+Actually, let me re-read: "ts_mean: window must be between 10 and 120". So minimum is 10. I'll use 10 for IDEA-1-3.
+
+Let me finalize:
+
+**FORMULA-1-1 (IDEA-1-1):**
+- Formula: rank(div(close, ts_mean(close, 20)))
+- Complexity: 2
+- Explanation: "20日动量因子：股价相对20日均线偏离度"
+
+**FORMULA-1-2 (IDEA-1-2):**
+- Formula: rank(mul(div(close, ts_mean(close, 10)), ts_std(close, 10)))
+- Complexity: 3
+- Explanation: "量价共振：短期动量乘以波动率作为量能代理"
+
+Wait, mul then div? Let me restructure. The operators are: div, mul, rank, sub, ts_mean, ts_std.
+
+For IDEA-1-2: rank(mul(div(close, ts_mean(close, 10)), ts_std(close, 10)))
+- This computes: close/mean(close, 10) * std(close, 10)
+- High when price is above mean AND volatility is high
+- This is a momentum+activity signal
+
+Actually, this might be problematic. Let me think differently.
+
+Volume-price resonance means:
+- Price up + volume up → strong signal (long)
+- Price up + volume down → weak signal (no position)
+- Price down + volume up → weak/distribution
+- Price down + volume down → weak
+
+For long position, we want price up + volume up.
+- Price up signal: close/mean(close, 10) > 1
+- Volume up signal: std(close, 10) as proxy (higher std = more activity)
+
+So mul(close/mean(close, 10), std(close, 10)) gives higher values when both are high. 
+
+But the problem is that std is in absolute terms (price units), and close/mean is a ratio. The scale is inconsistent. Let me normalize:
+
+rank(mul(div(close, ts_mean(close, 10)), ts_std(close, 10)))
+
+The rank at the end will handle the scale issue. OK.
+
+Actually, for A-share compatibility and simplicity, let me use a different approach:
+
+For IDEA-1-2, use the ratio of short-term vs long-term mean multiplied by a measure of recent activity:
+rank(mul(div(ts_mean(close, 10), ts_mean(close, 30)), ts_std(close, 10)))
+
+Or simpler: rank(div(ts_mean(close, 10), ts_mean(close, 30)))
+Plus the std component: rank(mul(div(ts_mean(close, 10), ts_mean(close, 30)), ts_std(close, 10)))
+
+Let me go with: rank(mul(div(ts_mean(close, 10), ts_mean(close, 30)), ts_std(close, 10)))
+
+This combines:
+- Short-term trend (10-day vs 30-day mean ratio)
+- Recent volatility (10-day std)
+
+Hmm, this is getting complex. Let me simplify.
+
+For medium complexity:
+rank(mul(div(close, ts_mean(close, 10)), ts_std(close, 10)))
+
+I'll go with this.
+
+**FORMULA-1-3 (IDEA-1-3):**
+- Formula: rank(div(ts_mean(close, 10), close))
+- Complexity: 2
+- Explanation: "短期反转因子：买入近期回调股票"
+
+Wait, but the lookback is 3 and the idea is about 1-5 day reversal. With min window 10, I have to use at least 10. The semantics change slightly but the idea is similar (short-term reversal).
+
+Let me verify all formulas once more:
+
+1. FORMULA-1-1: rank(div(close, ts_mean(close, 20)))
+   - close/mean(close, 20) > 1 means price is above 20-day average → momentum
+   - Rank gives cross-sectional comparison
+   - Long direction ✓
+   
+2. FORMULA-1-2: rank(mul(div(close, ts_mean(close, 10)), ts_std(close, 10)))
+   - close/mean(close, 10) = short-term momentum
+   - std(close, 10) = recent volatility (volume proxy)
+   - Product = momentum × activity → volume-price resonance
+   - Long direction ✓
+   
+3. FORMULA-1-3: rank(div(ts_mean(close, 10), close))
+   - mean(close, 10)/close > 1 means price dropped from 10-day average → loser
+   - High values for losers → buy for reversal
+   - Long direction ✓
+
+All look good. Let me write the JSON.
+
+For complexity ratings, I'll use:
+- FORMULA-1-1: 2 (simple - one ratio + rank)
+- FORMULA-1-2: 4 (medium - two operations + product + rank)
+- FORMULA-1-3: 2 (simple - one ratio + rank)
+
+Wait, I need to re-examine. The allowed operators list shows ts_delta is in available_operators, but not in ALLOWED OPERATORS. The constraint says I must use ONLY: div, mul, rank, sub, ts_mean, ts_std. So ts_delta is NOT allowed.
+
+Let me verify my formulas only use: div, mul, rank, sub, ts_mean, ts_std and close.
+
+FORMULA-1-1: rank(div(close, ts_mean(close, 20)))
+- div ✓, rank ✓, ts_mean ✓, close ✓
+- 
+
+FORMULA-1-2: rank(mul(div(close, ts_mean(close, 10)), ts_std(close, 10)))
+- rank ✓, mul ✓, div ✓, ts_mean ✓, ts_std ✓, close ✓
+- 
+
+FORMULA-1-3: rank(div(ts_mean(close, 10), close))
+- rank ✓, div ✓, ts_mean ✓, close ✓
+- 
+
+All good.
+
+Now for the thinking blocks, I need to write them before the JSON.
+
+Let me also make sure the explanation is < 80 characters:
+
+FORMULA-1-1: "20日动量：股价相对20日均线偏离度排名" (20 chars) - OK
+FORMULA-1-2: "量价共振：短期动量乘以波动率作量能代理" (let me count: 量价共振：短期动量乘以波动率作量能代理 = 20 chars) - OK
+FORMULA-1-3: "短期反转：买入近期低于均线的回调股票" (let me count: 短期反转：买入近期低于均线的回调股票 = 17 chars) - OK
+
+Wait, let me count in characters properly:
+- "20日动量：股价相对20日均线偏离度排名" = about 20 characters - OK
+- "量价共振：短期动量乘以波动率作量能代理" = about 20 characters - OK  
+- "短期反转：买入近期低于均线的回调股票" = about 17 characters - OK
+
+All under 80. 
+
+Let me also double check the sign direction. The constraint says "Overall factor direction must be POSITIVE (+1)". 
+
+For all three formulas, higher values should predict higher forward returns:
+- FORMULA-1-1: high values = stocks with price above 20-day mean = momentum winners → should have positive forward returns ✓
+- FORMULA-1-2: high values = stocks with strong short-term momentum and high activity → should have positive forward returns ✓
+- FORMULA-1-3: high values = stocks that have recently dropped (losers) → should reverse up → positive forward returns ✓
+
+All good!
+
+Let me write the final output.

@@ -1,0 +1,120 @@
+The user wants me to generate 3 alpha ideas for mean reversion logic in A-share market, round 1. I need to think through this carefully following the structured reasoning format, then output strict JSON.
+
+Let me think about mean reversion in A-shares:
+- A-shares are dominated by retail investors who tend to overreact
+- T+1 constraint means overnight reversals are important
+- Price limits (10% for main board, 20% for ChiNext/STAR) create unique dynamics
+- ST stocks have 5% limits and special behavior
+
+For mean reversion, I should think about:
+1. Short-term reversal (1-5 day) - well documented in A-shares
+2. Overnight reversal (gap fills) - relevant due to T+1
+3. Limit-up/limit-down reversal - due to price limits creating mean reversion
+4. Industry/stock relative mean reversion
+
+Let me design 3 ideas:
+
+**Idea 1: Short-term reversal (20-day)**
+- Classic mean reversion: stocks that dropped most in 20 days bounce back
+- Rationale: Retail overreaction, T+1 forced selling
+- Long the bottom decile, short the top decile
+
+**Idea 2: Overnight gap reversal**
+- After gap down at open, stocks tend to fill the gap
+- T+1 means you can't sell at the gap, creating forced mean reversion
+- Look at overnight return vs intraday return
+
+**Idea 3: Limit-up reversal**
+- After hitting limit-up (涨停), next day tends to mean revert
+- A-share specific: 涨停后容易高开低走 or 炸板反转
+- Look at extreme up moves
+
+Let me think about orthogonality:
+- Idea 1: pure price reversal
+- Idea 2: gap-specific, T+1 driven
+- Idea 3: limit-specific, microstructure driven
+
+These should be orthogonal to each other.
+
+Let me also think about other categories to potentially cover:
+- Value reversal: book-to-price mean reversion
+- Volume reversal: volume spike reversal
+- Industry reversal: relative strength reversal
+
+For round 1, I'll keep it simple but distinctive. Let me finalize:
+
+**IDEA-1-1: 20日反转因子 (Classic 20-day reversal)**
+- Category: reversal
+- Lookback: 20
+- Simple complexity
+- Orthogonal to IDEA-1-2 (intraday) and IDEA-1-3 (limit-up)
+
+**IDEA-1-2: 隔夜反转 (Overnight gap reversal)**
+- Category: reversal  
+- Lookback: 1 (overnight)
+- Medium complexity (needs open/close data)
+- Orthogonal to IDEA-1-1, IDEA-1-3
+
+**IDEA-1-3: 涨停反转 (Limit-up reversal)**
+- Category: reversal
+- Lookback: 1-3 days
+- Complex (needs limit-up detection)
+- Orthogonal to IDEA-1-1, IDEA-1-2
+
+Wait, the user says "6 categories: momentum/reversal/value/quality/volatility/liquidity". I should diversify across these if possible. But the objective is specifically 'Apply logic mean_reversion', so I should focus on reversal. However, I can apply mean reversion logic to different aspects.
+
+Let me reconsider with mean reversion applied across different facets:
+
+**IDEA-1-1: 价格反转 (Price reversal)**
+- Category: reversal
+- Classic 20-day return reversal
+
+**IDEA-1-2: 流动性反转 (Liquidity reversal)**
+- Category: liquidity
+- Mean reversion in trading volume/turnover
+- High volume tends to mean revert
+
+**IDEA-1-3: 波动率反转 (Volatility reversal)**  
+- Category: volatility
+- IVP/volatility mean reversion
+- High volatility regime tends to revert
+
+Actually, the user said "Apply logic mean_reversion" - this is the logic to apply. And then 6 categories are available. So I should think creatively about applying mean reversion logic to different aspects of the market.
+
+Let me go with:
+1. Price reversal (reversal category)
+2. Volume/turnover reversal (liquidity category) - mean reversion in turnover
+3. Industry relative strength reversal (momentum category - but applying mean reversion)
+
+Actually, let me think more carefully:
+- Momentum can have mean reversion (long-term reversal IS mean reversion of momentum)
+- Volatility is naturally mean-reverting
+- Volume/turnover can mean revert
+
+Let me design:
+
+**IDEA-1-1: 短期价格反转 (Short-term price reversal)**
+- Category: reversal
+- 20-day return reversal
+- Rationale: 散户过度反应，T+1限制导致反向修正
+
+**IDEA-1-2: 换手率反转 (Turnover mean reversion)**
+- Category: liquidity
+- High turnover stocks tend to revert
+- Rationale: 换手率极端时反映情绪极端，之后回归正常
+- Lookback: 20 days
+
+**IDEA-1-3: 波动率均值回归 (Volatility mean reversion)**
+- Category: volatility
+- High vol regime tends to revert
+- Rationale: 波动率聚集后回归，长期波动率均值稳定
+- Lookback: 60 days
+
+This gives good diversity across categories while applying mean reversion logic.
+
+Operators:
+- IDEA-1-1: rank, ts_mean, div (simple reversal)
+- IDEA-1-2: rank, ts_mean, log, div (turnover deviation)
+- IDEA-1-3: rank, ts_mean, ts_std, div (volatility regime)
+
+Let me finalize the JSON structure.

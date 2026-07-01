@@ -1,0 +1,140 @@
+The user wants me to generate 3 alpha ideas for the objective 'Apply logic trend_breakout' in round 1, with A-share focus. Let me think through this carefully.
+
+The objective is "trend_breakout" - this means we want to identify when prices break out of a trend/range. This is a momentum/trend-following concept.
+
+Let me think about the 6 categories: momentum/reversal/value/quality/volatility/liquidity
+
+For trend breakout, the most relevant categories would be:
+1. Momentum (trend following is the natural category)
+2. Volatility (breakouts often relate to volatility expansion/contraction)
+3. Liquidity (volume confirms breakouts)
+
+Let me design 3 ideas that are orthogonal to each other:
+
+IDEA-1-1: Classic Donchian channel breakout (momentum)
+- 20-day high breakout
+- Long stocks making new 20-day highs
+- Lookback 20
+
+IDEA-1-2: Volatility-adjusted breakout (volatility)
+- Donchian width / ATR or std dev normalization
+- Identifies breakouts relative to typical volatility
+- Lookback 20
+
+IDEA-1-3: Volume-confirmed breakout (liquidity)
+- Price breakout with above-average volume
+- Filters false breakouts
+- Lookback 20-60
+
+Let me think about A-share specifics:
+- T+1 rule means we can't sell same day
+- 涨跌停 (price limit ±10% or ±20% for ChiNext/STAR)
+- 散户主导 (retail-dominated)
+- ST stocks have ±5% limit
+
+For trend breakout in A-shares:
+- Breakouts can be sharp due to price limits
+- Volume confirmation is critical because of retail churn
+- Volatility normalization helps because A-shares have heterogeneous volatility
+
+Let me finalize the 3 ideas:
+
+IDEA-1-1: 20日突破 (Donchian Breakout) - momentum
+- Formula: ts_rank(close, 20) near 1 means close is near 20-day high
+- Or: high / ts_max(high, 20) - 1
+- Long stocks breaking out
+- Simple
+
+IDEA-1-2: 波动率调整突破 (Volatility-Adjusted Breakout) - volatility
+- Formula: (close - ts_min(close, 20)) / ts_std(close, 20)
+- Normalizes breakout by recent volatility
+- Allows comparison across stocks with different volatility regimes
+- Medium complexity
+
+IDEA-1-3: 量价突破 (Volume-Confirmed Breakout) - liquidity
+- Formula: rank(volume) * sign(close - ts_mean(close, 20))
+- High volume + above-average price
+- Filters false breakouts
+- Medium complexity
+
+Now let me write the reasoning and JSON.
+
+For the JSON schema, I need:
+- id, name, category, rationale, expected_direction, suggested_lookback, a_share_compatible, orthogonal_to, complexity_hint
+
+The rationale should be <150 chars in Chinese (经济直觉).
+
+Let me craft each:
+
+IDEA-1-1: 20日突破动量
+- Name: "20日突破动量" or "20日新高突破"
+- Category: momentum
+- Rationale: "突破20日新高表明上升趋势确立，A股散户追涨杀跌强化动量效应"
+- Expected direction: long
+- Lookback: 20
+- A-share compatible: true
+- Orthogonal to: IDEA-1-2, IDEA-1-3
+- Complexity: simple
+
+IDEA-1-2: 波动率标准化突破
+- Name: "波动率标准化突破"
+- Category: volatility
+- Rationale: "突破幅度除以历史波动率，消除不同股票波动水平差异，捕捉真实趋势强度"
+- Expected direction: long
+- Lookback: 20
+- A-share compatible: true
+- Orthogonal to: IDEA-1-1, IDEA-1-3
+- Complexity: medium
+
+IDEA-1-3: 量价共振突破
+- Name: "量价共振突破"
+- Category: liquidity
+- Rationale: "放量突破均线说明资金真实流入，A股T+1下放量信号更可靠，剔除无量假突破"
+- Expected direction: long
+- Lookback: 20
+- A-share compatible: true
+- Orthogonal to: IDEA-1-1, IDEA-1-2
+- Complexity: medium
+
+Wait, I should also think about short opportunities. Trend breakout is typically long-only, but in A-shares with trend reversal patterns we could have short signals too. Let me keep it as long for clarity since trend_breakout implies continuation.
+
+Actually, looking at it again, "trend_breakout" can also imply breakdown (short side). But given round 1 and we're building alpha ideas, let's stick with long side as the primary direction but mention "both" where appropriate.
+
+Let me reconsider: IDEA-1-1 is long only (classic breakout), but IDEA-1-2 with volatility normalization could work both ways. IDEA-1-3 is also long.
+
+To make them more diverse:
+- IDEA-1-1: Long breakout above N-day high
+- IDEA-1-2: Could be both - high relative position normalized by vol
+- IDEA-1-3: Long with volume confirmation
+
+Let me finalize:
+
+IDEA-1-1: 20日新高动量 (momentum, long, simple, lookback 20)
+IDEA-1-2: 波动率标准化突破 (volatility, both, medium, lookback 20)
+IDEA-1-3: 量价共振突破 (liquidity, long, medium, lookback 20)
+
+Operators:
+IDEA-1-1: ts_rank, ts_max
+IDEA-1-2: ts_min, ts_std, div, sub
+IDEA-1-3: rank, ts_mean, sub, sign, multiply
+
+Now let me think about reasoning more carefully:
+
+HYPOTHESIS: A股因散户主导和T+1约束，突破后趋势延续性强，动量效应显著
+MECHANISM: T+1导致日内无法反转，涨跌停制造趋势惯性，散户追涨行为放大突破信号
+OPERATOR_RATIONALE: 
+- ts_rank/ts_max: 识别突破点
+- ts_std: 波动率标准化
+- rank: 横截面比较
+- sign: 方向判定
+PARAMETER_RATIONALE: 20日是月度窗口，符合学术经典且A股月度效应显著
+RISK: 政策切换、ST股扰动、流动性危机时因子失效
+SUGGESTED_OPS: ts_rank, ts_max, ts_min, ts_std, rank
+
+Let me write the final JSON now.
+
+Actually, I need to be more careful with the rationale - it should be <150 characters. Let me count:
+- "突破20日新高表明上升趋势确立，A股散户追涨杀跌强化动量效应" - this is about 30 chars
+- Wait, 150 chars is quite a lot. Let me keep it concise but informative.
+
+Let me write the final output.
