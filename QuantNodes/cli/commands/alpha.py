@@ -476,8 +476,8 @@ class AlphaGptCommand(Command):
             if not NANOBOT_AVAILABLE:
                 print(f"⚠️  nanobot-ai 未安装，使用 mock LLM", file=sys.stderr)
                 return None
-            from QuantNodes.ai.llm.gateway import LLMGateway
-            return LLMGateway(workspace=".agent")
+            from QuantNodes.ai.llm.gateway import get_llm_gateway
+            return get_llm_gateway(workspace=".agent")
         except NanobotNotInstalled:
             print(f"⚠️  nanobot-ai 未安装，使用 mock LLM", file=sys.stderr)
             return None
@@ -511,8 +511,8 @@ class NanobotLLMWrapper:
     """
 
     def __init__(self, args: argparse.Namespace):
-        from QuantNodes.ai.llm.gateway import LLMGateway
-        self._gateway = LLMGateway(workspace=".agent")
+        from QuantNodes.ai.llm.gateway import get_llm_gateway
+        self._gateway = get_llm_gateway(workspace=".agent")
         self.temperature = args.temperature
         self.model = args.model
 

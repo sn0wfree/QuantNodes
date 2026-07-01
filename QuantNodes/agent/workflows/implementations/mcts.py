@@ -16,11 +16,11 @@ from ..step_agent import StepAgentSpec
 from ..parsers import parse_json_3layer
 from ..registry import WorkflowSpec, REGISTRY
 
-from QuantNodes.research.quant_alpha.workflow.state import (
+from QuantNodes.research.quant_alpha.types import (
     ReflectionRecord,
     FinalFormulaRecord,
+    ALLOWED_OPERATORS,
 )
-from QuantNodes.research.quant_alpha.llm.parser import ALLOWED_OPERATORS
 
 logger = logging.getLogger(__name__)
 

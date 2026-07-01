@@ -660,11 +660,11 @@ class TestDeprecationWarnings:
         assert "_legacy_3c" in str(deprecation_warnings[0].message)
 
     def test_deprecation_warnings_present_in_research_init(self):
-        """research/__init__.py 访问 shim 属性时触发 DeprecationWarning"""
+        """research/__init__.py 访问 shim 模块时触发 DeprecationWarning"""
         import subprocess
         result = subprocess.run(
             ["python3", "-W", "default::DeprecationWarning", "-c",
-             "import QuantNodes.research; QuantNodes.research.AutoResearcher; print('done')"],
+             "import QuantNodes.research; QuantNodes.research.auto_researcher.AutoResearcher; print('done')"],
             capture_output=True, text=True,
             cwd="/home/ll/Public/QuantNodes",
             timeout=60,

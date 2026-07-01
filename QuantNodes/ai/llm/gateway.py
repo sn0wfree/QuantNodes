@@ -89,6 +89,7 @@ class LLMGateway(LLMClientBase):
         agent: Any = None,
         workspace: str = ".agent",
         llm_config: Optional[LLMConfig] = None,
+        agent_factory: Optional[Callable] = None,
         **kwargs,
     ):
         """初始化 LLMGateway。
@@ -97,12 +98,14 @@ class LLMGateway(LLMClientBase):
             agent: nanobot Agent 实例 (可选, 不传则自动创建)
             workspace: nanobot workspace 路径
             llm_config: LLM 配置（重试机制和超时控制）
+            agent_factory: Agent 工厂函数 (可选, 用于延迟创建 Agent)
         """
         super().__init__(**kwargs)
         self._agent = agent
         self._workspace = workspace
         self._agent_resolved = False
         self._llm_config = llm_config or LLMConfig()
+        self._agent_factory = agent_factory
 
     def _ensure_agent(self) -> Any:
         """懒加载 nanobot Agent。"""
@@ -112,8 +115,13 @@ class LLMGateway(LLMClientBase):
         if not self._agent_resolved:
             self._agent_resolved = True
             try:
-                from QuantNodes.agent.nanobot_bridge import Agent
-                self._agent = Agent(workspace=self._workspace)
+                if self._agent_factory is not None:
+                    self._agent = self._agent_factory()
+                else:
+                    raise RuntimeError(
+                        "No agent or agent_factory configured. "
+                        "Pass agent=Agent(...) or agent_factory=lambda: Agent(...)"
+                    )
                 # 覆盖 provider.generation.max_tokens（nanobot 默认 8192 太小）
                 from dataclasses import replace
                 loop = self._agent._loop
@@ -533,11 +541,20 @@ class LLMGateway(LLMClientBase):
 _global_gateway: Optional[LLMGateway] = None
 
 
+def _default_agent_factory(workspace: str = ".agent"):
+    """Default agent factory — imports nanobot Agent lazily."""
+    from QuantNodes.agent.nanobot_bridge import Agent
+    return Agent(workspace=workspace)
+
+
 def get_llm_gateway(workspace: str = ".agent") -> LLMGateway:
     """获取全局 LLMGateway 单例。"""
     global _global_gateway
     if _global_gateway is None:
-        _global_gateway = LLMGateway(workspace=workspace)
+        _global_gateway = LLMGateway(
+            workspace=workspace,
+            agent_factory=lambda: _default_agent_factory(workspace),
+        )
     return _global_gateway
 
 

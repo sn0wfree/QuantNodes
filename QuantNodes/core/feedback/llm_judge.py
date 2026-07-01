@@ -29,8 +29,10 @@ class LLMJudge:
         self.model = model
         self.max_correction_attempts = max_correction_attempts
         if llm_callable is None and model != "mock":
-            from QuantNodes.ai.llm.gateway import get_llm_gateway
-            llm_callable = get_llm_gateway()
+            raise ValueError(
+                f"model={model!r} requires an explicit llm_callable. "
+                "Inject via get_llm_gateway() at the call site."
+            )
         self._llm_callable = llm_callable
 
     def judge(

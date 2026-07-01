@@ -111,13 +111,12 @@ class TestEnsureAgent:
         assert g._ensure_agent() is agent
 
     def test_ensure_agent_litellm_disabled(self):
-        """nanobot 不可用时, _agent = None, _fallback = NullLLMClient。"""
-        g = LLMGateway(workspace=".agent")
-        with patch(
-            "QuantNodes.agent.nanobot_bridge.Agent",
-            side_effect=ImportError("nanobot not installed"),
-        ):
-            agent = g._ensure_agent()
+        """agent_factory 抛异常时, _agent = None, _fallback = NullLLMClient。"""
+        def bad_factory():
+            raise ImportError("nanobot not installed")
+
+        g = LLMGateway(workspace=".agent", agent_factory=bad_factory)
+        agent = g._ensure_agent()
         assert agent is None
         assert isinstance(g._fallback, NullLLMClient)
         # 第二次调用应直接返回 None (不会重新尝试 import)
@@ -154,13 +153,12 @@ class TestChatInterface:
         assert response.content == "dict response"
 
     def test_chat_fallback_to_null(self):
-        """nanobot 不可用时, 降级到 NullLLMClient。"""
-        g = LLMGateway(workspace=".agent")
-        with patch(
-            "QuantNodes.agent.nanobot_bridge.Agent",
-            side_effect=ImportError("nanobot not installed"),
-        ):
-            response = g.chat([Message(role=MessageRole.USER, content="hi")])
+        """agent_factory 抛异常时, 降级到 NullLLMClient。"""
+        def bad_factory():
+            raise ImportError("nanobot not installed")
+
+        g = LLMGateway(workspace=".agent", agent_factory=bad_factory)
+        response = g.chat([Message(role=MessageRole.USER, content="hi")])
         assert isinstance(response, ChatCompletion)
         # NullLLMClient 的默认响应
         assert "null" in (response.finish_reason or "").lower() or len(response.content) >= 0
@@ -202,13 +200,12 @@ class TestCompleteInterface:
         assert agent.calls[0]["session_id"] == "default"
 
     def test_complete_fallback(self):
-        """nanobot 不可用时降级到 NullLLMClient。"""
-        g = LLMGateway(workspace=".agent")
-        with patch(
-            "QuantNodes.agent.nanobot_bridge.Agent",
-            side_effect=ImportError("nanobot not installed"),
-        ):
-            result = g.complete(agent_id="test", prompt="hi")
+        """agent_factory 抛异常时降级到 NullLLMClient。"""
+        def bad_factory():
+            raise ImportError("nanobot not installed")
+
+        g = LLMGateway(workspace=".agent", agent_factory=bad_factory)
+        result = g.complete(agent_id="test", prompt="hi")
         assert isinstance(result, str)
 
 
@@ -229,12 +226,11 @@ class TestCallableInterface:
 
     def test_call_fallback(self):
         """nanobot 不可用时降级。"""
-        g = LLMGateway(workspace=".agent")
-        with patch(
-            "QuantNodes.agent.nanobot_bridge.Agent",
-            side_effect=ImportError("nanobot not installed"),
-        ):
-            result = g("test")
+        def bad_factory():
+            raise ImportError("nanobot not installed")
+
+        g = LLMGateway(workspace=".agent", agent_factory=bad_factory)
+        result = g("test")
         assert isinstance(result, str)
 
     def test_call_used_as_callable_injection(self):
@@ -275,13 +271,12 @@ class TestRunInterface:
         assert agent.calls[0]["session_id"] == "default"
 
     def test_run_fallback(self):
-        """nanobot 不可用时 run() 降级。"""
-        g = LLMGateway(workspace=".agent")
-        with patch(
-            "QuantNodes.agent.nanobot_bridge.Agent",
-            side_effect=ImportError("nanobot not installed"),
-        ):
-            result = asyncio.run(g.run("test"))
+        """agent_factory 抛异常时 run() 降级。"""
+        def bad_factory():
+            raise ImportError("nanobot not installed")
+
+        g = LLMGateway(workspace=".agent", agent_factory=bad_factory)
+        result = asyncio.run(g.run("test"))
         assert isinstance(result, str)
 
 

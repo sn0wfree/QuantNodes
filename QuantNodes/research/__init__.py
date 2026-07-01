@@ -85,26 +85,38 @@ class _LegacyShim:
 
 
 import sys as _sys
-_sys.modules[__name__ + ".factor_evaluator"] = _LegacyShim(
+_legacy_factor_evaluator = _LegacyShim(
     "QuantNodes.research._legacy_3c.factor_evaluator",
     ["EvalConfig", "FactorEvaluationResult", "FactorEvaluator"],
     "operator_vocab.OperatorVocab",
 )
-_sys.modules[__name__ + ".factor_miner"] = _LegacyShim(
+_legacy_factor_miner = _LegacyShim(
     "QuantNodes.research._legacy_3c.factor_miner",
     ["FactorMiner", "FactorCandidate", "TEMPLATES", "DEFAULT_WINDOWS"],
     "operator_vocab.OperatorVocab",
 )
-_sys.modules[__name__ + ".auto_researcher"] = _LegacyShim(
+_legacy_auto_researcher = _LegacyShim(
     "QuantNodes.research._legacy_3c.auto_researcher",
     ["AutoResearcher", "AutoResearchResult"],
     "workflow.AlphaGptWorkflow",
 )
-_sys.modules[__name__ + ".mcts_search"] = _LegacyShim(
+_legacy_mcts_search = _LegacyShim(
     "QuantNodes.research._legacy_3c.mcts_search",
     ["MCTSSearch", "MCTSNode"],
     "mcts.MCTSSearch",
 )
+
+# Register in sys.modules for import resolution
+_sys.modules[__name__ + ".factor_evaluator"] = _legacy_factor_evaluator
+_sys.modules[__name__ + ".factor_miner"] = _legacy_factor_miner
+_sys.modules[__name__ + ".auto_researcher"] = _legacy_auto_researcher
+_sys.modules[__name__ + ".mcts_search"] = _legacy_mcts_search
+
+# Also set as attributes on the parent module for attribute access
+factor_evaluator = _legacy_factor_evaluator
+factor_miner = _legacy_factor_miner
+auto_researcher = _legacy_auto_researcher
+mcts_search = _legacy_mcts_search
 
 from QuantNodes.research.report_reproducer import (
     ResearchReportReproducer,

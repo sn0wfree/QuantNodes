@@ -25,7 +25,7 @@ from ..parsers import (
 )
 from ..registry import WorkflowSpec, REGISTRY
 
-from QuantNodes.research.quant_alpha.workflow.state import (
+from QuantNodes.research.quant_alpha.types import (
     AlphaGptState,
     IdeaRecord,
     FormulaRecord,
