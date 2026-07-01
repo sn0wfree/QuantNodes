@@ -1,6 +1,19 @@
 # coding=utf-8
 """因子数据库
 
+⚠️ DEPRECATED (v3.0+): 此模块为历史占位, 所有抽象方法返回 0 或 None,
+无生产子类实现。
+
+详见 [`docs/33-data-access-architecture.md`](../docs/33-data-access-architecture.md) 第 5 节 "Deprecated L2"。
+
+替代方案:
+- SQL 因子存储 → 使用 L1 `database_node/BaseDBNode`
+- 因子元数据 / Wiki → 使用 L7 `research/wiki.py::WikiFactorProxy`
+- Table 4 polars 数据 → 使用 L6 `research/quant_alpha/evaluation/contracts.py::DataLoader`
+
+保留原因: 保持向后兼容 (factor_node/__init__.py re-export),
+下个大版本 (v4.0) 将删除此模块。
+
 包含 FactorDB（只读接口）和 WritableFactorDB（可写入接口）
 v2.0: 移除 traits 依赖
 """
@@ -13,11 +26,16 @@ from QuantNodes.factor_node.quant_nodes_object import QuantNodesObject
 
 @dataclass
 class FactorDB(QuantNodesObject):
-    """因子库基类（只读接口）
+    """因子库基类（只读接口）⚠️ DEPRECATED
 
     数据库由若干张因子表组成。
     不支持某个操作时，方法产生错误。
     没有相关数据时，方法返回 None。
+
+    .. deprecated::
+        v3.0+. 所有方法返回 0/None, 无生产实现。
+        请使用 `database_node.BaseDBNode` (L1) 或
+        `research.wiki.WikiFactorProxy` (L7)。
     """
     name: str = "FactorDB"
 

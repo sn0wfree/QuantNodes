@@ -110,9 +110,13 @@ class ClickHouseDataLoader(DataLoader):
         return df
 
     def _query_clickhouse(self) -> pl.DataFrame:
-        """从 ClickHouse 查询数据，返回 polars DataFrame。"""
-        import http.client
-        import json
+        """从 ClickHouse 查询数据，返回 polars DataFrame。
+
+        P2.12c.3 (v3.0+): 重构 — 委托 ClickHouseNode (database_node) 而非 raw HTTP。
+        原实现使用 http.client.HTTPConnection 直接调用，绕过了 production-tested
+        CHBase 客户端和 ClickHouseNode 的连接池/错误处理。
+        """
+        from QuantNodes.database_node.clickhouse_node import ClickHouseNode
 
         fields = ", ".join(
             f"{ch_name} AS {pl_name}" for ch_name, pl_name in self.FIELD_MAP.items()
@@ -127,32 +131,26 @@ class ClickHouseDataLoader(DataLoader):
 
         logger.info("[ClickHouseDataLoader] SQL: %s", sql[:200])
 
-        conn = http.client.HTTPConnection(self.host, port=self.port)
-        auth_params = f"?user={self.user}&password={self.password}"
+        node = ClickHouseNode(
+            host=self.host,
+            port=self.port,
+            user=self.user,
+            passwd=self.password,
+            database="default",
+        )
 
         try:
-            conn.request(
-                "POST",
-                "/" + auth_params,
-                body=sql + " FORMAT JSONEachRow",
-                headers={"Content-Type": "text/plain"},
-            )
-            resp = conn.getresponse()
-            raw = resp.read().decode("utf-8")
+            pd_df = node.query(sql)
+        except Exception as e:
+            raise RuntimeError(f"ClickHouse query failed: {e}") from e
 
-            if resp.status != 200:
-                raise RuntimeError(f"ClickHouse query failed: {resp.status} {raw[:200]}")
+        if pd_df is None or len(pd_df) == 0:
+            raise RuntimeError("ClickHouse returned empty result")
 
-            rows = [json.loads(line) for line in raw.strip().split("\n") if line]
-            if not rows:
-                raise RuntimeError("ClickHouse returned empty result")
-
-            df = pl.DataFrame(rows)
-            logger.info("[ClickHouseDataLoader] 查询完成: %s rows", df.height)
-            return df
-
-        finally:
-            conn.close()
+        # 转 polars (Table 4 pipeline 是 polars-first)
+        df = pl.from_pandas(pd_df)
+        logger.info("[ClickHouseDataLoader] 查询完成: %s rows", df.height)
+        return df
 
     def _clean(self, df: pl.DataFrame) -> pl.DataFrame:
         """数据清洗：类型转换 + 过滤。"""
