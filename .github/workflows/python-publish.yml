@@ -29,15 +29,15 @@ jobs:
       - name: Build package
         run: python -m build
 
-      - name: Publish to PyPI via OIDC (preferred)
-        if: ${{ env.PYPI_USERNAME == '' }}
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist/
-
-      - name: Publish to PyPI via token (fallback)
-        if: ${{ env.PYPI_USERNAME != '' }}
+      - name: Publish to PyPI via token
         env:
           TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
         run: twine upload dist/*
+
+      # OIDC trusted publishing — enable after configuring PyPI trusted publisher
+      # (https://pypi.org/manage/account/publishing/) and remove the token step above.
+      # - name: Publish to PyPI via OIDC (preferred)
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     packages-dir: dist/
