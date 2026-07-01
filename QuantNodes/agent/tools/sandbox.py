@@ -1,8 +1,12 @@
 # coding=utf-8
 """
-沙箱工具
+沙箱工具 - Agent 工具版本
 
 封装 QuantNodes AI 模块的 CodeSandbox，用于代码安全验证。
+
+实现: 委托给 self._sandbox.validate() (CodeSandbox 实例)。
+原本重复的 methods/sandbox.validate_code 现已删除，
+此模块通过 _sandbox 属性复用 CodeSandbox，避免逻辑重复。
 """
 
 from typing import Any, Dict
@@ -54,5 +58,5 @@ class SandboxTool(Tool):
             "is_safe": result.is_safe,
             "errors": result.errors,
             "warnings": result.warnings,
-            "warnings_only": result.warnings_only
+            "warnings_only": result.warnings_only,
         }
