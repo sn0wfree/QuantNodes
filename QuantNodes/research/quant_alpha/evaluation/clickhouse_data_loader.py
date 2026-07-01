@@ -187,9 +187,11 @@ class ClickHouseDataLoader(DataLoader):
         return df
 
     def load_summary(self) -> dict:
-        """返回数据摘要（不加载全量数据）。"""
-        import http.client
-        import json
+        """返回数据摘要（不加载全量数据）。
+
+        P2.12c.4: 重构 — 委托 ClickHouseNode.query() 而非 raw HTTP。
+        """
+        from QuantNodes.database_node.clickhouse_node import ClickHouseNode
 
         sql = (
             f"SELECT min(trade_date) as min_date, max(trade_date) as max_date, "
@@ -199,17 +201,27 @@ class ClickHouseDataLoader(DataLoader):
             f"AND trade_date <= '{self.end_date}'"
         )
 
-        conn = http.client.HTTPConnection(self.host, port=self.port)
-        auth_params = f"?user={self.user}&password={self.password}"
+        node = ClickHouseNode(
+            host=self.host,
+            port=self.port,
+            user=self.user,
+            passwd=self.password,
+            database="default",
+        )
 
         try:
-            conn.request("POST", "/" + auth_params, body=sql + " FORMAT JSONEachRow",
-                         headers={"Content-Type": "text/plain"})
-            resp = conn.getresponse()
-            raw = resp.read().decode("utf-8")
-            if resp.status == 200 and raw.strip():
-                return json.loads(raw.strip().split("\n")[0])
-        finally:
-            conn.close()
+            pd_df = node.query(sql)
+        except Exception as e:
+            logger.warning("[ClickHouseDataLoader] summary query failed: %s", e)
+            return {"error": "query failed"}
 
-        return {"error": "query failed"}
+        if pd_df is None or len(pd_df) == 0:
+            return {"error": "query failed"}
+
+        # pandas → dict (与原行为兼容: 返回第一行)
+        row = pd_df.iloc[0].to_dict()
+        # 处理 timestamp → str 转换 (避免 JSON 序列化失败)
+        for k, v in row.items():
+            if hasattr(v, "isoformat"):
+                row[k] = v.isoformat()
+        return row

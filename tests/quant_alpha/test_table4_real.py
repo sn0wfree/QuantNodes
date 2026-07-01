@@ -227,31 +227,51 @@ class TestClickHouseDataLoader:
         assert cleaned.height <= 4
 
     def test_load_summary_success(self):
-        """load_summary 成功路径 (lines 210-213) - mock HTTP。"""
-        import http.client
+        """load_summary 成功路径 (P2.12c.4: mock ClickHouseNode.query)。"""
+        import pandas as pd
         loader = ClickHouseDataLoader(cache_parquet=None)
-        mock_resp = MagicMock()
-        mock_resp.status = 200
-        mock_resp.read.return_value = b'{"min_date":"2020-01-01","max_date":"2020-12-31","total_rows":1000,"n_stocks":10}'
-        mock_conn = MagicMock()
-        mock_conn.getresponse.return_value = mock_resp
+        mock_node = MagicMock()
+        mock_node.query.return_value = pd.DataFrame([{
+            "min_date": "2020-01-01",
+            "max_date": "2020-12-31",
+            "total_rows": 1000,
+            "n_stocks": 10,
+        }])
 
-        with patch("http.client.HTTPConnection", return_value=mock_conn):
+        with patch(
+            "QuantNodes.database_node.clickhouse_node.ClickHouseNode",
+            return_value=mock_node,
+        ):
             summary = loader.load_summary()
 
         assert summary["total_rows"] == 1000
         assert summary["n_stocks"] == 10
 
     def test_load_summary_error_returns_dict(self):
-        """load_summary HTTP 失败返回 error (line 217)。"""
+        """load_summary query 失败返回 error (P2.12c.4)。"""
         loader = ClickHouseDataLoader(cache_parquet=None)
-        mock_resp = MagicMock()
-        mock_resp.status = 500
-        mock_resp.read.return_value = b"Internal Server Error"
-        mock_conn = MagicMock()
-        mock_conn.getresponse.return_value = mock_resp
+        mock_node = MagicMock()
+        mock_node.query.side_effect = RuntimeError("CH query failed")
 
-        with patch("http.client.HTTPConnection", return_value=mock_conn):
+        with patch(
+            "QuantNodes.database_node.clickhouse_node.ClickHouseNode",
+            return_value=mock_node,
+        ):
+            summary = loader.load_summary()
+
+        assert "error" in summary
+
+    def test_load_summary_empty_returns_dict(self):
+        """load_summary 返回空 DataFrame 时返回 error (P2.12c.4)。"""
+        import pandas as pd
+        loader = ClickHouseDataLoader(cache_parquet=None)
+        mock_node = MagicMock()
+        mock_node.query.return_value = pd.DataFrame()  # 空
+
+        with patch(
+            "QuantNodes.database_node.clickhouse_node.ClickHouseNode",
+            return_value=mock_node,
+        ):
             summary = loader.load_summary()
 
         assert "error" in summary
