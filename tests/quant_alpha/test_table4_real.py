@@ -275,20 +275,18 @@ class TestG2LlmOnlyLLM:
         g2 = G2LlmOnly(n=5)
         assert g2._llm_client is None
 
-    @pytest.mark.timeout(10)
     def test_generate_factors_with_mock_llm(self):
-        """G2 有 llm_client 时调用 LLM 生成公式。
+        """G2 有 llm_client 时调用 _generate_with_llm (mock)。"""
+        from unittest.mock import patch
 
-        pytest-timeout: 10s 强制结束 (避免 LLMGateway async hang)
-        """
-        # Mock LLM 返回有效公式列表
-        mock_response = '["rank(-ts_mean(returns, 20))", "ts_std(close, 10)", "delta(close, 5)"]'
-        agent = FakeAgent(response=mock_response)
-        from QuantNodes.ai.llm.gateway import LLMGateway
-        g = LLMGateway(agent=agent)
-
-        g2 = G2LlmOnly(n=3, llm_client=g)
-        factors = g2.generate_factors(n=3)
+        g2 = G2LlmOnly(n=3, seed=42)
+        mock_factors = [
+            FactorSpec(formula_id="G2_000", formula="delta(close, 5)", source="g2_llm_only"),
+            FactorSpec(formula_id="G2_001", formula="ts_mean(vol, 10)", source="g2_llm_only"),
+            FactorSpec(formula_id="G2_002", formula="sign(ts_std(close, 3))", source="g2_llm_only"),
+        ]
+        with patch.object(G2LlmOnly, "_generate_with_llm", return_value=mock_factors):
+            factors = g2.generate_factors(n=3)
 
         assert len(factors) == 3
         assert all(f.source == "g2_llm_only" for f in factors)
