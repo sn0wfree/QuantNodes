@@ -51,6 +51,28 @@ dev = [
 [project.scripts]
 quantnodes = "QuantNodes.cli:main"
 
+[project.entry-points."quantnodes.tools"]
+echo = "QuantNodes.agent.tools.echo:EchoTool"
+sandbox = "QuantNodes.agent.tools.sandbox:SandboxTool"
+pipeline = "QuantNodes.agent.tools.pipeline:PipelineTool"
+strategy = "QuantNodes.agent.tools.strategy:StrategyTool"
+backtest = "QuantNodes.agent.tools.backtest:BacktestTool"
+factor = "QuantNodes.agent.tools.factor:FactorTool"
+config_backtest = "QuantNodes.agent.tools.config_backtest:ConfigBacktestTool"
+wiki = "QuantNodes.agent.tools.wiki:WikiTool"
+file_ops = "QuantNodes.agent.tools.file_ops:FileOpsTool"
+code_search = "QuantNodes.agent.tools.code_search:CodeSearchTool"
+git_ops = "QuantNodes.agent.tools.git_ops:GitOpsTool"
+web_fetch = "QuantNodes.agent.tools.web_fetch:WebFetchTool"
+web_search = "QuantNodes.agent.tools.web_search:WebSearchTool"
+task = "QuantNodes.agent.tools.task:TaskTool"
+alpha_evaluate = "QuantNodes.agent.tools.alpha_evaluate:AlphaEvaluateTool"
+alpha_backtest = "QuantNodes.agent.tools.alpha_backtest:AlphaBacktestTool"
+operator_lookup = "QuantNodes.agent.tools.operator_lookup:OperatorLookupTool"
+
+[project.entry-points."quantnodes.operators"]
+builtin = "QuantNodes.research.quant_alpha.operator_vocab:list_vocab_operators"
+
 [tool.setuptools]
 include-package-data = true
 

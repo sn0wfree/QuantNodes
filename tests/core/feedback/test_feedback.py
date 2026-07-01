@@ -35,13 +35,16 @@ from QuantNodes.core.feedback import (
 # ============================================================================
 
 def test_channel_enum_values():
-    """5 个通道枚举值正确。"""
-    assert FeedbackChannel.EXECUTION.value == "execution"
-    assert FeedbackChannel.SHAPE.value == "shape"
-    assert FeedbackChannel.CODE.value == "code"
-    assert FeedbackChannel.VALUE.value == "value"
-    assert FeedbackChannel.LLM.value == "llm"
-    assert len(FeedbackChannel) == 5
+        """8 个通道枚举值正确 (v3.0 增加了 lookahead/decay/turnover)。"""
+        assert FeedbackChannel.EXECUTION.value == "execution"
+        assert FeedbackChannel.SHAPE.value == "shape"
+        assert FeedbackChannel.CODE.value == "code"
+        assert FeedbackChannel.VALUE.value == "value"
+        assert FeedbackChannel.LLM.value == "llm"
+        assert FeedbackChannel.LOOKAHEAD.value == "lookahead"
+        assert FeedbackChannel.DECAY.value == "decay"
+        assert FeedbackChannel.TURNOVER.value == "turnover"
+        assert len(FeedbackChannel) == 8
 
 
 def test_channel_feedback_creation():

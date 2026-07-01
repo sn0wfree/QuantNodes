@@ -53,6 +53,13 @@ from QuantNodes.core.events import (
     get_event_bus,
     reset_event_bus,
 )
+from QuantNodes.core.plugin import (
+    TOOLS_GROUP,
+    OPERATORS_GROUP,
+    discover_tools,
+    discover_operators,
+    discover_all,
+)
 
 from QuantNodes.core.tools import (
     gen_available_name,
@@ -146,6 +153,13 @@ __all__ = [
     'Events',
     'get_event_bus',
     'reset_event_bus',
+
+    # plugin
+    'TOOLS_GROUP',
+    'OPERATORS_GROUP',
+    'discover_tools',
+    'discover_operators',
+    'discover_all',
 
     # tools
     'gen_available_name',

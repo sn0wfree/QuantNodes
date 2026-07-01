@@ -60,11 +60,16 @@ def register_all_quant_tools(
     llm_client: Any = None,
     model: str | None = None,
 ) -> int:
-    """Register all 14 quant tool classes (echo/sandbox/.../task) into a registry.
+    """Register all 17 quant tool classes (echo/sandbox/.../operator_lookup) into a registry.
 
     Returns the number of quant tools registered. Idempotent: re-registration
     of an existing tool name is skipped (the upstream registry overwrites by
     name, but we prefer explicit skip to surface duplicate-name bugs early).
+
+    Plugin discovery (P2 Step 10):
+        优先使用 entry_points (quantnodes.tools 组) 发现插件。
+        如 entry_points 为空 (dev 模式未安装), 回退到硬编码 _QUANT_TOOL_FACTORIES。
+        第三方插件可通过自己的 pyproject.toml 声明 entry_points 自动接入。
 
     ``workspace`` is forwarded to tools that need it (``WikiTool``,
     ``FileOpsTool``, ``CodeSearchTool``, ``GitOpsTool``, ``TaskTool``).
@@ -78,7 +83,7 @@ def register_all_quant_tools(
     Usage from Agent.__init__::
 
         from nanobot.agent.tools.registry import ToolRegistry
-        from QuantNodes.agent.tools import register_all_quant_tools
+        from QuantNodes.agent import register_all_quant_tools
         register_all_quant_tools(self._loop.tools, workspace=self.workspace)
     """
     if workspace is None:
@@ -93,8 +98,24 @@ def register_all_quant_tools(
         "TaskTool": {"workspace": workspace},
     }
 
+    # 尝试通过 entry_points 发现插件 (P2 Step 10)
+    plugin_tools: dict[str, type] = {}
+    try:
+        from QuantNodes.core.plugin import discover_tools
+
+        plugin_tools = discover_tools()
+    except Exception as e:
+        logger.debug("Plugin discovery unavailable, using fallback: %s", e)
+
+    # 选择 tool factories 来源: 优先 entry_points, 否则回退硬编码
+    if plugin_tools:
+        tool_factories = list(plugin_tools.values())
+        logger.debug("Using %d tool plugins from entry_points", len(tool_factories))
+    else:
+        tool_factories = _QUANT_TOOL_FACTORIES
+
     registered = 0
-    for factory in _QUANT_TOOL_FACTORIES:
+    for factory in tool_factories:
         kwargs = workspace_dep.get(factory.__name__, {})
         try:
             tool = factory(**kwargs) if kwargs else factory()

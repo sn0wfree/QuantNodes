@@ -130,11 +130,16 @@ class TestCustomLLMCallable:
 # ============================================================================
 
 class TestRealModel:
-    def test_real_model_auto_injects_gateway(self):
-        """model='deepseek' 无 llm_callable → 自动注入 LLMGateway。"""
-        from QuantNodes.ai.llm.gateway import LLMGateway
-        j = LLMJudge(model="deepseek-v3")
-        assert isinstance(j._llm_callable, LLMGateway)
+    def test_real_model_requires_explicit_llm_callable(self):
+        """model='deepseek' 无 llm_callable → 应抛 ValueError (P0 Fix 3 后)。"""
+        with pytest.raises(ValueError, match="requires an explicit llm_callable"):
+            LLMJudge(model="deepseek-v3")
+
+    def test_real_model_with_explicit_llm_callable(self):
+        """model='deepseek' + 显式 llm_callable → 成功。"""
+        mock_callable = lambda prompt: "response"
+        j = LLMJudge(model="deepseek-v3", llm_callable=mock_callable)
+        assert j._llm_callable is mock_callable
 
 
 # ============================================================================
