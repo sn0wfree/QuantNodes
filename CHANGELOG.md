@@ -639,6 +639,143 @@ pip install ta-lib tables plotly   # talib 需先装 TA-Lib C 库
 
 详细使用文档：`docs/16-quantnodes-cli使用指南.md`（约 180 行）。
 
+### Stage 8 — Workflows 多智能体框架 (commits 9b1d1bf → 4aa4bfc → ca27b1b)
+
+8 个 stage 把 AlphaGpt 工作流拆分为 StepAgent 通用框架 + 可注册 Workflow。
+
+#### 新增
+
+- **`QuantNodes/research/quant_alpha/workflows/`** — 多智能体 workflow 框架：
+  - `step_agent.py`：StepAgent 抽象（per-stage LLM call + validation + reflection）
+  - `parsers.py`：薄封装 nanobot StepAgent parsers
+  - `registry.py`：`WorkflowRegistry` — dict-based 名称 → workflow factory
+  - `tool.py`：`WorkflowTool` — 注册到 nanobot 的入口
+  - `implementations/alpha_gpt.py`：`AlphaGptWorkflow` 从内嵌类移植到 StepAgent 框架
+  - `implementations/logic_mining.py`：`LogicMiningWorkflow` — 三段式 agent（propose → compile → critique）
+- **`WorkflowTool`** — 注册到 `quantnodes.tools` entry point，`quantnodes run_workflow <name>` CLI
+- **MCTS WorkflowSpec** (`4aa4bfc`)：共享 cache + IC/IR metric、per-stage metric tracking
+- **MCTSCache** (`89ae464`)：跨 call 复用 MCTS search，避免重复 LLM 调用
+
+#### 测试 (Stage 8 + earlier Workflow commits)
+
+- `tests/quant_alpha/test_step_agent.py` (35 tests)
+- `tests/quant_alpha/test_workflow_registry.py` (24 tests)
+- `tests/quant_alpha/test_mcts_workflow.py` (29 tests)
+- `tests/quant_alpha/test_alpha_gpt_workflow.py` (42 tests)
+
+### Stage 9 — Alpha-GPT Pipeline 端到端
+
+把 quant_alpha 论文 pipeline 从 v2.x 单体内嵌类拆分为可独立调用的 6 个 stage。
+
+#### 新增
+
+- **`LogicDrivenPipeline`** (`172f190`)：端到端因子挖掘 pipeline
+  - V2 run：momentum + volatility 双逻辑
+  - 多轮迭代：`TerminationConfig` + `EarlyStopping` + `RoundFeedback` (commits `8cc52b1`, `c42ce1c`, etc.)
+  - `min_ir_threshold=0.1` 默认 (`404e0d6`)
+- **OperatorVocab 扩展** (`82db35f`)：加入 `returns` namespace；`vol → volume` 列别名 (`8147a94`)
+- **Parser 升级**：
+  - 支持 `shift` / `Ref` 到 `ALLOWED_OPERATORS` 白名单 (`b9d36dd`)
+  - 修复 `rank` / `zscore` / `winsorize` 参数顺序 (`efb79cf`)
+  - 支持 `ts_corr` / `ts_cov` + `corr` / `cov` 到 `RollingOp` (`b4bd3e7`)
+  - 扩展 ALLOWED_OPERATORS 支持更多算子 (`0ee93a3`, `22923ce`)
+- **互信息去重** (`692fe73`)：避免冗余因子入池
+- **Rank IC + 换手率 join 修复** (`9a3a93e`)
+- **Evaluator 优化**：
+  - precompute returns, dedup cache, tree index (`e96d6ed`)
+  - financial constraints (volume / 价格区间)
+- **LLM 增强**：
+  - 重试机制 + 超时控制 (`0a66068`)
+  - temperature wire-through (`e9c9ab6`, `33f7d79`)
+  - per-stage temperature control
+
+#### V7 / V8 实验
+
+- **V7** (`219520b`)：volume alias fix + 4-logic baseline
+- **V8** (`c2c5f5c`)：6 logics (4 old + 2 new)
+- **V8 sign-mismatch fix** (`0764a6e`)：`compiler` 强制 strict `sign_hint` for `direction=-1`
+
+#### 修复 (selected 13 commits)
+
+- `f9cbab3`: dedup sort by `|overall_score|` (防 negative-IR 因子被丢弃)
+- `8869c0e`: `FactorMetrics.formula` AttributeError
+- `0a5430a`: end-to-end pipeline 工作（真实 LLM）
+- `7f49e9e`: formula validation 改为非阻塞
+- `b8e3d82`: bypass critic LLM for final pool selection
+- `2eb2f08`, `5bdca50`, `07e1878`: prompt 优化减少 JSON parse 失败
+- `a73b39e`: LLM 输出截断根因 + 3 层 fix
+- `b77f09a`: max_tokens 8192 → 16384, timeout 120s → 300s
+- `7826a28`: 4-layer defense against LLM JSON truncation
+- `83bd9ac`: inline JSON schema + LLM thinking cleanup
+
+#### 测试 (Phase A-E — 7 commits)
+
+- `f0ffca7` (Phase B baseline) → `c1405ea` (Phase D.1 alpha_logics 44→98%) → `561a369` (D.2 logic_driven_pipeline 50→100%) → `95a8d9f` (D.3 pipeline 71→78%) → `9116067` (D.4 g2_llm_only 71→98%) → `537c5f9` (D.5 logic_mining 79→88%) → `8ea86e6` (D.6 clickhouse_data_loader 56→68%)
+- **最终整体覆盖率**：90% on quant_alpha/ — 详见 `TESTING.md`
+
+### Stage 10 — Plugin 系统 + EventBus + DataNode 重构
+
+#### 新增 (commits `bc398c0`, `52142df`, `e3eb067`)
+
+- **Plugin 发现机制** (`bc398c0`)：通过 setuptools `entry_points` 自动发现插件
+  - `quantnodes.tools` group: 16 个 quant tool 入口
+  - `quantnodes.operators` group: builtin OperatorVocab
+  - 新增 `register_all_quant_tools()` / `discover_external_tools()`
+  - 测试 16 个 (`test_plugin_discovery.py`)
+- **EventBus** (`52142df`)：跨组件事件总线
+  - 事件类型：`FactorMined` / `QualityGatePassed` / `QualityGateFailed`
+  - demo wiring：`factor.mined` 事件触发 Wiki 更新
+  - 测试 13 个 (`test_event_bus.py`)
+- **methods/ 与 agent/tools/ 去重** (`e3eb067`)：删除 6 个 v2.x 重复工具（统一以 agent/tools/ 为准）
+
+#### DataNode 重构 (commits `f6e4924`, `ef8428c`)
+
+- **`ClickHouseDataLoader` → `ClickHouseNode`** 统一重构：
+  - 从 `research/factor_db/` 移到 `database_node/`
+  - 7 层文档（架构 / API / 性能 / 测试 / 迁移 / FAQ / changelog）
+  - `factor_db` 模块标记 deprecated，10 年 grace period
+  - 测试 25 个 (`test_clickhouse_node.py`)
+
+#### 测试
+
+- `tests/core/test_plugin_discovery.py` (16 tests)
+- `tests/core/test_event_bus.py` (13 tests)
+- `tests/database_node/test_clickhouse_node.py` (25 tests)
+
+### Stage 11 — Test Coverage Expansion (commits a3c178f → bcfdc64)
+
+5 轮 +1042 测试，目标 LIVE 模块 ≥ 80% 覆盖。
+
+| Round | Commit | 新测试 | 目标模块 |
+|---|---|---|---|
+| 1 | a3c178f | 204 | serialization / factor / control / llm / strategy / tools |
+| 2 | a753513 | 203 | feedback / knowledge / viz / mcts / types |
+| 3 | 6c740bf | 157 | mcts search / db nodes / ops engine / registry / zoo |
+| 4 | 1b4ff7e | 183 | quality_gate / knowledge / evolution / advanced db |
+| 5 | bcfdc64 | 205 | feedback channels / trajectory pool / evolution loop / viz figures / mcp_server |
+| extra | 7b0964a | 129 | plugin / events / tools |
+
+**全量基线 (v3.0.0 Stage 11)**：
+- `tests/`（非 agent）：4494 passed / 21 skipped / 25 pre-existing failures（`test_llm_gateway.py` 网络 / retry 测试，无关）
+- `tests/agent/`：574 passed / 13 skipped
+- 0 个新引入的失败
+
+### P0 修复 — 循环依赖 + 包结构清理 (commit 60cfdee)
+
+- **解决 P0 循环依赖**：`research.quant_alpha.evaluation` ↔ `agent.tools.alpha_evaluate` 的循环 import
+- **删除空目录** (`72817bd`)：`QuantNodes/research/quant_alpha/_legacy_3c/` 等空 agent 子目录
+- **版本统一** (`72817bd`)：所有 `__version__` 统一从 `quantnodes.__version__` 读取
+- **3 层配置澄清** (`2bebe8c`)：core / api / agent 3-tier layering 文档化
+- **9 个 pre-existing test 失败修复** (`8e330bc`)
+
+### 发布基础 (本 release)
+
+- **Stage 8 + 9 + 10 + 11 累计 110+ commits**
+- **`pyproject.toml`** 同步更新：`[project.urls]` 补 `Documentation` / `Repository` / `Changelog`；`[tool.setuptools.package-data]` 把 `SKILL.md` / `*.yaml` 模板打进 sdist
+- **`QuantNodes/agent/skills_quant/__init__.py`** 补齐 — 之前缺 `__init__.py` 导致 6 个 SKILL.md 不被识别为包
+- **`.github/workflows/python-publish.yml`** 升级到 Python 3.11 + trusted publishing（OIDC）ready
+- **`pip install quantnodes==3.0.0`** 可立即使用；`pip install 'quantnodes[agent]'` 启用 nanobot agent / WebUI / MCP / 飞书 / cron 全部能力
+
 ## [2.8.0] - 2026-06-22
 
 Dual-Engine Composite — allows LLM to write pandas or polars code

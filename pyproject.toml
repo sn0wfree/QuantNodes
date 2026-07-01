@@ -22,10 +22,58 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 
-dependencies = []
+dependencies = [
+    # API/Web
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "websockets>=12.0",
+    "python-dotenv>=1.0.0",
+    # 数据处理
+    "pandas>=2.1.0",
+    "numpy>=1.24.0",
+    "polars>=1.0.0",
+    # 数据库
+    "SQLAlchemy>=2.0.0",
+    "clickhouse-connect>=0.6.0",
+    "PyMySQL>=1.0.0",
+    "duckdb>=0.9.0",
+    # 配置与类型
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.0.0",
+    # 统计分析
+    "statsmodels>=0.14.0",
+    "sympy>=1.12.0",
+    # AI/LLM
+    "openai>=1.3.0",
+    # 可视化
+    "plotly>=5.17.0",
+    # 工具库
+    "requests>=2.33.0",
+    "tqdm>=4.66.0",
+    "rich>=13.0.0",
+    "PyYAML>=6.0",
+    "progressbar2>=4.0.0",
+    "tables>=3.8.0",
+    "APScheduler>=3.10.0",
+    "llmwikify>=0.30.0",
+    "bs4>=0.0.1",
+    "msgpack>=1.0.0",
+    "scipy>=1.10.0",
+    # llmwikify 0.30+ 在 import 时强依赖 fastmcp（即使不用 MCP 也会触发）
+    "fastmcp>=2.0",
+    # pandas to_parquet 需要
+    "pyarrow>=14.0.0",
+]
+
+# 完整开发环境额外依赖（pip install -r requirements.txt）
+# requirements.txt 仍然保留为开发环境参考。
 
 [project.urls]
 Homepage = "https://github.com/sn0wfree/QuantNodes"
+Documentation = "https://github.com/sn0wfree/QuantNodes/tree/master/docs"
+Repository = "https://github.com/sn0wfree/QuantNodes.git"
+Issues = "https://github.com/sn0wfree/QuantNodes/issues"
+Changelog = "https://github.com/sn0wfree/QuantNodes/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 # 启用 nanobot agent / WebUI / MCP / 飞书 等完整功能
@@ -79,6 +127,12 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["QuantNodes*"]
+
+[tool.setuptools.package-data]
+"QuantNodes.agent.skills_quant" = ["**/SKILL.md"]
+"QuantNodes.agent.config" = ["templates/*.yaml"]
+"QuantNodes.research" = ["**/*.md", "**/CHANGELOG.md"]
+"QuantNodes.research.quant_alpha" = ["**/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

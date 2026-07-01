@@ -10,13 +10,16 @@ jobs:
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # for PyPI trusted publishing (OIDC); falls back to token below
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
@@ -26,7 +29,14 @@ jobs:
       - name: Build package
         run: python -m build
 
-      - name: Publish to PyPI
+      - name: Publish to PyPI via OIDC (preferred)
+        if: ${{ env.PYPI_USERNAME == '' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+      - name: Publish to PyPI via token (fallback)
+        if: ${{ env.PYPI_USERNAME != '' }}
         env:
           TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
           TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
