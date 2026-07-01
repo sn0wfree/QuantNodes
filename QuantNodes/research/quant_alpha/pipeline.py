@@ -856,7 +856,10 @@ class AlphaPipeline:
         return None
 
     def _persist_to_wiki(self, factors: List[FactorMetrics]) -> List[str]:
-        """持久化到 Wiki"""
+        """持久化到 Wiki
+
+        成功保存到 Wiki 后发布 factor.mined 事件 (P2: 事件系统接入点)。
+        """
         pages = []
         for f in factors:
             try:
@@ -864,6 +867,20 @@ class AlphaPipeline:
                 page_name = self.wiki.store_factor(wiki_factor)
                 pages.append(page_name)
                 logger.info("[Pipeline] 保存到 Wiki: %s", page_name)
+
+                # P2 事件系统接入: 通知下游 (monitor/、websocket 等)
+                try:
+                    from QuantNodes.core.events import Events, get_event_bus
+                    get_event_bus().publish_sync(
+                        Events.FACTOR_MINED,
+                        source="AlphaPipeline",
+                        formula_id=f.formula_id,
+                        page_name=page_name,
+                        ir=f.ir,
+                        ic_mean=f.ic_mean,
+                    )
+                except ImportError:
+                    pass  # 事件模块未加载, 静默
             except Exception as e:
                 logger.warning("[Pipeline] Wiki 保存失败: %s", e)
 

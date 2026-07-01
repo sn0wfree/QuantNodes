@@ -46,6 +46,13 @@ from QuantNodes.core.serialization import (
     deserialize_node_auto,
 )
 from QuantNodes.core.serializable import serializable, Serializable
+from QuantNodes.core.events import (
+    Event,
+    EventBus,
+    Events,
+    get_event_bus,
+    reset_event_bus,
+)
 
 from QuantNodes.core.tools import (
     gen_available_name,
@@ -132,6 +139,13 @@ __all__ = [
     # serializable
     'serializable',
     'Serializable',
+
+    # events
+    'Event',
+    'EventBus',
+    'Events',
+    'get_event_bus',
+    'reset_event_bus',
 
     # tools
     'gen_available_name',
