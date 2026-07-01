@@ -47,7 +47,7 @@ class TestPolarsAlphaCalculatorEvaluator:
     def test_invalid_formula_marked_failed(self, sample_data):
         evaluator = PolarsAlphaCalculatorEvaluator()
         factors = [
-            FactorSpec(formula_id="f1", formula="rank(close)", source="test"),
+            FactorSpec(formula_id="f1", formula="nonexistent_func(close)", source="test"),
         ]
         metrics = evaluator.evaluate(factors, sample_data)
         m = metrics[0]
@@ -58,7 +58,7 @@ class TestPolarsAlphaCalculatorEvaluator:
         evaluator = PolarsAlphaCalculatorEvaluator()
         factors = [
             FactorSpec(formula_id="f1", formula="ts_mean(close, 5)", source="test"),
-            FactorSpec(formula_id="f2", formula="rank(close)", source="test"),
+            FactorSpec(formula_id="f2", formula="nonexistent_func(close)", source="test"),
             FactorSpec(formula_id="f3", formula="ts_std(vol, 3)", source="test"),
         ]
         metrics = evaluator.evaluate(factors, sample_data)

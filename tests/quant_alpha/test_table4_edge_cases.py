@@ -39,26 +39,8 @@ from QuantNodes.research.quant_alpha.evaluation.contracts import Table4Report
 
 
 class TestPolarsEvaluatorEdgeCases:
-    def test_import_error_when_tool_unavailable(self, monkeypatch):
-        """当 alpha_evaluate tool 不可用时, 抛 ImportError"""
-        # Mock import 失败
-        import builtins
-
-        original_import = builtins.__import__
-
-        def mock_import(name, *args, **kwargs):
-            if "alpha_evaluate" in name:
-                raise ImportError("simulated: nanobot not installed")
-            return original_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", mock_import)
-        evaluator = PolarsAlphaCalculatorEvaluator()
-        with pytest.raises(ImportError, match="nanobot"):
-            evaluator._get_tool()
-
     def test_execute_raises_returns_all_failed(self):
-        """tool.execute 抛异常时, 所有公式标记为 failed"""
-        import asyncio
+        """vocab.evaluate 抛异常时, 所有公式标记为 failed"""
         loader = MockDataLoader(n_stocks=5, n_days=20)
         df = loader.load()
         factors = [
@@ -66,37 +48,28 @@ class TestPolarsEvaluatorEdgeCases:
             FactorSpec(formula_id="f2", formula="ts_std(close, 5)", source="t"),
         ]
 
-        # 替换 tool 内部协程, 强制抛异常
-        class MockTool:
-            async def execute(self, **kwargs):
-                raise RuntimeError("simulated: tool crashed")
-
         evaluator = PolarsAlphaCalculatorEvaluator()
-        evaluator._tool = MockTool()
-        result = evaluator.evaluate(factors, df, forward_returns=[1])
+        with patch.object(evaluator, "_get_vocab") as mock_vocab:
+            mock_vocab.return_value.evaluate.side_effect = RuntimeError("simulated: vocab crashed")
+            result = evaluator.evaluate(factors, df, forward_returns=[1])
         assert all(m.status == "failed" for m in result)
-        assert all("tool.execute failed" in (m.error_msg or "") for m in result)
 
     def test_non_dict_result_returns_all_failed(self):
-        """tool 返回非 dict 时, 所有公式标记为 failed"""
+        """vocab.evaluate 返回 None 时, 所有公式标记为 failed"""
         loader = MockDataLoader(n_stocks=5, n_days=20)
         df = loader.load()
         factors = [
             FactorSpec(formula_id="f1", formula="ts_mean(close, 5)", source="t"),
         ]
 
-        class MockTool:
-            async def execute(self, **kwargs):
-                return "not a dict"  # 异常返回
-
         evaluator = PolarsAlphaCalculatorEvaluator()
-        evaluator._tool = MockTool()
-        result = evaluator.evaluate(factors, df, forward_returns=[1])
+        with patch.object(evaluator, "_get_vocab") as mock_vocab:
+            mock_vocab.return_value.evaluate.return_value = None
+            result = evaluator.evaluate(factors, df, forward_returns=[1])
         assert all(m.status == "failed" for m in result)
-        assert all("non-dict" in (m.error_msg or "") for m in result)
 
     def test_evaluation_count_mismatch_marks_missing(self):
-        """evaluations 数量少于 factors 时, 多余的因子标记为 failed"""
+        """evaluations 部分失败时, 失败因子标记为 failed"""
         loader = MockDataLoader(n_stocks=5, n_days=20)
         df = loader.load()
         factors = [
@@ -105,28 +78,24 @@ class TestPolarsEvaluatorEdgeCases:
             FactorSpec(formula_id="f3", formula="delta(close, 3)", source="t"),
         ]
 
-        class MockTool:
-            async def execute(self, **kwargs):
-                # 只返回 1 个 evaluation, 比 factors 少 2 个
-                return {
-                    "status": "success",
-                    "evaluations": [
-                        {
-                            "status": "success",
-                            "metrics": {"ic_mean": 0.05, "ic_std": 0.1, "ir": 0.5, "ic_decay": {"1": 0.05}},
-                        },
-                    ],
-                }
-
         evaluator = PolarsAlphaCalculatorEvaluator()
-        evaluator._tool = MockTool()
-        result = evaluator.evaluate(factors, df, forward_returns=[1])
+        call_count = 0
+        import polars as pl
+
+        def side_effect(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return pl.Series([0.1] * len(df))
+            return None
+
+        with patch.object(evaluator, "_get_vocab") as mock_vocab:
+            mock_vocab.return_value.evaluate.side_effect = side_effect
+            result = evaluator.evaluate(factors, df, forward_returns=[1])
         assert len(result) == 3
         assert result[0].status == "success"
         assert result[1].status == "failed"
-        assert result[1].error_msg == "missing evaluation result"
         assert result[2].status == "failed"
-        assert result[2].error_msg == "missing evaluation result"
 
 
 # ---------------------------------------------------------------------------

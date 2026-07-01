@@ -42,6 +42,7 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "pytest-asyncio>=0.21",
+    "pytest-timeout>=2.0",
     "hypothesis>=6.0",
     "ruff>=0.4",
     "mypy>=1.5",
@@ -65,6 +66,25 @@ markers = [
     "unit: Unit tests",
     "integration: Integration tests",
     "slow: Slow running tests",
+]
+
+[tool.coverage.run]
+source = ["QuantNodes/research/quant_alpha"]
+omit = [
+    "*/__pycache__/*",
+    "*/archive/*",
+    "*/_legacy_3c/*",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+show_missing = false
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.",
+    "if TYPE_CHECKING:",
 ]
 
 [tool.ruff]

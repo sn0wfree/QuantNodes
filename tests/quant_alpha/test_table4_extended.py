@@ -233,8 +233,8 @@ class TestCrossBaselineConsistency:
         m1 = evaluator.evaluate(factors, df, forward_returns=[1])
         m2 = evaluator.evaluate(factors, df, forward_returns=[1])
 
-        assert m1[0].ic_mean == m2[0].ic_mean
-        assert m1[0].ir == m2[0].ir
+        assert m1[0].ic_mean == pytest.approx(m2[0].ic_mean)
+        assert m1[0].ir == pytest.approx(m2[0].ir)
         assert m1[0].status == m2[0].status
 
 

@@ -660,18 +660,17 @@ class TestDeprecationWarnings:
         assert "_legacy_3c" in str(deprecation_warnings[0].message)
 
     def test_deprecation_warnings_present_in_research_init(self):
-        """research/__init__.py 导入时触发 DeprecationWarning（汇总）"""
+        """research/__init__.py 访问 shim 属性时触发 DeprecationWarning"""
         import subprocess
         result = subprocess.run(
             ["python3", "-W", "default::DeprecationWarning", "-c",
-             "import QuantNodes.research; print('done')"],
+             "import QuantNodes.research; QuantNodes.research.AutoResearcher; print('done')"],
             capture_output=True, text=True,
             cwd="/home/ll/Public/QuantNodes",
             timeout=60,
         )
         output = result.stderr
-        # Phase C 后，4 个旧模块的 warnings 来自 _legacy_3c 内部（import-time）
-        assert "_legacy_3c" in output or "已弃用" in output or "已归档" in output
+        assert "DeprecationWarning" in output
 
 
 # ==============================================================================

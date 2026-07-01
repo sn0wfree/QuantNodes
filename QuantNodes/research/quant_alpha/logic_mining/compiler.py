@@ -215,6 +215,12 @@ def check_sign_hint(formula: str, direction: int) -> bool:
 
     Returns:
         是否符合
+
+    Note:
+        V8 修复 (test/expand-coverage-2x Phase 1):
+        修复前 direction=-1 时无负向标记的公式被宽松接受 (return True 兜底)
+        修复后 direction=-1 严格: 必须有 - / sign(- / sub(0, ...) 才接受
+        这与 sign_constraint=-1 的语义一致 (期望负 IR, 必须有显式负向)
     """
     formula_lower = formula.lower().strip()
 
@@ -228,8 +234,8 @@ def check_sign_hint(formula: str, direction: int) -> bool:
         # 检查是否有 sub(0, ...) 结构
         if 'sub(0' in formula_lower:
             return True
-        # 如果没有明显的负向标记，返回 True（宽松模式）
-        return True
+        # 无负向标记 → 严格拒绝 (V8 修复: 去掉宽松兜底)
+        return False
 
     elif direction == +1:
         # 正向约束通常不需要特殊标记

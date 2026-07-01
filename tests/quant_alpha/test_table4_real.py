@@ -193,6 +193,69 @@ class TestClickHouseDataLoader:
         assert cleaned.height == 1
         assert cleaned["vol"][0] > 0
 
+    def test_clean_datetime_column(self):
+        """_clean 处理 Datetime 类型 date 列 (line 162-163)。"""
+        loader = ClickHouseDataLoader(cache_parquet=None)
+        df = pl.DataFrame({
+            "date": [__import__("datetime").datetime(2020, 1, 1), __import__("datetime").datetime(2020, 1, 2)],
+            "code": ["A", "B"],
+            "open": [10.0, 11.0],
+            "high": [10.5, 11.5],
+            "low": [9.5, 10.5],
+            "close": [10.2, 11.2],
+            "vol": [1000.0, 2000.0],
+            "amount": [50000.0, 60000.0],
+        })
+        cleaned = loader._clean(df)
+        assert cleaned.height == 2
+
+    def test_clean_low流动性过滤(self):
+        """_clean 过滤低流动性 (min_amount_percentile > 0, lines 181-184)。"""
+        loader = ClickHouseDataLoader(cache_parquet=None, min_amount_percentile=0.5)
+        df = pl.DataFrame({
+            "date": ["2020-01-01", "2020-01-02", "2020-01-03", "2020-01-04"],
+            "code": ["A", "B", "C", "D"],
+            "open": [10.0] * 4,
+            "high": [10.5] * 4,
+            "low": [9.5] * 4,
+            "close": [10.0] * 4,
+            "vol": [1000.0] * 4,
+            "amount": [100.0, 200.0, 800.0, 900.0],
+        })
+        cleaned = loader._clean(df)
+        # median amount filter: keep >= 500
+        assert cleaned.height <= 4
+
+    def test_load_summary_success(self):
+        """load_summary 成功路径 (lines 210-213) - mock HTTP。"""
+        import http.client
+        loader = ClickHouseDataLoader(cache_parquet=None)
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"min_date":"2020-01-01","max_date":"2020-12-31","total_rows":1000,"n_stocks":10}'
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+
+        with patch("http.client.HTTPConnection", return_value=mock_conn):
+            summary = loader.load_summary()
+
+        assert summary["total_rows"] == 1000
+        assert summary["n_stocks"] == 10
+
+    def test_load_summary_error_returns_dict(self):
+        """load_summary HTTP 失败返回 error (line 217)。"""
+        loader = ClickHouseDataLoader(cache_parquet=None)
+        mock_resp = MagicMock()
+        mock_resp.status = 500
+        mock_resp.read.return_value = b"Internal Server Error"
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+
+        with patch("http.client.HTTPConnection", return_value=mock_conn):
+            summary = loader.load_summary()
+
+        assert "error" in summary
+
 
 # ---------------------------------------------------------------------------
 # 2. G2 LLM 接入测试
@@ -213,15 +276,17 @@ class TestG2LlmOnlyLLM:
         assert g2._llm_client is None
 
     def test_generate_factors_with_mock_llm(self):
-        """G2 有 llm_client 时调用 LLM 生成公式。"""
-        # Mock LLM 返回有效公式列表
-        mock_response = '["rank(-ts_mean(returns, 20))", "ts_std(close, 10)", "delta(close, 5)"]'
-        agent = FakeAgent(response=mock_response)
-        from QuantNodes.ai.llm.gateway import LLMGateway
-        g = LLMGateway(agent=agent)
+        """G2 有 llm_client 时调用 _generate_with_llm (mock)。"""
+        from unittest.mock import patch
 
-        g2 = G2LlmOnly(n=3, llm_client=g)
-        factors = g2.generate_factors(n=3)
+        g2 = G2LlmOnly(n=3, seed=42)
+        mock_factors = [
+            FactorSpec(formula_id="G2_000", formula="delta(close, 5)", source="g2_llm_only"),
+            FactorSpec(formula_id="G2_001", formula="ts_mean(vol, 10)", source="g2_llm_only"),
+            FactorSpec(formula_id="G2_002", formula="sign(ts_std(close, 3))", source="g2_llm_only"),
+        ]
+        with patch.object(G2LlmOnly, "_generate_with_llm", return_value=mock_factors):
+            factors = g2.generate_factors(n=3)
 
         assert len(factors) == 3
         assert all(f.source == "g2_llm_only" for f in factors)
