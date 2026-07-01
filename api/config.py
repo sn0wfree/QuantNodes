@@ -1,3 +1,42 @@
+# coding=utf-8
+"""
+api/config.py — **API 服务器配置** (Tier 2: API Server)
+
+本模块提供 FastAPI 服务器专用的配置，**不是**库级配置的重复。
+
+配置分层 (Configuration Tiers):
+    ┌─────────────────────────────────────────────────────────┐
+    │ Tier 3: YAML 策略配置                                      │
+    │   → QuantNodes.agent.config (ConfigLoader/ConfigExecutor) │
+    ├─────────────────────────────────────────────────────────┤
+    │ Tier 2: API 服务器配置 ← 本文件                            │
+    │   → api.config.Settings (CORS, VERSION, AGENT_PROVIDER)  │
+    ├─────────────────────────────────────────────────────────┤
+    │ Tier 1: 库级配置                                           │
+    │   → core.config.Settings (MySQL/CH/DuckDB/LLM/缓存/回测)  │
+    └─────────────────────────────────────────────────────────┘
+
+字段说明:
+    - VERSION: API 版本号 (用于 FastAPI 元数据 + 启动横幅)
+    - DEBUG: 调试模式开关 (影响 api/deps.py 鉴权策略)
+    - CORS_ORIGINS: 跨域白名单 (环境变量 CORS_ORIGINS 覆盖)
+    - AGENT_PROVIDER / AGENT_MODEL: Agent LLM 提供商/模型
+      (从 .agent/settings.json 加载, 与 core.config.llm 互补)
+    - WIKI_DATA_DIR: Wiki 数据目录
+
+与 core.config 的关系:
+    - 本文件**不继承** core.config.Settings — 避免 API 服务依赖库全部字段
+    - 库配置 (MySQL/CH/DuckDB/LLM) 走 core.config.Settings
+    - 同步机制: api.services.settings_service.sync_core_config()
+      把 .agent/settings.json 的 agent.api_key 等同步到 core 单例
+
+环境变量:
+    - DEBUG (默认 False, 不带 QUANTNODES_ 前缀)
+    - CORS_ORIGINS (逗号分隔列表)
+    - 字段全大写, 无 env_prefix
+    - 从 .env + .agent/settings.json 双源加载
+"""
+
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 import os

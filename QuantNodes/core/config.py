@@ -1,4 +1,37 @@
 # coding=utf-8
+"""
+core/config.py — **库级配置** (Tier 1: Library)
+
+本模块提供 QuantNodes 包代码全局使用的配置。
+
+配置分层 (Configuration Tiers):
+    ┌─────────────────────────────────────────────────────────┐
+    │ Tier 3: YAML 策略配置                                      │
+    │   → QuantNodes.agent.config (ConfigLoader/ConfigExecutor) │
+    ├─────────────────────────────────────────────────────────┤
+    │ Tier 2: API 服务器配置                                     │
+    │   → api.config.Settings (CORS, VERSION, AGENT_PROVIDER)  │
+    ├─────────────────────────────────────────────────────────┤
+    │ Tier 1: 库级配置 ← 本文件                                  │
+    │   → core.config.Settings (MySQL/CH/DuckDB/LLM/缓存/回测)  │
+    └─────────────────────────────────────────────────────────┘
+
+字段说明:
+    - project_name / debug / log_level: 项目级
+    - mysql / clickhouse / duckdb: 数据库连接
+    - llm: LLM 客户端配置 (api_key, base_url, model, timeout...)
+    - default_commission / default_slippage: 回测默认值
+    - cache_enabled / cache_ttl: 缓存策略
+
+环境变量:
+    前缀 QUANTNODES_, 分隔符 __, 如 QUANTNODES__LLM__API_KEY=xxx
+    同时从 .env 加载。
+
+同步关系:
+    - api 层通过 api.services.settings_service.sync_core_config()
+      将 .agent/settings.json 的值同步到本单例 (in-memory)
+    - 本文件 load_from_settings() 也从 .agent/settings.json 加载
+"""
 
 import json
 from typing import Optional, Dict, Any
