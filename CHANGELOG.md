@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.2] - 2026-07-02 — Automated Factor Mining CLI
+
+**自动化因子挖掘闭环**: `quantnodes mine-logics` CLI + `FactorPool` 池抽象 + 离线报告生成器。
+并发批处理 (ThreadPoolExecutor) + 幂等重跑 (跳过 wiki 已有 Logic pages) + 离线/真实双模式。
+
+### Added
+
+- **`quant_nodes/research/quant_alpha/factor_pool.py`** (NEW, ~320 lines)
+  - `FactorEntry` — 因子池单条记录 (formula_id / formula / source_lib / ir / ic_mean / rank_ic / tags / structured / evidence)
+  - `FactorPool` — 线程安全 in-mem 因子池
+    - CRUD: `add` / `extend` / `remove` / `get` / `contains` / `clear`
+    - 操作: `dedup(by=formula_id/formula/source_id)` / `select(top_n, by=ir)` / `filter(source_lib, min_ir, tags)`
+    - Wiki 双向: `from_wiki(proxy)` / `to_wiki(proxy)` — 与 `WikiFactorProxy` 同步
+    - 持久化: `save_json(path)` / `load_json(path)` — 离线 JSON 序列化
+    - 统计: `summary()` → `{n_total, by_source_lib, ir_stats, n_with_wiki}`
+
+- **`logic_mining/batch.py`** (NEW, ~320 lines)
+  - `mine_logic_library_v2(source_libs, llm_client, max_per_lib, workers, wiki_path, ...)` — 并发批量挖掘入口
+  - `LogicMiningBatchResult` — 结果汇总 (n_mined/n_skipped/n_failed/wall_clock_s/warnings)
+  - `ThreadSafeMetrics` — `PipelineMetrics` 跨线程包装 (所有 `record_*` 加 `threading.Lock`)
+  - 幂等性: 启动时 `from_wiki()` 预加载 → 跳过已存在 Logic pages
+  - 进度回调: `on_progress(done, total, current_id)`
+  - strict 模式: `LogicMiningStrictError` 上抛而非静默
+
+- **`logic_mining/report.py`** (NEW, ~200 lines)
+  - `MetricsReportBuilder` — 从 `LogicMiningBatchResult` 构建报告
+  - `to_dict()` / `to_json(path)` / `to_markdown()` — 三种输出格式
+  - 报告内容: Summary + Source breakdown + Agent stats + Failed IDs + Warnings
+
+- **`cli/commands/mine_logics.py`** (NEW, ~220 lines)
+  - `MineLogicsCommand` — `quantnodes mine-logics` 子命令
+  - 7 个参数: `--source-libs` / `--max-per-lib` / `--workers` / `--wiki-path` / `--output-dir` / `--live` / `--strict`
+  - 退出码: 0=全成功 / 1=部分失败 / 2=致命
+  - 离线默认 (NullLLMClient), `--live` 显式开启真实 LLM
+
+- **`docs/quant_alpha/automated_factor_mining.md`** — 使用文档 (架构 / 快速开始 / CLI 参数 / 幂等性 / 并发模型)
+- **`examples/mine_logics_demo.py`** — 离线演示脚本
+
+### Changed
+
+- `logic_mining/__init__.py` — 导出 `mine_logic_library_v2` / `ThreadSafeMetrics` / `LogicMiningBatchResult` / `MetricsReportBuilder`
+- `quant_alpha/__init__.py` — 导出 `FactorEntry` / `FactorPool`
+- `cli/commands/__init__.py` — 注册 `MineLogicsCommand` 到 `COMMAND_REGISTRY`
+
+### Tests
+
+- `tests/quant_alpha/test_factor_pool.py` — 33 tests (CRUD / dedup / select / filter / Wiki mock / JSON / 并发)
+- `tests/quant_alpha/test_mine_logic_batch.py` — 21 tests (ThreadSafeMetrics / BatchResult / idempotency / concurrency / strict)
+- `tests/quant_alpha/test_metrics_report.py` — 15 tests (from_batch / to_dict / to_json / to_markdown)
+- `tests/quant_alpha/test_mine_logics_cli.py` — 8 tests (args parsing / exit codes / file outputs)
+
+### Migration Guide
+
+`mine_logic_library_v2` 是新增 API，不影响现有 `build_initial_logic_library` (v1)。
+新代码推荐使用 `mine_logic_library_v2` 获得并发 + 幂等 + 进度回调。
+
+```python
+# 旧 API (仍可用)
+from QuantNodes.research.quant_alpha.logic_mining import build_initial_logic_library
+results = build_initial_logic_library(source_libs=("alpha101",), llm_client=client)
+
+# 新 API (v3.0.2)
+from QuantNodes.research.quant_alpha.logic_mining import mine_logic_library_v2
+batch = mine_logic_library_v2(source_libs=["alpha101"], llm_client=client, workers=4)
+batch.pool.select(top_n=5)  # FactorPool
+```
+
+---
+
 ## [3.0.1] - 2026-07-02 — Logic Mining 健壮性补丁
 
 Logic Mining (`QuantNodes/research/quant_alpha/logic_mining/`) 子系统 v3.0.0 发布后修复:
