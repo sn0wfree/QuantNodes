@@ -1,0 +1,33 @@
+[
+  {
+    "run_id": "ml-4c8cd551d588",
+    "status": "completed",
+    "config": {
+      "source_libs": [
+        "alpha101"
+      ],
+      "max_per_lib": 1,
+      "workers": 1,
+      "wiki_path": "wiki_auto",
+      "live": false,
+      "strict": false,
+      "skip_existing": true
+    },
+    "created_at": 1782969941.3883042,
+    "started_at": 1782969941.3883605,
+    "completed_at": 1782969941.389218,
+    "elapsed_seconds": 0.0008575916290283203,
+    "progress": {
+      "source_libs": [
+        "alpha101"
+      ],
+      "current_formula": "alpha101-alpha001",
+      "done": 1,
+      "total": 1,
+      "n_mined": 1,
+      "n_skipped": 0,
+      "n_failed": 0
+    },
+    "error": null
+  }
+]
