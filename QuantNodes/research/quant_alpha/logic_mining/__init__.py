@@ -49,6 +49,14 @@ from QuantNodes.research.quant_alpha.logic_mining.metrics import (
     StrictConfig,
     LogicMiningStrictError,
 )
+from QuantNodes.research.quant_alpha.logic_mining.batch import (
+    mine_logic_library_v2,
+    ThreadSafeMetrics,
+    LogicMiningBatchResult,
+)
+from QuantNodes.research.quant_alpha.logic_mining.report import (
+    MetricsReportBuilder,
+)
 
 __all__ = [
     # Models
@@ -80,4 +88,9 @@ __all__ = [
     "PipelineMetrics",
     "StrictConfig",
     "LogicMiningStrictError",
+    # Batch (v3.0.2)
+    "mine_logic_library_v2",
+    "ThreadSafeMetrics",
+    "LogicMiningBatchResult",
+    "MetricsReportBuilder",
 ]

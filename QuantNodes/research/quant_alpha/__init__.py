@@ -32,6 +32,12 @@ from QuantNodes.research.quant_alpha.operator_vocab import (
     get_vocab_metadata,
 )
 
+# v3.0.2 自动化挖掘 API
+from QuantNodes.research.quant_alpha.factor_pool import (
+    FactorEntry,
+    FactorPool,
+)
+
 __all__ = [
     # 主类
     "OperatorVocab",
@@ -42,4 +48,7 @@ __all__ = [
     "list_vocab_operators",
     "get_vocab_operator",
     "get_vocab_metadata",
+    # v3.0.2 FactorPool
+    "FactorEntry",
+    "FactorPool",
 ]

@@ -29,6 +29,7 @@ def _register_all() -> None:
     from QuantNodes.cli.commands.agent import AgentCommand
     from QuantNodes.cli.commands.evolve import EvolveCommand
     from QuantNodes.cli.commands.alpha import AlphaMctsCommand, AlphaGptCommand, AlphaPipelineCommand
+    from QuantNodes.cli.commands.mine_logics import MineLogicsCommand
     from QuantNodes.cli.commands.factor import (
         FactorInfoCommand,
         FactorBestCommand,
@@ -53,6 +54,7 @@ def _register_all() -> None:
         AlphaMctsCommand(),
         AlphaGptCommand(),
         AlphaPipelineCommand(),
+        MineLogicsCommand(),
         FactorInfoCommand(),
         FactorBestCommand(),
         FactorVisualCommand(),
