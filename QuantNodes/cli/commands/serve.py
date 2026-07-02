@@ -208,6 +208,8 @@ def cmd_serve(args) -> int:
         _print_startup_info(args, os.getpid())
 
     # 7. Run uvicorn in-process (blocking)
+    import sys
+    sys.path.insert(0, str(get_project_root()))
     import uvicorn
     config = uvicorn.Config(
         "api.main:app",
