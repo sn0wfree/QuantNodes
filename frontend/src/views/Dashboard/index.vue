@@ -101,6 +101,10 @@
               <template #icon><BarChartOutlined /></template>
               Factor Analysis
             </a-button>
+            <a-button block @click="$router.push('/mine-logics')" type="primary">
+              <template #icon><CloudDownloadOutlined /></template>
+              Factor Mining
+            </a-button>
             <a-button block @click="$router.push('/status')">
               <template #icon><CheckCircleOutlined /></template>
               System Status
@@ -122,6 +126,7 @@ import {
   WalletOutlined,
   BarChartOutlined,
   CheckCircleOutlined,
+  CloudDownloadOutlined,
 } from '@ant-design/icons-vue'
 import { get } from '@/api'
 

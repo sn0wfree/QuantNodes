@@ -39,6 +39,10 @@
         <experiment-outlined />
         <span>Alpha-GPT</span>
       </a-menu-item>
+      <a-menu-item key="/mine-logics">
+        <cloud-download-outlined />
+        <span>Factor Mining</span>
+      </a-menu-item>
       <a-menu-item key="/dream">
         <bulb-outlined />
         <span>Dream Insights</span>
@@ -64,6 +68,7 @@ import {
   SettingOutlined,
   CodeOutlined,
   ExperimentOutlined,
+  CloudDownloadOutlined,
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
