@@ -73,6 +73,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Alpha-GPT', agent: true },
       },
       {
+        path: 'mine-logics',
+        name: 'MineLogics',
+        component: () => import('@/views/MineLogics/index.vue'),
+        meta: { title: 'Mine Logics' },
+      },
+      {
         path: 'dream',
         name: 'DreamInsights',
         component: () => import('@/views/Dream/index.vue'),
