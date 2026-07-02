@@ -5,6 +5,235 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-07-02 — Logic Mining 健壮性补丁
+
+Logic Mining (`QuantNodes/research/quant_alpha/logic_mining/`) 子系统 v3.0.0 发布后修复:
+**24 个 silent fallback 点接入可观测性 + 3 个 P0 占位实装 + 5 个 nanobot subagent md 补位**。
+基线报告: `docs/quant_alpha/logic_mining_silent_baseline.md`。
+
+### Added
+
+- **`logic_mining/metrics.py`** (NEW, 159 lines)
+  - `PipelineMetrics` — 6 类计数器 (call_failures / parse_failures / parse_layer_reached
+    / structured_failures / wiki_failures / inner_loop_failures)
+  - `StrictConfig(call, parse, structured)` — 三挡 strict 开关 (默认全 False, 保持向后兼容)
+  - `LogicMiningStrictError(kind, **context)` — strict 模式下升级为异常
+  - `PipelineMetrics.to_dict()` / `total_failures()` 可序列化 + 求和
+- **`AlphaLogicsDiagnostics` dataclass** (`workflow/alpha_logics.py`)
+  - per-round wiki/inner failures 计数 (`by_round_wiki_failures` / `by_round_inner_failures`)
+  - `strict_raised` + `strict_raised_messages` 暴露 strict 异常冒泡
+- **`LogicAbstractionResult.parse_error` + `parse_layer` 字段**
+  - 三段式任一阶段失败时, 调用方可读 `result.parse_error` + 最远触达 layer
+- **`_compute_best_ic(alphagpt_result)` helper** (Phase 3 P0-2)
+  - 取 `FactorMetrics.ic_mean.abs().max()`, 与 IR 真实解耦
+- **`AlphaLogicsConfig.metrics` / `strict` 字段** (Optional, 透传到所有 sub-component)
+- **`LogicDrivenPipelineConfig.metrics` / `strict` 字段** (同上)
+- **5 个 nanobot subagent markdown** (`.agent/agents/`)
+  - `logic-mining-structure.md` (Stage 1, 122 行)
+  - `logic-mining-semantics.md` (Stage 2, 132 行)
+  - `logic-mining-abstraction.md` (Stage 3, 156 行)
+  - `market-logic-generator.md` (外层, 141 行)
+  - `market-logic-refinement.md` (外层, 117 行)
+- **`SKILL.md`** (`QuantNodes/agent/skills_quant/logic-mining/SKILL.md`)
+  - YAML frontmatter (name=logic-mining)
+  - 6 步工作流 + 验收标准 + 反模式
+
+### Fixed
+
+- **silent fallback observability** (24 处全接入 metrics)
+  - `logic_mining/pipelines.py:62-93` `_call_llm` (P-01)
+  - `logic_mining/pipelines.py:198-238` 3 个 stage parse failure (P-02/03/04)
+  - `logic_mining/pipelines.py:289-294` `build_initial_logic_library` outer try (P-05)
+  - `logic_mining/parser.py:67-89` 3 层 JSONDecodeError silent pass (P-06/07/08) →
+    `ParseResult.layer_reached` / `last_error` / `layer_errors`
+  - `logic_mining/generator.py:65-71` `_call_llm` (P-09)
+  - `logic_mining/generator.py:212-216` parse failure (P-10/11)
+  - `logic_mining/generator.py:222-224` `_structured_from_dict` 失败 (P-12)
+  - `logic_mining/generator.py:274` IR-improving branch `pass` 占位 →
+    真实实现: 窗口收窄 20% (Phase 3 P0-3)
+  - `workflow/alpha_logics.py:272/290/346` wiki.store_logic 失败 (P-14/15/16) →
+    `diagnostics.wiki_failures` 计数
+  - `workflow/alpha_logics.py:390` inner loop 失败 (P-17) → `diagnostics.inner_loop_failures`
+- **`alpha191` source 实现** (Phase 3 P0-1)
+  - `logic_mining/sources.py:118-121` 占位 `not yet implemented, returning empty list` 替换
+  - 新增 `ALPHA191_OHLCV_FORMULAS` 18 条 OHLCV-only 公式 (与 alpha101 范式重叠)
+  - `get_formulas_from_source("alpha191")` 现在返回 ≥ 18 条; 不再静默
+- **`best_ic` 解耦** (Phase 3 P0-2)
+  - `workflow/alpha_logics.py:185` `best_ic=float(best_ir)  # 简化: 暂用 IR 作为 IC proxy`
+    替换为 `_compute_best_ic(alphagpt_result)` — 取 `FactorMetrics.ic_mean.abs().max()`
+  - 下游读取 `best_ic` 不再被 IR 误导
+
+### Changed
+
+- **`ParseResult` 字段扩展** (从 4 → 7 字段)
+  ```python
+  # Before (v3.0.0)
+  @dataclass
+  class ParseResult:
+      ok: bool
+      data: Optional[Dict[str, Any]] = None
+      error: Optional[str] = None
+      raw: str = ""
+
+  # After (v3.0.1)
+  @dataclass
+  class ParseResult:
+      ok: bool
+      data: Optional[Dict[str, Any]] = None
+      error: Optional[str] = None
+      raw: str = ""
+      layer_reached: int = 0       # 0=empty, 1=direct, 2=md_fence, 3=brace
+      last_error: Optional[str] = None       # most recent JSONDecodeError
+      layer_errors: Dict[int, str] = field(default_factory=dict)   # per-layer errors
+  ```
+  - 全为 Optional / 有 default, **backward-compatible**
+
+- **`LogicAbstractionResult` 字段扩展** (新增 2 字段)
+  ```python
+  # Before (v3.0.0)
+  structured_logic: Optional[WikiLogicStructured] = None
+
+  # After (v3.0.1)
+  structured_logic: Optional[WikiLogicStructured] = None
+  parse_error: Optional[str] = None     # 失败原因, 全成功时 None
+  parse_layer: int = 0                 # 最远触达 layer (1/2/3), 默认 0
+  ```
+  - `to_dict()` 自动包含新字段; old field 完整保留
+
+- **`MarketLogicGenerator._mock_generate_response` 重写**
+  ```python
+  # Before (v3.0.0) — IR-improving branch 是空 pass
+  if evidence and len(evidence) >= 2:
+      if evidence[-1].best_ir > evidence[-2].best_ir:
+          pass  # ← 占位
+      else:
+          sign = -sign if sign else 1
+
+  # After (v3.0.1) — IR 升时窗口收窄 20%, 保留 sign
+  if evidence and len(evidence) >= 2:
+      cur, prev = evidence[-1], evidence[-2]
+      if cur.best_ir > prev.best_ir and cur.n_factors_explored > 0:
+          # 窗口收窄 20%, 保留 sign
+          for op_key in list(param_ranges.keys()):
+              lo, hi = param_ranges[op_key]
+              if hi - lo > 1e-9:
+                  span = hi - lo
+                  param_ranges[op_key] = [lo + span * 0.2, hi - span * 0.2]
+      else:
+          sign = -sign if sign else 1
+  ```
+
+### Migration Guide (v3.0.0 → v3.0.1)
+
+**100% backward-compatible**. 现有代码无需任何修改即可升级. 可选地, 推荐升级到 v3.0.1 的可观测性 API:
+
+#### 1) 在生产代码中读取 silent fallback 计数
+
+```python
+from QuantNodes.research.quant_alpha.logic_mining import (
+    PipelineMetrics, LogicMiningPipeline,
+)
+
+metrics = PipelineMetrics()
+pipeline = LogicMiningPipeline(metrics=metrics, ...)
+result = pipeline.run("-ts_corr(rank(open), rank(volume), 10)", "alpha101")
+
+# 查看 silent fallback 触发次数
+print(metrics.to_dict())
+# {'call_failures': {}, 'parse_failures': {'logic-mining-structure': 0}, ...}
+
+# 三段式 stage 1 失败原因 (Stage 1 之前从未暴露)
+print(result.parse_error)  # None or error string
+print(result.parse_layer)  # 0..3
+```
+
+#### 2) 把 silent fallback 升级为异常 (开发期调试)
+
+```python
+from QuantNodes.research.quant_alpha.logic_mining import (
+    LogicMiningPipeline, LogicMiningStrictError, StrictConfig,
+)
+
+# 所有 silent fallback 升级为异常 — CI 调试用
+strict = StrictConfig(call=True, parse=True, structured=True)
+pipeline = LogicMiningPipeline(metrics=metrics, strict=strict, ...)
+try:
+    pipeline.run(bad_formula, source_lib="alpha101")
+except LogicMiningStrictError as e:
+    print(f"failure kind={e.kind}, ctx={e.context}")
+    # kind='call' | 'parse' | 'structured'
+```
+
+#### 3) 读取 AlphaLogics 失败诊断
+
+```python
+from QuantNodes.research.quant_alpha.workflow.alpha_logics import AlphaLogicsWorkflow
+from QuantNodes.research.quant_alpha.logic_mining import PipelineMetrics
+
+metrics = PipelineMetrics()
+config = AlphaLogicsConfig(metrics=metrics, ...)
+wf = AlphaLogicsWorkflow(config, llm_client=...)
+result = wf.run()
+
+# 失败可观测
+print(result.diagnostics.to_dict())
+# {'wiki_failures': 0, 'inner_loop_failures': 0, 'strict_raised': 0, ...}
+
+print(result.metrics.to_dict())
+# 包含所有 PipelineMetrics 计数 (call / parse / structured failures)
+```
+
+#### 4) 真实 `best_ic` 替代 IR 代理 (下游解读 `LogicPerformanceEvidence.best_ic`)
+
+```python
+# Before (v3.0.0): best_ic 实际上等于 best_ir (语义错误)
+ev = LogicPerformanceEvidence(best_ir=0.5, best_ic=0.5)  # 双倍, 误导
+
+# After (v3.0.1): best_ic = max(|ic_mean|) across factors
+ev = build_inner_evidence(logic_name, alphagpt_result, round_idx=1)
+# best_ic 是真实 IC, 可独立解读
+```
+
+#### 5) alpha191 不再静默空
+
+```python
+# Before (v3.0.0): 静默返回 []
+formulas = get_formulas_from_source("alpha191")   # []
+
+# After (v3.0.1): 返回 18 条 OHLCV-only 公式
+formulas = get_formulas_from_source("alpha191")   # 18 entries
+```
+
+### Tests
+
+- **新增 5 个测试文件** (33 P0 + 39 Phase 2 + 13 P0 + 33 md/SKILL = 118 new test cases)
+  - `tests/quant_alpha/test_pipeline_metrics.py` (39 tests)
+  - `tests/quant_alpha/test_parse_result_layers.py` (10 tests)
+  - `tests/quant_alpha/test_alphalogics_diagnostics.py` (10 tests)
+  - `tests/quant_alpha/test_logic_mining_strict.py` (12 tests)
+  - `tests/quant_alpha/test_p0_logic_mining_fixes.py` (13 tests)
+  - `tests/quant_alpha/test_agent_md_files.py` (33 tests)
+- **基线 1134 → 1218 passed** (+84 new), **零回归**
+- 之前 `tests/quant_alpha/large_scale_e2e_test.py` 已知 fixture mismatch (3 ERROR) 保持不变
+  (该文件在 master 上同样存在 fixture 错误)
+
+### Known Limitations (Out of Scope)
+
+- `extract_operators` / `parse_op_args` 在 `compiler.py` 仍用 regex+paren-counting,
+  未升级为真 AST parser (P3 大型重构, 单独 PR)
+- alpha191 只有 18 条 OHLCV-only 公式, 完整 191 条含财务类,
+  后续若需扩展需引入财报数据源
+- nanobot md 文件目前与原 Python `_build_*_prompt` (内联 f-string) **并存**,
+  nanobot spawn 集成留待后续 PR
+
+### Refs
+
+- 设计文档: `docs/32-市场逻辑驱动因子挖掘设计.md` (PR-3 / PR-4 spec)
+- 基线报告: `docs/quant_alpha/logic_mining_silent_baseline.md`
+- V5 截断参考: `docs/quant_alpha/explanation_truncation_fix.md` (4 层防御模式)
+
+---
+
 ## [2.10.0-mock.1] - 2026-06-25
 
 Stage 1 mock Table 4 复现 — 论文 Alpha-GPT 框架 mock 端到端验证。
