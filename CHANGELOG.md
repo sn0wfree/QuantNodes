@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.3] - 2026-07-02 — Automated Mining Interactive UI
+
+**自动化因子挖掘交互页面**: FastAPI REST + WebSocket 后端 + Vue 3 前端页面。
+实时进度展示 (WebSocket streaming) + 配置面板 + 结果表格 + 历史记录 (JSON 持久化)。
+
+### Added
+
+- **`api/services/mine_logics_service.py`** (NEW, ~250 lines)
+  - `MineLogicsService` — session store + asyncio.Queue 事件总线
+  - `start()` → 异步启动 `mine_logic_library_v2` (via `asyncio.to_thread`)
+  - `get_status()` / `get_results()` / `stop()` / `list_history()`
+  - `subscribe()` / `unsubscribe()` / `_emit()` — WebSocket 事件广播
+  - JSON 历史持久化 (`data/mine_runs/history.json`, max 100)
+
+- **`api/routers/mine_logics.py`** (NEW, ~180 lines)
+  - `POST /api/mine-logics/start` — 启动批量挖掘 → `{run_id}`
+  - `GET /api/mine-logics/status/{run_id}` — 查询进度
+  - `GET /api/mine-logics/results/{run_id}` — 获取结果
+  - `POST /api/mine-logics/stop/{run_id}` — 停止运行
+  - `GET /api/mine-logics/history` — 历史运行列表
+  - `WS /api/mine-logics/stream/{run_id}` — 实时事件流
+
+- **`frontend/src/views/MineLogics/index.vue`** (NEW, ~648 lines)
+  - Config panel: source libs / max_per_lib / workers / wiki_path / live / strict
+  - Progress panel: progress bar + stats cards + event timeline
+  - Results panel: top factors table (8 cols) + source breakdown + agent stats
+  - History panel: past runs table (JSON-persisted)
+  - WebSocket real-time events + polling fallback
+
+- **`frontend/src/api/mine.ts`** (NEW, ~130 lines)
+  - `mineLogicsApi.start()` / `.status()` / `.results()` / `.stop()` / `.history()`
+  - TypeScript types: `MineLogicsConfig`, `MineLogicsEvent`, etc.
+
+- **`tests/api/test_mine_logics_service.py`** — 19 tests
+- **`tests/api/test_mine_logics_api.py`** — 12 tests
+
+### Changed
+
+- `api/main.py` — 注册 `mine_logics.router` 到 `/api/mine-logics`
+- `frontend/src/router/index.ts` — 添加 `/mine-logics` 路由
+
+### Migration Guide
+
+新 API 端点 `POST /api/mine-logics/start` 替代旧的 CLI-only 方式。
+前端页面 `/mine-logics` 是新增页面，不影响现有 `/alpha-gpt`。
+
+```bash
+# 旧方式 (CLI)
+quantnodes mine-logics --max-per-lib 10 --workers 4
+
+# 新方式 (REST API)
+curl -X POST http://localhost:19380/api/mine-logics/start \
+  -H "Content-Type: application/json" \
+  -d '{"source_libs": ["alpha101", "alpha191"], "max_per_lib": 10}'
+
+# 新方式 (前端页面)
+# 打开 http://localhost:19380/ui/mine-logics
+```
+
+---
+
 ## [3.0.2] - 2026-07-02 — Automated Factor Mining CLI
 
 **自动化因子挖掘闭环**: `quantnodes mine-logics` CLI + `FactorPool` 池抽象 + 离线报告生成器。
