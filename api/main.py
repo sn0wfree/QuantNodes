@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from .config import settings as app_settings
-from .routers import wiki, backtest, factor, skill, dream, stats, strategy, settings as settings_router, prompts, code, agent as agent_router, alpha_gpt
+from .routers import wiki, backtest, factor, skill, dream, stats, strategy, settings as settings_router, prompts, code, agent as agent_router, alpha_gpt, mine_logics
 from .services.nanobot_runtime import init_runtime, shutdown_runtime
 
 # v3.0.0: load .env into os.environ so NANOBOT_GATEWAY_HOST/PORT, QUANTNODES__LLM__*,
@@ -94,6 +94,7 @@ app.include_router(prompts.router, prefix="/api", tags=["prompts"])
 app.include_router(code.router, prefix="/api", tags=["code"])
 app.include_router(agent_router.router, prefix="/api/agent", tags=["agent"])
 app.include_router(alpha_gpt.router, prefix="/api/alpha/alpha-gpt", tags=["alpha-gpt"])
+app.include_router(mine_logics.router, prefix="/api/mine-logics", tags=["mine-logics"])
 
 # v3.1.0: Serve QuantNodes Vue frontend as static files (production mode).
 # When --frontend is NOT used, users can access the built SPA at /ui/.
