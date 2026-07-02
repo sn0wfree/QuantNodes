@@ -55,6 +55,30 @@ ALPHA158_TEMPLATE_CATEGORIES: List[Dict[str, str]] = [
     {"id": "LIQUIDITY", "name": "流动性", "example": "rank(volume / amount)"},
 ]
 
+# v3.0.1 (Phase 3, P0-1) — Alpha191 OHLCV-only 子集实现
+# 选取自 Alpha191 191 formulaic alphas 中量价类 (基于 _is_volume_price 过滤),
+# 与 WorldQuant Alpha101 在 4 大量价范式 (动量/反转/量价/波动率) 上重合
+ALPHA191_OHLCV_FORMULAS: Dict[str, str] = {
+    "alpha003": "-ts_corr(rank(open), rank(volume), 10)",
+    "alpha006": "-ts_corr(close, volume, 10)",
+    "alpha009": "ts_min(ts_min(ts_min(low, delay(close, 1)), delay(low, 1)), delay(low, 2))",
+    "alpha012": "sign(delta(volume, 1)) * (-1 * delta(close, 1))",
+    "alpha018": "-rank(rank(std(abs(close - open), 5) + (close - open) + rank(corr(close, ts_mean(volume, 20), 5))))",
+    "alpha024": "-ts_mean(close, 5) / delay(close, 5)",
+    "alpha030": "rank(decay_linear(rank(ts_delay(returns, 3)), 5))",
+    "alpha033": "rank(-1 + open / close)",
+    "alpha038": "-rank(ts_mean(close, 10) / ts_mean(close, 20) * rank(volume))",
+    "alpha041": "power(high * low, 0.5) - ts_mean(power(high * low, 0.5), 3)",
+    "alpha054": "-1 * rank((low - close) * power(volume, 0.5) / power(ts_mean(volume, 20), 0.5))",
+    "alpha055": "-1 * corr(rank(sub((high + low) / 2, ts_mean(high, 20))), rank(volume), 10)",
+    "alpha066": "-1 * ts_corr(close, ts_mean(volume, 20), 5)",
+    "alpha078": "rank(ts_corr(ts_mean(ts_mean(volume, 30), 37), ts_mean(close, 20), 7))",
+    "alpha085": "rank(ts_corr(high, volume, 5))",
+    "alpha088": "rank(ts_argmax(close - delay(close, 1), 30))",
+    "alpha095": "std(volume, 20) / std(close, 20)",
+    "alpha101": "rank(ts_mean(delta(close, 1), 5) - delta(ts_mean(close, 20), 5) / ts_mean(close, 20))",
+}
+
 # 数据源注册表
 SOURCES: Dict[str, Dict[str, Any]] = {
     "alpha101": {
@@ -68,6 +92,12 @@ SOURCES: Dict[str, Dict[str, Any]] = {
         "description": "Qlib 158 standard features (templates)",
         "templates": ALPHA158_TEMPLATE_CATEGORIES,
         "count": len(ALPHA158_TEMPLATE_CATEGORIES),
+    },
+    "alpha191": {
+        "name": "Alpha191 (国信/中金 OHLCV-only 子集)",
+        "description": "v3.0.1 实现 Alpha191 量价类 18 个 OHLCV 公式",
+        "formulas": ALPHA191_OHLCV_FORMULAS,
+        "count": len(ALPHA191_OHLCV_FORMULAS),
     },
 }
 
@@ -94,7 +124,7 @@ def get_formulas_from_source(
     source = SOURCES[source_lib]
     results = []
 
-    if source_lib == "alpha101":
+    if source_lib in ("alpha101", "alpha191"):
         for fid, formula in source["formulas"].items():
             if only_volume_price and not _is_volume_price(formula):
                 continue
@@ -114,11 +144,6 @@ def get_formulas_from_source(
             })
             if len(results) >= max_count:
                 break
-
-    elif source_lib == "alpha191":
-        # Alpha191 占位（PR-6 实现）
-        logger.info("alpha191 not yet implemented, returning empty list")
-        return []
 
     logger.info("Loaded %d formulas from %s", len(results), source_lib)
     return results

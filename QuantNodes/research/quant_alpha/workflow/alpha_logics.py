@@ -54,6 +54,9 @@ from QuantNodes.research.quant_alpha.logic_mining import (
     WikiLogicStructured,
     LogicPerformanceEvidence,
     LogicAbstractionResult,
+    LogicMiningStrictError,
+    PipelineMetrics,
+    StrictConfig,
     build_initial_logic_library,
 )
 from QuantNodes.research.quant_alpha.logic_mining.generator import (
@@ -87,7 +90,9 @@ __all__ = [
     "AlphaLogicsWorkflow",
     "AlphaLogicsResult",
     "InnerLoopResult",
-]
+    "AlphaLogicsDiagnostics",
+    "_compute_best_ic",
+]  # type: ignore  # noqa: F821
 
 
 @dataclass
@@ -127,6 +132,10 @@ class AlphaLogicsConfig:
     # 评估阈值
     min_ir_threshold: float = 0.1
 
+    # v3.0.1 (Phase 2): silent fallback 可观测性
+    metrics: Optional[PipelineMetrics] = None
+    strict: Optional[StrictConfig] = None
+
 
 @dataclass
 class InnerLoopResult:
@@ -135,6 +144,44 @@ class InnerLoopResult:
     alphagpt_result: Optional[AlphaGptResult] = None
     evidence: Optional[LogicPerformanceEvidence] = None
     elapsed_seconds: float = 0.0
+
+
+@dataclass
+class AlphaLogicsDiagnostics:
+    """v3.0.1 (Phase 2) silent fallback 可观测性
+
+    通过 metrics 总数 + 逐轮计数, 让外层循环 silent 故障可被分析
+    """
+    wiki_failures: int = 0
+    inner_loop_failures: int = 0
+    by_round_wiki_failures: List[int] = field(default_factory=list)
+    by_round_inner_failures: List[int] = field(default_factory=list)
+    strict_raised: int = 0
+    strict_raised_messages: List[str] = field(default_factory=list)
+
+    def record_wiki_failure(self, round_idx: Optional[int] = None) -> None:
+        self.wiki_failures += 1
+        if round_idx is not None:
+            self.by_round_wiki_failures.append(round_idx)
+
+    def record_inner_loop_failure(self, round_idx: Optional[int] = None) -> None:
+        self.inner_loop_failures += 1
+        if round_idx is not None:
+            self.by_round_inner_failures.append(round_idx)
+
+    def record_strict(self, message: str) -> None:
+        self.strict_raised += 1
+        self.strict_raised_messages.append(message)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "wiki_failures": self.wiki_failures,
+            "inner_loop_failures": self.inner_loop_failures,
+            "by_round_wiki_failures": self.by_round_wiki_failures,
+            "by_round_inner_failures": self.by_round_inner_failures,
+            "strict_raised": self.strict_raised,
+            "strict_raised_messages": self.strict_raised_messages,
+        }
 
 
 @dataclass
@@ -149,6 +196,30 @@ class AlphaLogicsResult:
     inner_results: List[InnerLoopResult] = field(default_factory=list)
     elapsed_seconds: float = 0.0
     summary: Dict[str, Any] = field(default_factory=dict)
+    # v3.0.1 (Phase 2): silent-fallback 可观测性
+    diagnostics: AlphaLogicsDiagnostics = field(default_factory=AlphaLogicsDiagnostics)
+    metrics: Optional[PipelineMetrics] = None
+
+
+def _compute_best_ic(
+    alphagpt_result: Optional[AlphaGptResult],
+) -> float:
+    """v3.0.1 (Phase 3, P0-2) — 真实 best_ic
+
+    Args:
+        alphagpt_result: 内层 Alpha-GPT 结果; 若为 None 或 final_pool 为空, 返回 0.0
+
+    Returns:
+        max(|ic_mean|) across all factors — 当 IC 列为 None 时静默忽略
+        (这与 best_ir 取 max 不同, 是 IC 的语义)
+    """
+    if alphagpt_result is None or not getattr(alphagpt_result, "final_pool", None):
+        return 0.0
+    ics = [
+        abs(getattr(m, "ic_mean", 0.0) or 0.0)
+        for m in alphagpt_result.final_pool
+    ]
+    return float(max(ics)) if ics else 0.0
 
 
 def _build_inner_evidence(
@@ -182,7 +253,7 @@ def _build_inner_evidence(
     return LogicPerformanceEvidence(
         n_factors_explored=len(alphagpt_result.final_pool) if alphagpt_result else 0,
         best_ir=float(best_ir),
-        best_ic=float(best_ir),  # 简化：暂用 IR 作为 IC proxy
+        best_ic=_compute_best_ic(alphagpt_result),
         best_factor_id=best_factor_id,
         mean_ir=float(sum(irs) / len(irs)) if irs else 0.0,
         refinement_round=round_idx,
@@ -203,12 +274,27 @@ class AlphaLogicsWorkflow:
     ):
         self.config = config
         self.llm_client = llm_client
+        self._pending_wiki_failures: int = 0
+        self._pending_inner_failures: int = 0
+        self.metrics: PipelineMetrics = config.metrics or PipelineMetrics()
+        self.strict: StrictConfig = config.strict or StrictConfig()
         self.wiki = _get_wiki_proxy()(config.wiki_path)
-        self.mining_pipeline = LogicMiningPipeline(llm_client=llm_client)
-        self.generator = MarketLogicGenerator(
-            llm_client=llm_client, base_name="alpha_logic"
+        self.mining_pipeline = LogicMiningPipeline(
+            llm_client=llm_client,
+            metrics=self.metrics,
+            strict=self.strict,
         )
-        self.refiner = MarketLogicRefinementDirection(llm_client=llm_client)
+        self.generator = MarketLogicGenerator(
+            llm_client=llm_client,
+            base_name="alpha_logic",
+            metrics=self.metrics,
+            strict=self.strict,
+        )
+        self.refiner = MarketLogicRefinementDirection(
+            llm_client=llm_client,
+            metrics=self.metrics,
+            strict=self.strict,
+        )
 
     def run(self) -> AlphaLogicsResult:
         """运行外层循环
@@ -255,7 +341,12 @@ class AlphaLogicsWorkflow:
             )
 
             # === 反馈 ===
-            fb = self.refiner.refine(h_current, h_hist, e_hist)
+            try:
+                fb = self.refiner.refine(h_current, h_hist, e_hist)
+            except LogicMiningStrictError as ex:
+                result.diagnostics.record_strict(str(ex))
+                logger.warning("Refiner strict-fail at round %d: %s", t, ex)
+                raise
             fb_hist.append(fb)
             logger.info("  Feedback: %s / %s", fb["diagnosis"], fb["direction"])
 
@@ -271,17 +362,23 @@ class AlphaLogicsWorkflow:
                         self.wiki.store_logic(h_best)
                     except Exception as ex:
                         logger.warning("Wiki store_logic failed: %s", ex)
+                        result.diagnostics.record_wiki_failure(round_idx=t)
                 logger.info("  New best: %s (ir=%.4f)", h_best.name, e_best.best_ir)
 
             # === 生成下一条 ===
             h_hist.append(h_current)
-            h_new = self.generator.generate(
-                library=library,
-                current_logic=h_current,
-                history=h_hist,
-                evidence=e_hist,
-                round_idx=t + 1,
-            )
+            try:
+                h_new = self.generator.generate(
+                    library=library,
+                    current_logic=h_current,
+                    history=h_hist,
+                    evidence=e_hist,
+                    round_idx=t + 1,
+                )
+            except LogicMiningStrictError as ex:
+                result.diagnostics.record_strict(str(ex))
+                logger.warning("Generator strict-fail at round %d: %s", t, ex)
+                raise
 
             # 持久化新逻辑
             if self.config.persist_best_logic:
@@ -289,6 +386,7 @@ class AlphaLogicsWorkflow:
                     self.wiki.store_logic(h_new)
                 except Exception as ex:
                     logger.warning("Wiki store_logic failed: %s", ex)
+                    result.diagnostics.record_wiki_failure(round_idx=t)
 
             library.append(h_new)
             result.library.append(h_new)
@@ -301,6 +399,13 @@ class AlphaLogicsWorkflow:
         result.evidence_history = e_hist
         result.feedback_history = fb_hist
         result.elapsed_seconds = time.time() - start
+        result.metrics = self.metrics
+        # v3.0.1: 把 _build_initial_library / _run_inner_loop 中吞掉的失败计数
+        # 一次性 flush 到 result.diagnostics
+        for _ in range(self._pending_wiki_failures):
+            result.diagnostics.record_wiki_failure()
+        for _ in range(self._pending_inner_failures):
+            result.diagnostics.record_inner_loop_failure()
         result.summary = self._build_summary(result)
         logger.info(
             "=== AlphaLogics 完成: best=%s, ir=%.4f, %.1fs ===",
@@ -317,6 +422,8 @@ class AlphaLogicsWorkflow:
             llm_client=self.llm_client,
             max_per_lib=self.config.initial_logic_max_per_lib,
             only_volume_price=True,
+            metrics=self.metrics,
+            strict=self.strict,
         )
 
         wiki_logics = []
@@ -344,6 +451,8 @@ class AlphaLogicsWorkflow:
                     self.wiki.store_logic(logic)
                 except Exception as ex:
                     logger.warning("Wiki store_logic failed: %s", ex)
+                    # 暂存到 in-flight diagnostics 不可见 (run() 时通过 result 接住)
+                    self._pending_wiki_failures += 1
 
         return wiki_logics
 
@@ -387,8 +496,13 @@ class AlphaLogicsWorkflow:
                 llm_client=self.llm_client,
             )
             alphagpt_result = workflow.run()
+        except LogicMiningStrictError as ex:
+            # strict 冒泡 — outer loop 会通过 result.diagnostics 暴露
+            raise
         except Exception as e:
             logger.warning("Inner loop Alpha-GPT failed: %s", e)
+            # 不在 _run_inner_loop 内 (无 result 引用). 通过 _pending_inner_failures 累加
+            self._pending_inner_failures += 1
             alphagpt_result = None
 
         # 构建证据

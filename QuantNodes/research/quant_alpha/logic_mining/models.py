@@ -234,12 +234,16 @@ class LogicAbstractionResult:
         structured_logic: MarketLogicAbstractionAgent 输出
         source_formula: 原始公式
         source_lib: 来源库 ("alpha101" / "alpha158" / "alpha191")
+        parse_error:   v3.0.1 暴露三段式 parse 失败原因 (None=全成功)
+        parse_layer:   v3.0.1 记录最远触达的 layer (1/2/3), 0=空
     """
     formula_structure: Dict[str, Any] = field(default_factory=dict)
     financial_semantics: Dict[str, Any] = field(default_factory=dict)
     structured_logic: Optional[WikiLogicStructured] = None
     source_formula: str = ""
     source_lib: str = ""
+    parse_error: Optional[str] = None
+    parse_layer: int = 0
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -249,4 +253,6 @@ class LogicAbstractionResult:
             "structured_logic": self.structured_logic.to_dict() if self.structured_logic else None,
             "source_formula": self.source_formula,
             "source_lib": self.source_lib,
+            "parse_error": self.parse_error,
+            "parse_layer": self.parse_layer,
         }

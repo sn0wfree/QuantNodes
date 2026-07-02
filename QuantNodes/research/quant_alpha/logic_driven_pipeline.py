@@ -41,6 +41,8 @@ import polars as pl
 from QuantNodes.research.quant_alpha.logic_mining import (
     WikiLogicStructured,
     LogicPerformanceEvidence,
+    PipelineMetrics,
+    StrictConfig,
 )
 from QuantNodes.research.quant_alpha.pipeline import (
     AlphaPipeline,
@@ -124,6 +126,10 @@ class LogicDrivenPipelineConfig:
     alphalogics_initial_sources: Tuple[str, ...] = ("alpha101", "alpha158")
     alphalogics_initial_max_per_lib: int = 3
 
+    # v3.0.1 (Phase 2): silent fallback 可观测性
+    metrics: Optional[PipelineMetrics] = None
+    strict: Optional[StrictConfig] = None
+
     # 终止条件
     timeout_seconds: int = 3600
 
@@ -172,6 +178,8 @@ class LogicDrivenPipeline:
     ):
         self.config = config
         self.llm_client = llm_client
+        self.metrics: PipelineMetrics = config.metrics or PipelineMetrics()
+        self.strict: StrictConfig = config.strict or StrictConfig()
 
     def run(self, data: pl.DataFrame) -> LogicDrivenPipelineResult:
         """运行 Pipeline
@@ -273,6 +281,9 @@ class LogicDrivenPipeline:
             initial_logic_sources=self.config.alphalogics_initial_sources,
             initial_logic_max_per_lib=self.config.alphalogics_initial_max_per_lib,
             min_ir_threshold=self.config.min_ir_threshold,
+            # v3.0.1 (Phase 2): silent fallback 可观测性透传
+            metrics=self.metrics,
+            strict=self.strict,
         )
         workflow = AlphaLogicsWorkflow(config=config, llm_client=self.llm_client)
         return workflow.run()

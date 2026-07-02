@@ -44,6 +44,11 @@ from QuantNodes.research.quant_alpha.logic_mining.generator import (
     MarketLogicRefinementDirection,
     generate_logic_name,
 )
+from QuantNodes.research.quant_alpha.logic_mining.metrics import (
+    PipelineMetrics,
+    StrictConfig,
+    LogicMiningStrictError,
+)
 
 __all__ = [
     # Models
@@ -71,4 +76,8 @@ __all__ = [
     "MarketLogicGenerator",
     "MarketLogicRefinementDirection",
     "generate_logic_name",
+    # Metrics (v3.0.1 Phase 2)
+    "PipelineMetrics",
+    "StrictConfig",
+    "LogicMiningStrictError",
 ]

@@ -35,6 +35,11 @@ from QuantNodes.research.quant_alpha.logic_mining.models import (
     LogicPerformanceEvidence,
     WikiLogicStructured,
 )
+from QuantNodes.research.quant_alpha.logic_mining.metrics import (
+    LogicMiningStrictError,
+    PipelineMetrics,
+    StrictConfig,
+)
 from QuantNodes.research.quant_alpha.logic_mining.parser import (
     parse_json_response,
 )
@@ -58,8 +63,18 @@ __all__ = [
 ]
 
 
-def _call_llm(llm_client: Any, agent_id: str, prompt: str, default_response: str) -> str:
-    """调用 LLM，无客户端或失败时返回 mock"""
+def _call_llm(
+    llm_client: Any,
+    agent_id: str,
+    prompt: str,
+    default_response: str,
+    metrics: Optional[PipelineMetrics] = None,
+    strict: Optional[StrictConfig] = None,
+) -> str:
+    """调用 LLM，无客户端或失败时返回 mock
+
+    v3.0.1 (Phase 2): metrics 接入与 strict 模式开关
+    """
     if llm_client is None:
         return default_response
     try:
@@ -68,6 +83,15 @@ def _call_llm(llm_client: Any, agent_id: str, prompt: str, default_response: str
         return llm_client(prompt)
     except Exception as e:
         logger.warning("LLM call failed for %s: %s, falling back to mock", agent_id, e)
+        if metrics is not None:
+            metrics.record_call_failure(agent_id)
+        if strict is not None and strict.call:
+            raise LogicMiningStrictError(
+                f"LLM call failed for {agent_id}: {e}",
+                kind="call",
+                agent_id=agent_id,
+                original_error=repr(e),
+            ) from e
         return default_response
 
 
@@ -171,9 +195,19 @@ class MarketLogicGenerator:
     """MarketLogicGeneratorAgent
 
     在初始轮基于 ℋ_init 发散生成；后续轮基于 ℋ_lib + 历史证据做有方向的生成/重构。
+
+    v3.0.1 (Phase 2): metrics/strict 入参透传给 _call_llm 与 _structured_from_dict
     """
     llm_client: Any = None
     base_name: str = "alpha_logic"
+    metrics: Optional[PipelineMetrics] = None
+    strict: Optional[StrictConfig] = None
+
+    def __post_init__(self) -> None:
+        if self.metrics is None:
+            self.metrics = PipelineMetrics()
+        if self.strict is None:
+            self.strict = StrictConfig()
 
     def generate(
         self,
@@ -206,11 +240,22 @@ class MarketLogicGenerator:
         # 调用 LLM
         prompt = _build_generator_prompt(library, current_logic, history, evidence, round_idx)
         raw = _call_llm(
-            self.llm_client, "market-logic-generator", prompt, mock_response
+            self.llm_client, "market-logic-generator", prompt, mock_response,
+            metrics=self.metrics, strict=self.strict,
         )
         result = parse_json_response(raw)
         if not result.ok:
             logger.warning("MarketLogicGenerator parse failed: %s, using mock data", result.error)
+            self.metrics.record_parse_failure("market-logic-generator", result.layer_reached)
+            if self.strict.parse:
+                raise LogicMiningStrictError(
+                    f"MarketLogicGenerator parse failed at layer {result.layer_reached}: "
+                    f"{result.error}",
+                    kind="parse",
+                    agent_id="market-logic-generator",
+                    layer=result.layer_reached,
+                    last_error=result.last_error,
+                )
             data = json.loads(mock_response)
         else:
             data = result.data
@@ -221,7 +266,15 @@ class MarketLogicGenerator:
             structured = _structured_from_dict(data)
         except Exception as e:
             logger.warning("Failed to build WikiLogicStructured: %s", e)
+            self.metrics.record_structured_failure("market-logic-generator")
             structured = None
+            if self.strict.structured:
+                raise LogicMiningStrictError(
+                    f"WikiLogicStructured build failed: {e}",
+                    kind="structured",
+                    agent_id="market-logic-generator",
+                    original_error=repr(e),
+                ) from e
 
         parent = current_logic.name if current_logic else None
         WikiLogic = _get_wiki_logic_class()
@@ -246,13 +299,18 @@ class MarketLogicGenerator:
         evidence: List[LogicPerformanceEvidence],
         round_idx: int,
     ) -> str:
-        """Mock 响应：基于历史证据趋势生成"""
+        """Mock 响应：基于历史证据趋势生成
+
+        v3.0.1 (Phase 3, P0-3):
+        - IR 上升: 窗口收窄 20% (在已有 parameter_ranges 上动), sign 保留
+        - IR 下降: 反转 sign
+        """
         # 基于当前逻辑变体
         if current_logic and current_logic.structured:
             base_predicates = [p.to_dict() for p in current_logic.structured.predicates]
             beh = current_logic.structured.behavior.to_dict()
             whitelist = current_logic.structured.operator_whitelist or ["rank"]
-            param_ranges = None
+            param_ranges: Dict[str, List[float]] = {}
             if current_logic.structured.parameter_ranges:
                 param_ranges = {
                     k: list(v)
@@ -268,12 +326,18 @@ class MarketLogicGenerator:
 
         # 根据 evidence 调整
         if evidence and len(evidence) >= 2:
-            # IR 提升则保持方向，否则反转
-            if evidence[-1].best_ir > evidence[-2].best_ir:
-                # 继续优化
-                pass
+            cur, prev = evidence[-1], evidence[-2]
+            if cur.best_ir > prev.best_ir and cur.n_factors_explored > 0:
+                # IR 提升 + 有可分析因子 → 窗口收窄 20%, 保留 sign
+                for op_key in list(param_ranges.keys()):
+                    lo, hi = param_ranges[op_key]
+                    if hi - lo > 1e-9:
+                        span = hi - lo
+                        new_lo = lo + span * 0.2
+                        new_hi = hi - span * 0.2
+                        param_ranges[op_key] = [new_lo, new_hi]
             else:
-                # 反转方向
+                # IR 未升 → 反转 sign
                 sign = -sign if sign else 1
 
         return json.dumps({
@@ -291,8 +355,18 @@ class MarketLogicRefinementDirection:
     """MarketLogicRefinementDirectionAgent
 
     综合所有该逻辑名下因子的回测表现，识别"逻辑过宽/过窄/与市场结构错配"的部分。
+
+    v3.0.1 (Phase 2): metrics/strict 入参透传
     """
     llm_client: Any = None
+    metrics: Optional[PipelineMetrics] = None
+    strict: Optional[StrictConfig] = None
+
+    def __post_init__(self) -> None:
+        if self.metrics is None:
+            self.metrics = PipelineMetrics()
+        if self.strict is None:
+            self.strict = StrictConfig()
 
     def refine(
         self,
@@ -323,11 +397,22 @@ class MarketLogicRefinementDirection:
         # 调用 LLM
         prompt = _build_refiner_prompt(current_logic, history, evidence)
         raw = _call_llm(
-            self.llm_client, "market-logic-refinement", prompt, mock_response
+            self.llm_client, "market-logic-refinement", prompt, mock_response,
+            metrics=self.metrics, strict=self.strict,
         )
         result = parse_json_response(raw)
         if not result.ok:
             logger.warning("Refinement parse failed: %s, using mock", result.error)
+            self.metrics.record_parse_failure("market-logic-refinement", result.layer_reached)
+            if self.strict.parse:
+                raise LogicMiningStrictError(
+                    f"MarketLogicRefinement parse failed at layer {result.layer_reached}: "
+                    f"{result.error}",
+                    kind="parse",
+                    agent_id="market-logic-refinement",
+                    layer=result.layer_reached,
+                    last_error=result.last_error,
+                )
             data = json.loads(mock_response)
         else:
             data = result.data
