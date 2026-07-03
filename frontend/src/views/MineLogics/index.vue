@@ -236,6 +236,11 @@
                 <span v-else-if="record.error" style="color: #ff4d4f">{{ record.error }}</span>
                 <span v-else>-</span>
               </template>
+              <template v-if="column.key === 'action'">
+                <a-button type="link" size="small" @click="viewHistoryResults(record.run_id)">
+                  查看
+                </a-button>
+              </template>
             </template>
           </a-table>
         </a-card>
@@ -361,6 +366,7 @@ const historyColumns = [
   { title: 'Created', key: 'created_at', width: 180 },
   { title: 'Duration', key: 'elapsed', width: 100 },
   { title: 'Progress', key: 'progress', width: 200 },
+  { title: '操作', key: 'action', width: 80 },
 ]
 
 // ==============================================================================
@@ -570,6 +576,12 @@ async function loadHistory() {
   } finally {
     historyLoading.value = false
   }
+}
+
+async function viewHistoryResults(runId: string) {
+  currentRunId.value = runId
+  await loadResults(runId)
+  message.info(`已加载 ${runId} 的结果`)
 }
 
 // ==============================================================================
