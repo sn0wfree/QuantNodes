@@ -125,6 +125,10 @@ from QuantNodes.research.report_reproducer import (
     ReproductionReport,
 )
 
+# Phase C+ (v4.0.0 reproduction merge): re-export run_backtest / BacktestResult
+from QuantNodes.research.backtest_pkg.run_backtest import run_backtest
+from QuantNodes.research.paper_understanding.schemas import BacktestResult
+
 __all__ = [
     # 功能3A
     "WikiFactorProxy",
@@ -151,4 +155,7 @@ __all__ = [
     "EvalConfig",
     "MCTSSearch",
     "MCTSNode",
+    # Reproduction merge (v4.0.0)
+    "run_backtest",
+    "BacktestResult",
 ]

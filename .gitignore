@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Migration venv (Phase 5 created .venv-mig, not tracked)
+.venv-mig/
+
 # C extensions
 *.so
 
