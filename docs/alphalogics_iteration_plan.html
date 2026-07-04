@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AlphaLogics 迭代方案 — 基于论文 2603.20247 的系统进化路线</title>
+<style>
+  :root {
+    --primary: #1a1a2e;
+    --secondary: #16213e;
+    --accent1: #0f3460;
+    --accent2: #e94560;
+    --accent3: #533483;
+    --gold: #f0a500;
+    --text: #e8e8e8;
+    --text-dim: #a0a0b0;
+    --card-bg: rgba(255,255,255,0.04);
+    --card-border: rgba(255,255,255,0.08);
+    --success: #00b894;
+    --warning: #fdcb6e;
+    --danger: #e17055;
+    --info: #74b9ff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 50%, #0a0a1a 100%);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.7;
+  }
+  /* particles background */
+  #particles {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 0;
+    overflow: hidden;
+  }
+  .particle {
+    position: absolute;
+    width: 3px; height: 3px;
+    background: rgba(233,69,96,0.3);
+    border-radius: 50%;
+    animation: float linear infinite;
+  }
+  @keyframes float {
+    0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-10vh) rotate(720deg); opacity: 0; }
+  }
+
+  .container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 40px 24px; }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 60px 0 40px;
+    position: relative;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 80px; height: 3px;
+    background: linear-gradient(90deg, var(--accent2), var(--gold));
+    border-radius: 2px;
+  }
+  .header .badge {
+    display: inline-block;
+    padding: 4px 16px;
+    background: rgba(233,69,96,0.15);
+    border: 1px solid rgba(233,69,96,0.3);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--accent2);
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+  }
+  .header h1 {
+    font-size: 42px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #fff 0%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+  }
+  .header p {
+    color: var(--text-dim);
+    font-size: 16px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .header .meta {
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .header .meta a {
+    color: var(--info);
+    text-decoration: none;
+  }
+  .header .meta a:hover { text-decoration: underline; }
+
+  /* Stats Bar */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin: 32px 0;
+  }
+  .stat-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .stat-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent2);
+  }
+  .stat-card .number {
+    font-size: 32px;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent2), var(--gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-card .label {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* Section */
+  .section { margin: 48px 0; }
+  .section-title {
+    font-size: 26px;
+    font-weight: 600;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-title .icon {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  .section-title .icon.red { background: rgba(233,69,96,0.2); }
+  .section-title .icon.blue { background: rgba(116,185,255,0.2); }
+  .section-title .icon.green { background: rgba(0,184,148,0.2); }
+  .section-title .icon.gold { background: rgba(240,165,0,0.2); }
+  .section-title .icon.purple { background: rgba(83,52,131,0.2); }
+
+  /* Gap Table */
+  .gap-table { overflow-x: auto; }
+  .gap-table table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  .gap-table th {
+    text-align: left;
+    padding: 14px 16px;
+    background: rgba(233,69,96,0.08);
+    border-bottom: 2px solid var(--accent2);
+    color: var(--gold);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .gap-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    vertical-align: top;
+  }
+  .gap-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .gap-table .gap-level {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .gap-level.large { background: rgba(233,69,96,0.2); color: var(--accent2); }
+  .gap-level.medium { background: rgba(253,203,110,0.2); color: var(--warning); }
+  .gap-level.small { background: rgba(0,184,148,0.2); color: var(--success); }
+
+  /* Direction Cards */
+  .direction-grid { display: grid; gap: 24px; }
+  .direction-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    transition: transform 0.25s, box-shadow 0.25s;
+  }
+  .direction-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px rgba(233,69,96,0.1);
+  }
+  .direction-card.priority-high { border-left: 4px solid var(--accent2); }
+  .direction-card.priority-medium { border-left: 4px solid var(--gold); }
+  .direction-card.priority-low { border-left: 4px solid var(--info); }
+
+  .card-header {
+    padding: 20px 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .card-header .num {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .num.high { background: rgba(233,69,96,0.2); color: var(--accent2); }
+  .num.mid { background: rgba(253,203,110,0.2); color: var(--warning); }
+  .num.low { background: rgba(116,185,255,0.2); color: var(--info); }
+  .card-header .info { flex: 1; }
+  .card-header .info h3 { font-size: 18px; font-weight: 600; }
+  .card-header .info .subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+  .card-header .priority-tag {
+    padding: 3px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .priority-tag.p-high { background: rgba(233,69,96,0.15); color: var(--accent2); border: 1px solid rgba(233,69,96,0.3); }
+  .priority-tag.p-mid { background: rgba(253,203,110,0.15); color: var(--warning); border: 1px solid rgba(253,203,110,0.3); }
+  .priority-tag.p-low { background: rgba(116,185,255,0.15); color: var(--info); border: 1px solid rgba(116,185,255,0.3); }
+
+  .card-body { padding: 20px 24px; }
+  .card-body .desc { color: #d0d0e0; font-size: 14px; margin-bottom: 16px; }
+  .card-body .steps { margin-bottom: 16px; }
+  .card-body .steps .step-item {
+    display: flex;
+    gap: 12px;
+    padding: 8px 0;
+    align-items: flex-start;
+  }
+  .step-item .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-top: 7px;
+    flex-shrink: 0;
+  }
+  .step-item .dot.red { background: var(--accent2); }
+  .step-item .dot.blue { background: var(--info); }
+  .step-item .dot.green { background: var(--success); }
+  .step-item .dot.gold { background: var(--gold); }
+  .step-item .step-text { font-size: 14px; color: #c0c0d0; }
+  .step-item .step-text strong { color: #f0f0ff; }
+
+  .card-body .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .card-body .tags .tag {
+    padding: 3px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--text-dim);
+  }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding: 20px 0;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 24px; top: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, var(--accent2), var(--gold), var(--info), var(--success));
+    opacity: 0.4;
+  }
+  .timeline-item {
+    position: relative;
+    padding: 0 0 32px 60px;
+  }
+  .timeline-item:last-child { padding-bottom: 0; }
+  .timeline-item .tl-dot {
+    position: absolute;
+    left: 16px; top: 4px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 3px solid;
+    background: var(--primary);
+  }
+  .tl-dot.phase1 { border-color: var(--accent2); }
+  .tl-dot.phase2 { border-color: var(--gold); }
+  .tl-dot.phase3 { border-color: var(--info); }
+  .tl-dot.phase4 { border-color: var(--success); }
+  .timeline-item .tl-title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .timeline-item .tl-duration {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .timeline-item .tl-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .timeline-item .tl-items .tl-tag {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  /* Architecture Flow */
+  .arch-container {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 32px;
+    margin: 24px 0;
+  }
+  .arch-flow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .arch-node {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 14px 20px;
+    text-align: center;
+    min-width: 110px;
+    transition: all 0.2s;
+  }
+  .arch-node:hover {
+    border-color: var(--accent2);
+    background: rgba(233,69,96,0.05);
+  }
+  .arch-node .arch-icon { font-size: 22px; margin-bottom: 4px; }
+  .arch-node .arch-label { font-size: 13px; font-weight: 500; }
+  .arch-node .arch-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+  .arch-arrow {
+    color: var(--accent2);
+    font-size: 20px;
+    font-weight: 300;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 40px 0;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    margin-top: 60px;
+  }
+  .footer p { color: var(--text-dim); font-size: 13px; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .header h1 { font-size: 28px; }
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .gap-table table { font-size: 13px; }
+    .card-header { flex-wrap: wrap; }
+    .card-header .priority-tag { margin-left: auto; }
+    .arch-flow { gap: 8px; }
+    .arch-node { min-width: 80px; padding: 10px 14px; }
+    .timeline-item { padding-left: 48px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="particles"></div>
+
+<div class="container">
+
+<!-- Header -->
+<div class="header">
+  <div class="badge">RESEARCH ITERATION PLAN</div>
+  <h1>AlphaLogics 系统迭代方案</h1>
+  <p>基于论文 <em>"AlphaLogics: A Market Logic-Driven Multi-Agent System for Scalable and Interpretable Alpha Factor Generation"</em> (arXiv 2603.20247) 的系统进化路线</p>
+  <div class="meta">
+    文献来源：<a href="https://ar5iv.labs.arxiv.org/html/2603.20247" target="_blank">arXiv 2603.20247</a>
+    &nbsp;·&nbsp; 分析日期：2026-07-03
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-bar">
+  <div class="stat-card">
+    <div class="number">7</div>
+    <div class="label">迭代方向</div>
+  </div>
+  <div class="stat-card">
+    <div class="number">4</div>
+    <div class="label">实施阶段</div>
+  </div>
+  <div class="stat-card">
+    <div class="number">100+</div>
+    <div class="label">现有因子可复用</div>
+  </div>
+  <div class="stat-card">
+    <div class="number">5</div>
+    <div class="label">Multi-Agent 角色</div>
+  </div>
+</div>
+
+<!-- Section: Core Idea -->
+<div class="section">
+  <div class="section-title">
+    <span class="icon red">&#9733;</span>
+    论文核心思想
+  </div>
+  <div class="arch-container">
+    <p style="margin-bottom:20px; color:#c0c0d0; font-size:15px; text-align:center;">
+      AlphaLogics 将 <strong style="color:var(--gold);">市场逻辑 (Market Logic)</strong> 作为显式、可迭代优化的对象，
+      构建多智能体闭环系统，兼顾因子挖掘的<strong style="color:var(--accent2);">可扩展性</strong>与<strong style="color:var(--info);">可解释性</strong>
+    </p>
+    <div class="arch-flow">
+      <div class="arch-node">
+        <div class="arch-icon">&#x1F50D;</div>
+        <div class="arch-label">逻辑挖掘</div>
+        <div class="arch-sub">Alpha101/191/158/360</div>
+      </div>
+      <div class="arch-arrow">&#x2192;</div>
+      <div class="arch-node">
+        <div class="arch-icon">&#x1F4CB;</div>
+        <div class="arch-label">逻辑库</div>
+        <div class="arch-sub">H = &lt;C, B&gt;</div>
+      </div>
+      <div class="arch-arrow">&#x2192;</div>
+      <div class="arch-node">
+        <div class="arch-icon">&#x2699;</div>
+        <div class="arch-label">因子生成</div>
+        <div class="arch-sub">DSL + 约束搜索</div>
+      </div>
+      <div class="arch-arrow">&#x2192;</div>
+      <div class="arch-node">
+        <div class="arch-icon">&#x1F4CA;</div>
+        <div class="arch-label">回测反馈</div>
+        <div class="arch-sub">BacktestEngine</div>
+      </div>
+      <div class="arch-arrow">&#x2192;</div>
+      <div class="arch-node" style="border-color:var(--gold);">
+        <div class="arch-icon">&#x1F504;</div>
+        <div class="arch-label">逻辑进化</div>
+        <div class="arch-sub">外层循环</div>
+      </div>
+    </div>
+    <div style="margin-top:20px; display:flex; justify-content:center; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--text-dim);">
+      <span style="background:rgba(233,69,96,0.1); padding:4px 12px; border-radius:6px;">
+        <span style="color:var(--accent2);">Stage 1</span> 逻辑挖掘
+      </span>
+      <span style="background:rgba(253,203,110,0.1); padding:4px 12px; border-radius:6px;">
+        <span style="color:var(--warning);">Stage 2</span> 引导因子生成
+      </span>
+      <span style="background:rgba(116,185,255,0.1); padding:4px 12px; border-radius:6px;">
+        <span style="color:var(--info);">Stage 3</span> 逻辑生成与进化
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- Section: Gap Analysis -->
+<div class="section">
+  <div class="section-title">
+    <span class="icon blue">&#x25B6;</span>
+    现有系统 vs. 论文差距分析
+  </div>
+  <div class="gap-table">
+    <table>
+      <thead>
+        <tr>
+          <th>维度</th>
+          <th>当前系统</th>
+          <th>AlphaLogics 方法</th>
+          <th>差距</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>因子来源</strong></td>
+          <td>人工研发 + 手动编码</td>
+          <td>LLM 自动生成 + 迭代优化</td>
+          <td><span class="gap-level large">大</span></td>
+        </tr>
+        <tr>
+          <td><strong>因子生成方式</strong></td>
+          <td>研究员写 Python 类</td>
+          <td>DSL 表达式 + 约束搜索</td>
+          <td><span class="gap-level large">大</span></td>
+        </tr>
+        <tr>
+          <td><strong>市场逻辑</strong></td>
+          <td>隐含在注释和文档中</td>
+          <td>显式结构化可迭代</td>
+          <td><span class="gap-level large">大</span></td>
+        </tr>
+        <tr>
+          <td><strong>LLM 集成</strong></td>
+          <td>无</td>
+          <td>多智能体核心驱动</td>
+          <td><span class="gap-level large">大</span></td>
+        </tr>
+        <tr>
+          <td><strong>回测反馈</strong></td>
+          <td>单次运行</td>
+          <td>反馈驱动迭代优化</td>
+          <td><span class="gap-level medium">中</span></td>
+        </tr>
+        <tr>
+          <td><strong>因子表达式</strong></td>
+          <td>任意 Python 代码</td>
+          <td>固定 DSL 约束空间</td>
+          <td><span class="gap-level medium">中</span></td>
+        </tr>
+        <tr>
+          <td><strong>逻辑库</strong></td>
+          <td>风格因子分类</td>
+          <td>结构化 H=&lt;C,B&gt; 库</td>
+          <td><span class="gap-level large">大</span></td>
+        </tr>
+        <tr>
+          <td><strong>多市场验证</strong></td>
+          <td>A 股为主</td>
+          <td>CSI500 + S&P500</td>
+          <td><span class="gap-level medium">中</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Section: Direction 1 -->
+<div class="section">
+  <div class="section-title">
+    <span class="icon red">1</span>
+    迭代方向
+  </div>
+  <div class="direction-grid">
+
+    <!-- Direction 1 -->
+    <div class="direction-card priority-high">
+      <div class="card-header">
+        <div class="num high">1</div>
+        <div class="info">
+          <h3>LLM 驱动的因子自动生成系统</h3>
+          <div class="subtitle">构建因子自动生成 — 回测 — 迭代闭环，研发效率提升 10x+</div>
+        </div>
+        <span class="priority-tag p-high">P0 &#9733;</span>
+      </div>
+      <div class="card-body">
+        <div class="desc">
+          定义因子 DSL 基元算子（时序算子、截面算子、逻辑组合算子），构建 Multi-Agent 因子工厂，
+          复用现有回测引擎和数据基础设施，形成生成→回测→反馈→重生成的自动化闭环。
+        </div>
+        <div class="steps">
+          <div class="step-item">
+            <div class="dot red"></div>
+            <div class="step-text"><strong>定义因子 DSL</strong> — 时序算子(ts_mean/ts_corr/ts_rank)、截面算子(rank/scale)、组合算子(signed_power/if_else)</div>
+          </div>
+          <div class="step-item">
+            <div class="dot blue"></div>
+            <div class="step-text"><strong>Multi-Agent 工厂</strong> — FactorIdeaAgent(生成)→FactorCodingAgent(编译)→FactorFeedbackAgent(反馈)→FactorOrchestrator(编排)</div>
+          </div>
+          <div class="step-item">
+            <div class="dot green"></div>
+            <div class="step-text"><strong>复用基础设施</strong> — BacktestEngine 作为回测引擎，DataAPI 作为数据源</div>
+          </div>
+        </div>
+        <div class="tags">
+          <span class="tag">LLM Agent</span>
+          <span class="tag">DSL</span>
+          <span class="tag">自动迭代</span>
+          <span class="tag">Early-Stop</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direction 2 -->
+    <div class="direction-card priority-high">
+      <div class="card-header">
+        <div class="num high">2</div>
+        <div class="info">
+          <h3>市场逻辑库构建</h3>
+          <div class="subtitle">从 100+ 现有生产因子逆向提取市场逻辑，构建结构化 H=&lt;C,B&gt; 逻辑库</div>
+        </div>
+        <span class="priority-tag p-high">P0 &#9733;</span>
+      </div>
+      <div class="card-body">
+        <div class="desc">
+          遍历现有因子代码，用 LLM 逆向提取市场逻辑（条件 predicates + 信念 belief），
+          存储为结构化数据，构建可查询、可组合的逻辑知识库。
+        </div>
+        <div class="steps">
+          <div class="step-item">
+            <div class="dot red"></div>
+            <div class="step-text"><strong>因子→逻辑 Pipeline</strong> — 对每个因子提取 C(变量/算子/阈值/权重) 和 B(目标/方向/视野)</div>
+          </div>
+          <div class="step-item">
+            <div class="dot blue"></div>
+            <div class="step-text"><strong>逻辑库 Schema</strong> — logic_id / conditions(JSON) / belief(JSON) / source_factors / avg_performance / category</div>
+          </div>
+          <div class="step-item">
+            <div class="dot green"></div>
+            <div class="step-text"><strong>人工验证</strong> — 专家校验 LLM 提取结果，合并同类逻辑，剔除错误逻辑</div>
+          </div>
+        </div>
+        <div class="tags">
+          <span class="tag">知识库</span>
+          <span class="tag">逆向提取</span>
+          <span class="tag">结构化存储</span>
+          <span class="tag">DuckDB</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direction 3 -->
+    <div class="direction-card priority-high">
+      <div class="card-header">
+        <div class="num high">3</div>
+        <div class="info">
+          <h3>市场逻辑驱动的因子搜索与优化</h3>
+          <div class="subtitle">给定市场逻辑 H，自动编译为约束 Γ 并在约束空间内搜索最优因子实现</div>
+        </div>
+        <span class="priority-tag p-high">P0 &#9733;</span>
+      </div>
+      <div class="card-body">
+        <div class="desc">
+          LogicToConstraint 编译模块将自然语言逻辑转化为可执行约束，
+          在约束空间内通过 LLM 搜索、遗传编程或混合策略进行因子优化，
+          以验证集 IR 为目标函数，early-stop 机制控制迭代轮次。
+        </div>
+        <div class="steps">
+          <div class="step-item">
+            <div class="dot red"></div>
+            <div class="step-text"><strong>LogicToConstraint 编译</strong> — H=&lt;C,B&gt; → 约束 Γ(变量范围/算子族/参数范围/符号方向)</div>
+          </div>
+          <div class="step-item">
+            <div class="dot blue"></div>
+            <div class="step-text"><strong>三层搜索策略</strong> — LLM 搜索(快速探索) / 遗传编程(精细调优) / 混合策略(先LLM后GP)</div>
+          </div>
+          <div class="step-item">
+            <div class="dot green"></div>
+            <div class="step-text"><strong>回测驱动优化</strong> — 目标函数 J=IR_val，早停轮次 T_early=5</div>
+          </div>
+        </div>
+        <div class="tags">
+          <span class="tag">约束编译</span>
+          <span class="tag">遗传编程</span>
+          <span class="tag">LLM 搜索</span>
+          <span class="tag">Early-Stop</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direction 4 -->
+    <div class="direction-card priority-medium">
+      <div class="card-header">
+        <div class="num mid">4</div>
+        <div class="info">
+          <h3>市场逻辑自动生成与进化</h3>
+          <div class="subtitle">基于逻辑库自动生成新逻辑，用因子实际表现评判逻辑有效性，形成进化闭环</div>
+        </div>
+        <span class="priority-tag p-mid">P1</span>
+      </div>
+      <div class="card-body">
+        <div class="desc">
+          Market Logic Generator Agent 通过组合、类比、反逻辑、跨类别杂交等方式生成新候选逻辑，
+          经由方向三的因子搜索验证后，保留高绩效逻辑到库中。
+        </div>
+        <div class="steps">
+          <div class="step-item">
+            <div class="dot gold"></div>
+            <div class="step-text"><strong>逻辑生成器</strong> — 组合已有逻辑 predicates、类比推理、方向反转、跨类别杂交</div>
+          </div>
+          <div class="step-item">
+            <div class="dot blue"></div>
+            <div class="step-text"><strong>逻辑绩效评估</strong> — 对每个 H_new 运行因子搜索，目标 IR > 0.8 保留</div>
+          </div>
+          <div class="step-item">
+            <div class="dot green"></div>
+            <div class="step-text"><strong>逻辑演化</strong> — 淘汰无效逻辑，分支探索有效逻辑的变体，形成逻辑进化树</div>
+          </div>
+        </div>
+        <div class="tags">
+          <span class="tag">逻辑生成</span>
+          <span class="tag">进化算法</span>
+          <span class="tag">逻辑库刷新</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direction 5 -->
+    <div class="direction-card priority-medium">
+      <div class="card-header">
+        <div class="num mid">5</div>
+        <div class="info">
+          <h3>因子 DSL 引擎</h3>
+          <div class="subtitle">高性能因子 DSL 编译与执行引擎，支持表达式快速验证与 GPU 加速</div>
+        </div>
+        <span class="priority-tag p-mid">P1</span>
+      </div>
+      <div class="card-body">
+        <div class="desc">
+          构建 DSL 解析器（表达式→AST）、编译器（AST→可执行代码，支持 numba/jax 加速）、
+          验证器（类型/维度/参数范围检查），兼容现有 FactorBase 接口。
+        </div>
+        <div class="steps">
+          <div class="step-item">
+            <div class="dot gold"></div>
+            <div class="step-text"><strong>DSL 解析器</strong> — 因子表达式字符串 → AST 节点树</div>
+          </div>
+          <div class="step-item">
+            <div class="dot blue"></div>
+            <div class="step-text"><strong>DSL 编译器</strong> — AST → Python/numba/jax 可执行代码，自动向量化</div>
+          </div>
+          <div class="step-item">
+            <div class="dot green"></div>
+            <div class="step-text"><strong>DSL 验证器</strong> — 类型检查、维度检查、参数范围检查</div>
+          </div>
+        </div>
+        <div class="tags">
+          <span class="tag">AST</span>
+          <span class="tag">编译器</span>
+          <span class="tag">Numba</span>
+          <span class="tag">GPU 加速</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direction 6 -->
+    <div class="direction-card priority-low">
+      <div class="card-header">
+        <div class="num low">6</div>
+        <div class="info">
+          <h3>多维度因子绩效分析与可视化</h3>
+          <div class="subtitle">增强因子诊断能力：分域分析、共线性检测、过拟合检验</div>
+        </div>
+        <span class="priority-tag p-low">P2</span>
+      </div>
+      <div class="card-body">
+        <div class="desc">
+          在现有报告系统基础上，扩展分行业/分市值 IC 分析、IC 衰减分析、市场状态分域测试、
+          因子共线性矩阵、边际贡献分析、Deflated Sharpe Ratio 过拟合检验。
+        </div>
+        <div class="tags">
+          <span class="tag">绩效归因</span>
+          <span class="tag">共线性分析</span>
+          <span class="tag">过拟合检测</span>
+          <span class="tag">可视化</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Direction 7 -->
+    <div class="direction-card priority-low">
+      <div class="card-header">
+        <div class="num low">7</div>
+        <div class="info">
+          <h3>多市场 / 跨品种适配</h3>
+          <div class="subtitle">将因子挖掘能力扩展到美股 / 期货 / 多品种</div>
+        </div>
+        <span class="priority-tag p-low">P2</span>
+      </div>
+      <div class="card-body">
+        <div class="desc">
+          扩展 DataAPI 支持多市场数据源，验证跨市场逻辑通用性，实现因子迁移学习。
+        </div>
+        <div class="tags">
+          <span class="tag">美股</span>
+          <span class="tag">期货</span>
+          <span class="tag">迁移学习</span>
+          <span class="tag">多品种</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Section: Roadmap -->
+<div class="section">
+  <div class="section-title">
+    <span class="icon green">&#x21C5;</span>
+    推荐实施路线图
+  </div>
+  <div class="timeline">
+
+    <div class="timeline-item">
+      <div class="tl-dot phase1"></div>
+      <div class="tl-title" style="color:var(--accent2);">Phase 1 &mdash; 基础能力建设</div>
+      <div class="tl-duration">建议周期：2 ~ 3 周</div>
+      <div class="tl-items">
+        <span class="tl-tag" style="border-color:rgba(233,69,96,0.3);">&#x25B8; 方向一：LLM 因子自动生成 MVP</span>
+        <span class="tl-tag" style="border-color:rgba(233,69,96,0.3);">&#x25B8; 方向二：市场逻辑库构建</span>
+      </div>
+      <div style="margin-top:8px; font-size:13px; color:var(--text-dim);">
+        核心目标：快速搭建从"逻辑→因子"的最小闭环，验证方法论可行性
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div class="tl-dot phase2"></div>
+      <div class="tl-title" style="color:var(--gold);">Phase 2 &mdash; 核心闭环</div>
+      <div class="tl-duration">建议周期：2 ~ 3 周</div>
+      <div class="tl-items">
+        <span class="tl-tag" style="border-color:rgba(253,203,110,0.3);">&#x25B8; 方向三：逻辑驱动因子搜索与优化</span>
+        <span class="tl-tag" style="border-color:rgba(253,203,110,0.3);">&#x25B8; 方向五（可选）：DSL 引擎</span>
+      </div>
+      <div style="margin-top:8px; font-size:13px; color:var(--text-dim);">
+        核心目标：实现"逻辑→约束→搜索→回测→优化"的内层循环闭环
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div class="tl-dot phase3"></div>
+      <div class="tl-title" style="color:var(--info);">Phase 3 &mdash; 进化与深化</div>
+      <div class="tl-duration">建议周期：3 ~ 4 周</div>
+      <div class="tl-items">
+        <span class="tl-tag" style="border-color:rgba(116,185,255,0.3);">&#x25B8; 方向四：市场逻辑自动生成与进化</span>
+        <span class="tl-tag" style="border-color:rgba(116,185,255,0.3);">&#x25B8; 方向六：多维度因子绩效分析</span>
+      </div>
+      <div style="margin-top:8px; font-size:13px; color:var(--text-dim);">
+        核心目标：实现完整的 AlphaLogics 外层循环，逻辑库自主进化
+      </div>
+    </div>
+
+    <div class="timeline-item">
+      <div class="tl-dot phase4"></div>
+      <div class="tl-title" style="color:var(--success);">Phase 4 &mdash; 拓展</div>
+      <div class="tl-duration">建议周期：2 ~ 3 周</div>
+      <div class="tl-items">
+        <span class="tl-tag" style="border-color:rgba(0,184,148,0.3);">&#x25B8; 方向七：多市场 / 跨品种适配</span>
+      </div>
+      <div style="margin-top:8px; font-size:13px; color:var(--text-dim);">
+        核心目标：将能力扩展到美股、期货等多市场
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Section: Agent Architecture -->
+<div class="section">
+  <div class="section-title">
+    <span class="icon purple">&#x2606;</span>
+    多智能体架构设计
+  </div>
+  <div class="arch-container">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:16px;">
+      <div style="background:rgba(233,69,96,0.08); border-radius:12px; padding:16px; border:1px solid rgba(233,69,96,0.15);">
+        <div style="font-size:24px; margin-bottom:6px;">&#x1F50D;</div>
+        <div style="font-weight:600; font-size:14px; color:var(--accent2);">FormulaStructureAgent</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">解析因子公式结构，提取形式化特性</div>
+      </div>
+      <div style="background:rgba(116,185,255,0.08); border-radius:12px; padding:16px; border:1px solid rgba(116,185,255,0.15);">
+        <div style="font-size:24px; margin-bottom:6px;">&#x1F4CA;</div>
+        <div style="font-weight:600; font-size:14px; color:var(--info);">FinancialSemanticsAgent</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">映射数学运算为金融行为学含义</div>
+      </div>
+      <div style="background:rgba(253,203,110,0.08); border-radius:12px; padding:16px; border:1px solid rgba(253,203,110,0.15);">
+        <div style="font-size:24px; margin-bottom:6px;">&#x1F4DD;</div>
+        <div style="font-weight:600; font-size:14px; color:var(--warning);">LogicToFinanceConstraintAgent</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">自然语言逻辑 → 结构化约束 Γ</div>
+      </div>
+      <div style="background:rgba(0,184,148,0.08); border-radius:12px; padding:16px; border:1px solid rgba(0,184,148,0.15);">
+        <div style="font-size:24px; margin-bottom:6px;">&#x2699;</div>
+        <div style="font-weight:600; font-size:14px; color:var(--success);">FactorExpressionGenerator</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">约束空间内生成候选因子表达式</div>
+      </div>
+      <div style="background:rgba(233,69,96,0.08); border-radius:12px; padding:16px; border:1px solid rgba(233,69,96,0.15);">
+        <div style="font-size:24px; margin-bottom:6px;">&#x1F4AC;</div>
+        <div style="font-weight:600; font-size:14px; color:var(--accent2);">FactorPerformanceFeedback</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">解析回测结果，提供改进方向</div>
+      </div>
+      <div style="background:rgba(83,52,131,0.08); border-radius:12px; padding:16px; border:1px solid rgba(83,52,131,0.15);">
+        <div style="font-size:24px; margin-bottom:6px;">&#x1F9E0;</div>
+        <div style="font-weight:600; font-size:14px; color:#a29bfe;">MarketLogicGenerator</div>
+        <div style="font-size:12px; color:var(--text-dim); margin-top:4px;">基于逻辑库生成新的候选市场逻辑</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer">
+  <p>Generated from TyshawnQuant Research Framework &middot; Base on arXiv 2603.20247</p>
+  <p style="margin-top:4px; color:var(--text-dim); font-size:12px;">e:\tyshawn_quantverse\factors\research\ai_test\example\alphalogics_iteration_plan.html</p>
+</div>
+
+</div>
+
+<script>
+  // Generate floating particles
+  (function() {
+    const container = document.getElementById('particles');
+    for (let i = 0; i < 35; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.width = (1 + Math.random() * 4) + 'px';
+      p.style.height = p.style.width;
+      p.style.animationDuration = (15 + Math.random() * 25) + 's';
+      p.style.animationDelay = (Math.random() * 20) + 's';
+      p.style.opacity = 0.2 + Math.random() * 0.3;
+      container.appendChild(p);
+    }
+  })();
+</script>
+
+</body>
+</html>
