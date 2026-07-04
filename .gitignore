@@ -167,3 +167,11 @@ graphify-out/manifest.json
 
 # Local DB connection config (use conn.ini.template as starting point)
 conn.ini
+
+# Auto-generated mining artifacts (regeneratable via mining pipeline)
+# - data/mine_runs/history.json: run history (regenerated on each mine run)
+# - data/output/: mining output tables (regenerated on each mine run)
+# - wiki_auto/: llmwikify-generated wiki from mining (db, md, raw, claims, etc.)
+data/mine_runs/
+data/output/
+wiki_auto/
