@@ -95,9 +95,10 @@ class BatchSerializer:
         ]
         if agg["ic_mean"] is not None:
             wr_pct = (agg["winrate"] or 0) * 100
+            icir_str = f"{agg['icir']:+.4f}" if agg["icir"] is not None else "  NaN"
             lines.append(
                 f"- Avg IC: {agg['ic_mean']:+.4f} | "
-                f"Avg ICIR: {agg['icir']:+.4f} | "
+                f"Avg ICIR: {icir_str} | "
                 f"Avg Winrate: {wr_pct:.1f}%"
             )
         lines += [
