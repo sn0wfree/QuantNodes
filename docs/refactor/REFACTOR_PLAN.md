@@ -328,9 +328,26 @@ git tag post-m2-deadcode
 
 参考 `/tmp/baseline_tests.log` / `/tmp/m1_tests.log` / `/tmp/m2_tests.log`：
 
+### Baseline (commit `d0fe809`)
+
+**排除的 4 个 pre-existing broken 测试文件**（vendor 迁移遗留，不在本次重构范围）：
+
+| 文件 | 原因 |
+|---|---|
+| `tests/research/test_endpoint.py` | `from llmwikify.interfaces.server.http.reproduction import ...` — 模块在已装的 llmwikify 0.38.0 中不存在 |
+| `tests/research/test_routes.py` | 同上 |
+| `tests/research/test_paper_api.py` | 同上 (通过 `paper_client` fixture) |
+| `tests/research/test_reproduction_api.py` | 同上 (通过 `repro_client` fixture in conftest.py) |
+
+**Baseline 结果**:
+- `tests/research/` + `tests/agent/` (排除 4 broken file)
+- **3062 passed**
+- **16 failed** (pre-existing：pandas 3.0 `'M'`/`'ME'` 等)
+- **14 errors** (pre-existing：test_quant.py 缺 `factor_client` fixture)
+- **67 skipped**
+
 | Suite | Baseline | M1 期望 | M2 期望 |
 |---|---|---|---|
-| `tests/research/` | 2319 passed | ≥ 2319 | ≥ 2319 |
-| `tests/agent/` | 793 passed | ≥ 793 | ≥ 793 |
+| `tests/research/` + `tests/agent/` (排除 4 broken file) | 3062 passed | ≥ 3062 | ≥ 3062 |
 | `tests/research/test_loop_v4_pr1_to_pr7.py` | 46 passed + 2 skipped | 同 | 同 |
 | 101 alpha smoke (1/5) | (待跑 baseline) | 1 alpha 跑通 | 5 alpha ≥ 1 success |
