@@ -59,16 +59,16 @@ PERSIST_MODULES = [
     "persist.run",
 ]
 
-# ── backtest_pkg/ 子包 (8 个, Phase 7 搬迁) ────────────────
+# ── backtest/ 子包 (M3 main merge: 8 modules from backtest_pkg/) ────────
 BACKTEST_MODULES = [
-    "backtest_pkg.factor_backtest",
-    "backtest_pkg.run_backtest",
-    "backtest_pkg.metrics",
-    "backtest_pkg.strategies",
-    "backtest_pkg.l5_validation",
-    "backtest_pkg.l5_orchestrator",
-    "backtest_pkg.factor_value_store",
-    "backtest_pkg.quantnodes_repro",
+    "backtest.factor_backtest",
+    "backtest.run_backtest",
+    "backtest.metrics",
+    "backtest.strategies",
+    "backtest.l5_validation",
+    "backtest.l5_orchestrator",
+    "backtest.factor_value_store",
+    "backtest.quantnodes_repro",
 ]
 
 # ── codegen/ast/ 子包 (4 个, Phase 6 搬迁) ────────────────────
@@ -145,13 +145,13 @@ CRITICAL_IMPORTS = [
     "from QuantNodes.research.codegen.ast.compiler import compile_ast, CompileError",
     "from QuantNodes.research.codegen.ast.nodes import ASTNode, get_op_spec",
     # backtest_pkg/ (8)
-    "from QuantNodes.research.backtest_pkg.factor_backtest import run_factor_backtest, run_factor_backtest_universe",
-    "from QuantNodes.research.backtest_pkg.run_backtest import run_backtest",
-    "from QuantNodes.research.backtest_pkg.metrics import evaluation",
-    "from QuantNodes.research.backtest_pkg.l5_orchestrator import run_l5_pipeline",
-    "from QuantNodes.research.backtest_pkg.l5_validation import run_l5_validation",
-    "from QuantNodes.research.backtest_pkg.factor_value_store import store_factor_values, query_factor_values",
-    "from QuantNodes.research.backtest_pkg.quantnodes_repro import run_factor_backtest",
+    "from QuantNodes.research.backtest.factor_backtest import run_factor_backtest, run_factor_backtest_universe",
+    "from QuantNodes.research.backtest.run_backtest import run_backtest",
+    "from QuantNodes.research.backtest.metrics import evaluation",
+    "from QuantNodes.research.backtest.l5_orchestrator import run_l5_pipeline",
+    "from QuantNodes.research.backtest.l5_validation import run_l5_validation",
+    "from QuantNodes.research.backtest.factor_value_store import store_factor_values, query_factor_values",
+    "from QuantNodes.research.backtest.quantnodes_repro import run_factor_backtest",
     # persist/ (3)
     "from QuantNodes.research.persist.factor_library import read_factor_yaml, write_factor_yaml",
     "from QuantNodes.research.persist.sessions import ReproductionDatabase",
@@ -224,12 +224,12 @@ def test_module_count_matches_plan() -> None:
             for f in os.listdir(ast_path):
                 if f.endswith(".py") and f != "__init__.py":
                     actual_codegen.add(f"codegen.ast.{f[:-3]}")
-    # backtest_pkg/ 子包
-    bt_path = os.path.join(pkg_path, "backtest_pkg")
+    # backtest/ 子包 (M3 main merge: includes modules migrated from backtest_pkg/)
+    bt_path = os.path.join(pkg_path, "backtest")
     actual_bt = set()
     if os.path.isdir(bt_path):
         actual_bt = {
-            f"backtest_pkg.{f[:-3]}"
+            f"backtest.{f[:-3]}"
             for f in os.listdir(bt_path)
             if f.endswith(".py") and f != "__init__.py"
         }
@@ -281,7 +281,7 @@ def test_module_count_matches_plan() -> None:
         f"codegen/ modules shrunk: {len(actual_codegen)} < {len(CODEGEN_MODULES) + len(CODEGEN_AST_MODULES)}. "
     )
     assert len(actual_bt) >= len(TOP_LEVEL_MODULES) - len(actual_top) - len(actual_pu), (
-        f"backtest_pkg/ modules shrunk: {len(actual_bt)} < expected."
+        f"backtest/ modules shrunk: {len(actual_bt)} < expected."
     )
     assert len(actual_pu) >= len(TOP_LEVEL_MODULES), (
         f"paper_understanding/ modules shrunk: {len(actual_pu)} < {len(TOP_LEVEL_MODULES)}. "

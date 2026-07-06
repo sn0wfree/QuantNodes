@@ -25,11 +25,11 @@ ALL_TOP_MODULES = [
     "paper_understanding.quant_wiki", "paper_understanding.schemas",
     # persist/ (Phase 8)
     "persist.factor_library", "persist.sessions", "persist.run",
-    # backtest_pkg/ (Phase 7)
-    "backtest_pkg.factor_backtest", "backtest_pkg.run_backtest",
-    "backtest_pkg.metrics", "backtest_pkg.strategies",
-    "backtest_pkg.l5_validation", "backtest_pkg.l5_orchestrator",
-    "backtest_pkg.factor_value_store", "backtest_pkg.quantnodes_repro",
+    # backtest/ (M3 main merge: 8 modules from backtest_pkg/)
+    "backtest.factor_backtest", "backtest.run_backtest",
+    "backtest.metrics", "backtest.strategies",
+    "backtest.l5_validation", "backtest.l5_orchestrator",
+    "backtest.factor_value_store", "backtest.quantnodes_repro",
     # codegen/ (Phase 5)
     "codegen.llm_code", "codegen.react_engine", "codegen.compiler",
     "codegen.repair", "codegen.semantic", "codegen.metadata",
@@ -77,7 +77,7 @@ class TestCrossModuleCompatibility:
         """import 顺序无关."""
         # 先 import 一些模块
         # 再 import 其他模块, 不应出错
-        from QuantNodes.research.backtest_pkg import l5_validation, metrics
+        from QuantNodes.research.backtest import l5_validation, metrics
 
         from QuantNodes.research.codegen import llm_code as codegen_utils
 
@@ -108,7 +108,7 @@ class TestWebUICompatibility:
 
     def test_factor_backtest_function_exists(self) -> None:
         """factor_backtest.run_factor_backtest 存在 (WebUI 依赖)."""
-        from QuantNodes.research.backtest_pkg import factor_backtest
+        from QuantNodes.research.backtest import factor_backtest
 
         assert hasattr(factor_backtest, "run_factor_backtest")
 

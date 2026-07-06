@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ..backtest_pkg.run_backtest import run_backtest
+from ..backtest import run_backtest
 from ..data_source.router import DataRouter
 from ..paper_understanding.extract_strategy import extract_strategy_config
 from .sessions import ReproductionDatabase

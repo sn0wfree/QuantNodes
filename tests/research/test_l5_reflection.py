@@ -212,9 +212,9 @@ class TestReflectionInPipeline:
         def capture_write(name, data):
             written["data"] = data
 
-        with patch("QuantNodes.research.backtest_pkg.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator._run_backtest", return_value=mock_bt), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator.write_factor_yaml", side_effect=capture_write):
+        with patch("QuantNodes.research.backtest.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
+             patch("QuantNodes.research.backtest.l5_orchestrator._run_backtest", return_value=mock_bt), \
+             patch("QuantNodes.research.backtest.l5_orchestrator.write_factor_yaml", side_effect=capture_write):
             result = run_l5_pipeline("stock/price/test_factor", llm_client=mock_llm)
 
             assert result["success"] is True
@@ -244,9 +244,9 @@ class TestReflectionInPipeline:
             Exception("LLM error"),
         ]
 
-        with patch("QuantNodes.research.backtest_pkg.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator._run_backtest", return_value=mock_bt), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator.write_factor_yaml"):
+        with patch("QuantNodes.research.backtest.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
+             patch("QuantNodes.research.backtest.l5_orchestrator._run_backtest", return_value=mock_bt), \
+             patch("QuantNodes.research.backtest.l5_orchestrator.write_factor_yaml"):
             result = run_l5_pipeline("stock/price/test_factor", llm_client=mock_llm)
             # Pipeline still succeeds
             assert result["success"] is True
@@ -256,9 +256,9 @@ class TestReflectionInPipeline:
         mock_factor = _mock_factor_data()
         mock_bt = _mock_backtest_result()
 
-        with patch("QuantNodes.research.backtest_pkg.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator._run_backtest", return_value=mock_bt), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator.write_factor_yaml"):
+        with patch("QuantNodes.research.backtest.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
+             patch("QuantNodes.research.backtest.l5_orchestrator._run_backtest", return_value=mock_bt), \
+             patch("QuantNodes.research.backtest.l5_orchestrator.write_factor_yaml"):
             result = run_l5_pipeline("stock/price/test_factor", llm_client=None)
             l5_data = result["l5_data"]
             assert "reflections" not in l5_data or l5_data.get("reflections") == []
@@ -274,9 +274,9 @@ class TestReflectionInPipeline:
             json.dumps({"suggestions": [], "reflection_notes": "All good."}),
         ]
 
-        with patch("QuantNodes.research.backtest_pkg.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator._run_backtest", return_value=mock_bt), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator.write_factor_yaml"):
+        with patch("QuantNodes.research.backtest.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
+             patch("QuantNodes.research.backtest.l5_orchestrator._run_backtest", return_value=mock_bt), \
+             patch("QuantNodes.research.backtest.l5_orchestrator.write_factor_yaml"):
             result = run_l5_pipeline("stock/price/test_factor", llm_client=mock_llm)
             l5_data = result["l5_data"]
             # Empty suggestions should not create a reflection entry
@@ -301,9 +301,9 @@ class TestReflectionInPipeline:
             json.dumps({"suggestions": [{"type": "parameter_adjustment", "path": "l1.default_params.period", "current_value": 20, "proposed_value": 10, "reasoning": "...", "expected_impact": "...", "confidence": "high"}], "reflection_notes": "..."}),
         ]
 
-        with patch("QuantNodes.research.backtest_pkg.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator._run_backtest", return_value=mock_bt), \
-             patch("QuantNodes.research.backtest_pkg.l5_orchestrator.write_factor_yaml"):
+        with patch("QuantNodes.research.backtest.l5_orchestrator.read_factor_yaml", return_value=mock_factor), \
+             patch("QuantNodes.research.backtest.l5_orchestrator._run_backtest", return_value=mock_bt), \
+             patch("QuantNodes.research.backtest.l5_orchestrator.write_factor_yaml"):
             result = run_l5_pipeline("stock/price/test_factor", llm_client=mock_llm)
             reflections = result["l5_data"]["reflections"]
             assert len(reflections) == 2

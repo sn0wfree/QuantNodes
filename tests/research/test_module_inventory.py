@@ -132,30 +132,30 @@ EXPECTED_PUBLIC_API = {
     "paper_understanding.quant_wiki": [
         "get_quant_wiki",
     ],
-    # ── backtest_pkg/ 子包 (Phase 7) ──
-    "backtest_pkg.factor_backtest": [
+    # ── backtest/ 子包 (M3 main merge: 8 modules migrated from backtest_pkg/) ──
+    "backtest.factor_backtest": [
         "run_factor_backtest",
         "run_factor_backtest_universe",
     ],
-    "backtest_pkg.run_backtest": [
+    "backtest.run_backtest": [
         "run_backtest",
     ],
-    "backtest_pkg.factor_value_store": [
+    "backtest.factor_value_store": [
         "store_factor_values",
         "query_factor_values",
         "compute_and_store_factor",
         "list_stored_factors",
     ],
-    "backtest_pkg.l5_orchestrator": [
+    "backtest.l5_orchestrator": [
         "run_l5_pipeline",
     ],
-    "backtest_pkg.l5_validation": [
+    "backtest.l5_validation": [
         "run_l5_validation",
     ],
-    "backtest_pkg.metrics": [
+    "backtest.metrics": [
         "evaluation",
     ],
-    "backtest_pkg.quantnodes_repro": [
+    "backtest.quantnodes_repro": [
         "run_factor_backtest",
     ],
     "paper_understanding.llm_extraction": [
@@ -181,7 +181,7 @@ EXPECTED_PUBLIC_API = {
     "codegen.ast.complexity": [
         "compute_complexity",
     ],
-    "backtest_pkg.strategies": [
+    "backtest.strategies": [
         "SIGNAL_NODE_REGISTRY",
     ],
     "paper_understanding.contracts": [
