@@ -307,20 +307,64 @@ git tag post-m2-deadcode
 
 ## Session 进度
 
-### Session 1 (2026-07-06) — 进行中
+### Session 1 (2026-07-06) — 完成 ✅
 
-- [x] Git 前置（备份 branch + tag）
+- [x] Git 前置（备份 branch `backup/pre-refactor-session1-20260706` + tag `pre-m1-bugfixes`）
 - [x] 提交上轮 A+B+C+E 改动 → `e301d45`
-- [ ] 写本文档
-- [ ] Baseline 测试
-- [ ] M1 完成
-- [ ] M2 完成
+- [x] 写本文档 → `d0fe809`
+- [x] Baseline 测试 → `3062 passed / 16 failed / 14 errors` (commit `ad48f49`)
+- [x] Baseline 1 alpha smoke → codegen 成功 (13s, real LLM), backtest 失败 (pre-existing)
+- [x] **M1 完成** → commit `426553b`, tag `post-m1-bugfixes`
+  - M1.1 track_b_checkpoint.json 缺产 fix
+  - M1.2 YamlDuckdbSink factor_wide fix
+  - M1.3 preload_market_data 重复 fix
+  - M1.6 print → logger
+  - M0 (preflight) scripts/research/run_101_alphas_v2.py 缺 import fix
+  - 跳过 M1.4 (wiki.py 自循环是误判), M1.5 (空目录已清理)
+- [x] **M2 完成** → commit `ae49a84`, tag `post-m2-deadcode`
+  - M2.1 删 _legacy_3c/ + shim (~1500 LoC)
+  - M2.2 删 pipeline stubs (~700 LoC)
+  - M2.3 迁 alpha101_design + alpha158_design 到 test_fixtures/
+  - M2.4 删 _make_factor_dir_name
+  - 跳过 M2.5 (async 函数是 sync 包装的实现), M2.6 (compile_to_code_react 延后)
 
-### Session 2+ (待办)
+### Session 2 (下次) — 待办
 
-- [ ] M3 前置 + M3 主
-- [ ] M3 后
-- [ ] M4 全部
+- [ ] M3 前置: WikiFactor 类型统一 (删 schemas.py 6 字段版)
+- [ ] M3 主: backtest/ vs backtest_pkg/ 双包合并 (删 backtest_pkg/)
+- [ ] M3 后: LLM 配置统一 + strategy_library 创建 + strategy 接入
+- [ ] M4: 配置统一 + SignalV2 + wiki.py 拆分 + sink 异步化
+
+---
+
+## Session 1 结果汇总
+
+### 提交
+
+| Commit | 内容 | 文件数 | LoC 变化 |
+|---|---|---|---|
+| `e301d45` (上轮) | A+B+C+E codegen 迁移清理 | 13 | +144/-85 |
+| `d0fe809` | REFACTOR_PLAN.md 文档 | 1 | +336 |
+| `ad48f49` | Baseline 记录 | 1 | +19/-2 |
+| `426553b` | **M1** Tier-1 快速修复 | 8 | +81/-28 |
+| `ae49a84` | **M2** Tier-2 死代码清理 | 30 | +99/-2562 |
+
+### 累计 Session 1 LoC 净变化
+
+- 新增: +679 行 (docs + tests + 1 个新文件 `test_fixtures/__init__.py`)
+- 删除: -2677 行 (`_legacy_3c/` 1500 + pipeline stubs 700 + 其他 477)
+- **净: -1998 行**
+
+### Tags
+
+- `pre-m1-bugfixes` → `081bb21` (vendor + 测试补全，未做迁移清理)
+- `post-A+B+C+E` → `e301d45` (上轮 codegen 清理完成)
+- `post-m1-bugfixes` → `426553b` (M1 完成)
+- `post-m2-deadcode` → `ae49a84` (M2 完成)
+
+### Backup branch
+
+- `backup/pre-refactor-session1-20260706` → `081bb21` (pre-cleanup)
 
 ---
 
