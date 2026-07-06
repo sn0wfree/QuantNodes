@@ -2,8 +2,8 @@
 
 > **目标**: 闭环 M3 后端 (M3 主 + M3.3)，为 Session 4 实施 M3.4 做准备
 > **起点**: tag `post-m3.2-llm-config` (commit `ef82d7f`)
-> **终点**: tag `post-m3.3-strategy-library` (commit `e657607`)
-> **本次成果**: 2 个 milestones 完成，1 个详细方案落定，0 回归
+> **终点**: tag `post-m3-postaction-shim-removed` (commit `30beb7b`)
+> **本次成果**: 4 个 milestones 完成（M3 主 + M3.3 + M3.4 + M3 后置），M3 全链路闭环
 
 ---
 
@@ -70,11 +70,12 @@ quant/strategies/                          (对称 quant/factors/)
 
 ## 📊 验证结果
 
-| 项 | M3.2 baseline | M3 主 | M3.3 | 变化 |
-|---|---|---|---|---|
-| **pytest** | 3036P / 17F / 14E | 3036P / 17F / 14E | **3065P** / 17F / 14E | **+29 ✅** |
-| **1-alpha smoke** | 1/1, 16.6s | 1/1, 17.6s | 1/1, 16.6s | 稳定 |
-| **failure 来源** | 17 pre-existing | 17 pre-existing | 17 pre-existing | 0 regression |
+| 项 | M3.2 baseline | M3 主 | M3.3 | M3.4 | M3 后置 | 变化 |
+|---|---|---|---|---|---|---|
+| **pytest** | 3036P / 17F / 14E | 3036P / 17F / 14E | 3065P / 17F / 14E | 3096P / 17F / 14E | **3096P** / 17F / 14E | **+60 ✅** |
+| **1-alpha smoke** | 1/1, 16.6s | 1/1, 17.6s | 1/1, 16.6s | 1/1, 17s | 1/1, 21.2s | 稳定 |
+| **5-alpha smoke (per_alpha)** | — | — | — | 5/5, 83.3s | 5/5, 75.5s | 稳定 |
+| **failure 来源** | 17 pre-existing | 17 pre-existing | 17 pre-existing | 17 pre-existing | 17 pre-existing | **0 regression** |
 
 **17 failures 来源分布**：
 - 7 个 `test_factor_backtest_cross_section.py`（pandas 3.0 `'M'` → `'ME'`）
@@ -84,14 +85,15 @@ quant/strategies/                          (对称 quant/factors/)
 
 ---
 
-## 📦 累计 Session 1-3 LoC
+## 📦 累计 Session 1-3+ LoC
 
 | 阶段 | 新增 | 删除 | 净 |
 |---|---|---|---|
 | Session 1 (M1+M2) | +1188 | -2737 | **-1549** |
 | Session 2 (Phase B+M3.2) | +509 | -60 | **+449** |
 | Session 3 (M3 主+M3.3) | +5827 | -4464 | **+1363** |
-| **总计** | +7524 | -7261 | **+263** |
+| Session 3+ (M3.4+M3 后置) | +573 | -360 | **+213** |
+| **总计** | +8097 | -7621 | **+476** |
 
 注：Session 3 新增主要为：
 - 新文件 (persist/strategy_library.py): 558 行
@@ -99,14 +101,21 @@ quant/strategies/                          (对称 quant/factors/)
 - legacy re-exports + PEP 562 shims (backtest_pkg/): 8 个 submodule × ~13 行 shim
 - manifest updates + 33 patch path updates: ~30 行
 
+Session 3+ 新增主要为：
+- M3.4 CLI flag + 4 个 strategy sink 方法 in run_101_alphas_v2.py: +228 行
+- M3.4 测试 test_strategy_sink.py: 405 行 (31 tests)
+- M3 后置: 删除 backtest_pkg/ shim net -272 行 (269 shim -3 docstring 改)
+
 ---
 
-## 🏗️ Architecture 当前状态
+## 🏗️ Architecture 当前状态 (M3 闭环后)
 
 ```
                  ┌─────────────────────────────────────────────┐
                  │          Paper Reproduction Layer           │
-                 │  scripts/run_101_alphas_v2.py (FactorStage) │
+                 │  scripts/run_101_alphas_v2.py               │
+                 │  CLI: --strategy-mode {off,per_alpha,after_batch}│
+                 │       [M3.4]                              ✅ │
                  └─────────────────────┬───────────────────────┘
                                        │
                                        ▼
@@ -119,37 +128,30 @@ quant/strategies/                          (对称 quant/factors/)
                                        │
                                        ▼
                  ┌─────────────────────────────────────────────┐
-                 │       Strategy Layer (DISCONNECTED → ?)     │
-                 │  persist/strategy_library.py ← M3.3 ✅       │
+                 │       Strategy Layer (CONNECTED)            │
+                 │  persist/strategy_library.py ← M3.3 ✅      │
                  │  backtest/strategies.py  SIGNAL_NODE_REGISTRY│
-                 │  run_101_alphas_v2.py ← M3.4 ⚠              │
+                 │  backtest_pkg/ (shim REMOVED) ← M3 后置 ✅ │
                  └─────────────────────────────────────────────┘
 ```
 
 **M3 闭环路径**：
-- ✅ M3.3 已建 strategy_library 存储层
-- ⏳ M3.4 (Session 4) 将激活 CLI 入口 (`--strategy-mode {off,per_alpha,after_batch}`)
-- ⏳ M3 后置将删 `backtest_pkg/` shim（前提：grep audit 通过）
+- ✅ M3.3 已建 strategy_library 存储层 (commit `e657607`)
+- ✅ M3.4 已激活 CLI 入口 (`--strategy-mode {off,per_alpha,after_batch}`, commit `788a16b`)
+- ✅ M3 后置已删 `backtest_pkg/` shim (commit `30beb7b`)
 
 ---
 
-## 🚧 下一 Session (Session 4) 待办
+## 🚧 Session 4+ 待办
 
-### M3.4 — run_101 接入 strategy sink
-详见 `docs/refactor/REFACTOR_PLAN.md` §M3.4 已细化章节。
+### Tier 4 (下一个重头)
+- **SignalV2** (单一 dataclass 贯穿三层) — **高** (3 天)
+  - 改动 20+ 文件，前面所有 milestone 须通过 + 测试 baseline 已稳定
+- **WikiFactor 类型统一** (M3 前置从 Session 1/2/3 推迟)
+- **配置统一** / **wiki.py 拆分** / **sink 异步化**
 
-**3 个 PR 任务**：
-1. `RunConfig` + CLI flag（~20 min）
-2. `alpha_to_signal_type()` 启发式 + `_persist_strategy()` + `_persist_batch_strategy()`（~80 min）
-3. `tests/research/test_strategy_sink.py` 12+ tests（~45 min）
-4. 5-alpha smoke × 2 mode 验证 E2E（~10 min LLM）
-5. 全量 pytest + commit + tag（~15 min）
-
-总计 **~3 小时**，产出 commit + tag `post-m3.4-strategy-sink`。
-
-### 后续 (跨 Session)
-- **M3 后置**：删 `backtest_pkg/` shim（4500 LoC）→ 先 grep audit 下游 router/script
-- **Tier 4 起头**：SignalV2 (单一 dataclass 贯穿三层) / WikiFactor 类型统一 / 配置统一 / wiki.py 拆分 / sink 异步化
+### M4 路线图
+详见 `docs/refactor/REFACTOR_PLAN.md` §M4 — 配置统一 + SignalV2 + wiki 拆分 + sink async。
 
 ---
 
@@ -174,11 +176,24 @@ quant/strategies/                          (对称 quant/factors/)
 | M3.2 LLM 5-tier config | ✅ | 528 | 20 测试 + alpha smoke |
 | M3 主 backtest 物理合并 | ✅ | 4852 | pytest 0 regression + alpha smoke |
 | M3.3 strategy_library.py | ✅ | 975 | 29 测试 + alpha smoke |
-| M3.4 run_101 接入 | ⏳ Session 4 | — | — |
+| M3.4 run_101 接入 | ✅ | 633 | 31 测试 + 1+5 alpha smoke |
+| M3 后置 shim 删除 | ✅ | -272 (净) | 3096P 一致 + 1+5 alpha smoke |
 
-**累计 M3 后端**（**已完成**）：
+**累计 M3 后端**（**全部完成**）：
 - 新持久化层（strategy_library）：镜像 factor_library
 - 配置层统一（5-tier LLM config）：支持环境变量热覆盖
-- 测试模块合并（backtest_pkg/）：shim 兼容 50+ 现有测试
+- 测试模块合并（backtest_pkg/）：shim 兼容 50+ 现有测试 + shim 删除闭环
+- run_101 接入 strategy sink：CLI 入口激活，3 mode 全工作
 
 **M3 前端可见性**：0（pipeline 链路行为不变）。所有功能为可选激活 (`strategy_mode=off` default)。
+
+---
+
+## 🎁 Session 3 Bug 发现和修复
+
+### Bug: test_backtest.py 在 shim 删除时暴露
+- **现象**: 删 shim 后 `tests/research/test_backtest.py` 5 tests fail
+- **根因**: `from QuantNodes.research.backtest import run_backtest as b` 让 `b` 是 **function**，但测试调用 `b.run_backtest` (期望 `b` 是 module)
+- **旧 shim 行为**: 旧 `backtest_pkg/__init__.py` 用 `from . import run_backtest as run_backtest_module`，把 `b` 塑造成 module，导致该 bug 被掩盖
+- **修复**: 用 `importlib.import_module('QuantNodes.research.backtest.run_backtest')` 显式拿 module (5 tests → 6/6 pass)
+- **教训**: shim 隐藏了 import 语义不一致问题；删 shim 暴露后立即修

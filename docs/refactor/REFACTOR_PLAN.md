@@ -83,8 +83,8 @@
 | **M3 主** | Tier 3.1: backtest 双包合并 | 1 天 | **高** | PR4 | ✅ 完成 |
 | **M3.3** | 新建 strategy_library.py | 0.3 天 | 中 | PR5 | ✅ 完成 |
 | M3 前置 | Tier 3.5: WikiFactor 类型统一 | 0.5 天 | 低 | PR3 | ⏸ 推到 Tier 4 |
-| **M3.4** | run_101 接入 strategy sink | 0.5 天 | 中 | PR5 | ⏳ Session 4 |
-| M3 后置 | 删 backtest_pkg/ shim | 0.5 天 | **高** | PR5 | ⏳ 待 grep audit |
+| **M3.4** | run_101 接入 strategy sink | 0.5 天 | 中 | PR5 | ✅ 完成 |
+| M3 后置 | 删 backtest_pkg/ shim | 0.5 天 | **高** | PR5 | ✅ 完成 |
 | M4 | Tier 4: 配置统一 + SignalV2 + wiki 拆分 + sink async | 3 天 | **高** | PR6 | ⏳ Future |
 
 每个 Milestone 完成后打 tag (`post-m1-bugfixes` / `post-m2-deadcode` / 等)，验证通过后继续。
@@ -435,13 +435,21 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
   - 测试：tests/research/test_strategy_library.py (29 tests, 7 类)
   - 验证：3065 passed (+29 新测试) / 17F / 14E，alpha smoke 1/1 success
 
+### Session 3+ (2026-07-06) — 完成 ✅ (Session 3 全部关闭)
+
+- [x] **M3.4: strategy-mode flag 接入 run_101_alphas_v2** → commit `788a16b`, tag `post-m3.4-strategy-sink`
+  - 新增 `--strategy-mode {off,per_alpha,after_batch}` flag (default `off`)
+  - alpha→signal_type 启发式 (rsi/volatility/momentum/ma_cross → fallback `factor_rank`)
+  - 5-alpha smoke × 2 mode：5/5 success in 83.3s (per_alpha) + 89.6s (after_batch)
+- [x] **M3 后置: 删除 `backtest_pkg/` shim** → commit `30beb7b`, tag `post-m3-postaction-shim-removed`
+  - 269 LoC shim 净删除（9 文件 PEP 562 forwarder 全删）
+  - 16 test 文件 ~70 行 `backtest_pkg.X` → `backtest.X` sed-replace
+  - 4 docstring 注释清理 (research/__init__, backtest/__init__, test_imports, test_e2e_smoke, test_module_inventory, test_equity)
+  - **Bugfix**：test_backtest.py 用了 shim 制造的 `b` 是模块而非函数的语义，改用 `importlib.import_module()` 显式获取模块（5 tests in TestRunBacktestSignature/Structure）
+  - 验证：3096 passed / 17F / 14E (与 M3.4 baseline 完全一致) + 1-alpha + 5-alpha smoke 双通
+
 ### Session 4+ (待办)
 
-- [ ] **M3.4: strategy-mode flag 接入 run_101_alphas_v2** (Phase 2)
-  - 新增 `--strategy-mode {off,per_alpha,after_batch}` flag (default: `off` → 向后兼容)
-  - alpha→signal_type 启发式 (rsi/ma/momentum/volatility 分支 + fallback `factor_rank`)
-  - 5-alpha smoke × 2 mode 验证 E2E
-- [ ] M3 后置动作: 删除 `backtest_pkg/` shim (4500 LoC)（需先 grep audit 下游 router/script）
 - [ ] M3 前置: WikiFactor 类型统一 (升到 Tier 4)
 - [ ] M4: 配置统一 + SignalV2 + wiki.py 拆分 + sink 异步化
 
@@ -460,17 +468,23 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | `ae49a84` | **M2** Tier-2 死代码清理 | 30 | +99/-2562 |
 | `91fd466` | **Phase B** H5 key bug fix | 1 | +30/-9 |
 | `ef82d7f` | **M3.2** LLM 配置统一 | 4 | +479/-51 |
+| `9a41c4f` | **M3 主** backtest_pkg/ → backtest/ 物理合并 | 14 | +3299/-41 |
+| `e657607` | **M3.3** strategy_library.py 新建 | 4 | +975/-0 |
+| `5f43ce4` | Session 3 docs 总结 | 2 | +260/-0 |
+| `788a16b` | **M3.4** strategy-mode 接入 | 3 | +228/-3 |
+| `30beb7b` | **M3 后置** 删 backtest_pkg/ shim | 32 | +85/-357 |
 
-### 累计 Session 1-3 LoC 净变化
+### 累计 Session 1-3+ LoC 净变化
 
 | 阶段 | 新增 | 删除 | 净 |
 |---|---|---|---|
 | Session 1 (M1+M2) | +1188 | -2737 | **-1549** |
 | Session 2 (Phase B+M3.2) | +509 | -60 | **+449** |
 | Session 3 (M3 主+M3.3) | +5827 | -4464 | **+1363** |
-| **总计 (Session 1-3)** | **+7524** | **-7261** | **+263** |
+| Session 3+ (M3.4+M3 后置) | +573 | -360 | **+213** |
+| **总计 (Session 1-3+)** | **+8097** | **-7621** | **+476** |
 
-注：Session 2/3 新增主要为：tests (29 new) + 新文件 (scripts/migrate_llm_config.py, persist/strategy_library.py) + legacy re-exports (35 symbols) + manifest test updates。
+注：Session 2/3/3+ 新增主要为：tests (60+ new) + 新文件 (scripts/migrate_llm_config.py, persist/strategy_library.py, test_strategy_sink.py) + legacy re-exports (36 symbols) + manifest test updates。
 
 ### Tags
 
@@ -482,6 +496,9 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 - `post-m3.2-llm-config` → `ef82d7f` (M3.2 LLM config)
 - `post-m3-main-backtest-merge` → `9a41c4f` (M3 主: backtest_pkg → backtest 物理合并)
 - `post-m3.3-strategy-library` → `e657607` (M3.3: strategy_library.py 新建)
+- `post-session3-wrapup` → `5f43ce4` (Session 3 docs 总结)
+- `post-m3.4-strategy-sink` → `788a16b` (M3.4: strategy-mode 接入 run_101)
+- `post-m3-postaction-shim-removed` → `30beb7b` (M3 后置: 删 backtest_pkg/ shim)
 
 ### Backup branches
 
@@ -523,6 +540,8 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | M3.2 (`ef82d7f`) | 3036 | 17 | 14 | +20 new tests（M3.2 LLM config 路径） |
 | M3 主 (`9a41c4f`) | 3036 | 17 | 14 | manifest 修后 = baseline +0 |
 | M3.3 (`e657607`) | 3065 | 17 | 14 | +29 new tests（strategy_library） |
+| M3.4 (`788a16b`) | 3096 | 17 | 14 | +31 new tests（strategy sink） |
+| M3 后置 (`30beb7b`) | 3096 | 17 | 14 | 完全 baseline 一致 + bugfix test_backtest.py |
 
 **Failure 来源分布（17 failed, 全部 pre-existing）**：
 
