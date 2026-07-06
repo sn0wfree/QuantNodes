@@ -22,7 +22,7 @@ M3 范围：仅做借鉴（设计文档 + few-shot）。
 
 from __future__ import annotations
 
-from QuantNodes.research.quant_alpha.alpha158_design.philosophy import (
+from QuantNodes.research.test_fixtures.alpha_design.alpha158_design.philosophy import (
     FEATURE_CATEGORIES,
     CategoryTemplate,
     Alpha360Template,
@@ -34,7 +34,7 @@ from QuantNodes.research.quant_alpha.alpha158_design.philosophy import (
     list_categories,
     total_feature_count,
 )
-from QuantNodes.research.quant_alpha.alpha158_design.few_shot_examples import (
+from QuantNodes.research.test_fixtures.alpha_design.alpha158_design.few_shot_examples import (
     ALPHA158_FEW_SHOT_EXAMPLES,
     list_examples,
     get_example,

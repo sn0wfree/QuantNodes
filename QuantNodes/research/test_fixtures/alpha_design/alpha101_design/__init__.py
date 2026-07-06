@@ -17,7 +17,7 @@ M3 范围：仅做借鉴（设计文档 + few-shot）。
 
 from __future__ import annotations
 
-from QuantNodes.research.quant_alpha.alpha101_design.philosophy import (
+from QuantNodes.research.test_fixtures.alpha_design.alpha101_design.philosophy import (
     DESIGN_PHILOSOPHY,
     CORE_OPERATORS,
     A_SHARE_COMPATIBILITY,
@@ -25,7 +25,7 @@ from QuantNodes.research.quant_alpha.alpha101_design.philosophy import (
     get_operator_by_name,
     get_a_share_compatible_count,
 )
-from QuantNodes.research.quant_alpha.alpha101_design.few_shot_examples import (
+from QuantNodes.research.test_fixtures.alpha_design.alpha101_design.few_shot_examples import (
     ALPHA101_FEW_SHOT_EXAMPLES,
     list_examples,
     get_example,

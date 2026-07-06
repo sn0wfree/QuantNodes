@@ -15,7 +15,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from QuantNodes.research.quant_alpha.alpha101_design import (
+from QuantNodes.research.test_fixtures.alpha_design.alpha101_design import (
     DESIGN_PHILOSOPHY,
     CORE_OPERATORS,
     A_SHARE_COMPATIBILITY,
@@ -28,7 +28,7 @@ from QuantNodes.research.quant_alpha.alpha101_design import (
     get_a_share_compatible_count,
     get_categories as get_101_categories,
 )
-from QuantNodes.research.quant_alpha.alpha158_design import (
+from QuantNodes.research.test_fixtures.alpha_design.alpha158_design import (
     FEATURE_CATEGORIES,
     ALPHA360_TEMPLATE,
     ALPHA158_FEW_SHOT_EXAMPLES,

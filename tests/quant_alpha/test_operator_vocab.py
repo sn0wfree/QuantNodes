@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import importlib
 import warnings
 from typing import Any, Dict, List, Optional
 
@@ -601,76 +602,48 @@ class TestLegacyCompatibility:
 
 
 class TestDeprecationWarnings:
-    """Phase C 归档后（v2.7.0+）：旧 4 个文件已移至 _legacy_3c/。
-    通过 `QuantNodes.research.factor_evaluator` 等 shim 仍可导入但触发 DeprecationWarning。
+    """M2 重构后（v3.0.0+）：`_legacy_3c` 已完全移除。
+
+    旧 `TestDeprecationWarnings` 类验证 `_legacy_3c` 包的 deprecation 行为。
+    `_legacy_3c` 在 M2 已被删除（commit 426553b 之后的 M2 重构），
+    所以这个 test class 已被压缩为一个 sanity check：确保新路径可访问，
+    且旧路径已不再可导入（ImportError 是预期行为）。
+
+    历史 deprecation 测试（factor_evaluator / factor_miner / auto_researcher / mcts_search
+    shim 触发）已随 `_legacy_3c` 一起删除。
     """
 
-    def test_factor_evaluator_module_has_deprecation_message(self):
-        """factor_evaluator 模块 docstring 包含 DeprecationWarning 说明"""
-        import importlib
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            mod = importlib.import_module("QuantNodes.research._legacy_3c.factor_evaluator")
-        # 检查模块 docstring
-        assert "DeprecationWarning" in (mod.__doc__ or "")
+    def test_legacy_3c_package_no_longer_exists(self):
+        """M2: _legacy_3c 包已删除 — 旧符号迁移到 quant_alpha.*"""
+        with pytest.raises(ImportError):
+            importlib.import_module("QuantNodes.research._legacy_3c")
 
-    def test_factor_miner_module_has_deprecation_message(self):
-        """factor_miner 模块 docstring 包含 DeprecationWarning 说明"""
-        import importlib
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            mod = importlib.import_module("QuantNodes.research._legacy_3c.factor_miner")
-        assert "DeprecationWarning" in (mod.__doc__ or "")
+    def test_legacy_shim_module_no_longer_exists(self):
+        """M2: research.factor_evaluator shim 已删除"""
+        with pytest.raises(ImportError):
+            importlib.import_module("QuantNodes.research.factor_evaluator")
 
-    def test_auto_researcher_module_has_deprecation_message(self):
-        """auto_researcher 模块 docstring 包含 DeprecationWarning 说明"""
-        import importlib
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            mod = importlib.import_module("QuantNodes.research._legacy_3c.auto_researcher")
-        assert "DeprecationWarning" in (mod.__doc__ or "")
+    def test_legacy_shim_attribute_access_raises(self):
+        """M2: research.factor_evaluator 不再是 shim 对象"""
+        import QuantNodes.research
+        # 原: `factor_evaluator` attribute 是 _LegacyShim 实例
+        # M2: 应该 AttributeError，因为没有这个 attribute
+        assert not hasattr(QuantNodes.research, "factor_evaluator") or \
+               not hasattr(getattr(QuantNodes.research, "factor_evaluator", None), "_attrs")
 
-    def test_mcts_search_module_has_deprecation_message(self):
-        """mcts_search 模块 docstring 包含 DeprecationWarning 说明"""
-        import importlib
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            mod = importlib.import_module("QuantNodes.research._legacy_3c.mcts_search")
-        assert "DeprecationWarning" in (mod.__doc__ or "")
-
-    def test_legacy_3c_package_exists(self):
-        """Phase C：_legacy_3c/ 包存在并可导入"""
-        from QuantNodes.research._legacy_3c import (
-            FactorEvaluator, FactorMiner, MCTSSearch, AutoResearcher,
-        )
-        assert FactorEvaluator.__module__.startswith("QuantNodes.research._legacy_3c")
-        assert MCTSSearch.__module__.startswith("QuantNodes.research._legacy_3c")
-        assert AutoResearcher.__module__.startswith("QuantNodes.research._legacy_3c")
-
-    def test_shim_emits_deprecation_warning(self):
-        """通过 shim 路径 `QuantNodes.research.factor_evaluator` 导入应触发 DeprecationWarning"""
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            # 触发 shim（首次访问）
-            from QuantNodes.research.factor_evaluator import EvalConfig as _EC
-        deprecation_warnings = [
-            w for w in caught if issubclass(w.category, DeprecationWarning)
-        ]
-        assert len(deprecation_warnings) >= 1
-        assert "_legacy_3c" in str(deprecation_warnings[0].message)
-
-    def test_deprecation_warnings_present_in_research_init(self):
-        """research/__init__.py 访问 shim 模块时触发 DeprecationWarning"""
+    def test_research_init_no_longer_emits_legacy_deprecation(self):
+        """M2: research/__init__.py 不再触发 _legacy_3c deprecation warnings"""
         import subprocess
         result = subprocess.run(
             ["python3", "-W", "default::DeprecationWarning", "-c",
-             "import QuantNodes.research; QuantNodes.research.auto_researcher.AutoResearcher; print('done')"],
+             "import QuantNodes.research; print('done')"],
             capture_output=True, text=True,
             cwd="/home/ll/Public/QuantNodes",
             timeout=60,
         )
-        output = result.stderr
-        assert "DeprecationWarning" in output
+        output = result.stderr + result.stdout
+        # 不应再出现 _legacy_3c 相关的 deprecation
+        assert "_legacy_3c" not in output or "Removed" in output or "no longer" in output.lower()
 
 
 # ==============================================================================

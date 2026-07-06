@@ -1,4 +1,8 @@
-"""Code generation stage: LLM produces factor code."""
+"""Code generation stage: LLM produces factor code.
+
+M2: Removed unused `CodegenStage` stub (depended on deleted pipeline.stages.base).
+This file now only exposes `llm_code_oneshot()` for the legacy `--no-react` path.
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -6,18 +10,6 @@ from typing import Any
 import polars as pl
 
 from QuantNodes.research.codegen.llm_code import SYSTEM_PROMPT_CODE, execute_code, extract_python, validate_safety, validate_syntax
-
-
-from .base import Stage, StageContext
-
-
-class CodegenStage(Stage):
-    name = "codegen"
-    required_prompts = ["code_gen"]
-
-    def execute(self, ctx: StageContext) -> StageContext:
-        # Stub: will be wired in Phase 14F
-        return ctx
 
 
 def llm_code_oneshot(

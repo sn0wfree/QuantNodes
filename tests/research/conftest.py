@@ -20,25 +20,6 @@ def wiki_proxy(wiki_path):
 
 
 @pytest.fixture
-def factor_evaluator():
-    """FactorEvaluator 实例"""
-    from QuantNodes.research.factor_evaluator import FactorEvaluator, EvalConfig
-    config = EvalConfig(
-        min_ic=0.01,
-        min_ir=0.0,
-        max_correlation=0.95,
-    )
-    return FactorEvaluator(config)
-
-
-@pytest.fixture
-def factor_miner():
-    """FactorMiner 实例"""
-    from QuantNodes.research.factor_miner import FactorMiner
-    return FactorMiner()
-
-
-@pytest.fixture
 def eval_data():
     """因子评估用的样本数据（Polars DataFrame）"""
     return pl.DataFrame({
@@ -59,14 +40,13 @@ def eval_data():
 
 @pytest.fixture
 def sample_factor():
-    """样本因子候选"""
-    from QuantNodes.research.factor_miner import FactorCandidate
-    return FactorCandidate(
-        name="test_ma5",
-        formula="ts_mean(close, 5)",
-        template="time_series_ma",
-        source="manual",
-    )
+    """样本因子候选 (使用 quant_alpha operator_vocab 替代 _legacy_3c.factor_miner.FactorCandidate)"""
+    return {
+        "name": "test_ma5",
+        "formula": "ts_mean(close, 5)",
+        "template": "time_series_ma",
+        "source": "manual",
+    }
 
 
 @pytest.fixture

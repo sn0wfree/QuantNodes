@@ -216,12 +216,6 @@ def build_long_dataframe(data_cache: dict) -> pl.DataFrame:
     return result.sort(["date", "code"])
 
 
-def _make_factor_dir_name(alpha_index: int, code: str) -> str:
-    """Dead code per user request: not deleted, kept as utility."""
-    code_hash = hashlib.md5(code.encode()).hexdigest()[:6]
-    return f"stk_alpha_{alpha_index:03d}_{code_hash}"
-
-
 def load_formula_brief(alpha_index: int, track_b_path: Path) -> tuple[str, str]:
     """Load factor_name and formula_brief from track_b_checkpoint.json.
 

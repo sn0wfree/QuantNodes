@@ -111,9 +111,7 @@ LLM_EXTRACTION_MODULES = [
 # ── pipeline/ 子包 (Phase 14A-B) ─────────────────────
 PIPELINE_MODULES = [
     "pipeline.config",
-    "pipeline.runner",
-    "pipeline.stages.base",
-    "pipeline.workspace",
+    # M2: pipeline.runner/workspace/stages.base removed (stubs).
     "pipeline.react",
 ]
 
@@ -163,11 +161,8 @@ CRITICAL_IMPORTS = [
     "from QuantNodes.research.paper_understanding.extract_paper import extract_paper_structure, _extract_factors_from_list",
     "from QuantNodes.research.paper_understanding.schemas import BacktestResult, WikiFactor, FactorBacktestResult",
     "from QuantNodes.research.paper_understanding.contracts import FactorPage",
-    # pipeline/ (Phase 14A-B)
+    # pipeline/ (Phase 14A-B; M2: runner/workspace/stages.base deleted as stubs)
     "from QuantNodes.research.pipeline.config import WorkspaceConfig",
-    "from QuantNodes.research.pipeline.runner import PipelineRunner, PipelineResult",
-    "from QuantNodes.research.pipeline.stages.base import Stage, StageContext",
-    "from QuantNodes.research.pipeline.workspace import Workspace",
     "from QuantNodes.research.pipeline.react import FailureClassifier, PipelineReAct, StageFailure, Decision",
 ]
 

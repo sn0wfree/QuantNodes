@@ -1,0 +1,1 @@
+"""alpha_design — Alpha 101/158 reference modules (M2 moved from quant_alpha)."""
