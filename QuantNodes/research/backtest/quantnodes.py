@@ -9,18 +9,24 @@ Configuration:
   - `config` (optional): RunConfig or similar — used by `build_qn_config` to
     fill in date ranges, groups, hedge, adj_mode, etc. If None, defaults
     are used (single-stock 5-group IC analyzer).
-  - `factor_name_resolver` (optional): callable(signal) → str. Default uses
-    `signal.id` (always filesystem-safe via SignalSource conventions).
+  - `factor_name_resolver` (optional): callable(signal) → str. Default
+    sanitizes `signal.name` with the same regex the H5 writer uses
+    (matching `safe_factor_name` in run_101_alphas_v2.py:683).
 
 Why a separate `factor_name_resolver`?
-  - `signal.name` may be Chinese (招商/浙商 broker reports)
-  - `signal.id` is always filesystem-safe (enforced by SignalSource)
-  - `build_qn_config` sanitizes via `re.sub(r"[^A-Za-z0-9_]", "_", ...)`, so
-    either works, but using `signal.id` is more consistent.
+  - `signal.name` may be Chinese (招商/浙商 broker reports) or hyphenated
+    (`alpha-005`); H5 keys must be filesystem-safe.
+  - The H5 writer (pipeline/data_loader.py:32) stores under
+    `re.sub(r"[^A-Za-z0-9_]", "_", factor_name)` where factor_name is
+    derived from `signal.name` (e.g. "alpha-005" → "alpha_005"). The
+    reader MUST use the same key for lookup.
+  - Using `signal.id` alone (just the numeric part "005") does NOT match
+    the writer's convention — fixed in Phase B (M3 H5 bug).
 """
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -30,13 +36,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_SAFE_KEY_RE = re.compile(r"[^A-Za-z0-9_]")
+
 
 class QuantNodesBacktest:
     """QuantNodes PipelineRunner adapter for backtest execution.
 
     Args:
         config: Optional RunConfig-like object. If None, defaults are used.
-        factor_name_resolver: callable(Signal) → str. Default uses `signal.id`.
+        factor_name_resolver: callable(Signal) → str. Default sanitizes
+            `signal.name` to match the H5 writer's key convention.
 
     Example:
         engine = QuantNodesBacktest(config=run_config)
@@ -58,8 +67,20 @@ class QuantNodesBacktest:
 
     @staticmethod
     def _default_resolver(signal: Signal) -> str:
-        """Default: use signal.id (always filesystem-safe)."""
-        return signal.id
+        """Default: sanitize `signal.name` with the same regex as the H5 writer.
+
+        Phase B fix (M3 H5 key bug):
+          - Writer (scripts/research/run_101_alphas_v2.py:683 + pipeline/
+            data_loader.py:32) stores the factor wide DataFrame under the
+            sanitized name `re.sub(r"[^A-Za-z0-9_]", "_", factor_name)`
+            where `factor_name = signal.name = "alpha-{idx:03d}"`. The
+            sanitized key becomes `alpha_{idx:03d}` (e.g. `alpha_005`).
+          - This resolver previously returned `signal.id` (just `005`),
+            causing `LoadDataNode` to raise `KeyError: /005 not found` at
+            H5 lookup. Now it applies the SAME sanitization to
+            `signal.name` so writer and reader agree on the key.
+        """
+        return _SAFE_KEY_RE.sub("_", signal.name)
 
     def run(
         self,
