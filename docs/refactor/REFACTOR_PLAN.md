@@ -328,16 +328,32 @@ git tag post-m2-deadcode
   - M2.4 删 _make_factor_dir_name
   - 跳过 M2.5 (async 函数是 sync 包装的实现), M2.6 (compile_to_code_react 延后)
 
-### Session 2 (下次) — 待办
+### Session 2 (2026-07-06) — 完成 ✅
 
-- [ ] M3 前置: WikiFactor 类型统一 (删 schemas.py 6 字段版)
+- [x] Git 前置（备份 branch `backup/pre-refactor-session2-20260706`）
+- [x] **Phase B: H5 key bug fix** → commit `91fd466`, tag `post-h5-fix`
+  - 修 `backtest/quantnodes.py:60-62` `_default_resolver`：对 `signal.name` 应用与 writer 相同的正则净化
+  - 根因：writer 用 `alpha_005` 作 H5 key，reader 用 `005` → KeyError
+  - 验证：5/5 alpha success（此前 0/5），IC=0.0152, ICIR=0.1012, WinRate=52.5%
+- [x] **M3.2: LLM 配置统一** → commit `ef82d7f`, tag `post-m3.2-llm-config`
+  - `client.py`: CONFIG_PATHS 优先级 (Tier 1 新 → Tier 2 legacy) + QUANTNODES__LLM__* env override (Tier 3)
+  - `scripts/migrate_llm_config.py`: 迁移脚本 (--dry-run, --force)
+  - `tests/research/test_llm_config_paths.py`: 20 个新测试
+  - 验证：配置从 `~/.quantnodes/llm.json` 加载成功，1/1 alpha success
+- [x] M3 前置（删 6-field WikiFactor）→ **推到 Tier 4**
+  - 理由：上游 llmwikify 已有"删 WikiFactor 导致事故"的先例；6-field 字段名作为 wiki frontmatter 约定仍活跃；与 wiki.md 拆分 + contracts.py Pydantic 协调一起做更安全
+
+### Session 3+ (待办)
+
 - [ ] M3 主: backtest/ vs backtest_pkg/ 双包合并 (删 backtest_pkg/)
-- [ ] M3 后: LLM 配置统一 + strategy_library 创建 + strategy 接入
+- [ ] M3.3: 创建 persist/strategy_library.py
+- [ ] M3.4: strategy 接入 run_101_alphas_v2
+- [ ] M3 前置: WikiFactor 类型统一 (升到 Tier 4)
 - [ ] M4: 配置统一 + SignalV2 + wiki.py 拆分 + sink 异步化
 
 ---
 
-## Session 1 结果汇总
+## Session 1-2 结果汇总
 
 ### 提交
 
@@ -348,12 +364,14 @@ git tag post-m2-deadcode
 | `ad48f49` | Baseline 记录 | 1 | +19/-2 |
 | `426553b` | **M1** Tier-1 快速修复 | 8 | +81/-28 |
 | `ae49a84` | **M2** Tier-2 死代码清理 | 30 | +99/-2562 |
+| `91fd466` | **Phase B** H5 key bug fix | 1 | +30/-9 |
+| `ef82d7f` | **M3.2** LLM 配置统一 | 4 | +479/-51 |
 
-### 累计 Session 1 LoC 净变化
+### 累计 Session 1-2 LoC 净变化
 
-- 新增: +679 行 (docs + tests + 1 个新文件 `test_fixtures/__init__.py`)
-- 删除: -2677 行 (`_legacy_3c/` 1500 + pipeline stubs 700 + 其他 477)
-- **净: -1998 行**
+- 新增: +1188 行 (docs + tests + 2 新文件)
+- 删除: -2737 行
+- **净: -1549 行**
 
 ### Tags
 
@@ -361,10 +379,13 @@ git tag post-m2-deadcode
 - `post-A+B+C+E` → `e301d45` (上轮 codegen 清理完成)
 - `post-m1-bugfixes` → `426553b` (M1 完成)
 - `post-m2-deadcode` → `ae49a84` (M2 完成)
+- `post-h5-fix` → `91fd466` (Phase B H5 fix)
+- `post-m3.2-llm-config` → `ef82d7f` (M3.2 LLM config)
 
-### Backup branch
+### Backup branches
 
-- `backup/pre-refactor-session1-20260706` → `081bb21` (pre-cleanup)
+- `backup/pre-refactor-session1-20260706` → `081bb21`
+- `backup/pre-refactor-session2-20260706` → `91fd466` (H5 fix 后)
 
 ---
 
