@@ -1,7 +1,7 @@
 """Tests for build_equity_curve — P5 single source of truth for equity reconstruction.
 
 Guards that the extracted function in ``reproduction/equity.py`` is byte-equal
-to the previous inlined implementation in ``backtest_pkg/run_backtest.py``.
+to the previous inlined implementation in ``backtest/run_backtest.py``.
 """
 
 from __future__ import annotations

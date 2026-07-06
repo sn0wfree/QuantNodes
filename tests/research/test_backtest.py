@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from QuantNodes.research.backtest_pkg import run_backtest as b
+b = importlib.import_module("QuantNodes.research.backtest.run_backtest")
 
 
 

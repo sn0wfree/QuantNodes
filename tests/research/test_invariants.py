@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from QuantNodes.research.backtest_pkg.metrics import compute_monthly_returns
+from QuantNodes.research.backtest.metrics import compute_monthly_returns
 
 from QuantNodes.research.paper_understanding.contracts import BacktestResultPage, FactorPage, PageStatus, ReproductionPage, SessionStage, SourcePage, StrategyPage, parse_page, render_page
 

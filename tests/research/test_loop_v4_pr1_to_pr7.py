@@ -16,7 +16,7 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from QuantNodes.research.backtest_pkg.factor_backtest import (
+from QuantNodes.research.backtest.factor_backtest import (
     _compute_factor_from_ast,
 )
 from QuantNodes.research.codegen.ast.compiler import CompileError, compile_ast
@@ -194,7 +194,7 @@ def test_pr4_compute_factor_from_ast_rolling_mean() -> None:
 
 def test_pr4_compute_factor_values_ast_compiled_branch() -> None:
     """PR-4: _compute_factor_values handles factor_class='ast_compiled'."""
-    from QuantNodes.research.backtest_pkg.factor_backtest import (
+    from QuantNodes.research.backtest.factor_backtest import (
         _compute_factor_values,
     )
 

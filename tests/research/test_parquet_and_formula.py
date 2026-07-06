@@ -95,7 +95,7 @@ class TestDataRouterParquet:
 class TestComputeFactorFromCode:
     def test_simple_momentum(self):
         """LLM-generated momentum code works."""
-        from QuantNodes.research.backtest_pkg.factor_backtest import _compute_factor_from_code
+        from QuantNodes.research.backtest.factor_backtest import _compute_factor_from_code
 
         data = pd.DataFrame({
             "date": pd.date_range("2024-01-01", periods=30, freq="B"),
@@ -113,7 +113,7 @@ def compute_factor(df):
 
     def test_rsi_code(self):
         """LLM-generated RSI code works."""
-        from QuantNodes.research.backtest_pkg.factor_backtest import _compute_factor_from_code
+        from QuantNodes.research.backtest.factor_backtest import _compute_factor_from_code
 
         data = pd.DataFrame({
             "date": pd.date_range("2024-01-01", periods=30, freq="B"),
@@ -134,7 +134,7 @@ def compute_factor(df):
 
     def test_unsafe_code_rejected(self):
         """Unsafe code is rejected by sandbox."""
-        from QuantNodes.research.backtest_pkg.factor_backtest import _compute_factor_from_code
+        from QuantNodes.research.backtest.factor_backtest import _compute_factor_from_code
 
         data = pd.DataFrame({"date": pd.date_range("2024-01-01", periods=10, freq="B"), "close": range(10)})
         code = """
@@ -151,7 +151,7 @@ os.system("rm -rf /")
 class TestFormulaFactorClass:
     def test_formula_branch(self):
         """factor_class='formula' executes code correctly."""
-        from QuantNodes.research.backtest_pkg.factor_backtest import _compute_factor_values
+        from QuantNodes.research.backtest.factor_backtest import _compute_factor_values
 
         data = pd.DataFrame({
             "date": pd.date_range("2024-01-01", periods=30, freq="B"),
@@ -167,7 +167,7 @@ def compute_factor(df):
 
     def test_formula_fallback_to_momentum(self):
         """formula without code falls back to momentum."""
-        from QuantNodes.research.backtest_pkg.factor_backtest import _compute_factor_values
+        from QuantNodes.research.backtest.factor_backtest import _compute_factor_values
 
         data = pd.DataFrame({
             "date": pd.date_range("2024-01-01", periods=30, freq="B"),

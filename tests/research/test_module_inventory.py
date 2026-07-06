@@ -132,7 +132,7 @@ EXPECTED_PUBLIC_API = {
     "paper_understanding.quant_wiki": [
         "get_quant_wiki",
     ],
-    # ── backtest/ 子包 (M3 main merge: 8 modules migrated from backtest_pkg/) ──
+    # ── backtest/ 子包 (consolidated 8 legacy modules) ──
     "backtest.factor_backtest": [
         "run_factor_backtest",
         "run_factor_backtest_universe",

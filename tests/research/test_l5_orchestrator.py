@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from QuantNodes.research.backtest_pkg.l5_orchestrator import _build_hypothesis_prompt, _parse_llm_response, run_l5_pipeline
+from QuantNodes.research.backtest.l5_orchestrator import _build_hypothesis_prompt, _parse_llm_response, run_l5_pipeline
 
 
 

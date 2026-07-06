@@ -25,7 +25,7 @@ ALL_TOP_MODULES = [
     "paper_understanding.quant_wiki", "paper_understanding.schemas",
     # persist/ (Phase 8)
     "persist.factor_library", "persist.sessions", "persist.run",
-    # backtest/ (M3 main merge: 8 modules from backtest_pkg/)
+    # backtest/ (consolidated 8 legacy modules)
     "backtest.factor_backtest", "backtest.run_backtest",
     "backtest.metrics", "backtest.strategies",
     "backtest.l5_validation", "backtest.l5_orchestrator",

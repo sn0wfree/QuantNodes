@@ -143,7 +143,7 @@ class TestDuckDBPipeline:
 
     def test_store_and_query(self):
         """Store factor values and query them back."""
-        from QuantNodes.research.backtest_pkg.factor_value_store import compute_and_store_factor, list_stored_factors, query_factor_values
+        from QuantNodes.research.backtest.factor_value_store import compute_and_store_factor, list_stored_factors, query_factor_values
 
 
         # Create test close_wide data
@@ -185,7 +185,7 @@ class TestDuckDBPipeline:
 
     def test_empty_close_wide(self):
         """Empty close_wide returns 0 rows stored."""
-        from QuantNodes.research.backtest_pkg.factor_value_store import compute_and_store_factor
+        from QuantNodes.research.backtest.factor_value_store import compute_and_store_factor
 
 
         close_wide = pd.DataFrame()
@@ -202,7 +202,7 @@ class TestDuckDBPipeline:
 
     def test_upsert_no_duplicates(self):
         """Storing same factor twice does not create duplicates."""
-        from QuantNodes.research.backtest_pkg.factor_value_store import compute_and_store_factor, query_factor_values
+        from QuantNodes.research.backtest.factor_value_store import compute_and_store_factor, query_factor_values
 
 
         dates = pd.date_range("2024-01-01", periods=30, freq="B")

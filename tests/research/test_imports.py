@@ -59,7 +59,7 @@ PERSIST_MODULES = [
     "persist.run",
 ]
 
-# ── backtest/ 子包 (M3 main merge: 8 modules from backtest_pkg/) ────────
+# ── backtest/ 子包 (consolidated 8 modules) ────────
 BACKTEST_MODULES = [
     "backtest.factor_backtest",
     "backtest.run_backtest",
@@ -144,7 +144,7 @@ CRITICAL_IMPORTS = [
     # codegen/ast/ (4)
     "from QuantNodes.research.codegen.ast.compiler import compile_ast, CompileError",
     "from QuantNodes.research.codegen.ast.nodes import ASTNode, get_op_spec",
-    # backtest_pkg/ (8)
+    # backtest/ (8)
     "from QuantNodes.research.backtest.factor_backtest import run_factor_backtest, run_factor_backtest_universe",
     "from QuantNodes.research.backtest.run_backtest import run_backtest",
     "from QuantNodes.research.backtest.metrics import evaluation",
@@ -224,7 +224,7 @@ def test_module_count_matches_plan() -> None:
             for f in os.listdir(ast_path):
                 if f.endswith(".py") and f != "__init__.py":
                     actual_codegen.add(f"codegen.ast.{f[:-3]}")
-    # backtest/ 子包 (M3 main merge: includes modules migrated from backtest_pkg/)
+    # backtest/ 子包 (consolidated modules)
     bt_path = os.path.join(pkg_path, "backtest")
     actual_bt = set()
     if os.path.isdir(bt_path):

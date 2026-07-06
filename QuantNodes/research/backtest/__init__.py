@@ -7,7 +7,7 @@ Public API:
     - BacktestEngine: Protocol that runs code and returns metrics dict
     - QuantNodesBacktest: QuantNodes PipelineRunner adapter
 
-  Legacy (from backtest_pkg/, M3 main merge):
+  Legacy re-exports:
     - run_backtest: top-level reproduction entry point
     - run_factor_backtest, run_factor_backtest_universe, generate_adj_dates:
       factor-level backtest compute
@@ -35,10 +35,8 @@ Usage:
         run_backtest, run_factor_backtest, evaluation,
     )
 
-M3 (PR4): legacy modules from `backtest_pkg/` were physically migrated
-to this package. `backtest_pkg.*` paths are kept as deprecation shims
-that re-export from here. New code should import from
-`QuantNodes.research.backtest.*` directly.
+M3 (PR4): legacy modules consolidated under this package. New code
+should import directly from `QuantNodes.research.backtest.*`.
 """
 from __future__ import annotations
 
@@ -46,7 +44,7 @@ from __future__ import annotations
 from .base import BacktestEngine, FactorResult
 from .quantnodes import QuantNodesBacktest
 
-# Legacy re-exports (from backtest_pkg/, M3 main merge)
+# Legacy re-exports
 from .run_backtest import run_backtest
 from .factor_backtest import (
     generate_adj_dates,

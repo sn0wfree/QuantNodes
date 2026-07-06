@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from QuantNodes.research.backtest_pkg.l5_orchestrator import _build_reflection_prompt, _parse_reflection, run_l5_pipeline
+from QuantNodes.research.backtest.l5_orchestrator import _build_reflection_prompt, _parse_reflection, run_l5_pipeline
 
 
 

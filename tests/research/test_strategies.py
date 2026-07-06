@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from QuantNodes.research.backtest_pkg import strategies as s
+from QuantNodes.research.backtest import strategies as s
 
 
 

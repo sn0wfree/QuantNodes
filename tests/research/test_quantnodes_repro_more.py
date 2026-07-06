@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from QuantNodes.research.backtest_pkg import quantnodes_repro as qr
+from QuantNodes.research.backtest import quantnodes_repro as qr
 
 
 

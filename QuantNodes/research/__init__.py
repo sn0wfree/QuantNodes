@@ -32,7 +32,7 @@ from QuantNodes.research.report_reproducer import (
 )
 
 # Phase C+ (v4.0.0 reproduction merge): re-export run_backtest / BacktestResult
-# M3 (PR4): run_backtest moved from backtest_pkg to backtest; keep public API stable.
+# M3 (PR4): run_backtest consolidated in QuantNodes.research.backtest.
 from QuantNodes.research.backtest import run_backtest
 from QuantNodes.research.paper_understanding.schemas import BacktestResult
 

@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 def test_score_return_uses_abs_sharpe():
     """Verify _score_return uses |sharpe| so reverse factors get credit."""
-    from QuantNodes.research.backtest_pkg.l5_validation import _score_return
+    from QuantNodes.research.backtest.l5_validation import _score_return
 
 
     # Reverse factor: sharpe = -1.5 (strong but negative)
@@ -26,7 +26,7 @@ def test_score_return_uses_abs_sharpe():
 
 def test_score_return_positive_factor():
     """Verify _score_return also works for positive factors."""
-    from QuantNodes.research.backtest_pkg.l5_validation import _score_return
+    from QuantNodes.research.backtest.l5_validation import _score_return
 
 
     return_analysis = {"sharpe": 1.5, "calmar": 0.5, "sortino": 2.0}
@@ -36,7 +36,7 @@ def test_score_return_positive_factor():
 
 def test_score_group_uses_abs_sharpe():
     """Verify _score_group uses |ls_sharpe|."""
-    from QuantNodes.research.backtest_pkg.l5_validation import _score_group
+    from QuantNodes.research.backtest.l5_validation import _score_group
 
 
     # Reverse factor
@@ -54,7 +54,7 @@ def test_score_group_uses_abs_sharpe():
 
 def test_score_group_uses_abs_mdd():
     """Verify _score_group uses |mdd|."""
-    from QuantNodes.research.backtest_pkg.l5_validation import _score_group
+    from QuantNodes.research.backtest.l5_validation import _score_group
 
 
     # Even with positive ls_mdd, abs is used
@@ -72,7 +72,7 @@ def test_score_group_uses_abs_mdd():
 
 def test_reverse_factor_gets_higher_score():
     """Reverse factors with strong abs metrics should score same as positive factors."""
-    from QuantNodes.research.backtest_pkg.l5_validation import _score_group, _score_return
+    from QuantNodes.research.backtest.l5_validation import _score_group, _score_return
 
 
     # Same absolute metrics, different signs

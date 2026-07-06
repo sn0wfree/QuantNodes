@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from QuantNodes.research.backtest_pkg import factor_value_store as fvs
+from QuantNodes.research.backtest import factor_value_store as fvs
 
 
 

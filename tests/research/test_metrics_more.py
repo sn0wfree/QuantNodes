@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from QuantNodes.research.backtest_pkg import metrics as m
+from QuantNodes.research.backtest import metrics as m
 
 
 

@@ -729,7 +729,7 @@ class TestL5Validation:
         return r
 
     def test_analyze_ic(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_ic
+        from QuantNodes.research.backtest.l5_validation import analyze_ic
 
         result = self._make_result()
         ic = analyze_ic(result)
@@ -740,13 +740,13 @@ class TestL5Validation:
         assert ic["win_rate"] == 0.75  # 3 of 4 > 0
 
     def test_analyze_ic_empty(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_ic
+        from QuantNodes.research.backtest.l5_validation import analyze_ic
 
         result = self._make_result(ic_series=[])
         assert analyze_ic(result) == {}
 
     def test_analyze_groups(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_groups
+        from QuantNodes.research.backtest.l5_validation import analyze_groups
 
         result = self._make_result()
         ga = analyze_groups(result)
@@ -755,7 +755,7 @@ class TestL5Validation:
         assert "G1>G2" in ga["group_monotonicity"]
 
     def test_analyze_returns(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_returns
+        from QuantNodes.research.backtest.l5_validation import analyze_returns
 
         result = self._make_result()
         ra = analyze_returns(result)
@@ -763,21 +763,21 @@ class TestL5Validation:
         assert ra["sharpe"] > 0
 
     def test_analyze_turnover(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_turnover
+        from QuantNodes.research.backtest.l5_validation import analyze_turnover
 
         result = self._make_result()
         ta = analyze_turnover(result)
         assert ta["avg_turnover"] > 0
 
     def test_analyze_turnover_fallback(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_turnover
+        from QuantNodes.research.backtest.l5_validation import analyze_turnover
 
         result = self._make_result(group_metrics={})
         ta = analyze_turnover(result)
         assert ta["avg_turnover"] == 0.3
 
     def test_analyze_stability(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_stability
+        from QuantNodes.research.backtest.l5_validation import analyze_stability
 
         result = self._make_result()
         sa = analyze_stability(result)
@@ -785,7 +785,7 @@ class TestL5Validation:
         assert len(sa["yearly"]) > 0
 
     def test_analyze_oos(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_oos
+        from QuantNodes.research.backtest.l5_validation import analyze_oos
 
         result = self._make_result()
         oa = analyze_oos(result)
@@ -793,7 +793,7 @@ class TestL5Validation:
         assert "oos_ls_return" in oa
 
     def test_analyze_cost(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_cost
+        from QuantNodes.research.backtest.l5_validation import analyze_cost
 
         result = self._make_result()
         ca = analyze_cost(result, cost_bps=15)
@@ -802,10 +802,10 @@ class TestL5Validation:
         assert "cost_sensitivity" in ca
 
     def test_compute_score_pass(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import compute_score
+        from QuantNodes.research.backtest.l5_validation import compute_score
 
         result = self._make_result()
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_cost, analyze_groups, analyze_ic, analyze_oos, analyze_returns, analyze_stability, analyze_turnover
+        from QuantNodes.research.backtest.l5_validation import analyze_cost, analyze_groups, analyze_ic, analyze_oos, analyze_returns, analyze_stability, analyze_turnover
 
         ic = analyze_ic(result)
         ga = analyze_groups(result)
@@ -821,7 +821,7 @@ class TestL5Validation:
         assert "breakdown" in score
 
     def test_run_l5_validation(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import run_l5_validation
+        from QuantNodes.research.backtest.l5_validation import run_l5_validation
 
         result = self._make_result()
         l5 = run_l5_validation(result)
@@ -835,7 +835,7 @@ class TestL5Orchestrator:
     """Tests for L5 orchestrator (non-backtest parts)."""
 
     def test_parse_llm_response_valid(self):
-        from QuantNodes.research.backtest_pkg.l5_orchestrator import _parse_llm_response
+        from QuantNodes.research.backtest.l5_orchestrator import _parse_llm_response
 
         resp = '''```json
 {
@@ -850,13 +850,13 @@ class TestL5Orchestrator:
         assert parsed["final_meaning"] == "动量因子"
 
     def test_parse_llm_response_invalid(self):
-        from QuantNodes.research.backtest_pkg.l5_orchestrator import _parse_llm_response
+        from QuantNodes.research.backtest.l5_orchestrator import _parse_llm_response
 
         parsed = _parse_llm_response("not json at all")
         assert parsed == {}
 
     def test_build_hypothesis_prompt(self):
-        from QuantNodes.research.backtest_pkg.l5_orchestrator import _build_hypothesis_prompt
+        from QuantNodes.research.backtest.l5_orchestrator import _build_hypothesis_prompt
 
         factor = {
             "name": "test_factor",
@@ -892,7 +892,7 @@ class TestFactorValueStore:
     def test_store_and_query(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import query_factor_values, store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import query_factor_values, store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -916,7 +916,7 @@ class TestFactorValueStore:
     def test_store_empty(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -927,7 +927,7 @@ class TestFactorValueStore:
     def test_upsert(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import query_factor_values, store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import query_factor_values, store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -945,7 +945,7 @@ class TestFactorValueStore:
     def test_list_stored_factors(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import list_stored_factors, store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import list_stored_factors, store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -964,7 +964,7 @@ class TestFactorValueStore:
     def test_query_with_date_filter(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import query_factor_values, store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import query_factor_values, store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -1088,7 +1088,7 @@ class TestL5ValidationEdgeCases:
         return r
 
     def test_analyze_ic_all_positive(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_ic
+        from QuantNodes.research.backtest.l5_validation import analyze_ic
 
         result = self._mock_result(
             ic_series=[
@@ -1102,7 +1102,7 @@ class TestL5ValidationEdgeCases:
         assert ic["ic_mean"] > 0
 
     def test_analyze_ic_all_negative(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_ic
+        from QuantNodes.research.backtest.l5_validation import analyze_ic
 
         result = self._mock_result(
             ic_series=[
@@ -1116,7 +1116,7 @@ class TestL5ValidationEdgeCases:
 
     def test_analyze_groups_reverse_factor(self):
         """Reverse factor: G5 > G1 (negative IC)."""
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_groups
+        from QuantNodes.research.backtest.l5_validation import analyze_groups
 
         result = self._mock_result(
             quantile_returns={"G1": -0.05, "G2": -0.02, "G3": 0.01, "G4": 0.03, "G5": 0.05},
@@ -1129,7 +1129,7 @@ class TestL5ValidationEdgeCases:
         assert "G5" in ga["group_monotonicity"]
 
     def test_analyze_returns_zero_sharpe(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_returns
+        from QuantNodes.research.backtest.l5_validation import analyze_returns
 
         result = self._mock_result(
             longshort_ann_return=0.0,
@@ -1143,7 +1143,7 @@ class TestL5ValidationEdgeCases:
         assert ra["sharpe"] == 0.0 or ra["sharpe"] == 0
 
     def test_analyze_turnover_high(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_turnover
+        from QuantNodes.research.backtest.l5_validation import analyze_turnover
 
         result = self._mock_result(
             group_metrics={
@@ -1156,7 +1156,7 @@ class TestL5ValidationEdgeCases:
         assert ta["avg_turnover"] > 0.8
 
     def test_analyze_stability_single_year(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_stability
+        from QuantNodes.research.backtest.l5_validation import analyze_stability
 
         result = self._mock_result(
             ic_series=[{"date": "2024-01-01", "ic": 0.05}]
@@ -1166,7 +1166,7 @@ class TestL5ValidationEdgeCases:
 
     def test_analyze_oos_short_series(self):
         """OOS with very short IC series (< 10 points)."""
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_oos
+        from QuantNodes.research.backtest.l5_validation import analyze_oos
 
         result = self._mock_result(
             ic_series=[{"date": f"2024-0{i}", "ic": 0.01} for i in range(1, 6)]
@@ -1175,14 +1175,14 @@ class TestL5ValidationEdgeCases:
         assert oa["oos_rank_ic"] == 0.0  # Not enough data
 
     def test_analyze_cost_zero_turnover(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import analyze_cost
+        from QuantNodes.research.backtest.l5_validation import analyze_cost
 
         result = self._mock_result(turnover=0.0, group_metrics={})
         ca = analyze_cost(result, cost_bps=15)
         assert ca["net_ann_return"] == 0.0
 
     def test_score_all_zeros(self):
-        from QuantNodes.research.backtest_pkg.l5_validation import compute_score
+        from QuantNodes.research.backtest.l5_validation import compute_score
 
         score = compute_score({}, {}, {}, {}, {}, {}, {})
         assert score["score"] > 0  # Minimum scores for each dimension
@@ -1190,7 +1190,7 @@ class TestL5ValidationEdgeCases:
 
     def test_score_perfect(self):
         """Test scoring with excellent metrics."""
-        from QuantNodes.research.backtest_pkg.l5_validation import compute_score
+        from QuantNodes.research.backtest.l5_validation import compute_score
 
         score = compute_score(
             ic_analysis={"ic_mean": 0.08, "icir": 1.5, "rank_ic_mean": 0.07},
@@ -1207,7 +1207,7 @@ class TestL5ValidationEdgeCases:
 
     def test_score_reverse_factor_low(self):
         """Reverse factor with all negative metrics scores low."""
-        from QuantNodes.research.backtest_pkg.l5_validation import compute_score
+        from QuantNodes.research.backtest.l5_validation import compute_score
 
         score = compute_score(
             ic_analysis={"ic_mean": -0.05, "icir": -1.0, "rank_ic_mean": -0.04},
@@ -1232,7 +1232,7 @@ class TestL5OrchestratorIntegration:
     """Integration tests for L5 orchestrator (non-backtest parts)."""
 
     def test_parse_llm_response_with_markdown_fences(self):
-        from QuantNodes.research.backtest_pkg.l5_orchestrator import _parse_llm_response
+        from QuantNodes.research.backtest.l5_orchestrator import _parse_llm_response
 
         resp = '''Here is the result:
 ```json
@@ -1249,19 +1249,19 @@ class TestL5OrchestratorIntegration:
         assert len(parsed["hypothesis_testing"]) == 1
 
     def test_parse_llm_response_empty_json(self):
-        from QuantNodes.research.backtest_pkg.l5_orchestrator import _parse_llm_response
+        from QuantNodes.research.backtest.l5_orchestrator import _parse_llm_response
 
         parsed = _parse_llm_response("{}")
         assert parsed == {}
 
     def test_parse_llm_response_no_json(self):
-        from QuantNodes.research.backtest_pkg.l5_orchestrator import _parse_llm_response
+        from QuantNodes.research.backtest.l5_orchestrator import _parse_llm_response
 
         parsed = _parse_llm_response("I cannot determine the answer.")
         assert parsed == {}
 
     def test_build_hypothesis_prompt_includes_all_metrics(self):
-        from QuantNodes.research.backtest_pkg.l5_orchestrator import _build_hypothesis_prompt
+        from QuantNodes.research.backtest.l5_orchestrator import _build_hypothesis_prompt
 
         factor = {
             "name": "test_momentum",
@@ -1294,7 +1294,7 @@ class TestL5OrchestratorIntegration:
         assert "72" in prompt    # score
 
     def test_run_l5_pipeline_factor_not_found(self):
-        from QuantNodes.research.backtest_pkg.l5_orchestrator import run_l5_pipeline
+        from QuantNodes.research.backtest.l5_orchestrator import run_l5_pipeline
 
         result = run_l5_pipeline("nonexistent/factor/path")
         assert result["success"] is False
@@ -1311,7 +1311,7 @@ class TestFactorValueStoreExtended:
     def test_store_single_stock(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import query_factor_values, store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import query_factor_values, store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -1328,7 +1328,7 @@ class TestFactorValueStoreExtended:
     def test_store_many_stocks(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -1346,7 +1346,7 @@ class TestFactorValueStoreExtended:
     def test_query_with_stock_filter(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import query_factor_values, store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import query_factor_values, store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -1369,7 +1369,7 @@ class TestFactorValueStoreExtended:
         import numpy as np
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -1385,7 +1385,7 @@ class TestFactorValueStoreExtended:
     def test_multiple_factors_same_db(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import list_stored_factors, store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import list_stored_factors, store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -1403,7 +1403,7 @@ class TestFactorValueStoreExtended:
     def test_store_empty_wide_df(self, tmp_path):
         import pandas as pd
 
-        from QuantNodes.research.backtest_pkg.factor_value_store import store_factor_values
+        from QuantNodes.research.backtest.factor_value_store import store_factor_values
 
 
         db_path = tmp_path / "test.duckdb"
@@ -1558,7 +1558,7 @@ class TestModuleImports:
     """Test that all modules can be imported without errors."""
 
     def test_import_l5_validation(self):
-        import QuantNodes.research.backtest_pkg.l5_validation as m
+        import QuantNodes.research.backtest.l5_validation as m
 
         assert hasattr(m, "analyze_ic")
         assert hasattr(m, "analyze_groups")
@@ -1571,14 +1571,14 @@ class TestModuleImports:
         assert hasattr(m, "run_l5_validation")
 
     def test_import_l5_orchestrator(self):
-        import QuantNodes.research.backtest_pkg.l5_orchestrator as m
+        import QuantNodes.research.backtest.l5_orchestrator as m
 
         assert hasattr(m, "run_l5_pipeline")
         assert hasattr(m, "_build_hypothesis_prompt")
         assert hasattr(m, "_parse_llm_response")
 
     def test_import_factor_value_store(self):
-        import QuantNodes.research.backtest_pkg.factor_value_store as m
+        import QuantNodes.research.backtest.factor_value_store as m
 
         assert hasattr(m, "store_factor_values")
         assert hasattr(m, "query_factor_values")

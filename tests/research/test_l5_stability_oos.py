@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from QuantNodes.research.backtest_pkg.l5_validation import _score_oos, _score_stability, analyze_oos, analyze_stability, compute_score, run_l5_validation
+from QuantNodes.research.backtest.l5_validation import _score_oos, _score_stability, analyze_oos, analyze_stability, compute_score, run_l5_validation
 
 
 

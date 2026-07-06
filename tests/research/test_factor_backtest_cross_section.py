@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from QuantNodes.research.backtest_pkg.factor_backtest import _compute_cross_section_groups, _compute_cross_section_ic, _compute_factor_matrix, _compute_long_short, _compute_return_matrix, generate_adj_dates, run_factor_backtest_universe
+from QuantNodes.research.backtest.factor_backtest import _compute_cross_section_groups, _compute_cross_section_ic, _compute_factor_matrix, _compute_long_short, _compute_return_matrix, generate_adj_dates, run_factor_backtest_universe
 
 
 
@@ -142,7 +142,7 @@ class TestComputeLongShort:
         curves = {"G1": g1_curve, "G5": g5_curve}
         adj_dates = [pd.Timestamp(f"2024-01-{i+1:02d}") for i in range(n)]
 
-        from QuantNodes.research.backtest_pkg.factor_backtest import _compute_long_short
+        from QuantNodes.research.backtest.factor_backtest import _compute_long_short
 
         r_pos = _compute_long_short(curves, adj_dates, factor_direction=1)
         r_neg = _compute_long_short(curves, adj_dates, factor_direction=-1)

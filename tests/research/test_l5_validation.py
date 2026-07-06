@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from QuantNodes.research.backtest_pkg import l5_validation as l5v
+from QuantNodes.research.backtest import l5_validation as l5v
 
 
 
