@@ -164,6 +164,10 @@ class RunConfig:
     timeout: int = 180
     workers: int = 1
 
+    # ── M3.4: Stage 3 Strategy sink (off = backward compatible) ──
+    strategy_mode: str = "off"  # off | per_alpha | after_batch
+    strategies_dir: Path | None = None  # default: PROJECT_ROOT / "quant" / "strategies"
+
     # ── Stage 2b: LLM extraction ──
     llm_extract: bool = False
 
@@ -173,6 +177,11 @@ class RunConfig:
     @property
     def report_dir(self) -> Path:
         return self.output_dir / "report"
+
+    @property
+    def effective_strategies_dir(self) -> Path:
+        """Resolve strategies_dir with fallback to PROJECT_ROOT/quant/strategies."""
+        return self.strategies_dir or (PROJECT_ROOT / "quant" / "strategies")
 
     @property
     def date_beg_iso(self) -> str:
@@ -581,6 +590,8 @@ class FactorStage(FactorRunner):
             self._run_serial(to_run)
         else:
             self._run_parallel(to_run)
+        # M3.4: aggregate composite strategy (mode=after_batch only)
+        self._persist_batch_strategy(self.results)
         self._write_summary()
         self._log_done()
         return self.results
@@ -716,6 +727,8 @@ class FactorStage(FactorRunner):
                     )
                     # Step 7: persist YAML + DuckDB via YamlDuckdbSink (PR4)
                     self._persist_via_sink(success_fr)
+                    # M3.4: persist strategy YAML + DuckDB (mode=per_alpha only)
+                    self._persist_strategy(success_fr)
                     result = success_fr
                     logger.info("[alpha-%03d] success (%.1fs)", idx, time.monotonic() - t0)
             return result
@@ -782,6 +795,243 @@ class FactorStage(FactorRunner):
             self._yaml_sink.write_one(fr)
         except Exception as exc:
             logger.warning("[sink] YamlDuckdbSink.write_one failed for %s: %s", fr.signal.id, exc)
+
+    # ── M3.4: Strategy sink ────────────────────────────────────────
+
+    @staticmethod
+    def _alpha_to_signal_type(name: str) -> str:
+        """Heuristic: factor name → SIGNAL_NODE_REGISTRY key.
+
+        101 alphas are all rank-based cross-sectional factors → most fall
+        through to ``factor_rank`` (the only rank-based key in the
+        registry). For names containing signal-typed tokens (rsi / ma /
+        volatility / momentum) we map to the corresponding builtin.
+
+        Branch order matters: more specific tokens first.
+        """
+        n = name.lower()
+        if "rsi" in n:
+            return "rsi"
+        if "volatility" in n or "_vol_" in n or n.endswith("_vol"):
+            return "volatility"
+        if (
+            "momentum" in n
+            or "_mom_" in n
+            or n.endswith("_mom")
+            or n.startswith("mom_")
+            or "_mom" in n
+        ):
+            return "momentum"
+        if "_ma_" in n or n.startswith("ma_") or n.endswith("_ma") or "macross" in n:
+            return "ma_cross"
+        if "factor" in n or "rank" in n:
+            return "factor_rank"
+        return "factor_rank"  # default fallback for 101 alphas
+
+    @staticmethod
+    def _safe_strategy_name(s: str) -> str:
+        """Sanitize a strategy-name fragment to [A-Za-z0-9_]."""
+        import re as _re
+        return _re.sub(r"[^A-Za-z0-9_]", "_", s)
+
+    def _strategy_name_for(self, fr: FactorResult) -> str:
+        """Naming: ``{paper_id}_{idx:03d}_{signal_type}``."""
+        idx = fr.signal.metadata.get("alpha_index")
+        if idx is None:
+            idx = fr.signal.metadata.get("index", 0)
+        return f"{self.config.paper_id}_{int(idx):03d}_{self._alpha_to_signal_type(fr.signal.name)}"
+
+    def _persist_strategy(self, fr: FactorResult) -> None:
+        """M3.4: write per-factor strategy YAML + DuckDB via strategy_library.
+
+        Triggered only when ``config.strategy_mode == 'per_alpha'`` and
+        ``fr.status == 'success'``. Builds a 4-layer strategy dict from
+        FactorResult + backtest metrics, then delegates to
+        ``QuantNodes.research.persist.strategy_library``.
+
+        Errors are logged but never raised (sink is best-effort, must
+        not abort the factor batch).
+        """
+        if self.config.strategy_mode != "per_alpha":
+            return
+        if fr.status != "success":
+            return
+        try:
+            from QuantNodes.research.persist import strategy_library as sl
+
+            bt = fr.backtest or {}
+            signal_type = self._alpha_to_signal_type(fr.signal.name)
+            strategy_name = self._strategy_name_for(fr)
+
+            data = {
+                "strategy": {
+                    "name": strategy_name,
+                    "name_cn": f"Alpha-{fr.signal.name} {signal_type}",
+                    "signal_type": signal_type,
+                    "asset_type": self.config.asset_type.lower() if hasattr(self.config, "asset_type") else "stk",
+                    "category": "alpha_generated",
+                    "status": "已注册",
+                    "l1": {
+                        "description": (
+                            f"Auto-derived from 101-alpha backtest. "
+                            f"Factor: {fr.signal.name}. "
+                            f"IC={bt.get('ic_mean', 0):.4f}, "
+                            f"ICIR={bt.get('icir', 0):.4f}"
+                        ),
+                        "signal_params": {
+                            "ic_mean": bt.get("ic_mean"),
+                            "icir": bt.get("icir"),
+                            "win_rate": bt.get("win_rate"),
+                            "rank_period": 20,
+                            "factor_col": fr.signal.name,
+                            "factor_direction": self.config.factor_direction,
+                        },
+                    },
+                    "l2": {
+                        "factors": [fr.signal.id],
+                        "factor_dir": str(self.config.strategy_dir),
+                    },
+                    "l3": {
+                        "backtest": {
+                            "ic_mean": bt.get("ic_mean"),
+                            "icir": bt.get("icir"),
+                            "rank_ic_mean": bt.get("rank_ic_mean"),
+                            "rank_icir": bt.get("rank_icir"),
+                            "win_rate": bt.get("win_rate"),
+                            "annual_return": bt.get("annual_return"),
+                            "longshort_max_dd": bt.get("longshort_max_dd"),
+                        },
+                    },
+                    "l4": {
+                        "created_by": "run_101_alphas_v2",
+                        "paper_id": self.config.paper_id,
+                        "alpha_source": fr.signal.id,
+                    },
+                },
+                "backtest": {
+                    "status": "success",
+                    "sharpe_ratio": bt.get("icir"),  # use icir as proxy
+                    "max_drawdown": bt.get("longshort_max_dd"),
+                    "win_rate": bt.get("win_rate"),
+                    "total_return": bt.get("annual_return"),
+                    "n_trades": 0,
+                    "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+                "meta": {
+                    "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "run_id": f"alpha_{fr.signal.metadata.get('alpha_index', 0):03d}",
+                },
+            }
+
+            log = sl.write_strategy_yaml(
+                name=strategy_name,
+                data=data,
+                strategies_dir=self.config.effective_strategies_dir,
+            )
+            run_id = f"alpha_{fr.signal.metadata.get('alpha_index', 0):03d}"
+            sl.save_backtest_duckdb(
+                strategy_name=strategy_name,
+                run_id=run_id,
+                backtest=data["backtest"],
+                strategies_dir=self.config.effective_strategies_dir,
+            )
+            logger.info("[strategy] %s → %s", run_id, log)
+        except Exception as exc:
+            logger.warning(
+                "[strategy] persist failed for %s: %s: %s",
+                fr.signal.id, type(exc).__name__, exc,
+            )
+
+    def _persist_batch_strategy(self, results: list[FactorResult]) -> None:
+        """M3.4: write composite strategy YAML aggregating all successful alphas.
+
+        Triggered only when ``config.strategy_mode == 'after_batch'``.
+        Skips silently if 0 successes. Aggregates with equal weights
+        (signal_composite).
+        """
+        if self.config.strategy_mode != "after_batch":
+            return
+        successes = [r for r in results if r.status == "success"]
+        if not successes:
+            logger.info("[strategy] no successful alphas; skipping composite")
+            return
+        try:
+            from QuantNodes.research.persist import strategy_library as sl
+
+            composite_name = f"{self.config.paper_id}_composite"
+            n = len(successes)
+            weight = 1.0 / n
+            weights: dict[str, float] = {}
+            factor_refs: list[str] = []
+            aggregate = {
+                "n_factors": n,
+                "ic_mean_sum": 0.0,
+                "icir_sum": 0.0,
+                "win_rate_sum": 0.0,
+            }
+            for r in successes:
+                fname = r.signal.name
+                weights[fname] = weight
+                factor_refs.append(r.signal.id)
+                bt = r.backtest or {}
+                aggregate["ic_mean_sum"] += float(bt.get("ic_mean") or 0.0)
+                aggregate["icir_sum"] += float(bt.get("icir") or 0.0)
+                aggregate["win_rate_sum"] += float(bt.get("win_rate") or 0.0)
+
+            data = {
+                "strategy": {
+                    "name": composite_name,
+                    "name_cn": f"{self.config.paper_id} 复合策略",
+                    "signal_type": "signal_composite",
+                    "asset_type": self.config.asset_type.lower() if hasattr(self.config, "asset_type") else "stk",
+                    "category": "alpha_composite",
+                    "status": "已注册",
+                    "l1": {
+                        "description": (
+                            f"Composite of {n} successful alphas from "
+                            f"{self.config.paper_id}. Equal-weighted."
+                        ),
+                        "config": {
+                            "weights": weights,
+                            "n_factors": n,
+                        },
+                    },
+                    "l2": {
+                        "factors": factor_refs,
+                        "weighting": "equal",
+                    },
+                    "l3": {
+                        "backtest_summary": {
+                            "n_factors": n,
+                            "avg_ic_mean": aggregate["ic_mean_sum"] / n,
+                            "avg_icir": aggregate["icir_sum"] / n,
+                            "avg_win_rate": aggregate["win_rate_sum"] / n,
+                        },
+                    },
+                    "l4": {
+                        "created_by": "run_101_alphas_v2",
+                        "paper_id": self.config.paper_id,
+                        "composite_mode": "equal_weight",
+                    },
+                },
+                "meta": {
+                    "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "n_success": n,
+                    "n_total": len(results),
+                },
+            }
+
+            log = sl.write_strategy_yaml(
+                name=composite_name,
+                data=data,
+                strategies_dir=self.config.effective_strategies_dir,
+            )
+            logger.info("[strategy] composite: %s", log)
+        except Exception as exc:
+            logger.warning(
+                "[strategy] batch persist failed: %s: %s",
+                type(exc).__name__, exc,
+            )
 
     def _run_one_with_recording(self, idx: int) -> FactorResult:
         """Serial path: no locks, single thread.
@@ -915,6 +1165,20 @@ def main() -> None:
     parser.add_argument("--adj-mode", type=str, default="M-end", help="Adjustment mode (default: M-end)")
     parser.add_argument("--min-group-size", type=int, default=3, help="Minimum group size (default: 3)")
     parser.add_argument("--factors-dir", type=Path, default=None, help="Base factors directory")
+
+    # M3.4: Strategy sink mode — off|per_alpha|after_batch. Off = backward compatible.
+    parser.add_argument(
+        "--strategy-mode",
+        choices=["off", "per_alpha", "after_batch"],
+        default="off",
+        help="Strategy layer integration mode (default: off = no strategy sink)",
+    )
+    parser.add_argument(
+        "--strategies-dir",
+        type=Path,
+        default=None,
+        help="Output base dir for strategies (default: PROJECT_ROOT/quant/strategies)",
+    )
     args = parser.parse_args()
 
     # Re-initialize logger with user-specified log file
@@ -967,6 +1231,10 @@ def main() -> None:
         adj_mode=args.adj_mode,
         min_group_size=args.min_group_size,
         factors_dir=args.factors_dir or PROJECT_ROOT / "quant" / "factors",
+
+        # M3.4: strategy-mode wiring (default off = backward compatible)
+        strategy_mode=getattr(args, "strategy_mode", "off"),
+        strategies_dir=getattr(args, "strategies_dir", None),
     )
     config.output_dir.mkdir(parents=True, exist_ok=True)
     logger.info("RunConfig: %s", config)
