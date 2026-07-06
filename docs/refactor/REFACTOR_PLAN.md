@@ -74,14 +74,18 @@
 
 ## Milestone 总览
 
-| Milestone | 内容 | 工作量 | 风险 | PR |
-|---|---|---|---|---|
-| **M1** | Tier 1: 6 个 latent bug 快速修复 | 0.5 天 | 低 | PR1 |
-| **M2** | Tier 2: 死代码清理（~3000 LoC） | 0.5 天 | 低 | PR2 |
-| M3 前置 | Tier 3.5: WikiFactor 类型统一 | 0.5 天 | 低 | PR3 |
-| M3 主 | Tier 3.1: backtest 双包合并 | 1 天 | **高** | PR4 |
-| M3 后 | Tier 3.2 + 3.3 + 3.4: LLM 配置 + strategy_library + 端到端集成 | 1 天 | 中 | PR5 |
-| M4 | Tier 4: 配置统一 + SignalV2 + wiki 拆分 + sink async | 3 天 | **高** | PR6 |
+| Milestone | 内容 | 工作量 | 风险 | PR | 状态 |
+|---|---|---|---|---|---|
+| **M1** | Tier 1: 6 个 latent bug 快速修复 | 0.5 天 | 低 | PR1 | ✅ 完成 |
+| **M2** | Tier 2: 死代码清理（~3000 LoC） | 0.5 天 | 低 | PR2 | ✅ 完成 |
+| **Phase B** | H5 key contract bug fix | 0.1 天 | 中 | (合并到 PR5) | ✅ 完成 |
+| **M3.2** | LLM 配置统一 (5-tier 优先级) | 0.3 天 | 中 | PR5 | ✅ 完成 |
+| **M3 主** | Tier 3.1: backtest 双包合并 | 1 天 | **高** | PR4 | ✅ 完成 |
+| **M3.3** | 新建 strategy_library.py | 0.3 天 | 中 | PR5 | ✅ 完成 |
+| M3 前置 | Tier 3.5: WikiFactor 类型统一 | 0.5 天 | 低 | PR3 | ⏸ 推到 Tier 4 |
+| **M3.4** | run_101 接入 strategy sink | 0.5 天 | 中 | PR5 | ⏳ Session 4 |
+| M3 后置 | 删 backtest_pkg/ shim | 0.5 天 | **高** | PR5 | ⏳ 待 grep audit |
+| M4 | Tier 4: 配置统一 + SignalV2 + wiki 拆分 + sink async | 3 天 | **高** | PR6 | ⏳ Future |
 
 每个 Milestone 完成后打 tag (`post-m1-bugfixes` / `post-m2-deadcode` / 等)，验证通过后继续。
 
@@ -249,10 +253,78 @@ git tag post-m2-deadcode
 - `write_strategy_yaml` / `read_strategy_yaml` / `update_index`
 - 单元测试 + 集成测试
 
-**M3.4 — 接入 strategy 层**:
-- `run_101_alphas_v2.py` 加 `--strategy-mode` flag
-- 跑完所有 factor 后自动调 `AlphaPipeline` 生成策略
-- 写入 `strategy.yaml`
+**M3.4 — 接入 strategy 层** (已细化，详见下方):
+
+**a. CLI flag**:
+```python
+parser.add_argument(
+    "--strategy-mode",
+    choices=["off", "per_alpha", "after_batch"],
+    default="off",
+    help="Strategy layer integration mode (default: off = backward compat)",
+)
+parser.add_argument(
+    "--strategies-dir",
+    type=Path,
+    default=None,
+    help="Output base dir (default: PROJECT_ROOT/quant/strategies)",
+)
+```
+
+**b. RunConfig 新增**:
+```python
+strategy_mode: str = "off"
+strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "strategies")
+```
+
+**c. alpha→signal_type 启发式**（branch + fallback `factor_rank`）:
+| 关键词 (lower) | signal_type |
+|---|---|
+| `rsi` | `rsi` |
+| `ma` | `ma_cross` |
+| `volatility` / `vol` | `volatility` |
+| `momentum` / `mom` | `momentum` |
+| `factor` / `rank` | `factor_rank` |
+| (其他 101 alpha) | `factor_rank` (fallback) |
+
+**d. strategy_name 命名**:
+```
+"101_alphas_minimal_NNN_factor_rank"
+例: "101_alphas_minimal_005_factor_rank"
+```
+
+**e. signal_params 派生**（从 backtest metrics）:
+```python
+{
+    "ic_mean": fr.backtest.get("ic_mean"),
+    "icir": fr.backtest.get("icir"),
+    "rank_period": 20,                       # 写死 default
+    "factor_col": fr.signal.name,             # 实际因子名（for factor_rank）
+    "factor_direction": config.factor_direction,
+}
+```
+
+**f. 三种 mode 行为**:
+| mode | 触发时机 | 写入 |
+|---|---|---|
+| `off` | 无 | 完全无操作（向后兼容） |
+| `per_alpha` | 每个 factor backtest 成功后（`run_one_factor` L717 之后） | 单 factor strategy YAML + DuckDB |
+| `after_batch` | 所有 factor 跑完后（`run` L584 `_write_summary` 之前） | 聚合 composite strategy YAML（weights 均分） |
+
+**g. 5-alpha smoke × 2 mode**:
+- `--strategy-mode per_alpha --start 1 --end 5 --no-delay`
+- `--strategy-mode after_batch --start 1 --end 5 --no-delay`
+- 检查 `quant/strategies/101_alphas_minimal_001_factor_rank/strategy.yaml` 等存在
+- 检查 `quant/strategies/101_alphas_minimal_composite/strategy.yaml` 存在
+- **不** 跑 101 alpha（M3.4 PR 风险未明）
+
+**h. 风险与缓解**:
+| 风险 | 缓解 |
+|---|---|
+| CLI flag 改动破坏老用户 | default=off 字节相同 |
+| `after_batch` 在 0 个 success 时写出空文件 | 早 return，仅 count > 0 才写 |
+| factor_name 含中文导致策略名 sanitize 后冲突 | 复用 `_SAFE_KEY_RE` 模式 |
+| YamlDuckdbSink + strategy_library 并发写 race | 串行执行（workers ≤ 3 已有 lock），DuckDB 单独库无 race |
 
 ---
 
@@ -343,11 +415,33 @@ git tag post-m2-deadcode
 - [x] M3 前置（删 6-field WikiFactor）→ **推到 Tier 4**
   - 理由：上游 llmwikify 已有"删 WikiFactor 导致事故"的先例；6-field 字段名作为 wiki frontmatter 约定仍活跃；与 wiki.md 拆分 + contracts.py Pydantic 协调一起做更安全
 
-### Session 3+ (待办)
+### Session 3 (2026-07-06) — 完成 ✅
 
-- [ ] M3 主: backtest/ vs backtest_pkg/ 双包合并 (删 backtest_pkg/)
-- [ ] M3.3: 创建 persist/strategy_library.py
-- [ ] M3.4: strategy 接入 run_101_alphas_v2
+- [x] **M3 主: backtest/ vs backtest_pkg/ 物理合并** → commit `9a41c4f`, tag `post-m3-main-backtest-merge`
+  - `git mv` 8 模块从 `backtest_pkg/` → `backtest/` (git 保留 history)
+  - `backtest/__init__.py` 加 legacy re-exports (3→36 symbols)
+  - `backtest_pkg/<submodule>.py` 改 PEP 562 `__getattr__` shim（含 `_` 开头的 private symbols）
+  - `backtest_pkg/__init__.py` 用 `importlib.import_module` 规避 re-export shadowing
+  - 3 个生产 caller 改新路径
+  - 测试：3 个 manifest test (test_imports, test_module_inventory, test_e2e_smoke) + 3 个 patch path test (l5_orchestrator / l5_reflection / l4_hypothesis_sync)
+  - 验证：3065 → 3036 passed 首跑（manifest 错位），修后 3036 passed / 17F / 14E（与 M3.2 baseline 完全一致）
+- [x] **M3.3: persist/strategy_library.py 新建** → commit `e657607`, tag `post-m3.3-strategy-library`
+  - 4-layer strategy YAML 持久化层（mirror factor_library.py）
+  - 公开 API 9 个：list_strategies / read_strategy_yaml / write_strategy_yaml / list_strategies_by_signal_type / update_index / get_strategy_node_from_yaml / save_backtest_duckdb / read_backtest_duckdb / strategy_dir
+  - DuckDB schema 简化（无 `factor_values` 表，因 strategies 不存 per-stock 因子值）
+  - 关键技术细节：
+    - pandas 把 DuckDB NULL DOUBLE 读成 NaN — read 加 `_clean()` helper 标准化为 None
+    - `exec()` 自定义 StrategyNode 子类时，`dir(module)` 会扫到 base `StrategyNode` — 加 `if attr is StrategyNode: continue` + `issubclass` 检查
+  - 测试：tests/research/test_strategy_library.py (29 tests, 7 类)
+  - 验证：3065 passed (+29 新测试) / 17F / 14E，alpha smoke 1/1 success
+
+### Session 4+ (待办)
+
+- [ ] **M3.4: strategy-mode flag 接入 run_101_alphas_v2** (Phase 2)
+  - 新增 `--strategy-mode {off,per_alpha,after_batch}` flag (default: `off` → 向后兼容)
+  - alpha→signal_type 启发式 (rsi/ma/momentum/volatility 分支 + fallback `factor_rank`)
+  - 5-alpha smoke × 2 mode 验证 E2E
+- [ ] M3 后置动作: 删除 `backtest_pkg/` shim (4500 LoC)（需先 grep audit 下游 router/script）
 - [ ] M3 前置: WikiFactor 类型统一 (升到 Tier 4)
 - [ ] M4: 配置统一 + SignalV2 + wiki.py 拆分 + sink 异步化
 
@@ -367,11 +461,16 @@ git tag post-m2-deadcode
 | `91fd466` | **Phase B** H5 key bug fix | 1 | +30/-9 |
 | `ef82d7f` | **M3.2** LLM 配置统一 | 4 | +479/-51 |
 
-### 累计 Session 1-2 LoC 净变化
+### 累计 Session 1-3 LoC 净变化
 
-- 新增: +1188 行 (docs + tests + 2 新文件)
-- 删除: -2737 行
-- **净: -1549 行**
+| 阶段 | 新增 | 删除 | 净 |
+|---|---|---|---|
+| Session 1 (M1+M2) | +1188 | -2737 | **-1549** |
+| Session 2 (Phase B+M3.2) | +509 | -60 | **+449** |
+| Session 3 (M3 主+M3.3) | +5827 | -4464 | **+1363** |
+| **总计 (Session 1-3)** | **+7524** | **-7261** | **+263** |
+
+注：Session 2/3 新增主要为：tests (29 new) + 新文件 (scripts/migrate_llm_config.py, persist/strategy_library.py) + legacy re-exports (35 symbols) + manifest test updates。
 
 ### Tags
 
@@ -381,6 +480,8 @@ git tag post-m2-deadcode
 - `post-m2-deadcode` → `ae49a84` (M2 完成)
 - `post-h5-fix` → `91fd466` (Phase B H5 fix)
 - `post-m3.2-llm-config` → `ef82d7f` (M3.2 LLM config)
+- `post-m3-main-backtest-merge` → `9a41c4f` (M3 主: backtest_pkg → backtest 物理合并)
+- `post-m3.3-strategy-library` → `e657607` (M3.3: strategy_library.py 新建)
 
 ### Backup branches
 
@@ -391,7 +492,7 @@ git tag post-m2-deadcode
 
 ## 测试基线 (2026-07-06)
 
-参考 `/tmp/baseline_tests.log` / `/tmp/m1_tests.log` / `/tmp/m2_tests.log`：
+参考 `/tmp/baseline_tests.log` / `/tmp/m1_tests.log` / `/tmp/m2_tests.log` / `/tmp/m33_tests.log`：
 
 ### Baseline (commit `d0fe809`)
 
@@ -411,8 +512,65 @@ git tag post-m2-deadcode
 - **14 errors** (pre-existing：test_quant.py 缺 `factor_client` fixture)
 - **67 skipped**
 
-| Suite | Baseline | M1 期望 | M2 期望 |
-|---|---|---|---|
-| `tests/research/` + `tests/agent/` (排除 4 broken file) | 3062 passed | ≥ 3062 | ≥ 3062 |
-| `tests/research/test_loop_v4_pr1_to_pr7.py` | 46 passed + 2 skipped | 同 | 同 |
-| 101 alpha smoke (1/5) | (待跑 baseline) | 1 alpha 跑通 | 5 alpha ≥ 1 success |
+### Milestone 累计测试结果
+
+| Milestone | passed | failed | errors | 关键说明 |
+|---|---|---|---|---|
+| Baseline (`d0fe809`) | 3062 | 16 | 14 | vendor 迁移 + 测试补全 |
+| M1 (`426553b`) | ≥ 3062 | 16 | 14 | 0 回归 |
+| M2 (`ae49a84`) | ≥ 3062 | 16 | 14 | 0 回归 |
+| Phase B (`91fd466`) | 3014 | 17 | 14 | +1 fail（其他贡献者 WIP ValidationTool） |
+| M3.2 (`ef82d7f`) | 3036 | 17 | 14 | +20 new tests（M3.2 LLM config 路径） |
+| M3 主 (`9a41c4f`) | 3036 | 17 | 14 | manifest 修后 = baseline +0 |
+| M3.3 (`e657607`) | 3065 | 17 | 14 | +29 new tests（strategy_library） |
+
+**Failure 来源分布（17 failed, 全部 pre-existing）**：
+
+| 数量 | 来源 | 类别 |
+|---|---|---|
+| 7 | `tests/research/test_factor_backtest_cross_section.py` | pandas 3.0 `'M'` → `'ME'` 升级 |
+| 5 | `tests/research/test_quant.py::TestQuantInitCommand` | vendor 迁移遗留 |
+| 2 | `tests/research/test_no_uncovered_smoke.py` | subprocess pytest 版本 |
+| 1 | `tests/agent/test_factor_tool_extended.py::test_concurrency_safe` | 其他贡献者 WIP |
+| 2 | `tests/agent/test_tool_consistency.py::TestToolMetadata::test_all_tools_have_{concurrency_safe,read_only}_property` | 其他贡献者 WIP (`ValidationTool`) |
+
+**14 errors**：全部 `tests/research/test_quant.py` 缺 `factor_client` fixture（vendor 迁移遗留，pre-existing）。
+
+### 101 alpha smoke 基线
+
+| 阶段 | 结果 |
+|---|---|
+| Baseline (`d0fe809`) | codegen 成功 (13s) + backtest 失败（pre-existing） |
+| M1 | 1 alpha 跑通 |
+| M2 | 5 alpha ≥ 1 success |
+| **Phase B 关键修复** | 5/5 alpha success（之前 0/5），alpha-005 IC=0.0152, ICIR=0.1012, WinRate=52.5% |
+| M3.2 | 1/1 alpha success, config 加载自 `~/.quantnodes/llm.json` |
+| M3 主 | 1/1 alpha success, 17.6s |
+| M3.3 | 1/1 alpha success, 16.6s |
+
+### Architecture 当前状态
+
+```
+                 ┌─────────────────────────────────────────────┐
+                 │          Paper Reproduction Layer           │
+                 │  scripts/run_101_alphas_v2.py (FactorStage) │
+                 └─────────────────────┬───────────────────────┘
+                                       │
+                                       ▼
+                 ┌─────────────────────────────────────────────┐
+                 │            Factor Layer (sinks)             │
+                 │  YamlDuckdbSink (factors/{name}/factor.yaml)│
+                 │  SingleJsonSink (single_factor_NNN.json)    │
+                 │  BatchSummarySink (multi_alpha_*.json)      │
+                 └─────────────────────┬───────────────────────┘
+                                       │  ↑ M3.4 将插入 strategy sink
+                                       ▼
+                 ┌─────────────────────────────────────────────┐
+                 │       Strategy Layer (NEARLY DISCONNECTED)   │
+                 │  persist/strategy_library.py ← M3.3 已建 ✅  │
+                 │  backtest/strategies.py  SIGNAL_NODE_REGISTRY│
+                 │  run_101_alphas_v2.py ← M3.4 待接入 ⚠       │
+                 └─────────────────────────────────────────────┘
+```
+
+**M3 闭环路径**：M3.3 (库) ✅ → M3.4 (CLI 接入) ⏳ → M3 后置 (删 shim) ⏳
