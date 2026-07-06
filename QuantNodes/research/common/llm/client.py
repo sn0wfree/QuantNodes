@@ -1,28 +1,70 @@
-"""foundation/llm/client — LLM client construction from ~/.llmwikify/llmwikify.json.
+"""foundation/llm/client — LLM client construction.
 
-下沉: 从 llmwikify.kernel/quant/llm_client.py (C2) 搬到 foundation/llm/client.py
-(G+Y commit 4)。build_llm_client 是 LLM 基础设施的一部分, 应该在 foundation
-层, 而不是 kernel 层。
+Supports a multi-tier config resolution:
 
-依赖: foundation/llm/streamable.py (StreamableLLMClient)
+  Tier 1: ``~/.quantnodes/llm.json`` (NEW canonical, M3.2)
+  Tier 2: ``~/.llmwikify/llmwikify.json`` (legacy fallback, kept for back-compat)
+  Tier 3: ``QUANTNODES__LLM__*`` env vars (override file values, M3.2)
+  Tier 4: hard-coded defaults (provider-internal)
+
+See ``docs/refactor/REFACTOR_PLAN.md`` for M3.2 rationale.
 
 Canonical imports:
     from QuantNodes.research.common.llm.client import build_llm_client, load_llm_config
-    from QuantNodes.research.common.llm.client import CONFIG_PATH
+    from QuantNodes.research.common.llm.client import CONFIG_PATHS, CONFIG_PATH
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-# ─── Config location ─────────────────────────────────────────────────
+# ─── Config locations (priority order: Tier 1 → Tier 2) ────────────────
+#
+# M3.2 (PR5): introduced ``~/.quantnodes/llm.json`` as the new canonical
+# config location for the quantnodes project. The legacy
+# ``~/.llmwikify/llmwikify.json`` is kept as Tier-2 fallback for users
+# who haven't migrated yet.
+#
+# Both files use the same schema: a top-level ``"llm"`` object with keys
+# ``enabled``, ``provider``, ``model``, ``base_url``, ``api_key``,
+# ``timeout``, etc. ``load_llm_config`` reads them in priority order and
+# returns the first non-empty ``[llm]`` section found.
 
-CONFIG_PATH: Path = Path.home() / ".llmwikify" / "llmwikify.json"
+CONFIG_PATHS: tuple[Path, ...] = (
+    Path.home() / ".quantnodes" / "llm.json",
+    Path.home() / ".llmwikify" / "llmwikify.json",
+)
+
+# Back-compat alias for callers that monkeypatch a single Path. Points to
+# the legacy location (Tier 2). New code should use CONFIG_PATHS.
+CONFIG_PATH: Path = CONFIG_PATHS[1]
+
+
+# ─── Env-var override mapping (Tier 3) ─────────────────────────────────
+#
+# M3.2: ``QUANTNODES__LLM__*`` env vars override the value loaded from
+# any config file. This makes it possible to configure the LLM client
+# purely via environment variables (e.g. in Docker / CI) without writing
+# a JSON file.
+#
+# Existing callers that already use ``LLM_API_KEY`` / ``LLM_BASE_URL`` /
+# ``LLM_MODEL`` / ``LLM_PROVIDER`` (the LAL resolver's namespace) keep
+# working through ``QuantNodes.research.common.llm.resolver`` — those
+# env vars are not duplicated here to keep this layer's surface minimal.
+
+_ENV_OVERRIDE_KEYS: tuple[tuple[str, str], ...] = (
+    ("provider", "QUANTNODES__LLM__PROVIDER"),
+    ("model", "QUANTNODES__LLM__MODEL"),
+    ("base_url", "QUANTNODES__LLM__BASE_URL"),
+    ("api_key", "QUANTNODES__LLM__API_KEY"),
+    ("enabled", "QUANTNODES__LLM__ENABLED"),
+)
 
 
 # ─── Provider info table (C2: replaces hardcoded "minimax" / "bearer") ─
@@ -44,27 +86,90 @@ _PROVIDER_INFO: dict[str, tuple[str, str]] = {
 # ─── Config loading ──────────────────────────────────────────────────
 
 
-def load_llm_config(config_path: Path | None = None) -> dict[str, Any]:
-    """Load the ``[llm]`` section of ``~/.llmwikify/llmwikify.json``.
-
-    Args:
-        config_path: Override config file path (default: ~/.llmwikify/llmwikify.json).
-                     Mainly for tests.
+def _load_single_path(path: Path) -> dict[str, Any] | None:
+    """Load the ``[llm]`` section from a single config file.
 
     Returns:
-        The ``llm`` section as a dict, or ``{}`` if the file is missing
-        or unparseable.
+        - ``None`` if the file does not exist (so caller can try the next
+          path in ``CONFIG_PATHS``).
+        - ``{}`` if the file exists but has no ``"llm"`` top-level key
+          (deliberate empty config — caller treats this as "found").
+        - The ``llm`` dict otherwise.
     """
-    path = config_path or CONFIG_PATH
     if not path.exists():
-        logger.warning("LLM config not found at %s", path)
-        return {}
+        return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Failed to parse %s: %s", path, exc)
         return {}
-    return data.get("llm", {})
+    if not isinstance(data, dict):
+        logger.warning("%s: top-level is not a dict (%s)", path, type(data).__name__)
+        return {}
+    llm_section = data.get("llm")
+    if not isinstance(llm_section, dict):
+        return {}
+    return llm_section
+
+
+def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
+    """Apply ``QUANTNODES__LLM__*`` env var overrides (Tier 3).
+
+    Returns a new dict (does not mutate input). Empty / unset env vars
+    are ignored — config values are preserved.
+    """
+    result = dict(config)
+    for key, env_key in _ENV_OVERRIDE_KEYS:
+        env_val = os.environ.get(env_key)
+        if env_val:  # ignore empty / unset
+            # Coerce boolean-ish strings for the "enabled" key.
+            if key == "enabled":
+                result[key] = env_val.strip().lower() in ("1", "true", "yes", "on")
+            else:
+                result[key] = env_val
+    return result
+
+
+def load_llm_config(config_path: Path | None = None) -> dict[str, Any]:
+    """Load LLM config from the priority list of paths.
+
+    Resolution order (first match wins):
+      1. ``config_path`` argument (if provided) — overrides everything;
+         used by tests and ``build_llm_client(config=...)`` callers.
+      2. ``CONFIG_PATHS[0]`` = ``~/.quantnodes/llm.json`` (Tier 1, NEW)
+      3. ``CONFIG_PATHS[1]`` = ``~/.llmwikify/llmwikify.json`` (Tier 2, legacy)
+      4. Returns ``{}`` if none of the above yield a non-empty config.
+
+    A path is "found" if the file exists (even if its ``[llm]`` section
+    is empty — that means the user deliberately created an empty config
+    and we should not silently fall through to the legacy location).
+
+    Args:
+        config_path: Override config file path (mainly for tests).
+                     When provided, only this path is consulted.
+
+    Returns:
+        The ``llm`` section as a dict, or ``{}`` if no config found.
+    """
+    if config_path is not None:
+        result = _load_single_path(config_path)
+        if result is None:
+            logger.warning("LLM config not found at %s", config_path)
+            return {}
+        logger.debug("[llm_client] config loaded from explicit %s", config_path)
+        return result
+
+    for path in CONFIG_PATHS:
+        result = _load_single_path(path)
+        if result is not None:
+            logger.info("[llm_client] config loaded from %s", path)
+            return result
+
+    logger.warning(
+        "LLM config not found in any of: %s",
+        [str(p) for p in CONFIG_PATHS],
+    )
+    return {}
 
 
 # ─── Client construction ─────────────────────────────────────────────
@@ -101,9 +206,14 @@ def build_llm_client(
 ) -> Any:
     """Build a ``StreamableLLMClient`` from user config.
 
+    Resolution order:
+      1. Explicit ``config`` argument (if provided)
+      2. ``load_llm_config(config_path=config_path)`` — Tier 1 → Tier 2 file lookup
+      3. ``QUANTNODES__LLM__*`` env overrides applied to (1) or (2)
+      4. Provider-internal defaults from ``_PROVIDER_INFO`` (Tier 4)
+
     Args:
-        config: Pre-loaded config dict. If None, loads from
-                ``~/.llmwikify/llmwikify.json`` (or `config_path`).
+        config: Pre-loaded config dict. If None, loads from disk.
         model: Override model name (default: config's ``model`` field).
         config_path: Override config file path (mainly for tests).
 
@@ -119,9 +229,12 @@ def build_llm_client(
     if config is None:
         config = load_llm_config(config_path=config_path)
 
+    # M3.2: Tier 3 env override (QUANTNODES__LLM__*)
+    config = _apply_env_overrides(config)
+
     if not config.get("enabled"):
         raise RuntimeError(
-            f"LLM is disabled in {config_path or CONFIG_PATH}. "
+            f"LLM is disabled in {config_path or CONFIG_PATHS}. "
             "Set llm.enabled=true to enable."
         )
 
@@ -131,7 +244,7 @@ def build_llm_client(
     provider = config.get("provider")
     if not provider:
         raise RuntimeError(
-            f"Missing 'provider' in {config_path or CONFIG_PATH}. "
+            f"Missing 'provider' in {config_path or CONFIG_PATHS}. "
             f"Set llm.provider to one of: {', '.join(_PROVIDER_INFO.keys())}"
         )
 
@@ -144,7 +257,7 @@ def build_llm_client(
 
     if not api_key:
         raise RuntimeError(
-            f"Missing api_key in {config_path or CONFIG_PATH}. Set llm.api_key first."
+            f"Missing api_key in {config_path or CONFIG_PATHS}. Set llm.api_key first."
         )
 
     logger.info(
@@ -165,4 +278,11 @@ def build_llm_client(
     )
 
 
-__all__ = ["CONFIG_PATH", "load_llm_config", "build_llm_client", "_PROVIDER_INFO"]
+__all__ = [
+    "CONFIG_PATHS",
+    "CONFIG_PATH",
+    "load_llm_config",
+    "build_llm_client",
+    "_PROVIDER_INFO",
+    "_ENV_OVERRIDE_KEYS",
+]
