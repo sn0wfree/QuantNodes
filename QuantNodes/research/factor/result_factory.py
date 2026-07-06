@@ -95,6 +95,7 @@ class ResultFactory:
         h5_path: Path,
         backtest: dict,
         t0: float,
+        long_df: pl.DataFrame | None = None,
     ) -> FactorResult:
         """Build a success FactorResult after a successful backtest.
 
@@ -104,6 +105,8 @@ class ResultFactory:
             formula_brief: Formula summary for log lines.
             code: Generated Python function source.
             factor_series: Computed factor values (polars Series).
+            long_df: Source long DataFrame (date, code, ...). Optional — if provided,
+                the sink can compute factor_wide for DuckDB `factor_values` table.
             h5_path: Path to written factor H5 file.
             backtest: Metrics dict from `extract_full_backtest_from_ctx`
                 (or `QuantNodesBacktest.run`).
@@ -118,6 +121,7 @@ class ResultFactory:
             code=code,
             code_chars=len(code),
             factor_series=factor_series,
+            long_df=long_df,
             h5_path=h5_path,
             backtest=backtest,
             stage=None,

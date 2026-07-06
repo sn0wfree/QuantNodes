@@ -57,6 +57,18 @@ from typing import Any
 
 import polars as pl
 
+try:
+    from llmwikify.foundation.logging import setup_logging, log_timing
+except ImportError:
+    # Fallback: define no-op shims if llmwikify logging is not available
+    def setup_logging(*_args, **_kwargs):  # type: ignore[no-redef]
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+    def log_timing(logger=None):  # type: ignore[no-redef]
+        def decorator(func):
+            return func
+        return decorator
+
 from QuantNodes.research.codegen.agent.hook import UnifiedHook
 import logging
 
@@ -179,21 +191,15 @@ class RunConfig:
 def preload_market_data(data_path: Path, h5_filename: str = "stk_daily.h5") -> dict:
     """Load all H5 keys once → dict of wide DataFrames.
 
+    M1.3: thin wrapper that delegates to `pipeline.data_loader._preload_h5_keys`
+    to remove the 8-key dict literal that was duplicated between this script and
+    `QuantNodes.research.pipeline.data_loader.load_and_build_df`.
+
     Kept here for backward compat (legacy imports).
     New code should use QuantNodes.research.data_source.akshare_h5.AkShareH5DataSource.
     """
-    import json as _json
-
-    import pandas as pd
-    h5 = data_path / h5_filename
-    with pd.HDFStore(h5, "r") as store:
-        close_key = "close" if "/close" in store.keys() else "cp"
-    keys = {
-        "close": close_key, "open": "open", "high": "high", "low": "low",
-        "volume": "volume", "returns": "returns", "vwap": "vwap",
-        "industry": "id_citic1",
-    }
-    return {name: pd.read_hdf(h5, h5_key) for name, h5_key in keys.items()}
+    from QuantNodes.research.pipeline.data_loader import _preload_h5_keys
+    return _preload_h5_keys(data_path, h5_filename)
 
 
 @log_timing(logger=logger)
@@ -712,6 +718,7 @@ class FactorStage(FactorRunner):
                         formula_brief=formula_brief, code=code,
                         factor_series=factor_series, h5_path=h5_path,
                         backtest=backtest, t0=t0,
+                        long_df=df_pl,  # M1.2: enable sink to compute factor_wide
                     )
                     # Step 7: persist YAML + DuckDB via YamlDuckdbSink (PR4)
                     self._persist_via_sink(success_fr)

@@ -109,12 +109,25 @@ class YamlDuckdbSink:
             else:
                 rel_path = f"{self._strategy_dir}/{result.signal.id}" if self._strategy_dir else result.signal.id
 
+            # M1.2: compute factor_wide from long_df + factor_series when available,
+            # so DuckDB `factor_values` table gets the time-series (not just metrics).
+            factor_wide = None
+            if result.long_df is not None and result.factor_series is not None:
+                try:
+                    from QuantNodes.research.pipeline.data_loader import wide_from_long
+                    factor_wide = wide_from_long(result.long_df, result.factor_series)
+                except Exception as exc:
+                    logger.warning(
+                        "[sink] wide_from_long failed for %s: %s: %s",
+                        result.signal.id, type(exc).__name__, str(exc)[:100],
+                    )
+
             run_id: str = f"{self._run_id_prefix}_{alpha_index:03d}"
             save_backtest_duckdb(
                 factor_name=rel_path,
                 run_id=run_id,
                 backtest=result.backtest,
-                factor_wide=None,  # PR6 will pass factor_wide; sink currently writes metrics only
+                factor_wide=factor_wide,
                 factors_dir=self._factors_dir,
             )
         except Exception as exc:

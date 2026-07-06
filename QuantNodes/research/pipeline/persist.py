@@ -1,9 +1,12 @@
 """Persistence: YAML + DB for backtest results."""
 from __future__ import annotations
 
+import logging
 import math
 import time
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def _nan_to_none(v):  # noqa: ANN001
@@ -138,10 +141,10 @@ def persist_code_to_yaml(
         l5["validation_date"] = time.strftime("%Y-%m-%d")
 
         action = write_factor_yaml(full_name, data, factors_dir=Path(factors_dir) if factors_dir else None)
-        print(f"[yaml] {action} (dir={dir_path})")
+        logger.info("[yaml] %s (dir=%s)", action, dir_path)
         return action, dir_path
     except Exception as exc:
-        print(f"[yaml] persist_code_to_yaml failed for {factor_name}: {exc}")
+        logger.warning("[yaml] persist_code_to_yaml failed for %s: %s", factor_name, exc)
         return None, None
 
 
@@ -216,8 +219,8 @@ def save_backtest_to_db(
             group_metrics=backtest.get("group_metrics", {}),
             equity_curve=backtest.get("equity_curve") or backtest.get("group_nav_series"),
         )
-        print(f"[db] created result run_id={run_id} factor_ref={slug}")
+        logger.info("[db] created result run_id=%s factor_ref=%s", run_id, slug)
         return True
     except Exception as exc:
-        print(f"[db] save_backtest_to_db failed for {slug}: {exc}")
+        logger.warning("[db] save_backtest_to_db failed for %s: %s", slug, exc)
         return False

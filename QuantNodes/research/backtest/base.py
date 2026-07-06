@@ -37,6 +37,9 @@ class FactorResult:
         code: Generated Python code (None on codegen failure).
         code_chars: Length of code (0 if no code).
         factor_series: Computed factor series (None if failed before execute).
+        long_df: Source long DataFrame (date, code, ...) paired with factor_series
+                 (None if not retained). Used by sinks to compute factor_wide for
+                 DuckDB `factor_values` table (M1.2).
         h5_path: Path to factor H5 file (None if H5 write skipped).
         backtest: Metrics dict from BacktestEngine.run() (empty on failure).
         stage: Where failure occurred (None on success).
@@ -50,6 +53,7 @@ class FactorResult:
     code: str | None = None
     code_chars: int = 0
     factor_series: pl.Series | None = None
+    long_df: pl.DataFrame | None = None
     h5_path: Path | None = None
     backtest: dict[str, Any] = field(default_factory=dict)
     stage: str | None = None

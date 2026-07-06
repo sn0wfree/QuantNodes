@@ -170,3 +170,8 @@ graphify-out/manifest.json
 
 # Local DB connection config (use conn.ini.template as starting point)
 conn.ini
+
+# Refactor session 1: test artifacts
+data/mine_runs/
+quant/
+wiki_auto/

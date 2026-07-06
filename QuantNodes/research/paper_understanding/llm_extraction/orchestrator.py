@@ -397,6 +397,15 @@ def run_one_paper(
                 )
                 logger.info("[orchestrator] paper=%s track_b_pass1.json saved (%d signals)", paper_id, track_b_result.n_pass1)
 
+                # M1.1: also write track_b_checkpoint.json (v2 compat: scripts/research/run_101_alphas_v2.py expects this name)
+                # Same schema as track_b_pass1.json — see signal_source/track_b.py:TrackBSignalSource.
+                ckpt_path = work_dir / "track_b_checkpoint.json"
+                ckpt_path.write_text(
+                    json.dumps(pass1_data, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                logger.info("[orchestrator] paper=%s track_b_checkpoint.json (v2 compat) saved", paper_id)
+
                 pass2_path = work_dir / "track_b_pass2.json"
                 pass2_data = {
                     "paper_id": paper_id,

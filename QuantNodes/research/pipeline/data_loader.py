@@ -35,6 +35,24 @@ def write_factor_h5(wide: pd.DataFrame, factor_name: str, output_dir: Path) -> P
     return h5_path
 
 
+def _preload_h5_keys(data_path: Path, h5_filename: str = "stk_daily.h5") -> dict[str, pd.DataFrame]:
+    """Load 8 H5 keys (close/open/high/low/volume/returns/vwap/industry) into wide DataFrames.
+
+    Single source of truth for the key map + close/cp fallback. Used by
+    `load_and_build_df` (above) and by `scripts/research/run_101_alphas_v2.preload_market_data`
+    (M1.3 dedup).
+    """
+    h5 = Path(data_path) / h5_filename
+    with pd.HDFStore(h5, "r") as store:
+        close_key = "close" if "/close" in store.keys() else "cp"
+    keys = {
+        "close": close_key, "open": "open", "high": "high", "low": "low",
+        "volume": "volume", "returns": "returns", "vwap": "vwap",
+        "industry": "id_citic1",
+    }
+    return {name: pd.read_hdf(h5, h5_key) for name, h5_key in keys.items()}
+
+
 def derive_input_columns(formula_brief: str) -> list[str]:
     """Extract input column names from formula_brief text.
 
@@ -67,17 +85,7 @@ def load_and_build_df(data_path: Path, h5_filename: str = "stk_daily.h5") -> pl.
     Moved from scripts/run_101_alphas.py:310 (which was previously broken
     with NameError) so it can be reused and tested independently.
     """
-    h5 = Path(data_path) / h5_filename
-    with pd.HDFStore(h5, "r") as store:
-        close_key = "close" if "/close" in store.keys() else "cp"
-    keys = {
-        "close": close_key, "open": "open", "high": "high", "low": "low",
-        "volume": "volume", "returns": "returns", "vwap": "vwap",
-        "industry": "id_citic1",
-    }
-    data_cache: dict[str, pd.DataFrame] = {
-        name: pd.read_hdf(h5, h5_key) for name, h5_key in keys.items()
-    }
+    data_cache = _preload_h5_keys(data_path, h5_filename)
 
     def wide_to_long(wide: pd.DataFrame, name: str) -> pl.DataFrame:
         long = wide.stack().reset_index()
