@@ -1,8 +1,9 @@
 """ReproductionDatabase — session/artifact tracking for paper reproduction.
 
-Independent SQLite file at ``~/.llmwikify/reproduction.db`` to avoid
-polluting the main ``.llmwiki_agent.db`` used by chat/research/wiki
-facades.
+Independent SQLite file at ``~/.quantnodes/reproduction.db`` (preferred) with
+automatic fallback to the legacy ``~/.llmwikify/reproduction.db`` for backward
+compatibility. Avoids polluting the main ``.llmwiki_agent.db`` used by
+chat/research/wiki facades.
 
 Schema:
     reproduction_sessions  — one row per "reproduce this paper" run
@@ -33,8 +34,25 @@ logger = logging.getLogger(__name__)
 
 
 def _get_default_db_path() -> Path:
-    """Get default DB path from config."""
-    return Path(config.get("db.path", "~/.llmwikify/agent/reproduction.db")).expanduser()
+    """Get default DB path.
+
+    Resolution order:
+    1. Explicit ``db.path`` config value (highest priority).
+    2. ``~/.quantnodes/reproduction.db`` if it exists.
+    3. Legacy ``~/.llmwikify/agent/reproduction.db`` if it exists (back-compat).
+    4. ``~/.quantnodes/reproduction.db`` as the new default (created on first use).
+    """
+    configured = config.get("db.path", None)
+    if configured:
+        return Path(configured).expanduser()
+    home = Path.home()
+    new_path = home / ".quantnodes" / "reproduction.db"
+    if new_path.exists():
+        return new_path
+    legacy_path = home / ".llmwikify" / "agent" / "reproduction.db"
+    if legacy_path.exists():
+        return legacy_path
+    return new_path
 
 
 DEFAULT_DB_PATH = _get_default_db_path()

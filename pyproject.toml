@@ -142,6 +142,7 @@ markers = [
     "unit: Unit tests",
     "integration: Integration tests",
     "slow: Slow running tests",
+    "mock: Tests that mock external dependencies (LLM/DB/etc.)",
 ]
 
 [tool.coverage.run]

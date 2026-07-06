@@ -387,7 +387,7 @@ def extract_batch(
     waits for all to complete, then moves to the next batch.
     """
     if output_dir is None:
-        output_dir = Path("/home/ll/llmwikify/scripts/output")
+        output_dir = Path.home() / ".quantnodes" / "extract_output"
 
     total = len(alpha_indices)
     print(f"  [extract_batch] {total} alphas, batch_size={batch_size}")

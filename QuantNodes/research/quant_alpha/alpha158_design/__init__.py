@@ -4,7 +4,7 @@ alpha158_design - Alpha 158/360 设计哲学借鉴（M3 PR）
 
 Alpha 158/360 (Yang et al. 2020, arXiv:2009.11189) 是 Qlib 平台的标准化
 ML 特征集。本子包**借鉴其特征设计思想**而非直接移植公式集
-（实际因子集由 llmwikify 在他处生成）。
+（实际因子集由 ``QuantNodes.research.codegen`` 在他处生成）。
 
 内容：
 - DESIGN_PHILOSOPHY: Alpha 158/360 特征设计原则（4 类 × 7 条）

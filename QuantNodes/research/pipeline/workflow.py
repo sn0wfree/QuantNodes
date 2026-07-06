@@ -384,7 +384,7 @@ class UnifiedWorkflow:
         from ..pipeline.data_loader import wide_from_long, write_factor_h5
         from ..pipeline.persist import persist_code_to_yaml, save_backtest_to_db
 
-        PROJECT_ROOT = Path("/home/ll/llmwikify")
+        PROJECT_ROOT = Path.home() / ".quantnodes"
         output_dir = PROJECT_ROOT / "scripts" / "output"
 
         backtest_results = []

@@ -1,21 +1,26 @@
 """Shared codegen utilities for factor code generation pipeline.
 
-⚠️ C1 (PR-C1) refactor: this module is now a **thin re-export wrapper** for
-backward compatibility. The actual implementations live in
-`llmwikify.kernel.codegen` (which both apps/ and reproduction/ can
-import without creating a layer cycle).
+⚠️ v4.0.0 reproduction merge: this module is now a **thin re-export wrapper**
+kept for backward compatibility. The actual implementations were vendored from
+`llmwikify v1.3.0` (reproduction/) into `QuantNodes.research.codegen.*` (see
+commit 3c50b93). New code should import from there directly:
 
-New code should import from `llmwikify.kernel.codegen` directly.
-This wrapper exists for backward compat with pre-C1 callers.
+    from QuantNodes.research.codegen import (
+        extract_python, validate_syntax, validate_safety,
+        execute_code, build_execute_namespace, SYSTEM_PROMPT_CODE,
+    )
+    from QuantNodes.research.codegen.agent.codegen_pipeline import (
+        generate_factor_code_sync,
+    )
 
 Functions kept here (reproduction-specific):
-  - build_llm_client: thin wrapper over reproduction.common.llm_factory.
+  - build_llm_client: thin wrapper over QuantNodes.research.common.llm.client.
     Will be replaced by provider registry in C2.
-  - generate_factor_code: high-level ReAct entry point. The actual
-    implementation lives in apps/chat/agent/unified/pipelines/codegen.py
-    (cross-layer dependency, kept here for backward compat).
+  - generate_factor_code: high-level entry point. The actual implementation
+    lives in QuantNodes.research.codegen.agent.codegen_pipeline
+    (kept here for backward compat with pre-v4.0.0 callers).
 
-Re-exports from kernel/quant/codegen/:
+Re-exports from QuantNodes.research.codegen.code_tools:
   - SYSTEM_PROMPT_CODE
   - extract_python
   - validate_syntax
@@ -51,13 +56,14 @@ logger = logging.getLogger(__name__)
 # ─── LLM client (reproduction-specific, C2 will fix) ─────────────
 
 def build_llm_client(model: str | None = None) -> Any:
-    """Build StreamableLLMClient from ~/.llmwikify/llmwikify.json.
+    """Build StreamableLLMClient from ``~/.quantnodes/llm.json`` (preferred)
+    or the legacy ``~/.llmwikify/llmwikify.json`` for backward compatibility.
 
-    Thin wrapper around llm_extraction.llm_factory.build_default_client().
+    Thin wrapper around QuantNodes.research.common.llm.client.build_llm_client.
     Centralizes client creation so callers don't parse config manually.
 
     ⚠️ TODO(C2): this function hardcodes `minimax` / `bearer` via
-    `reproduction.common.llm_factory.build_default_client`. Will be replaced
+    `QuantNodes.research.common.llm.client.build_llm_client`. Will be replaced
     by a provider-registry-based factory in C2.
 
     Args:
@@ -111,7 +117,7 @@ def generate_factor_code(
     """
     warnings.warn(
         "reproduction.codegen.llm_code.generate_factor_code is deprecated; "
-        "use llmwikify.apps.chat.agent.unified.pipelines.codegen.generate_factor_code_sync "
+        "use QuantNodes.research.codegen.agent.codegen_pipeline.generate_factor_code_sync "
         "directly. This wrapper will be removed in a future release.",
         DeprecationWarning,
         stacklevel=2,

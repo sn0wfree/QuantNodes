@@ -1,9 +1,9 @@
 """Streamable LLM client — supports streaming, async, and function calling.
 
-Canonical location for the streaming-capable LLM client. The historical
-home in ``llmwikify.agent.backend.adapters`` is preserved as a thin
-deprecation shim; new code should import from
-``llmwikify.foundation.llm.streamable`` instead.
+Canonical location for the streaming-capable LLM client (vendored from
+llmwikify v1.3.0 in commit 3c50b93). New code should import from here:
+
+    from QuantNodes.research.common.llm.streamable import StreamableLLMClient
 
 Usage::
 
@@ -1069,11 +1069,9 @@ class StreamableLLMClient(LLMClient):
         """Build a client from the ``llm.*`` section of a wiki config.
 
         This is a pure config-to-constructor translation; it does
-        NOT consult the LLM provider registry (that lives at
-        L3 in ``llmwikify.apps.chat.providers.registry``).
+        NOT consult the LLM provider registry.
         Callers that need the registry's provider discovery
-        should call ``apps.chat.providers.registry.create_llm``
-        directly.
+        should import the provider module directly.
 
         LAL: delegates to ``resolve_chat_llm`` (the single resolver
         entry point) when ``LLM_USE_RESOLVER`` is not set to

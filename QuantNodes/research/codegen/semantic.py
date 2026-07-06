@@ -4,17 +4,20 @@ PR-5 (2026-06-21): 50+ business-semantic factor templates across 7 families.
 Maps human-readable factor names (e.g. momentum_20, reversal_5) to AST templates
 that bind to underlying QuantNodes primitive/composite ops.
 
+Vendored from llmwikify v1.3.0 reproduction/ in v4.0.0 (commit 3c50b93).
+
 Hierarchy:
   Primitive (317+)    : QuantNodes direct (rank, rolling_mean, ...)
   Composite (20+)     : QuantNodes composite_dag (industry_neutralize, ...)
-  Polars native (8+)  : llmwikify ast_compiler (pl_alias, pl_str_contains, ...)
-  Semantic (50+)      : llmwikify semantic_registry (this module)
+  Polars native (8+)  : QuantNodes ast_compiler (pl_alias, pl_str_contains, ...)
+  Semantic (50+)      : QuantNodes semantic_registry (this module)
 
 Architecture:
 - Templates are dict-of-dict AST JSON, instantiated via Pydantic ASTNode.
 - Parametric templates use placeholder columns derived from a base name
   (e.g. momentum_5 -> lag_close_5 = delay(close, 5)).
-- User extensions loaded from ~/.llmwikify/semantic_registry.yaml at startup.
+- User extensions loaded from ``~/.quantnodes/semantic_registry.yaml`` (preferred)
+  or the legacy ``~/.llmwikify/semantic_registry.yaml`` for backward compatibility.
 """
 from __future__ import annotations
 
@@ -863,12 +866,18 @@ def _ensure_loaded() -> dict[str, SemanticOp]:
     if _REGISTRY:
         return _REGISTRY
     _REGISTRY = dict(_DEFAULT_REGISTRY)
-    yaml_path = Path.home() / ".llmwikify" / "semantic_registry.yaml"
-    if yaml_path.exists():
-        try:
-            load_user_registry(yaml_path)
-        except Exception as exc:
-            logger.warning("Failed to load user semantic_registry.yaml: %s", exc)
+    # Prefer ~/.quantnodes/; fall back to legacy ~/.llmwikify/ for back-compat.
+    home = Path.home()
+    for candidate in (
+        home / ".quantnodes" / "semantic_registry.yaml",
+        home / ".llmwikify" / "semantic_registry.yaml",
+    ):
+        if candidate.exists():
+            try:
+                load_user_registry(candidate)
+            except Exception as exc:
+                logger.warning("Failed to load user semantic_registry.yaml: %s", exc)
+            break
     return _REGISTRY
 
 

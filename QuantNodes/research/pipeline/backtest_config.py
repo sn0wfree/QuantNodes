@@ -8,7 +8,7 @@ from typing import Any
 # Date range for the long dataset (YYYYMMDD format for QN config)
 LONG_DATE_BEG = 20200101
 LONG_DATE_END = 20241231
-PROJECT_ROOT = Path("/home/ll/llmwikify")
+PROJECT_ROOT = Path.home() / ".quantnodes"
 
 
 def build_qn_config(

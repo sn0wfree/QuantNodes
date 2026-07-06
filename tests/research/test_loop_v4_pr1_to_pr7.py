@@ -16,28 +16,28 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from src.QuantNodes.research.backtest_pkg.factor_backtest import (
+from QuantNodes.research.backtest_pkg.factor_backtest import (
     _compute_factor_from_ast,
 )
-from src.QuantNodes.research.codegen.ast.compiler import CompileError, compile_ast
-from src.QuantNodes.research.codegen.ast.nodes import (
+from QuantNodes.research.codegen.ast.compiler import CompileError, compile_ast
+from QuantNodes.research.codegen.ast.nodes import (
     make_call,
     make_col,
     make_lit,
 )
-from src.QuantNodes.research.codegen.repair import (
+from QuantNodes.research.codegen.repair import (
     build_error_history,
     repair_once,
 )
-from src.QuantNodes.research.codegen.semantic import (
+from QuantNodes.research.codegen.semantic import (
     get_doc_for_llm,
     get_op,
     instantiate,
     list_by_family,
     list_ops,
 )
-from src.QuantNodes.research.common.errors import StructuredError
-from src.QuantNodes.research.common.telemetry import Telemetry, get_telemetry
+from QuantNodes.research.common.errors import StructuredError
+from QuantNodes.research.common.telemetry import Telemetry, get_telemetry
 
 # ─── PR-1: Public API ──────────────────────────────────────
 
@@ -47,7 +47,7 @@ def test_pr1_get_operator_public_api() -> None:
     import inspect
     import re
 
-    from src.QuantNodes.research.codegen.ast import compiler as ast_compiler
+    from QuantNodes.research.codegen.ast import compiler as ast_compiler
     src = inspect.getsource(ast_compiler)
     # Strip comments (lines starting with #) before checking
     code_lines = [
@@ -61,14 +61,14 @@ def test_pr1_get_operator_public_api() -> None:
 
 def test_pr1_resolves_known_op() -> None:
     """PR-1: _resolve_qn_op finds known op via get_operator."""
-    from src.QuantNodes.research.codegen.ast.compiler import _resolve_qn_op
+    from QuantNodes.research.codegen.ast.compiler import _resolve_qn_op
     func = _resolve_qn_op("rank")
     assert callable(func)
 
 
 def test_pr1_unknown_op_raises_compile_error() -> None:
     """PR-1: Unknown op raises CompileError with proper kind."""
-    from src.QuantNodes.research.codegen.ast.compiler import _resolve_qn_op
+    from QuantNodes.research.codegen.ast.compiler import _resolve_qn_op
     with pytest.raises(CompileError) as exc_info:
         _resolve_qn_op("totally_made_up_op_xyz")
     assert exc_info.value.kind == "UnknownOp"
@@ -77,6 +77,11 @@ def test_pr1_unknown_op_raises_compile_error() -> None:
 # ─── PR-2: pyproject extra ────────────────────────────────
 
 
+@pytest.mark.skip(
+    reason="llmwikify-era PR-2 test checking for `quantnodes>=2.7.0` optional "
+    "extra (when this repo consumed llmwikify). After v4.0.0 reproduction merge, "
+    "QuantNodes is the package itself and that extra no longer exists."
+)
 def test_pr2_quantnodes_extra_declared() -> None:
     """PR-2: pyproject.toml declares quantnodes>=2.7.0 optional extra."""
     try:
@@ -189,7 +194,7 @@ def test_pr4_compute_factor_from_ast_rolling_mean() -> None:
 
 def test_pr4_compute_factor_values_ast_compiled_branch() -> None:
     """PR-4: _compute_factor_values handles factor_class='ast_compiled'."""
-    from src.QuantNodes.research.backtest_pkg.factor_backtest import (
+    from QuantNodes.research.backtest_pkg.factor_backtest import (
         _compute_factor_values,
     )
 
@@ -212,23 +217,19 @@ def test_pr4_compute_factor_values_ast_compiled_branch() -> None:
     assert isinstance(result, pd.Series)
 
 
+@pytest.mark.skip(
+    reason="llmwikify-internal architecture test (paper.py delegates to UnifiedWorkflow). "
+    "Not applicable after v4.0.0 reproduction merge: paper.py was not vendored, "
+    "UnifiedWorkflow lives at QuantNodes.research.pipeline.workflow."
+)
 def test_pr4_paper_multi_factor_uses_run_factor_backtest_universe() -> None:
     """PR-4: paper.py delegates to UnifiedWorkflow (workflow-pipeline separation).
 
-    Verifies that paper.py no longer contains the old multi-factor backtest
-    implementation and instead calls UnifiedWorkflow.run().
+    Skipped: llmwikify-internal architecture test, not applicable after the
+    v4.0.0 reproduction merge (paper.py was not vendored, UnifiedWorkflow now
+    lives at QuantNodes.research.pipeline.workflow).
     """
-    import inspect
-
-    from src.llmwikify.interfaces.server.http import paper
-
-    src = inspect.getsource(paper)
-    assert "data_router=router" not in src, "old kwargs bug removed"
-    assert "cost_bps=15.0" not in src, "old kwargs bug removed"
-    assert "close_wide=close_wide" not in src, "old backtest code removed"
-    assert "ast_compiled" not in src, "old AST path removed"
-    assert "UnifiedWorkflow" in src, "uses UnifiedWorkflow"
-    assert "workflow.run" in src, "calls workflow.run"
+    pass
 
 
 # ─── PR-5: Semantic Registry ────────────────────────────────
@@ -319,7 +320,7 @@ def test_pr5_load_user_registry(tmp_path) -> None:
         },
     }))
 
-    from src.QuantNodes.research.codegen import semantic as semantic_registry
+    from QuantNodes.research.codegen import semantic as semantic_registry
 
     # Reset registry for test isolation
     semantic_registry._REGISTRY = {}
@@ -413,7 +414,7 @@ def test_pr6_build_error_history() -> None:
 
 def test_pr6_fix_strategies_registered() -> None:
     """PR-6: All 5 FixStrategy functions are registered."""
-    from src.QuantNodes.research.codegen.repair import FIX_STRATEGIES
+    from QuantNodes.research.codegen.repair import FIX_STRATEGIES
     assert len(FIX_STRATEGIES) == 5
     strategy_names = [s.__name__ for s in FIX_STRATEGIES]
     assert "schema_fix" in strategy_names
@@ -554,8 +555,8 @@ def test_stage_a_compile_mock_records_telemetry(monkeypatch: pytest.MonkeyPatch)
     import os
 
     monkeypatch.setenv("FACTOR_COMPILER_MOCK", "1")
-    from src.QuantNodes.research.codegen.compiler import FactorCompiler
-    from src.QuantNodes.research.common.telemetry import get_telemetry
+    from QuantNodes.research.codegen.compiler import FactorCompiler
+    from QuantNodes.research.common.telemetry import get_telemetry
 
     t = get_telemetry()
     t.reset()
@@ -598,7 +599,7 @@ def test_stage_a_compile_error_handled_gracefully() -> None:
     import os
 
     os.environ["FACTOR_COMPILER_MOCK"] = "1"
-    from src.QuantNodes.research.codegen.compiler import FactorCompiler
+    from QuantNodes.research.codegen.compiler import FactorCompiler
 
     c = FactorCompiler()
     # Empty factor_data triggers compile_ast on a default mock AST
@@ -610,8 +611,8 @@ def test_stage_a_compile_error_handled_gracefully() -> None:
 
 def test_stage_a_repair_pipeline_e2e() -> None:
     """Stage A: end-to-end repair flow (LLM emit bad AST -> repair -> compile success)."""
-    from src.QuantNodes.research.codegen.repair import repair_once
-    from src.QuantNodes.research.common.errors import StructuredError
+    from QuantNodes.research.codegen.repair import repair_once
+    from QuantNodes.research.common.errors import StructuredError
 
     # Simulate LLM emits rolling_mean without window
     bad_ast = make_call("rolling_mean", [make_col("close")])
@@ -639,7 +640,7 @@ def test_stage_a_repair_pipeline_e2e() -> None:
 
 def test_stage_a_telemetry_records_compile_attempts() -> None:
     """Stage A: Telemetry records both success and failure events."""
-    from src.QuantNodes.research.common.telemetry import get_telemetry
+    from QuantNodes.research.common.telemetry import get_telemetry
 
     t = get_telemetry()
     t.reset()
@@ -673,12 +674,12 @@ def test_stage_b_persist_l5_to_yaml_creates(tmp_path) -> None:
     stock_dir = factors_dir / "stock" / "price"
     stock_dir.mkdir(parents=True)
 
-    from src.QuantNodes.research.codegen.compiler import (
+    from QuantNodes.research.codegen.compiler import (
         CompileResult,
         FactorCompiler,
         persist_l5_to_yaml,
     )
-    from src.QuantNodes.research.persist.factor_library import read_factor_yaml
+    from QuantNodes.research.persist.factor_library import read_factor_yaml
 
     compiler = FactorCompiler()
     r = compiler.compile({
@@ -706,7 +707,7 @@ def test_stage_b_persist_l5_to_yaml_creates(tmp_path) -> None:
 
 def test_stage_b_extract_paper_l5_placeholder() -> None:
     """Stage B: extract_paper._extract_factors_from_list sets l5.ast=None placeholder."""
-    from src.QuantNodes.research.paper_understanding.extract_paper import (
+    from QuantNodes.research.paper_understanding.extract_paper import (
         _extract_factors_from_list,
     )
 
@@ -742,7 +743,7 @@ def test_stage_b_run_factor_compile_for_paper_mock(tmp_path) -> None:
     factors_dir.mkdir(parents=True)
     (factors_dir / "index.yaml").write_text("factors: []\n")
 
-    from src.QuantNodes.research.paper_understanding.extract_paper import (
+    from QuantNodes.research.paper_understanding.extract_paper import (
         _extract_factors_from_list,
         run_factor_compile_for_paper,
     )
@@ -783,7 +784,7 @@ def test_stage_b_l5_yaml_invalid_status(tmp_path) -> None:
     import os
     from pathlib import Path
 
-    from src.QuantNodes.research.codegen.compiler import (
+    from QuantNodes.research.codegen.compiler import (
         CompileResult,
         persist_l5_to_yaml,
     )
@@ -809,7 +810,7 @@ def test_stage_b_l5_yaml_invalid_status(tmp_path) -> None:
         "test_failed_factor", "", failed_result, project_root=proj,
     )
     assert action is not None
-    from src.QuantNodes.research.persist.factor_library import read_factor_yaml
+    from QuantNodes.research.persist.factor_library import read_factor_yaml
     data = read_factor_yaml("test_failed_factor", project_root=proj)
     assert data["factor"]["l5"]["ast_compile_status"] == "failed"
     assert "ast_compile_error" in data["factor"]["l5"]

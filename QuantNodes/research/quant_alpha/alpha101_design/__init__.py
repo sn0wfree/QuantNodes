@@ -4,7 +4,7 @@ alpha101_design - Alpha 101 设计哲学借鉴（M3 PR）
 
 Alpha 101 (Kakushadze 2015, arXiv:1601.00991) 提供了 101 个公式化 alpha
 因子的设计范式。本子包**借鉴其设计哲学**而非直接移植公式集
-（实际因子集由 llmwikify 在他处生成）。
+（实际因子集由 ``QuantNodes.research.codegen`` 在他处生成）。
 
 内容：
 - DESIGN_PHILOSOPHY: Alpha 101 核心设计原则（8 条）
