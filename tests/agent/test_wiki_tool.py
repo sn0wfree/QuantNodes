@@ -28,7 +28,9 @@ def temp_wiki_dir():
 
 @pytest.fixture
 def wiki_tool(temp_wiki_dir):
-    with patch("QuantNodes.research.wiki.create_wiki") as mock_create_wiki:
+    # M4.3 (PR6.6): patch proxy.create_wiki, not wiki.create_wiki
+    # (proxy.py imports create_wiki from llmwikify at module level)
+    with patch("QuantNodes.research.wiki.proxy.create_wiki") as mock_create_wiki:
         mock_wiki = MagicMock()
         mock_wiki.root.exists.return_value = True
         mock_create_wiki.return_value = mock_wiki
