@@ -3,7 +3,7 @@
 import unittest
 import numpy as np
 import pandas as pd
-from QuantNodes.backtest.strategy_node import Order, Signal, OrdersResult, StrategyNode, MAStrategyNode, MomentumStrategyNode
+from QuantNodes.backtest.strategy_node import Order, OrdersResult, Signal, StrategyNode, TradeSignal, MAStrategyNode, MomentumStrategyNode
 
 
 def make_quote_data(n_days=50, codes=None, start_price=100, seed=42):
@@ -49,6 +49,8 @@ class TestOrder(unittest.TestCase):
 
 
 class TestSignal(unittest.TestCase):
+    """SignalV2: `Signal` is a backward-compat alias for `TradeSignal`."""
+
     def test_required_fields(self):
         signal = Signal(code='AAPL', signal_type='buy')
         self.assertEqual(signal.code, 'AAPL')
@@ -62,6 +64,31 @@ class TestSignal(unittest.TestCase):
     def test_default_strength(self):
         signal = Signal(code='AAPL', signal_type='buy')
         self.assertEqual(signal.strength, 1.0)
+
+    def test_signal_is_trade_signal(self):
+        """Alias invariant: `Signal is TradeSignal`."""
+        self.assertIs(Signal, TradeSignal)
+
+
+class TestTradeSignal(unittest.TestCase):
+    """SignalV2: new `TradeSignal` canonical name."""
+
+    def test_basic(self):
+        sig = TradeSignal(code='600519.SH', signal_type='buy', price=1850.5)
+        self.assertEqual(sig.code, '600519.SH')
+        self.assertEqual(sig.signal_type, 'buy')
+        self.assertEqual(sig.price, 1850.5)
+        self.assertEqual(sig.strength, 1.0)
+        self.assertIsNone(sig.date)
+
+    def test_slots(self):
+        """TradeSignal uses @dataclass(slots=True) (SignalV2)."""
+        sig = TradeSignal(code='X', signal_type='buy')
+        try:
+            sig.new_attr = 1  # slots不允许新属性
+            self.fail("slots should reject new attributes")
+        except AttributeError:
+            pass
 
 
 class TestOrdersResult(unittest.TestCase):

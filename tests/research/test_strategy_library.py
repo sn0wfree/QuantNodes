@@ -314,10 +314,10 @@ class TestGetStrategyNodeFromYaml:
         strategy_data["strategy"]["signal_type"] = "totally_custom"
         strategy_data["code"] = (
             "import pandas as pd\n"
-            "from QuantNodes.backtest.strategy_node import StrategyNode, Signal\n"
+            "from QuantNodes.backtest.strategy_node import StrategyNode, TradeSignal\n"
             "from typing import List\n"
             "class TotallyCustomStrategyNode(StrategyNode):\n"
-            "    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> List[Signal]:\n"
+            "    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> List[TradeSignal]:\n"
             "        return []\n"
         )
         sl.write_strategy_yaml("custom", strategy_data, project_root=strategy_workspace)

@@ -1,7 +1,11 @@
 """QuantNodes StrategyNode subclasses for 6 signal types.
 
 Each class extends QuantNodes' StrategyNode and implements _generate_signals()
-to return a list of Signal objects (buy/sell).
+to return a list of TradeSignal objects (buy/sell).
+
+SignalV2: The runtime trading signal is `TradeSignal` (formerly `Signal`).
+The old name remains available as an alias in `strategy_node` for backward
+compatibility, but new code should import `TradeSignal` directly.
 
 Input DataFrame columns expected: date, Code, Close (QuantNodes convention).
 Output: OrdersResult containing buy/sell signals at MA/RSI crossover points.
@@ -13,7 +17,7 @@ import logging
 from typing import Any
 
 import pandas as pd
-from QuantNodes.backtest.strategy_node import Order, OrdersResult, Signal, StrategyNode
+from QuantNodes.backtest.strategy_node import Order, OrdersResult, StrategyNode, TradeSignal
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +32,7 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _make_orders(signals: list[Signal]) -> OrdersResult:
+def _make_orders(signals: list[TradeSignal]) -> OrdersResult:
     """Convert signals to OrdersResult with corresponding orders.
 
     Always converts date to ISO string to ensure compatibility with broker
@@ -56,7 +60,7 @@ class MACrossStrategyNode(StrategyNode):
         self._fast = int(self.config.get("fast", 5))
         self._slow = int(self.config.get("slow", 20))
 
-    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[Signal]:
+    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[TradeSignal]:
         if input_data is None or input_data.empty:
             return []
         df = _normalize_columns(input_data).sort_values("date").reset_index(drop=True)
@@ -73,7 +77,7 @@ class MACrossStrategyNode(StrategyNode):
             sub = df[df["Code"] == code] if code is not None else df
             for _, row in sub.iterrows():
                 if pd.notna(row.get("signal_diff")) and row["signal_diff"] != 0:
-                    signals.append(Signal(
+                    signals.append(TradeSignal(
                         code=code or "DEFAULT",
                         signal_type="buy" if row["signal"] == 1 else "sell",
                         strength=1.0,
@@ -92,7 +96,7 @@ class RSIStrategyNode(StrategyNode):
         self._oversold = float(self.config.get("oversold", 30))
         self._overbought = float(self.config.get("overbought", 70))
 
-    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[Signal]:
+    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[TradeSignal]:
         if input_data is None or input_data.empty:
             return []
         df = _normalize_columns(input_data).sort_values("date").reset_index(drop=True)
@@ -112,7 +116,7 @@ class RSIStrategyNode(StrategyNode):
             sub = df[df["Code"] == code] if code is not None else df
             for _, row in sub.iterrows():
                 if pd.notna(row.get("state_diff")) and row["state_diff"] != 0:
-                    signals.append(Signal(
+                    signals.append(TradeSignal(
                         code=code or "DEFAULT",
                         signal_type="buy" if row["state"] == 1 else "sell",
                         strength=1.0,
@@ -130,7 +134,7 @@ class MomentumStrategyNode(StrategyNode):
         self._period = int(self.config.get("period", 60))
         self._threshold = float(self.config.get("threshold", 0.05))
 
-    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[Signal]:
+    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[TradeSignal]:
         if input_data is None or input_data.empty:
             return []
         df = _normalize_columns(input_data).sort_values("date").reset_index(drop=True)
@@ -146,7 +150,7 @@ class MomentumStrategyNode(StrategyNode):
                 ret = row["return"]
                 in_pos = ret > self._threshold
                 if in_pos != prev_in:
-                    signals.append(Signal(
+                    signals.append(TradeSignal(
                         code=code or "DEFAULT",
                         signal_type="buy" if in_pos else "sell",
                         strength=min(abs(ret) / self._threshold, 2.0),
@@ -165,7 +169,7 @@ class VolatilityStrategyNode(StrategyNode):
         self._period = int(self.config.get("period", 20))
         self._entry_std = float(self.config.get("entry_std", 1.0))
 
-    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[Signal]:
+    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[TradeSignal]:
         if input_data is None or input_data.empty:
             return []
         df = _normalize_columns(input_data).sort_values("date").reset_index(drop=True)
@@ -184,7 +188,7 @@ class VolatilityStrategyNode(StrategyNode):
             sub = df[df["Code"] == code] if code is not None else df
             for _, row in sub.iterrows():
                 if pd.notna(row.get("signal_diff")) and row["signal_diff"] != 0:
-                    signals.append(Signal(
+                    signals.append(TradeSignal(
                         code=code or "DEFAULT",
                         signal_type="buy" if row["signal"] == 1 else "sell",
                         strength=1.0,
@@ -206,7 +210,7 @@ class FactorRankStrategyNode(StrategyNode):
         self._period = int(self.config.get("period", 20))
         self._factor_col = self.config.get("factor_col", "Close")
 
-    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[Signal]:
+    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[TradeSignal]:
         if input_data is None or input_data.empty or "Code" not in input_data.columns:
             return []
         df = _normalize_columns(input_data).sort_values("date").reset_index(drop=True)
@@ -223,7 +227,7 @@ class FactorRankStrategyNode(StrategyNode):
             bottom = ranked[ranked < 0.2].index
             for idx in top:
                 if pd.notna(group.loc[idx, "_factor_ret"]):
-                    signals.append(Signal(
+                    signals.append(TradeSignal(
                         code=group.loc[idx, "Code"],
                         signal_type="buy",
                         strength=1.0,
@@ -232,7 +236,7 @@ class FactorRankStrategyNode(StrategyNode):
                     ))
             for idx in bottom:
                 if pd.notna(group.loc[idx, "_factor_ret"]):
-                    signals.append(Signal(
+                    signals.append(TradeSignal(
                         code=group.loc[idx, "Code"],
                         signal_type="sell",
                         strength=1.0,
@@ -252,7 +256,7 @@ class SignalCompositeStrategyNode(StrategyNode):
         self._slow = int(self.config.get("slow", 30))
         self._momentum_period = int(self.config.get("momentum_period", 60))
 
-    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[Signal]:
+    def _generate_signals(self, input_data: pd.DataFrame, **kwargs) -> list[TradeSignal]:
         if input_data is None or input_data.empty:
             return []
         df = _normalize_columns(input_data).sort_values("date").reset_index(drop=True)
@@ -278,7 +282,7 @@ class SignalCompositeStrategyNode(StrategyNode):
             sub = df[df["Code"] == code] if code is not None else df
             for _, row in sub.iterrows():
                 if pd.notna(row.get("state_diff")) and row["state_diff"] != 0:
-                    signals.append(Signal(
+                    signals.append(TradeSignal(
                         code=code or "DEFAULT",
                         signal_type="buy" if row["state"] == 1 else "sell",
                         strength=1.0,

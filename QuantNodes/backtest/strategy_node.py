@@ -3,6 +3,21 @@
 StrategyNode - 策略节点
 
 提供策略节点的基础架构，继承自 BaseNode。
+
+SignalV2 (PR6): The runtime trading signal was renamed from `Signal` to
+`TradeSignal` to disambiguate from the paper-extracted `Signal` in
+`QuantNodes.research.signal_source.base`. The old name is kept as a
+backward-compat alias so existing imports (`from ...strategy_node import Signal`)
+continue to work.
+
+Three canonical Signal-like dataclasses, one per layer:
+  - `Signal` (paper)            — `QuantNodes.research.signal_source.base`
+  - `TradeSignal` (trade)       — this module (alias: `Signal`)
+  - `SignalType` (classifier)   — `QuantNodes.research.paper_understanding.contracts`
+
+Cross-layer conversion:
+  - `QuantNodes.research.signal_source.bridge.classify_paper_signal`
+  - `QuantNodes.research.signal_source.bridge.signal_type_to_strategy_class`
 """
 from __future__ import annotations
 
@@ -28,14 +43,32 @@ class Order:
     create_date: Optional[str] = None
 
 
-@dataclass
-class Signal:
-    """交易信号数据结构"""
+@dataclass(slots=True)
+class TradeSignal:
+    """运行时交易信号数据结构。
+
+    SignalV2: 单一 trade-layer canonical dataclass. 别名 `Signal` 保留向后兼容。
+    与 paper-layer `Signal(id, name, formula_brief, metadata)` 完全独立的概念。
+
+    Fields:
+        code: 股票代码 (e.g. "000001.SZ")
+        signal_type: 方向 ("buy" / "sell" / "codegen" for special cases)
+        strength: 仓位强度 multiplier (1.0 = 满仓)
+        price: 限价 (None = 市价)
+        date: ISO 日期字符串 (e.g. "2026-07-06")
+    """
     code: str
     signal_type: str
     strength: float = 1.0
     price: Optional[float] = None
     date: Optional[str] = None
+
+
+# SignalV2 backward-compat alias.
+# Old `Signal` (runtime trading) is now `TradeSignal`. This alias keeps
+# `from QuantNodes.backtest.strategy_node import Signal` working for any
+# downstream code that hasn't migrated yet.
+Signal = TradeSignal
 
 
 class OrdersResult:

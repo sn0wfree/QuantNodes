@@ -11,7 +11,7 @@ from typing import List
 
 import pandas as pd
 
-from QuantNodes.backtest.strategy_node import StrategyNode, Signal
+from QuantNodes.backtest.strategy_node import StrategyNode, TradeSignal
 
 
 class ConfigStrategyNode(StrategyNode):
@@ -35,7 +35,7 @@ class ConfigStrategyNode(StrategyNode):
 
     def _generate_signals(
         self, input_data: pd.DataFrame, **kwargs
-    ) -> List[Signal]:
+    ) -> List[TradeSignal]:
         # 先过滤非零信号，避免遍历全量数据
         mask = input_data[self._signal_col] != 0
         active = input_data.loc[mask]
@@ -54,7 +54,7 @@ class ConfigStrategyNode(StrategyNode):
         signals = []
         for i in range(len(active)):
             sig_val = sig_vals[i]
-            signals.append(Signal(
+            signals.append(TradeSignal(
                 code=codes[i],
                 signal_type="buy" if sig_val > 0 else "sell",
                 strength=abs(float(sig_val)),

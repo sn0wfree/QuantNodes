@@ -96,6 +96,7 @@ from QuantNodes.research.reporting.aggregator import BatchAggregator
 from QuantNodes.research.reporting.reporter import BatchReporter
 
 from QuantNodes.research.reporting.serializer import BatchSerializer
+from QuantNodes.research.signal_source.bridge import classify_name as _classify_name_v2
 
 
 # ─── Constants ───────────────────────────────────────────────────────
@@ -802,31 +803,17 @@ class FactorStage(FactorRunner):
     def _alpha_to_signal_type(name: str) -> str:
         """Heuristic: factor name → SIGNAL_NODE_REGISTRY key.
 
+        SignalV2 (PR6): The heuristic now delegates to
+        `QuantNodes.research.signal_source.bridge.classify_name` for the
+        single source of truth. Behavior is byte-equal to the prior
+        inline implementation — branch order preserved.
+
         101 alphas are all rank-based cross-sectional factors → most fall
         through to ``factor_rank`` (the only rank-based key in the
         registry). For names containing signal-typed tokens (rsi / ma /
         volatility / momentum) we map to the corresponding builtin.
-
-        Branch order matters: more specific tokens first.
         """
-        n = name.lower()
-        if "rsi" in n:
-            return "rsi"
-        if "volatility" in n or "_vol_" in n or n.endswith("_vol"):
-            return "volatility"
-        if (
-            "momentum" in n
-            or "_mom_" in n
-            or n.endswith("_mom")
-            or n.startswith("mom_")
-            or "_mom" in n
-        ):
-            return "momentum"
-        if "_ma_" in n or n.startswith("ma_") or n.endswith("_ma") or "macross" in n:
-            return "ma_cross"
-        if "factor" in n or "rank" in n:
-            return "factor_rank"
-        return "factor_rank"  # default fallback for 101 alphas
+        return _classify_name_v2(name).value
 
     @staticmethod
     def _safe_strategy_name(s: str) -> str:

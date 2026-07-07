@@ -13,7 +13,8 @@ from QuantNodes.backtest.backtest_node import (
 from QuantNodes.backtest.strategy_node import (
     StrategyNode,
     Order,
-    Signal,
+    Signal,  # SignalV2 alias for TradeSignal (backward compat)
+    TradeSignal,
     OrdersResult,
     MAStrategyNode,
     MomentumStrategyNode,
@@ -43,7 +44,8 @@ __all__ = [
     'BacktestPipeline',
     'StrategyNode',
     'Order',
-    'Signal',
+    'Signal',  # SignalV2 backward-compat alias
+    'TradeSignal',
     'OrdersResult',
     'MAStrategyNode',
     'MomentumStrategyNode',
