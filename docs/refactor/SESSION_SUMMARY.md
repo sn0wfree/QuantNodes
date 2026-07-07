@@ -276,3 +276,173 @@ tests/agent/test_wiki_tool.py                (±4)    patch path fix
   - 4 文件改动 (sink/base.py + 3 sinks)
   - 1 新测试文件 (~30 tests)
   - **0 caller 改动** (sync API 不动, 纯新增)
+
+---
+
+# Session 6 (2026-07-07) — M4.2 配置统一 + M4.4 Sink 异步化 (PR6.7 + PR6.8) ✅
+
+> **起点**: tag `post-m4.3-wiki-split` (commit `7f1bc04`)
+> **终点**: tag `post-m4.4-sink-async` (commit `06c8351`)
+> **本次成果**: M4.2 + M4.4 完成（Tier 4 PR6 全部收官）
+
+---
+
+## 🎯 本次 Session 完成项
+
+### M4.2 PR6.7 — 配置路径硬编码 + symlink 迁移
+
+**动机**: 残留 11 文件硬编码 `~/.llmwikify/*`，未来分裂风险。
+
+**决策**: hardcode `~/.quantnodes/*` (用户选择), 透明 symlink 迁移脚本。
+
+**改动**: 17 文件, +532 / -76 = **+456 净**
+
+```
+9 production 文件 hardcode ~/.quantnodes/*:
+  QuantNodes/research/common/llm/client.py      CONFIG_PATHS 2→1 tuple
+  QuantNodes/research/common/config.py         DEFAULT_CONFIG_PATH
+  QuantNodes/research/common/llm_factory.py    docstring
+  QuantNodes/research/codegen/llm_code.py      docstring
+  QuantNodes/research/codegen/compiler.py      _resolve_cache_dir 简化
+  QuantNodes/research/codegen/semantic.py      yaml 路径 1→1
+  QuantNodes/research/paper_understanding/llm_extraction/config.py  注释
+  QuantNodes/research/data_source/akshare.py   CACHE_DIR
+  QuantNodes/research/data_source/clickhouse.py 2 处
+  QuantNodes/research/data_source/ifind.py     6 处
+  QuantNodes/research/data_source/router.py    2 处
+
+1 new file: scripts/migrate_llmwikify_paths.py (148 行)
+  - default symlink mode (zero-copy, 推荐)
+  - --copy mode (物理迁移)
+  - --dry-run mode (只打印计划)
+  - 幂等
+
+1 enhanced: QuantNodes/research/common/paths.py
+  - append QUANTNODES_HOME + quantnodes_path + ensure_migrated
+  - 保留所有 Wiki 路径符号 (WIKI_DIR_FACTOR 等)
+
+2 new test files (~250 行):
+  - tests/research/test_path_resolver.py (6 tests)
+  - tests/research/test_migrate_script.py (12 tests)
+
+2 updated tests:
+  - tests/research/test_paths.py (__all__ export 列表)
+  - tests/research/test_llm_config_paths.py (docstring)
+```
+
+**排除范围** (其他 WIP, 不动):
+- `QuantNodes/strategy/momentum_etf_rotation/data.py` (untracked, 其他 owner)
+- `QuantNodes/strategy/momentum_etf_rotation/data_tencent.py` (untracked)
+
+**关键 bugfix**:
+- `QuantNodes/research/common/paths.py` 误覆盖了原 Wiki paths 符号 → restore + append
+- `QuantNodes/research/codegen/semantic.py` 删除 fallback 时残留 `break` 关键字 → 修复
+- `QuantNodes/research/codegen/llm_code.py` 注释格式错误 → 修复
+- `tests/research/test_paths.py::TestModuleExports` 新加 3 个 `__all__` 期望 → 修测试
+
+**验证**:
+- pytest: **3158P (+12 net) / 17F / 14E** (baseline 一致)
+- 1-alpha smoke: **1/1 success, 14.9s, IC=-0.0330**
+
+### M4.4 PR6.8 — Sink 异步化 (Protocol 双 API)
+
+**动机**: 3 sink 都是 sync, 无法被 async caller (l5_orchestrator, codegen_pipeline) 调用不阻塞 event loop。
+
+**决策**: dual sync/async Protocol + 默认 fall-through (用户选择, 不引入 aiofiles)。
+
+**改动**: 5 文件, +381 / -5 = **+376 净**
+
+```
+Sink Protocol 加 3 async methods:
+  - write_one_async(result) → Path
+  - write_batch_async(results) → list[Path]
+  - flush_async() → None
+
+默认实现: asyncio.to_thread(self.write_X) — 把 sync I/O offload 到线程池
+
+3 sink override:
+  SingleJsonSink: write_one_async + flush_async
+  YamlDuckdbSink: write_one_async + flush_async
+  BatchSummarySink:
+    - write_batch_async + flush_async
+    - NEW stream_write_async (NDJSON streaming)
+      - AsyncIterator[FactorResult] → NDJSON file
+      - loop.run_in_executor 包装 file append (无 aiofiles)
+```
+
+**Caller 兼容性**:
+- `factor/record_stage.py:103` sync → **不动**
+- `scripts/run_101_alphas_v2.py:796,1090,1104` sync → **不动**
+- `core/pipeline.py` sync → **不动**
+- Future PR 让 caller 选择性升级到 async
+
+**新增 1 测试文件** (242 行, 14 tests):
+```
+tests/research/test_sink_async.py:
+  TestSinkAsyncDefaults (5 tests)
+    - Protocol has async methods
+    - write_one_async delegates to sync
+    - verify runs in different thread (capture threading.get_ident())
+    - write_batch_async empty list
+    - flush_async no-op
+  TestSingleJsonSinkAsync (2 tests)
+    - write_one_async writes file
+    - concurrent asyncio.gather(5 writes)
+  TestYamlDuckdbSinkAsync (1 test)
+    - failed signal returns /dev/null
+  TestBatchSummarySinkAsync (4 tests)
+    - write_batch_async matches sync paths
+    - stream_write_async appends NDJSON
+    - stream_write_async empty returns empty
+    - stream_write_async custom filename
+  TestSinkAsyncComposition (2 tests)
+    - 3 sinks concurrent gather
+    - sync API not broken after async added
+```
+
+**验证**:
+- pytest: **3172P (+14 net) / 17F / 14E** (baseline 一致)
+- 1-alpha smoke: **1/1 success, 22.3s, IC=-0.0330**
+
+---
+
+## 📊 累计 Session 1-6 LoC
+
+| 阶段 | 新增 | 删除 | 净 |
+|---|---|---|---|
+| Session 1 (M1+M2) | +1188 | -2737 | -1549 |
+| Session 2 (Phase B+M3.2) | +509 | -60 | +449 |
+| Session 3 (M3 主+M3.3) | +5827 | -4464 | +1363 |
+| Session 3+ (M3.4+M3 后置) | +573 | -360 | +213 |
+| Session 4 (M4.1 PR6 SignalV2) | +450 | -47 | +403 |
+| Session 4+ (M3 前置 PR6.5 WikiFactor V2) | +223 | -95 | +128 |
+| **Session 5 (M4.3 PR6.6 wiki 拆分)** | **+675** | **-1638** | **-963** |
+| **Session 6 (M4.2 PR6.7 + M4.4 PR6.8)** | **+913** | **-81** | **+832** |
+| **总计 (Session 1-6)** | **+10358** | **-9482** | **+876 净** |
+
+### Tags 新增
+- `post-m4.3-wiki-split` → `7f1bc04` (Session 5)
+- `post-m4.2-config-unification` → `753f1d4` (Session 6)
+- `post-m4.4-sink-async` → `06c8351` (Session 6)
+
+### 累计测试 (Session 1 → 6)
+- Session 1: 3062P / 16F / 14E
+- Session 6: **3172P / 17F / 14E** (+110 net new tests, 0 回归)
+
+### Tier 4 PR6 全部完成 ✅
+- ✅ M4.1 PR6 SignalV2 (TradeSignal + cross-layer bridge)
+- ✅ M3-pre PR6.5 WikiFactor V2 (字段合并)
+- ✅ M4.2 PR6.7 配置统一 (~/.quantnodes hardcode)
+- ✅ M4.3 PR6.6 wiki.py 拆分 (8 文件子包)
+- ✅ M4.4 PR6.8 Sink 异步化 (Protocol 双 API)
+
+---
+
+## 🔮 Session 7 计划 (待执行)
+
+可选方向（任选或全部）：
+
+1. **删 wiki.py shim** (M4.5) — mechanical sed 11+ production caller 到 `from ...wiki.{factor,proxy,enums} import ...`
+2. **Caller async 化** — `factor/record_stage.py._persist_one` + `scripts/run_101_alphas_v2.py` 选择性升级到 `await write_one_async()`
+3. **Sink 流式 NDJSON 接入** — `run_101_alphas_v2.py` 在 `--stream-mode` 时使用 `stream_write_async`
+4. **Tier 5 新方向** — M5: telemetry / metrics / dashboard / agent tools refactor 等
