@@ -82,7 +82,7 @@
 | **M3.2** | LLM 配置统一 (5-tier 优先级) | 0.3 天 | 中 | PR5 | ✅ 完成 |
 | **M3 主** | Tier 3.1: backtest 双包合并 | 1 天 | **高** | PR4 | ✅ 完成 |
 | **M3.3** | 新建 strategy_library.py | 0.3 天 | 中 | PR5 | ✅ 完成 |
-| M3 前置 | Tier 3.5: WikiFactor 类型统一 | 0.5 天 | 低 | PR3 | ⏸ 推到 Tier 4 |
+| M3 前置 | Tier 3.5: WikiFactor 类型统一 | 0.5 天 | 低 | PR3 | ✅ 完成 (PR6.5) |
 | **M3.4** | run_101 接入 strategy sink | 0.5 天 | 中 | PR5 | ✅ 完成 |
 | M3 后置 | 删 backtest_pkg/ shim | 0.5 天 | **高** | PR5 | ✅ 完成 |
 | **M4.1 (PR6)** | SignalV2 — TradeSignal 重命名 + cross-layer bridge | 1 天 | 中 | PR6 | ✅ 完成 |
@@ -227,11 +227,37 @@ git tag post-m2-deadcode
 
 ## Milestone 3: Tier 3 核心整合 (PR3-5)
 
-### M3 前置 (PR3) — WikiFactor 类型统一
+### M3 前置 (PR3 / PR6.5) — WikiFactor 类型统一 ✅
 
-- 删 `paper_understanding/schemas.py:86` 的 6 字段 `WikiFactor`
-- 全部走 `wiki.py:50` 的 23 字段 `WikiFactor`
-- 修所有 caller
+**Commit `22302ef` · Tag `post-wikifactor-v2-merge`**
+
+**问题**：仓库内有 2 个 `WikiFactor` dataclass：
+- `QuantNodes.research.wiki.WikiFactor` (21 字段, **生产代码 10+ 文件使用**)
+- `QuantNodes.research.paper_understanding.schemas.WikiFactor` (6 字段, **仅 4 个测试文件 + 2 manifest 字符串**, 0 生产 caller)
+
+**方案 — 字段合并**：
+- WikiFactor 扩展到 23 字段 (21 原有 + `factor_params: Dict[str, Any]` + `status: str = "draft"`)
+- `schemas.WikiFactor` 和 `schemas.WikiStrategy` 全部删除
+- `schemas.py` 仅保留 `BacktestResult` + `FactorBacktestResult` (生产用)
+- 4 个 production caller 主动填充新字段（避免默认值的语义混淆）
+
+**关键技术决策**：
+- ✅ **不用 discriminated union** (两个 `WikiFactor` 不是 super/sub set, 而是字段互补)
+- ✅ **生产端主动填充** `factor_params` / `status`（而不是用 dataclass 默认值）
+- ✅ **`_render_factor_markdown` / `_parse_factor_from_page` 双向兼容**：旧 markdown 文件缺新字段时回退默认值
+- ✅ **0 上游 llmwikify blocker** (grep `/home/ll/llmwikify/src` 验证 upstream 无 WikiFactor 类)
+
+**Migration**（11 文件, +223 / -95 = +128 LoC）：
+- `wiki.py`: 加 2 字段 + module docstring + `_render_factor_markdown` (2 行) + `_parse_factor_from_page` (新字段解析)
+- `schemas.py`: 删 `WikiFactor` (15 LoC) + `WikiStrategy` (23 LoC) + V2 注解 docstring
+- 4 production caller 主动填充：`report_reproducer._store_verified_factor` / `quant_alpha.pipeline._to_wiki_factor` / `logic_driven_pipeline._persist_to_wiki` / `agent.tools.wiki.WikiTool._store_factor`
+- 测试迁移：删 `TestWikiFactor` (2) + `TestWikiStrategy` (1) + `test_wiki_factor_with_status` + `test_wiki_strategy_with_factor_refs` (2)，新增 `TestWikiFactorV2` (7 tests) + 2 个 V2 测试 in test_repro_integration.py
+- Manifest 更新：`test_module_inventory.py` exports 列表 + `test_imports.py` line 162
+
+**Verified**：
+- pytest baseline: **3146 passed (+4) / 17 failed / 14 errors** (17F 全是 pre-existing)
+- 1-alpha smoke: 1/1, 20.9s, IC=-0.0330
+- WikiFactor round-trip via markdown: `factor_params` + `status` 完整保留
 
 ### M3 主 (PR4) — backtest 双包合并
 
@@ -496,10 +522,21 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
     - 1 新测试文件 test_signal_bridge.py (46 tests)
   - **验证**：3142P (+46) / 17F / 14E (baseline 一致) + 1-alpha 1/1 (15.2s) + 5-alpha per_alpha 5/5 (78.2s)
 
-### Session 4+ (待办)
+### Session 4+ (2026-07-07) — M3 前置 WikiFactor V2 完成 ✅
 
-- [ ] M3 前置: WikiFactor 类型统一 (升到 Tier 4)
-- [ ] M4: 配置统一 + SignalV2 + wiki.py 拆分 + sink 异步化
+- [x] **M3 前置 (PR6.5): WikiFactor V2 — 字段合并 + schemas 清理** → commit `22302ef`, tag `post-wikifactor-v2-merge`
+  - WikiFactor 扩展到 23 字段 (21 原有 + `factor_params` + `status`)
+  - `schemas.WikiFactor` (6 字段) + `schemas.WikiStrategy` (8 字段) 全部删除
+  - `schemas.py` 仅保留 `BacktestResult` + `FactorBacktestResult` (生产用)
+  - 4 production caller 主动填充新字段（避免默认值的语义混淆）
+  - 11 文件, +223 / -95 = +128 LoC
+  - **验证**：3146P (+4) / 17F / 14E (baseline 一致) + 1-alpha 1/1 (20.9s)
+
+### Session 5+ (待办)
+
+- [ ] M4.2: 配置统一 (`~/.llmwikify/*` → `~/.quantnodes/*`)
+- [ ] M4.3: wiki.py 拆分 (1155 LoC → `wiki/{factor,logic,strategy,proxy}_wiki.py`)
+- [ ] M4.4: Sink 异步化 (3 sink 改 async + 流式写)
 
 ---
 
@@ -522,6 +559,7 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | `788a16b` | **M3.4** strategy-mode 接入 | 3 | +228/-3 |
 | `30beb7b` | **M3 后置** 删 backtest_pkg/ shim | 32 | +85/-357 |
 | `0523b1e` | **M4.1 PR6** SignalV2 (TradeSignal + bridge) | 9 | +450/-47 |
+| `22302ef` | **M3 前置 PR6.5** WikiFactor V2 (字段合并) | 11 | +223/-95 |
 
 ### 累计 Session 1-3+ LoC 净变化
 
@@ -532,7 +570,8 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | Session 3 (M3 主+M3.3) | +5827 | -4464 | **+1363** |
 | Session 3+ (M3.4+M3 后置) | +573 | -360 | **+213** |
 | Session 4 (M4.1 PR6 SignalV2) | +450 | -47 | **+403** |
-| **总计 (Session 1-4)** | **+8547** | **-7668** | **+879** |
+| Session 4+ (M3 前置 PR6.5 WikiFactor V2) | +223 | -95 | **+128** |
+| **总计 (Session 1-4+)** | **+8770** | **-7763** | **+1007** |
 
 注：Session 2/3/3+/4 新增主要为：tests (60+ new + 46 SignalV2 new) + 新文件 (scripts/migrate_llm_config.py, persist/strategy_library.py, test_strategy_sink.py, signal_source/bridge.py) + legacy re-exports (36 symbols) + manifest test updates。
 
@@ -550,6 +589,7 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 - `post-m3.4-strategy-sink` → `788a16b` (M3.4: strategy-mode 接入 run_101)
 - `post-m3-postaction-shim-removed` → `30beb7b` (M3 后置: 删 backtest_pkg/ shim)
 - `post-signal-v2-trade-signal-rename` → `0523b1e` (M4.1 PR6: SignalV2 TradeSignal + bridge)
+- `post-wikifactor-v2-merge` → `22302ef` (M3 前置 PR6.5: WikiFactor V2 字段合并)
 
 ### Backup branches
 
@@ -594,6 +634,7 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | M3.4 (`788a16b`) | 3096 | 17 | 14 | +31 new tests（strategy sink） |
 | M3 后置 (`30beb7b`) | 3096 | 17 | 14 | 完全 baseline 一致 + bugfix test_backtest.py |
 | M4.1 PR6 (`0523b1e`) | 3142 | 17 | 14 | +46 new tests（signal_bridge.py） |
+| M3 前置 PR6.5 (`22302ef`) | 3146 | 17 | 14 | +7 new V2 tests - 5 removed schemas tests |
 
 **Failure 来源分布（17 failed, 全部 pre-existing）**：
 
