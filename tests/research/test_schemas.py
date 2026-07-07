@@ -1,4 +1,9 @@
-"""Tests for schemas: 4 个 dataclass."""
+"""Tests for schemas: 2 个 dataclass (BacktestResult + FactorBacktestResult).
+
+WikiFactor V2 (PR6.5): WikiFactor 和 WikiStrategy 已被合并到
+`QuantNodes.research.wiki.WikiFactor` (23 字段)。相关 V2 测试见
+`tests/research/test_wiki.py::TestWikiFactorV2`。
+"""
 
 from __future__ import annotations
 
@@ -28,32 +33,6 @@ class TestBacktestResult:
         assert len(r.equity_curve) == 1
 
 
-class TestWikiFactor:
-    """Test WikiFactor (2 测试)."""
-
-    def test_construction(self) -> None:
-        """WikiFactor 构造 (用真实字段)."""
-        f = s.WikiFactor(name="momentum", factor_class="alpha", factor_params={"window": 20})
-        assert f.name == "momentum"
-        assert f.factor_class == "alpha"
-
-    def test_to_dict(self) -> None:
-        """to_dict() 序列化."""
-        f = s.WikiFactor(name="x", factor_class="alpha", factor_params={})
-        d = f.to_dict()
-        assert d["name"] == "x"
-
-
-class TestWikiStrategy:
-    """Test WikiStrategy (1 测试)."""
-
-    def test_construction_and_to_dict(self) -> None:
-        """WikiStrategy 构造 + to_dict."""
-        st = s.WikiStrategy(name="strat1", strategy_class="factor_ranking")
-        d = st.to_dict()
-        assert d["name"] == "strat1"
-
-
 class TestFactorBacktestResult:
     """Test FactorBacktestResult (2 测试)."""
 
@@ -75,7 +54,7 @@ class TestModuleStructure:
     """Test 模块结构 (1 测试)."""
 
     def test_all_classes_have_to_dict(self) -> None:
-        """所有 4 个类都有 to_dict()."""
-        for cls in [s.BacktestResult, s.WikiFactor, s.WikiStrategy, s.FactorBacktestResult]:
+        """所有 2 个剩余类都有 to_dict()."""
+        for cls in [s.BacktestResult, s.FactorBacktestResult]:
             r = cls()
             assert hasattr(r, "to_dict"), f"{cls.__name__} missing to_dict"

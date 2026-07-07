@@ -259,11 +259,17 @@ class WikiTool(Tool):
             "rank_ic_mean": factor.rank_ic_mean,
             "tags": factor.tags,
             "wiki_page_name": factor.wiki_page_name,
+            # WikiFactor V2: include new fields in serialized output
+            "factor_params": factor.factor_params,
+            "status": factor.status,
         }
 
     async def _store_factor(self, **kwargs) -> str:
         source = FactorSource(kwargs.pop("source"))
         category = FactorCategory(kwargs.pop("category"))
+        # WikiFactor V2: explicit status default for agent-created factors (usually draft)
+        if "status" not in kwargs:
+            kwargs["status"] = "draft"
         factor = WikiFactor(source=source, category=category, **kwargs)
         result = self.proxy.store_factor(factor)
         self._logger.info(f"[WikiTool] stored factor: {result}")

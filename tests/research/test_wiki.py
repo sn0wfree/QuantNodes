@@ -347,3 +347,95 @@ class TestWikiReproductionCRUD:
         fetched = proxy.get_reproduction("策略A/策略B对比研究")
         assert fetched is not None
         assert fetched.report_title == "策略A/策略B对比研究"
+
+
+# ─── WikiFactor V2 (PR6.5) — factor_params + status fields ─────
+
+
+class TestWikiFactorV2:
+    """WikiFactor V2: 新增 factor_params + status 字段 (合并自旧 schemas.WikiFactor).
+
+    旧 21 字段 → 新 23 字段。新字段都有默认值, 现有调用不需改。
+    """
+
+    def test_total_fields_count(self) -> None:
+        """23 字段 (21 原有 + factor_params + status)."""
+        f = WikiFactor(
+            name="x", formula="...", source=FactorSource.MANUAL,
+            category=FactorCategory.MOMENTUM,
+        )
+        assert len(f.__dataclass_fields__) == 23
+        assert "factor_params" in f.__dataclass_fields__
+        assert "status" in f.__dataclass_fields__
+
+    def test_default_factor_params_empty(self) -> None:
+        """factor_params default = {} (Dict field)."""
+        f = WikiFactor(
+            name="x", formula="...", source=FactorSource.MANUAL,
+            category=FactorCategory.MOMENTUM,
+        )
+        assert f.factor_params == {}
+        assert isinstance(f.factor_params, dict)
+
+    def test_default_status_draft(self) -> None:
+        """status default = 'draft'."""
+        f = WikiFactor(
+            name="x", formula="...", source=FactorSource.MANUAL,
+            category=FactorCategory.MOMENTUM,
+        )
+        assert f.status == "draft"
+
+    def test_factor_params_can_be_set(self) -> None:
+        """factor_params 可显式设置."""
+        f = WikiFactor(
+            name="x", formula="...", source=FactorSource.MANUAL,
+            category=FactorCategory.MOMENTUM,
+            factor_params={"window": 20, "factor_col": "close"},
+        )
+        assert f.factor_params == {"window": 20, "factor_col": "close"}
+
+    def test_status_can_be_set(self) -> None:
+        """status 可显式设置为 'validated' / 'deprecated'."""
+        f = WikiFactor(
+            name="x", formula="...", source=FactorSource.MANUAL,
+            category=FactorCategory.MOMENTUM,
+            status="validated",
+        )
+        assert f.status == "validated"
+
+    def test_roundtrip_via_wiki(self, proxy) -> None:
+        """factor_params + status 经 _render/_parse round-trip 保留."""
+        from QuantNodes.research.wiki import WikiFactorProxy
+        assert isinstance(proxy, WikiFactorProxy)
+
+        f = WikiFactor(
+            name="momentum_20d",
+            formula="rank(corr(close, time, 20))",
+            source=FactorSource.AUTO_RESEARCH,
+            category=FactorCategory.MOMENTUM,
+            factor_params={"window": 20, "factor_col": "close"},
+            status="validated",
+            ic_mean=0.05,
+        )
+        proxy.store_factor(f)
+        fetched = proxy.get_factor("momentum_20d")
+        assert fetched is not None
+        assert fetched.factor_params == {"window": 20, "factor_col": "close"}
+        assert fetched.status == "validated"
+        assert fetched.ic_mean == 0.05
+
+    def test_backward_compat_no_new_fields(self, proxy) -> None:
+        """Backward compat: 不传新字段也能 round-trip (默认 {} + draft)."""
+        f = WikiFactor(
+            name="legacy_factor",
+            formula="rank(close)",
+            source=FactorSource.MANUAL,
+            category=FactorCategory.MOMENTUM,
+            ic_mean=0.03,
+        )
+        proxy.store_factor(f)
+        fetched = proxy.get_factor("legacy_factor")
+        assert fetched is not None
+        assert fetched.factor_params == {}
+        assert fetched.status == "draft"
+        assert fetched.ic_mean == 0.03

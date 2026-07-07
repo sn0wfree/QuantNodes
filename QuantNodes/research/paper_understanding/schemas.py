@@ -1,7 +1,19 @@
 """Schemas for reproduction module.
 
 Merged schema: our 12 fields + QuantNodes summary/config/security_status/nodes.
-Plus Factor/Strategy/FactorBacktest schemas for v0.4.0 three-page architecture.
+
+WikiFactor V2 (M3 前置, PR6.5):
+  原 `WikiFactor` (6 字段) 和 `WikiStrategy` (8 字段) 已被删除, 合并到
+  `QuantNodes.research.wiki.WikiFactor` (23 字段)。两个旧 schemas 类
+  自 v4.0.0 reproduction merge 以来没有任何生产代码 caller, 仅 4 个
+  测试文件使用 — 现在统一到 wiki.py 的 23 字段 WikiFactor。
+
+  需要 `factor_params` / `status` 字段的代码请 import:
+    from QuantNodes.research.wiki import WikiFactor
+
+当前保留的 schema 类:
+  - BacktestResult       (生产用, run_backtest/factor_backtest)
+  - FactorBacktestResult (生产用, factor_backtest/run_factor_backtest_universe)
 """
 
 from __future__ import annotations
@@ -80,54 +92,6 @@ class BacktestResult:
 #     - reproduction/l5_validation.py:266,532
 #     - tests/reproduction/test_factor_backtest_cross_section.py:205,375
 #     - tests/reproduction/test_quant.py:713
-
-
-@dataclass
-class WikiFactor:
-    """Factor definition extracted from paper or user-defined."""
-
-    name: str = ""
-    factor_class: str = ""        # momentum | value | volatility | quality | size | growth | signal_composite
-    factor_params: dict[str, Any] = field(default_factory=dict)
-    factor_source: str = ""       # paper reference or "user-defined"
-    status: str = "draft"         # draft | validated | deprecated
-    wiki_page: str = ""           # wiki/factor/{slug}.md path
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "factor_class": self.factor_class,
-            "factor_params": self.factor_params,
-            "factor_source": self.factor_source,
-            "status": self.status,
-            "wiki_page": self.wiki_page,
-        }
-
-
-@dataclass
-class WikiStrategy:
-    """Strategy definition extracted from paper or user-defined."""
-
-    name: str = ""
-    strategy_class: str = ""      # trend_following | factor_ranking | stat_arb | mean_reversion | composite
-    signal_type: str = ""         # ma_cross | rsi | momentum | volatility | factor_rank | signal_composite
-    signal_params: dict[str, Any] = field(default_factory=dict)
-    factor_refs: list[str] = field(default_factory=list)  # references to Factor wiki pages
-    rebalance_freq: str = "daily" # daily | weekly | monthly | quarterly
-    status: str = "draft"         # draft | backtested | validated | deprecated
-    wiki_page: str = ""           # wiki/strategy/{slug}.md path
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "name": self.name,
-            "strategy_class": self.strategy_class,
-            "signal_type": self.signal_type,
-            "signal_params": self.signal_params,
-            "factor_refs": self.factor_refs,
-            "rebalance_freq": self.rebalance_freq,
-            "status": self.status,
-            "wiki_page": self.wiki_page,
-        }
 
 
 @dataclass

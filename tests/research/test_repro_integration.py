@@ -73,21 +73,35 @@ class TestSchemasWithSessions:
         assert isinstance(d, dict)
         assert "ic_mean" in d
 
-    def test_wiki_factor_with_status(self) -> None:
-        """WikiFactor 含 status 字段."""
-        f = schemas.WikiFactor(name="momentum", factor_class="alpha", factor_params={}, status="draft")
-        assert f.status == "draft"
-        d = f.to_dict()
-        assert d["status"] == "draft"
+    def test_wiki_factor_v2_status_default(self) -> None:
+        """WikiFactor V2: status 字段 default = 'draft'.
 
-    def test_wiki_strategy_with_factor_refs(self) -> None:
-        """WikiStrategy 含 factor_refs 字段 (引用因子)."""
-        s = schemas.WikiStrategy(
-            name="strat1", strategy_class="factor_ranking",
-            factor_refs=["momentum", "value"],
+        WikiFactor V2 (PR6.5) 合并后, 23 字段 WikiFactor 替代旧 schemas.WikiFactor.
+        此处仅校验 V2 status 默认值. 详见 tests/research/test_wiki.py::TestWikiFactorV2.
+        """
+        from QuantNodes.research.wiki import WikiFactor, FactorSource, FactorCategory
+        f = WikiFactor(
+            name="momentum",
+            formula="rank(corr(close, time, 20))",
+            source=FactorSource.MANUAL,
+            category=FactorCategory.MOMENTUM,
         )
-        d = s.to_dict()
-        assert d["factor_refs"] == ["momentum", "value"]
+        assert f.status == "draft"
+        assert f.factor_params == {}
+
+    def test_wiki_factor_v2_factor_params(self) -> None:
+        """WikiFactor V2: factor_params 可显式设置."""
+        from QuantNodes.research.wiki import WikiFactor, FactorSource, FactorCategory
+        f = WikiFactor(
+            name="momentum",
+            formula="rank(corr(close, time, 20))",
+            source=FactorSource.MANUAL,
+            category=FactorCategory.MOMENTUM,
+            factor_params={"window": 20, "factor_col": "close"},
+            status="validated",
+        )
+        assert f.factor_params == {"window": 20, "factor_col": "close"}
+        assert f.status == "validated"
 
 
 class TestSessionEvents:

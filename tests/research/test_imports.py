@@ -159,7 +159,7 @@ CRITICAL_IMPORTS = [
     # 顶层 (5)
     "from QuantNodes.research.paper_understanding.quant_wiki import get_quant_wiki",
     "from QuantNodes.research.paper_understanding.extract_paper import extract_paper_structure, _extract_factors_from_list",
-    "from QuantNodes.research.paper_understanding.schemas import BacktestResult, WikiFactor, FactorBacktestResult",
+    "from QuantNodes.research.paper_understanding.schemas import BacktestResult, FactorBacktestResult",
     "from QuantNodes.research.paper_understanding.contracts import FactorPage",
     # pipeline/ (Phase 14A-B; M2: runner/workspace/stages.base deleted as stubs)
     "from QuantNodes.research.pipeline.config import WorkspaceConfig",

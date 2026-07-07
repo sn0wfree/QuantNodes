@@ -1,5 +1,21 @@
 # coding=utf-8
-"""WikiFactorProxy - Wiki 因子库代理层"""
+"""WikiFactorProxy - Wiki 因子库代理层
+
+WikiFactor V2 (M3 前置, PR6.5):
+  WikiFactor dataclass 扩展为 23 字段 (原 21 + 新增 2):
+    - factor_params: Dict[str, Any]  (从原 schemas.WikiFactor 合并)
+    - status:        str              (从原 schemas.WikiFactor 合并, default "draft")
+
+  原 `QuantNodes.research.paper_understanding.schemas.WikiFactor` (6 字段)
+  和 `schemas.WikiStrategy` (8 字段) 已删除 — 它们从未被生产代码引用,
+  仅 4 个测试文件使用。统一后所有代码路径都走这里的 23 字段 WikiFactor。
+
+向后兼容:
+  - 新字段都有默认值 (factor_params={}, status="draft"), 现有 WikiFactor(...)
+    调用不需改
+  - _render_factor_markdown / _parse_factor_from_page 双向兼容旧 markdown
+    (旧 .md 文件缺新字段时, 解析回默认值)
+"""
 
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -49,12 +65,37 @@ QUANT_RELATION_TYPES = {
 
 @dataclass
 class WikiFactor:
+    """Wiki 因子定义 (WikiFactor V2: 23 字段).
+
+    与 v1 差异 (PR6.5):
+      - + factor_params: Dict[str, Any]  (从 schemas.WikiFactor 合并)
+      - + status:        str = "draft"   (从 schemas.WikiFactor 合并)
+
+    Fields:
+        name: 因子名 (filename-safe)
+        formula: 公式表达式 (math string 或 code reference)
+        source: FactorSource 枚举 (5 成员)
+        category: FactorCategory 枚举 (7 成员)
+        description: 自由文本描述
+        tags: 标签列表 (e.g. ["logic-driven", "ir=0.85"])
+        factor_params: 运行时参数 (e.g. {"window": 20, "factor_col": "close"}) [V2 NEW]
+        status: 生命周期状态 ("draft" | "validated" | "deprecated") [V2 NEW]
+        ic_mean ~ turnover: 8 个回测指标
+        used_by_strategies: 使用本因子的策略名列表
+        strategy_yaml: 嵌入的策略 yaml 字符串
+        wiki_page_name: 在 wiki 中的页面路径
+        created_at / updated_at: ISO 时间戳
+        metadata: 自由扩展 dict
+    """
     name: str
     formula: str
     source: FactorSource
     category: FactorCategory
     description: str = ""
     tags: List[str] = field(default_factory=list)
+    # V2 NEW: 合并自 schemas.WikiFactor
+    factor_params: Dict[str, Any] = field(default_factory=dict)
+    status: str = "draft"
     ic_mean: Optional[float] = None
     ic_std: Optional[float] = None
     icir: Optional[float] = None
@@ -693,6 +734,10 @@ class WikiFactorProxy:
         lines.append(f"source: {factor.source.value}")
         lines.append(f"category: {factor.category.value}")
         lines.append("tags: [" + ", ".join(factor.tags) + "]")
+        # V2 NEW: render factor_params + status (with sensible defaults)
+        if factor.factor_params:
+            lines.append(f"factor_params: {factor.factor_params}")
+        lines.append(f"status: {factor.status}")
         if factor.ic_mean is not None:
             lines.append(f"ic_mean: {factor.ic_mean}")
         if factor.ic_std is not None:
@@ -761,6 +806,9 @@ class WikiFactorProxy:
         category = FactorCategory.OTHER
         formula = ""
         tags = []
+        # V2 NEW: factor_params + status with sensible defaults (backward compat)
+        factor_params: Dict[str, Any] = {}
+        status: str = "draft"
         ic_mean = ic_std = icir = rank_ic_mean = None
         n_dates = factor_return_corr = ic_t_stat = turnover = None
         used_by_strategies = []
@@ -789,6 +837,19 @@ class WikiFactorProxy:
                     ts = ls.split(':', 1)[1].strip()
                     if ts.startswith('[') and ts.endswith(']'):
                         tags = [t.strip() for t in ts[1:-1].split(',') if t.strip()]
+                elif ls.startswith('factor_params:'):
+                    # V2 NEW: parse factor_params dict (Python literal style).
+                    # Use a safe fallback: if it fails to parse, leave {}.
+                    import ast as _ast
+                    raw = ls.split(':', 1)[1].strip()
+                    try:
+                        factor_params = _ast.literal_eval(raw)
+                        if not isinstance(factor_params, dict):
+                            factor_params = {}
+                    except (ValueError, SyntaxError):
+                        factor_params = {}
+                elif ls.startswith('status:'):
+                    status = ls.split(':', 1)[1].strip()
                 elif ls.startswith('ic_mean:'):
                     try:
                         ic_mean = float(ls.split(':', 1)[1].strip())
@@ -852,6 +913,8 @@ class WikiFactorProxy:
             source=source,
             category=category,
             tags=tags,
+            factor_params=factor_params,
+            status=status,
             ic_mean=ic_mean,
             ic_std=ic_std,
             icir=icir,

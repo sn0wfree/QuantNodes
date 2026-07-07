@@ -119,8 +119,6 @@ EXPECTED_PUBLIC_API = {
     ],
     "paper_understanding.schemas": [
         "BacktestResult",
-        "WikiFactor",
-        "WikiStrategy",
         "FactorBacktestResult",
     ],
     "paper_understanding.extract_paper": [

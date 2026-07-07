@@ -380,6 +380,9 @@ class LogicDrivenPipeline:
                             f"ir={f.ir:.3f}",
                             f"logic={result.best_logic_name}",
                         ],
+                        # WikiFactor V2: 主动填充新字段 (logic-driven 出因子 = draft, 等后续验证)
+                        factor_params={"logic": result.best_logic_name, "source_pipeline": "logic-driven"},
+                        status="draft",
                         ic_mean=f.ic_mean,
                         ic_std=f.ic_std,
                         icir=f.ir,

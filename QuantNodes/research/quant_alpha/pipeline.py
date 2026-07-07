@@ -896,6 +896,9 @@ class AlphaPipeline:
             source=FactorSource.AUTO_RESEARCH,
             category=FactorCategory.OTHER,
             tags=["alpha-pipeline", f"ir={metrics.ir:.3f}"],
+            # WikiFactor V2: 主动填充新字段 (alpha-pipeline 出因子已经通过 IR 评估)
+            factor_params={"source_pipeline": "alpha-pipeline", "ic_decay_steps": list(metrics.ic_decay.keys())},
+            status="validated",
             ic_mean=metrics.ic_mean,
             ic_std=metrics.ic_std,
             icir=metrics.ir,

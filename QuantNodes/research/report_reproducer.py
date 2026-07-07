@@ -394,6 +394,12 @@ class ResearchReportReproducer:
             source=FactorSource.RESEARCH_REPORT,
             category=FactorCategory.OTHER,
             tags=["research_report"],
+            # WikiFactor V2: 主动填充新字段
+            factor_params={
+                "logic_type": result.logic.logic_type,
+                "evidence": result.logic.evidence,
+            },
+            status="validated",
             ic_mean=result.factor_result.ic_mean,
             ic_std=result.factor_result.ic_std,
             icir=result.factor_result.ir,
