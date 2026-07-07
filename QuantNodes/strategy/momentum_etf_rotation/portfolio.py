@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
+import numpy as np
 import pandas as pd
 
 from .momentum import (
@@ -78,6 +79,20 @@ class TrendFilter:
 
 
 @dataclass
+class VolTargeting:
+    """波动率目标 (Stage 9-C): 将组合波动率缩放到目标水平.
+
+    在每个调仓日计算 lookback 日实际波动率, 用 target_vol / realized_vol
+    缩放权重. 限制在 [min_scale, max_scale] 区间内.
+    """
+    enabled: bool = False
+    target_vol: float = 0.10  # 目标年化波动 10%
+    lookback: int = 60        # 波动率窗口
+    min_scale: float = 0.3    # 最小保留 30% 仓位
+    max_scale: float = 1.5    # 最大加仓 150%
+
+
+@dataclass
 class RotationConfig:
     """动量轮动策略的所有可调参数."""
     lookback: int = 144                 # 动量回看 (CICC 144)
@@ -104,6 +119,9 @@ class RotationConfig:
 
     # 趋势过滤器 (Stage 9-B)
     trend_filter: TrendFilter = field(default_factory=TrendFilter)
+
+    # 波动率目标 (Stage 9-C)
+    vol_targeting: VolTargeting = field(default_factory=VolTargeting)
 
     # 通用
     min_history: int = 144
@@ -424,6 +442,53 @@ def apply_trend_filter(
     if tf.bond_code in nav_df.columns:
         new_weights[tf.bond_code] = new_weights.get(tf.bond_code, 0.0) + bond_weight
     state.weights = new_weights
+    return state
+
+
+# ----------------------------------------------------------------------------
+# 波动率目标 (Stage 9-C)
+# ----------------------------------------------------------------------------
+def vol_targeting_scale(
+    nav: pd.Series,
+    target_vol: float,
+    lookback: int,
+    min_scale: float,
+    max_scale: float,
+) -> float:
+    """计算当前应缩放系数.
+
+    scale = clip(target_vol / realized_vol, min_scale, max_scale)
+    realized_vol 为 lookback 日年化波动率 (× √252).
+    """
+    rets = nav.pct_change().dropna()
+    if len(rets) < lookback:
+        return 1.0
+    realized_vol = rets.iloc[-lookback:].std() * np.sqrt(252)
+    if realized_vol <= 0:
+        return 1.0
+    scale = target_vol / realized_vol
+    return float(np.clip(scale, min_scale, max_scale))
+
+
+def apply_vol_targeting(
+    cfg: RotationConfig,
+    nav: pd.Series,
+    as_of: pd.Timestamp,
+    state: PortfolioState,
+) -> PortfolioState:
+    """对 PortfolioState 应用波动率目标 (Stage 9-C)."""
+    if not cfg.vol_targeting.enabled:
+        return state
+    vt = cfg.vol_targeting
+    scale = vol_targeting_scale(
+        nav.loc[:as_of],
+        vt.target_vol,
+        vt.lookback,
+        vt.min_scale,
+        vt.max_scale,
+    )
+    state.weights = {k: v * scale for k, v in state.weights.items()}
+    # 剩余仓位补现金 (这里不实现, 用缩放代替)
     return state
 
 
