@@ -12,7 +12,7 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Iterable
 
 import numpy as np
@@ -83,12 +83,42 @@ def run_rotation_backtest(
     states: list[PortfolioState] = []
     actual: list[pd.Timestamp] = []
 
+    # Stage 9-D: 训练 HMM regime 检测器
+    detector = None
+    if rot.regime_detector is not None and rot.regime_detector.enabled:
+        from .regime_detector import HMMRegimeDetector, get_regime_params
+        detector = HMMRegimeDetector(
+            n_regimes=rot.regime_detector.n_regimes,
+            lookback_train=rot.regime_detector.lookback_train,
+        )
+        # 用前 lookback_train 天训练
+        if rot.regime_detector.benchmark_code in etf_norm.columns:
+            train_nav = etf_norm[rot.regime_detector.benchmark_code]
+            if len(train_nav) >= rot.regime_detector.lookback_train:
+                try:
+                    detector.fit(train_nav)
+                except Exception as e:
+                    print(f"HMM 训练失败: {e}, 禁用 detector")
+                    detector = None
+        else:
+            detector = None
+
     for i, date in enumerate(dates):
         if date in rebal_dates:
+            # Stage 9-D: 根据 regime 动态调整参数
+            rot_eff = rot
+            if detector is not None and i > 0:
+                try:
+                    regime = detector.predict(etf_norm[rot.regime_detector.benchmark_code].loc[:date])
+                    overrides = get_regime_params(rot_eff, regime, rot.regime_detector.regime_params)
+                    rot_eff = replace(rot, **overrides)
+                except Exception:
+                    rot_eff = rot
+
             if prev_weights:
-                state = apply_stops(etf_norm, pool, rot, prev_weights, date)
+                state = apply_stops(etf_norm, pool, rot_eff, prev_weights, date)
             else:
-                state = select_and_weight(etf_norm, pool, rot, date)
+                state = select_and_weight(etf_norm, pool, rot_eff, date)
             if not state.weights:
                 state.weights = equal_weights(etf_norm.columns.tolist())
             total = sum(state.weights.values())

@@ -17,7 +17,7 @@ CICC 伪代码关键约束:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping, Sequence
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 import numpy as np
 import pandas as pd
@@ -92,6 +92,12 @@ class VolTargeting:
     max_scale: float = 1.5    # 最大加仓 150%
 
 
+# Stage 9-D: Regime detector 占位 (实际类在 regime_detector.py)
+# 为避免循环 import, 这里只做类型提示
+if TYPE_CHECKING:
+    from .regime_detector import RegimeDetector
+
+
 @dataclass
 class RotationConfig:
     """动量轮动策略的所有可调参数."""
@@ -122,6 +128,9 @@ class RotationConfig:
 
     # 波动率目标 (Stage 9-C)
     vol_targeting: VolTargeting = field(default_factory=VolTargeting)
+
+    # Regime 检测 (Stage 9-D): 延迟 import 避免循环依赖
+    regime_detector: "RegimeDetector | None" = None
 
     # 通用
     min_history: int = 144
