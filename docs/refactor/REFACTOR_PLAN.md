@@ -85,7 +85,8 @@
 | M3 前置 | Tier 3.5: WikiFactor 类型统一 | 0.5 天 | 低 | PR3 | ⏸ 推到 Tier 4 |
 | **M3.4** | run_101 接入 strategy sink | 0.5 天 | 中 | PR5 | ✅ 完成 |
 | M3 后置 | 删 backtest_pkg/ shim | 0.5 天 | **高** | PR5 | ✅ 完成 |
-| M4 | Tier 4: 配置统一 + SignalV2 + wiki 拆分 + sink async | 3 天 | **高** | PR6 | ⏳ Future |
+| **M4.1 (PR6)** | SignalV2 — TradeSignal 重命名 + cross-layer bridge | 1 天 | 中 | PR6 | ✅ 完成 |
+| M4.2 | 配置统一 + wiki.py 拆分 + sink async | 2 天 | **高** | PR6 | ⏳ Future |
 
 每个 Milestone 完成后打 tag (`post-m1-bugfixes` / `post-m2-deadcode` / 等)，验证通过后继续。
 
@@ -335,14 +336,43 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 - 所有 `~/.llmwikify/*` 路径 → `~/.quantnodes/*`
 - 加迁移脚本 `~/.quantnodes/migrate_from_llmwikify.py`
 
-### M4.2 — SignalV2 重设计
+### M4.2 — SignalV2 重设计 ✅ (PR6 完成)
 
-- 单一 dataclass 贯穿三层
-- 改 `signal_source/`、`codegen/`、`backtest/`、`sink/`、`strategy/` 全部接口
+**Commit `0523b1e` · Tag `post-signal-v2-trade-signal-rename`**
 
-### M4.3 — 拆 wiki.py (1155 LoC)
+**设计原则**：**Layer-appropriate single canonical dataclass + 显式 cross-layer bridge**
+（NOT discriminated union — 两个 Signal 字段零重叠，union 会成 Optional[] 反模式）
+
+**3 个 canonical 类型**：
+| Layer | 类型 | 位置 |
+|---|---|---|
+| Paper | `Signal` (id, name, formula_brief, metadata) | `signal_source/base.py` |
+| Trade | `TradeSignal` (code, signal_type, strength, price, date) — alias: `Signal` | `backtest/strategy_node.py` |
+| Classifier | `SignalType` (enum) | `paper_understanding/contracts.py` |
+
+**Cross-layer bridge** — `QuantNodes/research/signal_source/bridge.py`:
+- `classify_paper_signal(signal: Signal) -> SignalType` — heuristic (rsi > volatility > momentum > ma_cross > factor_rank default)
+- `classify_name(name: str) -> SignalType` — plain string variant
+- `signal_type_to_strategy_class(sig_type: SignalType) -> type[StrategyNode] | None`
+
+**变更**（9 文件，+450 LoC）：
+- 1 新文件 `bridge.py` (130 行)
+- 1 新测试文件 `test_signal_bridge.py` (220 行, 46 tests)
+- 4 production 文件改名: `Signal` → `TradeSignal` (backtest/__init__ + config_strategy + strategy_node + research/backtest/strategies)
+- 1 脚本换用 bridge: `run_101_alphas_v2.py` (_alpha_to_signal_type 现在 delegate to bridge)
+- 2 测试文件 (test_strategy_node + test_strategy_library YAML string)
+
+**向后兼容**：`Signal = TradeSignal` 1 行 alias 让所有现有 `from ...strategy_node import Signal` 继续工作。
+
+**验证**：
+- pytest: 3142P / 17F / 14E (+46 new tests, baseline 一致)
+- 1-alpha smoke: 1/1 (15.2s)
+- 5-alpha smoke (per_alpha): 5/5 (78.2s, 5 strategies + 5 DuckDB)
+
+### M4.3 — 拆 wiki.py (1155 LoC) ⏸
 
 - `wiki/{factor,logic,strategy,proxy}_wiki.py`
+- 风险：上游 llmwikify 已有 WikiFactor 6-field 类型事故先例，迁前需 ping upstream
 
 ### M4.4 — Sink 异步化
 
@@ -358,7 +388,7 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | Tier 3.1 删 backtest_pkg/ 破坏 api/routers | **高** | 3.1b 列出所有 caller，3.1c 加 shim 兼容，3.1d 才删 |
 | Tier 3.2 改 LLM 配置路径破坏 .env 配置 | 中 | 先看 .env 内容，加双路径 fallback |
 | Tier 3.4 接 strategy 后端到端跑挂 | 中 | 灰度：先在 1 alpha 上跑通，再 5，再 101 |
-| Tier 4.2 SignalV2 改动 20+ 文件 | **高** | 必须前面所有 milestone 通过 + 测试 baseline 已稳定 |
+| Tier 4.2 SignalV2 改动 20+ 文件 | **高** | ✅ 已完成 (PR6, commit `0523b1e`) — 9 文件 +450 LoC |
 | 101 alpha 在某 milestone 后 pass rate 下降 > 5% | 中 | 立即回滚到上一个 milestone tag |
 
 ---
@@ -448,6 +478,24 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
   - **Bugfix**：test_backtest.py 用了 shim 制造的 `b` 是模块而非函数的语义，改用 `importlib.import_module()` 显式获取模块（5 tests in TestRunBacktestSignature/Structure）
   - 验证：3096 passed / 17F / 14E (与 M3.4 baseline 完全一致) + 1-alpha + 5-alpha smoke 双通
 
+### Session 4 (2026-07-07) — SignalV2 PR6 完成 ✅
+
+- [x] **M4.1 (PR6): SignalV2 — TradeSignal 重命名 + cross-layer bridge** → commit `0523b1e`, tag `post-signal-v2-trade-signal-rename`
+  - **3 个 canonical Signal-like 类型** (Layer-appropriate single canonical dataclass):
+    - `Signal` (paper, 不变) — `signal_source/base.py`
+    - `TradeSignal` (trade, 新名) — `backtest/strategy_node.py`（旧 `Signal` 现在是 alias）
+    - `SignalType` (enum, 不变) — `paper_understanding/contracts.py`
+  - **Cross-layer bridge** — `research/signal_source/bridge.py` (130 行):
+    - `classify_paper_signal(signal)` → `SignalType`
+    - `classify_name(name)` → `SignalType`
+    - `signal_type_to_strategy_class(sig_type)` → `type[StrategyNode] | None`
+  - **修改**（9 文件，+450 LoC）：
+    - 4 production 文件 rename: backtest/__init__ + config_strategy + strategy_node + research/backtest/strategies
+    - 1 脚本换用 bridge: run_101_alphas_v2.py (_alpha_to_signal_type delegate)
+    - 2 测试文件: test_strategy_node + test_strategy_library YAML
+    - 1 新测试文件 test_signal_bridge.py (46 tests)
+  - **验证**：3142P (+46) / 17F / 14E (baseline 一致) + 1-alpha 1/1 (15.2s) + 5-alpha per_alpha 5/5 (78.2s)
+
 ### Session 4+ (待办)
 
 - [ ] M3 前置: WikiFactor 类型统一 (升到 Tier 4)
@@ -473,6 +521,7 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | `5f43ce4` | Session 3 docs 总结 | 2 | +260/-0 |
 | `788a16b` | **M3.4** strategy-mode 接入 | 3 | +228/-3 |
 | `30beb7b` | **M3 后置** 删 backtest_pkg/ shim | 32 | +85/-357 |
+| `0523b1e` | **M4.1 PR6** SignalV2 (TradeSignal + bridge) | 9 | +450/-47 |
 
 ### 累计 Session 1-3+ LoC 净变化
 
@@ -482,9 +531,10 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | Session 2 (Phase B+M3.2) | +509 | -60 | **+449** |
 | Session 3 (M3 主+M3.3) | +5827 | -4464 | **+1363** |
 | Session 3+ (M3.4+M3 后置) | +573 | -360 | **+213** |
-| **总计 (Session 1-3+)** | **+8097** | **-7621** | **+476** |
+| Session 4 (M4.1 PR6 SignalV2) | +450 | -47 | **+403** |
+| **总计 (Session 1-4)** | **+8547** | **-7668** | **+879** |
 
-注：Session 2/3/3+ 新增主要为：tests (60+ new) + 新文件 (scripts/migrate_llm_config.py, persist/strategy_library.py, test_strategy_sink.py) + legacy re-exports (36 symbols) + manifest test updates。
+注：Session 2/3/3+/4 新增主要为：tests (60+ new + 46 SignalV2 new) + 新文件 (scripts/migrate_llm_config.py, persist/strategy_library.py, test_strategy_sink.py, signal_source/bridge.py) + legacy re-exports (36 symbols) + manifest test updates。
 
 ### Tags
 
@@ -499,6 +549,7 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 - `post-session3-wrapup` → `5f43ce4` (Session 3 docs 总结)
 - `post-m3.4-strategy-sink` → `788a16b` (M3.4: strategy-mode 接入 run_101)
 - `post-m3-postaction-shim-removed` → `30beb7b` (M3 后置: 删 backtest_pkg/ shim)
+- `post-signal-v2-trade-signal-rename` → `0523b1e` (M4.1 PR6: SignalV2 TradeSignal + bridge)
 
 ### Backup branches
 
@@ -542,6 +593,7 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | M3.3 (`e657607`) | 3065 | 17 | 14 | +29 new tests（strategy_library） |
 | M3.4 (`788a16b`) | 3096 | 17 | 14 | +31 new tests（strategy sink） |
 | M3 后置 (`30beb7b`) | 3096 | 17 | 14 | 完全 baseline 一致 + bugfix test_backtest.py |
+| M4.1 PR6 (`0523b1e`) | 3142 | 17 | 14 | +46 new tests（signal_bridge.py） |
 
 **Failure 来源分布（17 failed, 全部 pre-existing）**：
 
