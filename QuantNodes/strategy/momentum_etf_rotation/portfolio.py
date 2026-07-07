@@ -92,6 +92,22 @@ class VolTargeting:
     max_scale: float = 1.5    # 最大加仓 150%
 
 
+@dataclass
+class ConcentrationCaps:
+    """集中度约束 (Stage 10): 限制单 ETF / Top N / 类别集中度.
+
+    启用时, 加权完成后对权重进行缩放, 满足:
+        - 单 ETF 权重 <= single_etf_max
+        - Top N ETF 合计 <= top_n_total_max
+        - 单类别合计 <= category_max
+    """
+    enabled: bool = False
+    single_etf_max: float = 0.15     # 单 ETF 权重上限 (默认 15%)
+    top_n_total_max: float = 0.45   # Top 3 ETF 合计上限 (默认 45%)
+    top_n_count: int = 3
+    category_max: float = 0.40      # 单类别合计上限 (默认 40%)
+
+
 # Stage 9-D: Regime detector 占位 (实际类在 regime_detector.py)
 # 为避免循环 import, 这里只做类型提示
 if TYPE_CHECKING:
@@ -128,6 +144,9 @@ class RotationConfig:
 
     # 波动率目标 (Stage 9-C)
     vol_targeting: VolTargeting = field(default_factory=VolTargeting)
+
+    # 集中度约束 (Stage 10)
+    concentration: ConcentrationCaps = field(default_factory=ConcentrationCaps)
 
     # Regime 检测 (Stage 9-D): 延迟 import 避免循环依赖
     regime_detector: "RegimeDetector | None" = None
@@ -353,6 +372,12 @@ def select_and_weight(
     else:
         state.weights = equal_weights(state.chosen)
 
+    # Stage 10: 集中度约束 (缩放单 ETF / Top N / 类别集中度)
+    if cfg.concentration.enabled:
+        state.weights = _apply_concentration_caps(
+            state.weights, cfg.concentration, pool,
+        )
+
     # Stage 9-B: 趋势过滤
     apply_trend_filter(nav_df, cfg, as_of, state)
 
@@ -502,6 +527,77 @@ def apply_vol_targeting(
 
 
 # ----------------------------------------------------------------------------
+# 集中度约束 (Stage 10)
+# ----------------------------------------------------------------------------
+def _apply_concentration_caps(
+    weights: dict[str, float],
+    caps: ConcentrationCaps,
+    pool: ETFPool | None = None,
+) -> dict[str, float]:
+    """缩放权重以满足集中度约束 (Stage 10).
+
+    三步:
+        1. 单 ETF 权重 <= single_etf_max
+        2. Top N ETF 合计 <= top_n_total_max
+        3. 单类别合计 <= category_max (需 pool)
+
+    Returns 新的权重 dict. 若约束导致总权重下降, 差额视为现金.
+
+    注: 此实现不重新分配超出部分 (避免振荡), 而是允许总权重下降.
+    """
+    if not caps.enabled or not weights:
+        return weights
+    w = dict(weights)
+
+    # 1. 单 ETF 约束
+    for code in list(w.keys()):
+        if w[code] > caps.single_etf_max:
+            w[code] = caps.single_etf_max
+
+    # 2. Top N 约束: 等比缩放
+    sorted_items = sorted(w.items(), key=lambda x: -x[1])
+    top_n_items = sorted_items[:caps.top_n_count]
+    top_n_codes = {code for code, _ in top_n_items}
+    top_n_total = sum(v for _, v in top_n_items)
+    if top_n_total > caps.top_n_total_max and top_n_total > 0:
+        scale = caps.top_n_total_max / top_n_total
+        for code in top_n_codes:
+            w[code] *= scale
+
+    # 3. 类别约束
+    if pool is not None:
+        cat_weights: dict[str, float] = {}
+        for code, weight in w.items():
+            try:
+                cat = pool.category_of(code).value
+                cat_weights[cat] = cat_weights.get(cat, 0.0) + weight
+            except KeyError:
+                continue
+        for cat, cat_total in cat_weights.items():
+            if cat_total > caps.category_max and cat_total > 0:
+                cat_scale = caps.category_max / cat_total
+                cat_codes = [c for c in w if pool.category_of(c).value == cat]
+                for c in cat_codes:
+                    w[c] *= cat_scale
+
+    return w
+
+
+def apply_concentration_caps(
+    cfg: RotationConfig,
+    pool: ETFPool,
+    state: PortfolioState,
+) -> PortfolioState:
+    """对 PortfolioState 应用集中度约束 (Stage 10)."""
+    if not cfg.concentration.enabled:
+        return state
+    state.weights = _apply_concentration_caps(
+        state.weights, cfg.concentration, pool,
+    )
+    return state
+
+
+# ----------------------------------------------------------------------------
 # 规则 4: 止损 + 补位
 # ----------------------------------------------------------------------------
 def apply_stops(
@@ -576,6 +672,12 @@ def apply_stops(
         state.weights = equal_weights(prev_chosen)
     state.stopped = stopped
     state.replaced = replaced
+
+    # Stage 10: 集中度约束 (在重新加权后再次应用)
+    if cfg.concentration.enabled:
+        state.weights = _apply_concentration_caps(
+            state.weights, cfg.concentration, pool,
+        )
 
     # Stage 9-B: 趋势过滤
     apply_trend_filter(nav_df, cfg, as_of, state)

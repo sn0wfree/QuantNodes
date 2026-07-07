@@ -125,7 +125,8 @@ class TestGetRegimeParams:
     def test_bear_returns_bear_params(self) -> None:
         rp = RegimeParams()
         params = get_regime_params(None, 0, rp)
-        assert params["lookback"] == 144
+        # Stage 9-D 修复后 bear lookback 从 144 改为 90 (避免数据不足)
+        assert params["lookback"] == 90
 
 
 # ============================================================================
