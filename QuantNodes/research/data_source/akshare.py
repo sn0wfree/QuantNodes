@@ -22,7 +22,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = Path.home() / ".llmwikify" / "akshare_cache"
+CACHE_DIR = Path.home() / ".quantnodes" / "akshare_cache"
 
 
 def _ensure_cache_dir() -> Path:

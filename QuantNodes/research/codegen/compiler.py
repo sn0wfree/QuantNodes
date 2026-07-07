@@ -239,27 +239,26 @@ def _mock_ast(factor_name: str) -> ASTNode:
 
 
 def _resolve_cache_dir(new_path: str, legacy_path: str) -> Path:
-    """Resolve a cache directory with backward compatibility.
+    """Resolve a cache directory (M4.2 hardcoded new path).
 
-    Prefer ``new_path`` under ``$HOME``. If it does not exist, fall back to the
-    legacy ``legacy_path`` if that one exists. Otherwise return the new path
-    (will be created on first use).
+    Hardcode ``new_path`` under ``$HOME`` as the single canonical location.
+    Legacy ``legacy_path`` is no longer auto-detected — run
+    ``scripts/migrate_llmwikify_paths.py`` once to create a symlink so
+    existing data remains accessible transparently.
+
+    Returns:
+        new_dir (will be created on first use by caller).
     """
     home = Path.home()
-    new_dir = home / new_path
-    if new_dir.exists():
-        return new_dir
-    legacy_dir = home / legacy_path
-    if legacy_dir.exists():
-        return legacy_dir
-    return new_dir
+    return home / new_path
 
 
 def _build_default_llm() -> Any:
     """Build default LLM client.
 
-    Reads from ``~/.quantnodes/llm.json`` (preferred) or falls back to the
-    legacy ``~/.llmwikify/llmwikify.json`` for backward compatibility.
+    Reads from ``~/.quantnodes/llm.json`` (M4.2 hardcoded canonical).
+    Legacy ``~/.llmwikify/llmwikify.json`` is no longer auto-detected —
+    run ``scripts/migrate_llmwikify_paths.py`` once to migrate.
     """
     from ..common.llm_factory import build_default_client
     try:
@@ -302,7 +301,7 @@ class FactorCompiler:
         self.cache_dir = (
             Path(cache_dir)
             if cache_dir
-            else _resolve_cache_dir(".quantnodes/factor_cache", ".llmwikify/factor_cache")
+            else _resolve_cache_dir(".quantnodes/factor_cache", "")
         )
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 

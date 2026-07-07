@@ -2,12 +2,14 @@
 
 Supports a multi-tier config resolution:
 
-  Tier 1: ``~/.quantnodes/llm.json`` (NEW canonical, M3.2)
-  Tier 2: ``~/.llmwikify/llmwikify.json`` (legacy fallback, kept for back-compat)
-  Tier 3: ``QUANTNODES__LLM__*`` env vars (override file values, M3.2)
-  Tier 4: hard-coded defaults (provider-internal)
+  Tier 1: ``~/.quantnodes/llm.json`` (single canonical, M4.2 hardcoded)
+  Tier 2: ``QUANTNODES__LLM__*`` env vars (override file values, M3.2)
+  Tier 3: hard-coded defaults (provider-internal)
 
-See ``docs/refactor/REFACTOR_PLAN.md`` for M3.2 rationale.
+M4.2 (PR6.7): legacy ``~/.llmwikify/llmwikify.json`` is no longer auto-detected.
+Run ``scripts/migrate_llmwikify_paths.py`` once to migrate legacy config.
+
+See ``docs/refactor/REFACTOR_PLAN.md`` for M3.2 / M4.2 rationale.
 
 Canonical imports:
     from QuantNodes.research.common.llm.client import build_llm_client, load_llm_config
@@ -24,26 +26,22 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-# ─── Config locations (priority order: Tier 1 → Tier 2) ────────────────
+# ─── Config location (hardcoded M4.2 / PR6.7) ──────────────────────────
 #
-# M3.2 (PR5): introduced ``~/.quantnodes/llm.json`` as the new canonical
-# config location for the quantnodes project. The legacy
-# ``~/.llmwikify/llmwikify.json`` is kept as Tier-2 fallback for users
-# who haven't migrated yet.
+# M4.2: ``~/.quantnodes/llm.json`` is the single canonical config location.
+# Legacy ``~/.llmwikify/llmwikify.json`` is no longer auto-detected by code.
+# Run ``scripts/migrate_llmwikify_paths.py`` once to copy legacy config
+# into the new location (or symlink it).
 #
-# Both files use the same schema: a top-level ``"llm"`` object with keys
-# ``enabled``, ``provider``, ``model``, ``base_url``, ``api_key``,
-# ``timeout``, etc. ``load_llm_config`` reads them in priority order and
-# returns the first non-empty ``[llm]`` section found.
+# Schema: a top-level ``"llm"`` object with keys ``enabled``, ``provider``,
+# ``model``, ``base_url``, ``api_key``, ``timeout``, etc.
+# ``load_llm_config`` reads the file directly and applies env-var overrides
+# (Tier 3, QUANTNODES__LLM__*).
 
-CONFIG_PATHS: tuple[Path, ...] = (
-    Path.home() / ".quantnodes" / "llm.json",
-    Path.home() / ".llmwikify" / "llmwikify.json",
-)
+CONFIG_PATH: Path = Path.home() / ".quantnodes" / "llm.json"
 
-# Back-compat alias for callers that monkeypatch a single Path. Points to
-# the legacy location (Tier 2). New code should use CONFIG_PATHS.
-CONFIG_PATH: Path = CONFIG_PATHS[1]
+# Back-compat: expose CONFIG_PATHS as a 1-tuple for callers that iterate.
+CONFIG_PATHS: tuple[Path, ...] = (CONFIG_PATH,)
 
 
 # ─── Env-var override mapping (Tier 3) ─────────────────────────────────
@@ -131,18 +129,19 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
 
 
 def load_llm_config(config_path: Path | None = None) -> dict[str, Any]:
-    """Load LLM config from the priority list of paths.
+    """Load LLM config from the canonical path (M4.2 hardcode).
 
     Resolution order (first match wins):
       1. ``config_path`` argument (if provided) — overrides everything;
          used by tests and ``build_llm_client(config=...)`` callers.
-      2. ``CONFIG_PATHS[0]`` = ``~/.quantnodes/llm.json`` (Tier 1, NEW)
-      3. ``CONFIG_PATHS[1]`` = ``~/.llmwikify/llmwikify.json`` (Tier 2, legacy)
-      4. Returns ``{}`` if none of the above yield a non-empty config.
+      2. ``CONFIG_PATH`` = ``~/.quantnodes/llm.json`` (single canonical)
+      3. Returns ``{}`` if not found.
+
+    Legacy ``~/.llmwikify/llmwikify.json`` is NOT consulted by code.
+    Run ``scripts/migrate_llmwikify_paths.py`` once to migrate legacy config.
 
     A path is "found" if the file exists (even if its ``[llm]`` section
-    is empty — that means the user deliberately created an empty config
-    and we should not silently fall through to the legacy location).
+    is empty — that means the user deliberately created an empty config).
 
     Args:
         config_path: Override config file path (mainly for tests).

@@ -19,7 +19,7 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-# ClickHouse config from ~/.llmwikify/llmwikify.json
+# ClickHouse config from ~/.quantnodes/llm.json (M4.2 hardcoded)
 from ..common.config import config  # noqa: E402
 
 CH_HOST = config.get("clickhouse.host", "0.0.0.0")
@@ -132,7 +132,7 @@ def build_quantnodes_h5(
     from pathlib import Path as P
 
     if out_dir is None:
-        out_dir = P.home() / ".llmwikify" / "akshare_cache" / "quantnodes_h5"
+        out_dir = P.home() / ".quantnodes" / "akshare_cache" / "quantnodes_h5"
     out_dir = P(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 

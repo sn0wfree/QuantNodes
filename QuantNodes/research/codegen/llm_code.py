@@ -56,8 +56,10 @@ logger = logging.getLogger(__name__)
 # ─── LLM client (reproduction-specific, C2 will fix) ─────────────
 
 def build_llm_client(model: str | None = None) -> Any:
-    """Build StreamableLLMClient from ``~/.quantnodes/llm.json`` (preferred)
-    or the legacy ``~/.llmwikify/llmwikify.json`` for backward compatibility.
+    """Build StreamableLLMClient from ``~/.quantnodes/llm.json`` (M4.2 hardcoded).
+
+    Legacy ``~/.llmwikify/llmwikify.json`` is no longer auto-detected.
+    Run ``scripts/migrate_llmwikify_paths.py`` once to migrate legacy config.
 
     Thin wrapper around QuantNodes.research.common.llm.client.build_llm_client.
     Centralizes client creation so callers don't parse config manually.

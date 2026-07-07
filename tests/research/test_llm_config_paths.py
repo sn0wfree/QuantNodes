@@ -1,9 +1,13 @@
-"""Tests for LLM config path resolution (M3.2).
+"""Tests for LLM config path resolution (M3.2 / M4.2).
 
 Covers:
-  - CONFIG_PATHS priority: ~/.quantnodes/llm.json > ~/.llmwikify/llmwikify.json
+  - CONFIG_PATH = ~/.quantnodes/llm.json (single canonical, M4.2 hardcoded)
   - QUANTNODES__LLM__* env var overrides
   - Empty / missing config graceful fallback
+
+Note: tests in TestLoadLlmConfigPriority monkeypatch CONFIG_PATHS to
+multi-element tuples to exercise priority logic in isolation. The default
+CONFIG_PATHS value (1-tuple under M4.2) is not asserted here.
 """
 from __future__ import annotations
 

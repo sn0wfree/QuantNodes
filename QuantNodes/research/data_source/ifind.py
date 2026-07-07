@@ -63,7 +63,7 @@ def _get_ifind_date_sequence_url() -> str:
 def _get_ifind_http_config() -> Path:
     """Get iFinD HTTP config path from config."""
     return Path(
-        config.get("ifind.config_path", "~/.llmwikify/ifind_http.yaml")
+        config.get("ifind.config_path", "~/.quantnodes/ifind_http.yaml")
     ).expanduser()
 _INDICATORS = {
     "listed_date": "ths_listed_date_stock",
@@ -260,7 +260,7 @@ def fetch_tradability_batch(
     codes: list[str],
     start_date: str,
     end_date: str,
-    cache_dir: str | Path = "~/.llmwikify/ifind_cache",
+    cache_dir: str | Path = "~/.quantnodes/ifind_cache",
     batch_size: int = 800,
     force: bool = False,
 ) -> pd.DataFrame:
@@ -298,7 +298,7 @@ def fetch_tradability_batch(
 
 def fetch_ipo_dates(
     codes: list[str],
-    cache_dir: str | Path = "~/.llmwikify/ifind_cache",
+    cache_dir: str | Path = "~/.quantnodes/ifind_cache",
 ) -> dict[str, str]:
     """Fetch IPO date for each stock code from iFinD.
 
@@ -352,7 +352,7 @@ def fetch_ipo_dates(
 
 def fetch_st_history(
     codes: list[str],
-    cache_dir: str | Path = "~/.llmwikify/ifind_cache",
+    cache_dir: str | Path = "~/.quantnodes/ifind_cache",
 ) -> dict[str, list[dict[str, str]]]:
     """Fetch ST/*ST/摘帽 timeline for each stock from iFinD.
 
@@ -441,7 +441,7 @@ def fetch_st_history(
 
 def fetch_suspend_history(
     codes: list[str],
-    cache_dir: str | Path = "~/.llmwikify/ifind_cache",
+    cache_dir: str | Path = "~/.quantnodes/ifind_cache",
 ) -> dict[str, list[dict[str, str]]]:
     """Fetch suspension dates for each stock from iFinD.
 
@@ -518,7 +518,7 @@ def build_tradable_matrices(
     ipo_dates: dict[str, str] | None = None,
     st_history: dict[str, list[dict[str, str]]] | None = None,
     suspend_history: dict[str, list[dict[str, str]]] | None = None,
-    cache_dir: str | Path = "~/.llmwikify/ifind_cache",
+    cache_dir: str | Path = "~/.quantnodes/ifind_cache",
     use_batch_api: bool = False,
     batch_data: pd.DataFrame | None = None,
 ) -> dict[str, pd.DataFrame]:

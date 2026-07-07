@@ -3,7 +3,7 @@
 Layers (low → high priority):
   L0: dataclass default values (in this file)
   L1: env vars (PASS2_*, HYBRID_*, ADAPTIVE_*, etc.)
-  L2: JSON file (~/.llmwikify/llmwikify.json field, or --pass2-config path)
+  L2: JSON file (~/.quantnodes/llm.json field, M4.2 hardcoded canonical)
   L3: CLI flags (--pass2-mode, --max-concurrency, etc.)
   L4: function argument `cfg: Pass2Config`
 

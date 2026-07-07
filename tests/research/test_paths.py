@@ -122,5 +122,9 @@ class TestModuleExports:
             "result_dir",
             "list_pages",
             "list_results",
+            # M4.2 (PR6.7): canonical ~/.quantnodes paths
+            "QUANTNODES_HOME",
+            "quantnodes_path",
+            "ensure_migrated",
         }
         assert set(p.__all__) == expected

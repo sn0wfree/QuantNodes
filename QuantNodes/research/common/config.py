@@ -2,7 +2,7 @@
 
 Centralizes all configurable parameters with three-layer priority:
 1. Environment variables (highest priority)
-2. Config file (~/.llmwikify/llmwikify.json)
+2. Config file (~/.quantnodes/llm.json) — M4.2 hardcoded canonical location
 3. Code defaults (lowest priority)
 
 Usage:
@@ -16,6 +16,9 @@ Usage:
 
     # Validate all config
     errors = config.validate()
+
+Migration: legacy ``~/.llmwikify/llmwikify.json`` is no longer auto-detected.
+Run ``scripts/migrate_llmwikify_paths.py`` once to migrate legacy data.
 """
 
 from __future__ import annotations
@@ -28,12 +31,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path.home() / ".llmwikify" / "llmwikify.json"
+DEFAULT_CONFIG_PATH = Path.home() / ".quantnodes" / "llm.json"
 
 # Default values for all parameters
 DEFAULTS: dict[str, Any] = {
-    "db.path": "~/.llmwikify/agent/reproduction.db",
-    "ifind.config_path": "~/.llmwikify/ifind_http.yaml",
+    "db.path": "~/.quantnodes/reproduction.db",
+    "ifind.config_path": "~/.quantnodes/ifind_http.yaml",
     "ifind.date_sequence_url": "https://quantapi.51ifind.com/api/v1/date_sequence",
     "ifind.mcp_dir": "~/Public/ifind-finance-data-1.1.0",
     "clickhouse.host": "0.0.0.0",

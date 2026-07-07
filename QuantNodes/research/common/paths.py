@@ -184,4 +184,58 @@ __all__ = [
     "result_dir",
     "list_pages",
     "list_results",
+    # M4.2 (PR6.7): canonical ~/.quantnodes paths
+    "QUANTNODES_HOME",
+    "quantnodes_path",
+    "ensure_migrated",
 ]
+
+
+# ─── M4.2 (PR6.7): canonical ~/.quantnodes paths ─────────────────────────
+#
+# Above is the legacy Wiki paths module (unchanged).
+# Below adds helpers for ~/.quantnodes/ canonical paths + transparent
+# symlink migration. See scripts/migrate_llmwikify_paths.py.
+
+import logging
+import os
+from pathlib import Path as _P
+
+logger = logging.getLogger(__name__)
+
+QUANTNODES_HOME: _P = _P(os.path.expanduser("~/.quantnodes"))
+
+
+def quantnodes_path(subpath: str) -> _P:
+    """Return canonical ``~/.quantnodes/<subpath>``.
+
+    Subpath may contain slashes: ``quantnodes_path("akshare_cache/quantnodes_h5")``.
+    Path is created on demand by callers (e.g. via ``mkdir(parents=True)``).
+    """
+    return QUANTNODES_HOME / subpath
+
+
+def ensure_migrated(subpath: str) -> _P:
+    """Ensure ``~/.quantnodes/<subpath>`` is accessible.
+
+    Idempotent: if symlink/dir already exists, returns as-is.
+    Intended for module-level use; failures are logged, not raised.
+
+    NOTE: This function does NOT automatically create symlinks — that is
+    handled by ``scripts/migrate_llmwikify_paths.py``. This function
+    only ensures the parent directory exists.
+    """
+    target = quantnodes_path(subpath)
+    parent = target.parent if target.suffix else target
+    if not parent.exists():
+        try:
+            parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "[paths] cannot create %s: %s (caller will handle)",
+                parent, exc,
+            )
+    return target
+
+
+# __all__ is defined above (single source of truth, M4.2 merged)

@@ -16,8 +16,8 @@ Architecture:
 - Templates are dict-of-dict AST JSON, instantiated via Pydantic ASTNode.
 - Parametric templates use placeholder columns derived from a base name
   (e.g. momentum_5 -> lag_close_5 = delay(close, 5)).
-- User extensions loaded from ``~/.quantnodes/semantic_registry.yaml`` (preferred)
-  or the legacy ``~/.llmwikify/semantic_registry.yaml`` for backward compatibility.
+- User extensions loaded from ``~/.quantnodes/semantic_registry.yaml`` (M4.2 hardcoded).
+  Run ``scripts/migrate_llmwikify_paths.py`` once if migrating from legacy.
 """
 from __future__ import annotations
 
@@ -866,18 +866,14 @@ def _ensure_loaded() -> dict[str, SemanticOp]:
     if _REGISTRY:
         return _REGISTRY
     _REGISTRY = dict(_DEFAULT_REGISTRY)
-    # Prefer ~/.quantnodes/; fall back to legacy ~/.llmwikify/ for back-compat.
+    # M4.2 hardcoded: ~/.quantnodes/semantic_registry.yaml only.
     home = Path.home()
-    for candidate in (
-        home / ".quantnodes" / "semantic_registry.yaml",
-        home / ".llmwikify" / "semantic_registry.yaml",
-    ):
-        if candidate.exists():
-            try:
-                load_user_registry(candidate)
-            except Exception as exc:
-                logger.warning("Failed to load user semantic_registry.yaml: %s", exc)
-            break
+    candidate = home / ".quantnodes" / "semantic_registry.yaml"
+    if candidate.exists():
+        try:
+            load_user_registry(candidate)
+        except Exception as exc:
+            logger.warning("Failed to load user semantic_registry.yaml: %s", exc)
     return _REGISTRY
 
 

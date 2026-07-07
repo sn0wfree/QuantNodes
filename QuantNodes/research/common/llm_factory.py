@@ -1,4 +1,4 @@
-"""LLM client factory: load config from ~/.llmwikify/llmwikify.json.
+"""LLM client factory: load config from ~/.quantnodes/llm.json (M4.2 hardcoded).
 
 ⚠️ C2 (PR-C2) refactor: this module is now a **thin re-export wrapper**
 for backward compatibility. The actual implementations live in

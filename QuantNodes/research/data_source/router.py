@@ -254,7 +254,7 @@ class CachedClickHouseDataSource:
     def __init__(
         self,
         clickhouse: ClickHouseDataSource | None = None,
-        cache_dir: str = "~/.llmwikify/cache",
+        cache_dir: str = "~/.quantnodes/cache",
         ttl_days: int = 7,
     ):
         self._ch = clickhouse or ClickHouseDataSource()
@@ -304,7 +304,7 @@ def _load_ch_passwd() -> str:
         return pwd
 
     # 2. Check legacy file
-    ch_cfg = Path.home() / ".llmwikify" / "clickhouse.yaml"
+    ch_cfg = Path.home() / ".quantnodes" / "clickhouse.yaml"
     if ch_cfg.exists():
         try:
             import yaml
