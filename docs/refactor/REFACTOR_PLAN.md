@@ -534,8 +534,8 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 
 ### Session 5+ (待办)
 
+- [x] M4.3: wiki.py 拆分 (1218 LoC → `wiki/{enums,factor,logic,strategy,reproduction,errors,init_factor_wiki,proxy}.py`) → `7f1bc04`, tag `post-m4.3-wiki-split`
 - [ ] M4.2: 配置统一 (`~/.llmwikify/*` → `~/.quantnodes/*`)
-- [ ] M4.3: wiki.py 拆分 (1155 LoC → `wiki/{factor,logic,strategy,proxy}_wiki.py`)
 - [ ] M4.4: Sink 异步化 (3 sink 改 async + 流式写)
 
 ---

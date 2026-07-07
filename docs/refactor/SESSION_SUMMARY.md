@@ -197,3 +197,82 @@ Session 3+ 新增主要为：
 - **旧 shim 行为**: 旧 `backtest_pkg/__init__.py` 用 `from . import run_backtest as run_backtest_module`，把 `b` 塑造成 module，导致该 bug 被掩盖
 - **修复**: 用 `importlib.import_module('QuantNodes.research.backtest.run_backtest')` 显式拿 module (5 tests → 6/6 pass)
 - **教训**: shim 隐藏了 import 语义不一致问题；删 shim 暴露后立即修
+
+---
+
+# Session 5 (2026-07-07) — M4.3 wiki.py 拆分 (PR6.6) ✅
+
+> **起点**: tag `post-wikifactor-v2-merge` (commit `22302ef`)
+> **终点**: tag `post-m4.3-wiki-split` (commit `7f1bc04`)
+> **本次成果**: M4.3 完成 (wiki.py 1218 LoC 拆为 8 文件子包 + thin shim)
+
+---
+
+## 🎯 本次 Session 完成项
+
+### M4.3 PR6.6 — wiki.py → wiki/ 子包拆分
+
+**动机**: 原 `QuantNodes/research/wiki.py` 1218 行单文件, 含 7 个 dataclass + 1 个 proxy + 3 个 markdown 模板 + 1 个 init 函数, 难维护。
+
+**改动**: 11 文件, +675 / -1638 = **-963 LoC 净** (单文件 -1223 行, 拆 8 子文件 + 1 thin shim)
+
+```
+QuantNodes/research/wiki.py                  (-1218)
+QuantNodes/research/wiki/__init__.py         (+52)   re-export 11 symbols
+QuantNodes/research/wiki/enums.py            (+66)   FactorSource/Category/LogicSource
+QuantNodes/research/wiki/factor.py           (+70)   WikiFactor (23 fields V2)
+QuantNodes/research/wiki/logic.py            (+102)  WikiLogic + structured dict
+QuantNodes/research/wiki/strategy.py         (+28)   WikiStrategy
+QuantNodes/research/wiki/reproduction.py     (+27)   WikiReproduction
+QuantNodes/research/wiki/errors.py           (+22)   WikiProxyError
+QuantNodes/research/wiki/init_factor_wiki.py (+215)  init_factor_wiki + markdown
+QuantNodes/research/wiki/proxy.py            (+840)  WikiFactorProxy (largest)
+tests/agent/test_wiki_tool.py                (±4)    patch path fix
+```
+
+**兼容层策略**:
+- `QuantNodes/research/wiki.py` 保留为 thin shim (53 行): `from QuantNodes.research.wiki import *`
+- 11+ production caller 0 改: `agent/tools/wiki.py`, `report_reproducer.py`, `quant_alpha/pipeline.py`, `logic_driven_pipeline.py`, `agent/skills_quant/`, etc.
+- Future PR: 删 shim + mechanical sed 全部 caller 到 `from QuantNodes.research.wiki.{factor,proxy,enums,...}`
+
+**关键 bugfix**:
+- `tests/agent/test_wiki_tool.py:33` `patch("QuantNodes.research.wiki.create_wiki")` 在新结构下找不到属性
+  - 原因: `proxy.py` 内部 `from llmwikify import create_wiki`, 但 create_wiki 不再 re-export 到 `QuantNodes.research.wiki.__init__`
+  - 修复: 改 patch 路径为 `patch("QuantNodes.research.wiki.proxy.create_wiki")` (1 行修改)
+
+**验证**:
+- pytest: **3146P / 17F / 14E** (baseline 一致, 0 回归)
+- 1-alpha smoke: **1/1 success** (20.9s, IC=-0.0330)
+- import 等价: `from QuantNodes.research.wiki import WikiFactor as A` 与 `from ...wiki.factor import WikiFactor as B` 是同一个类 (`A is B == True`)
+- 23 字段一致: WikiFactor 字段数 = 23 (V2 一致)
+
+---
+
+## 📊 累计 Session 1-5 LoC
+
+| 阶段 | 新增 | 删除 | 净 |
+|---|---|---|---|
+| Session 1 (M1+M2) | +1188 | -2737 | -1549 |
+| Session 2 (Phase B+M3.2) | +509 | -60 | +449 |
+| Session 3 (M3 主+M3.3) | +5827 | -4464 | +1363 |
+| Session 3+ (M3.4+M3 后置) | +573 | -360 | +213 |
+| Session 4 (M4.1 PR6 SignalV2) | +450 | -47 | +403 |
+| Session 4+ (M3 前置 PR6.5 WikiFactor V2) | +223 | -95 | +128 |
+| **Session 5 (M4.3 PR6.6 wiki 拆分)** | **+675** | **-1638** | **-963** |
+| **总计 (Session 1-5)** | **+9445** | **-9401** | **+44 净** |
+
+### Tags 新增
+- `post-m4.3-wiki-split` → `7f1bc04` (M4.3 wiki.py 拆分完成)
+
+---
+
+## 🔮 Session 6 计划 (待执行)
+
+- **M4.2 PR6.7**: `~/.llmwikify/*` 路径硬编码到 `~/.quantnodes/*` + 透明 symlink 迁移脚本
+  - 9 个文件改动 (排除 2 个 strategy/ 其他人 WIP)
+  - 1 新迁移脚本 `scripts/migrate_llmwikify_paths.py`
+  - 2 新测试文件 (~25 tests)
+- **M4.4 PR6.8**: Sink Protocol 加 async 默认 fall-through + BatchSummarySink NDJSON 流式
+  - 4 文件改动 (sink/base.py + 3 sinks)
+  - 1 新测试文件 (~30 tests)
+  - **0 caller 改动** (sync API 不动, 纯新增)
