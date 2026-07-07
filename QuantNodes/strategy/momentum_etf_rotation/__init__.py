@@ -20,6 +20,7 @@ from .portfolio import (
     TrendFilter,
     VolTargeting,
     ConcentrationCaps,
+    CostModel,
     select_and_weight,
     apply_stops,
     apply_trend_filter,
@@ -28,6 +29,7 @@ from .portfolio import (
     vol_targeting_scale,
     check_trend_filter,
     _apply_concentration_caps,
+    calculate_turnover_cost,
     inverse_vol_weights,
     equal_weights,
 )

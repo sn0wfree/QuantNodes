@@ -108,6 +108,31 @@ class ConcentrationCaps:
     category_max: float = 0.40      # 单类别合计上限 (默认 40%)
 
 
+@dataclass
+class CostModel:
+    """交易成本模型 (Stage 13): 模拟实盘交易成本.
+
+    cost = turnover × (commission + slippage × impact_factor)
+    """
+    enabled: bool = False
+    commission_bp: float = 5.0       # 佣金 (基点, 万 5 = 5 bp)
+    slippage_bp: float = 10.0       # 滑点 (基点)
+    impact_factor: float = 0.1       # 冲击成本因子 (基于换手率)
+
+
+def calculate_turnover_cost(turnover: float, cost: CostModel) -> float:
+    """计算单次换手成本.
+
+    turnover: 单边换手率 (如 0.5 表示 50% 换手)
+    Returns: 成本率 (如 0.001 表示 0.1% 成本)
+    """
+    if not cost.enabled:
+        return 0.0
+    # 单边成本 = 佣金 + 滑点 + 冲击成本 (简化)
+    cost_rate = (cost.commission_bp + cost.slippage_bp * cost.impact_factor) / 10000
+    return turnover * cost_rate
+
+
 # Stage 9-D: Regime detector 占位 (实际类在 regime_detector.py)
 # 为避免循环 import, 这里只做类型提示
 if TYPE_CHECKING:
@@ -147,6 +172,9 @@ class RotationConfig:
 
     # 集中度约束 (Stage 10)
     concentration: ConcentrationCaps = field(default_factory=ConcentrationCaps)
+
+    # 交易成本 (Stage 13)
+    cost_model: "CostModel" = field(default_factory=CostModel)
 
     # Regime 检测 (Stage 9-D): 延迟 import 避免循环依赖
     regime_detector: "RegimeDetector | None" = None

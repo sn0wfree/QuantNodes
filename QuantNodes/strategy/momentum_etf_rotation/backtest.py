@@ -30,6 +30,7 @@ from .portfolio import (
     RotationConfig,
     apply_stops,
     apply_vol_targeting,
+    calculate_turnover_cost,
     equal_weights,
     inverse_vol_weights,
     select_and_weight,
@@ -134,9 +135,21 @@ def run_rotation_backtest(
             states.append(state)
             actual.append(date)
             if i > 0:
-                nav[i] = nav[i - 1]
+                nav[i] = nav[i - 1]  # 调仓日 NAV 不变
             else:
                 nav[i] = 1.0
+
+            # Stage 13: 交易成本扣减 (在调仓日, 计算换手率并扣减成本)
+            if rot.cost_model.enabled and i > 0:
+                # 计算换手率 = 0.5 * Σ |new_w - old_w|
+                if len(states) >= 2:
+                    old_w = states[-2].weights
+                    new_w = state.weights
+                    all_codes = set(old_w.keys()) | set(new_w.keys())
+                    turnover = sum(abs(new_w.get(c, 0) - old_w.get(c, 0))
+                                   for c in all_codes) / 2
+                    cost = calculate_turnover_cost(turnover, rot.cost_model)
+                    nav[i] = nav[i] * (1 - cost)
         else:
             if i > 0 and prev_weights:
                 daily_ret = 0.0
