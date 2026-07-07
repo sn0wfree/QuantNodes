@@ -11,9 +11,13 @@ Output naming:
   - 101 alphas: `single_factor_alpha-001.json`
   - 招商: `single_factor_signal-001.json`
   - 1601: `single_factor_1601_00991v3_alpha-001.json`
+
+Async API (M4.4 / PR6.8): `write_one_async` delegates to sync via
+``asyncio.to_thread``, so event loop is not blocked by I/O.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -74,4 +78,18 @@ class SingleJsonSink:
 
     def flush(self) -> None:
         """No-op: each write_one flushes immediately."""
+        return None
+
+    # === Async API (M4.4 / PR6.8) ===
+
+    async def write_one_async(self, result: FactorResult) -> Path:
+        """Async write one result — defaults to ``to_thread(write_one)``.
+
+        The JSON.dump is CPU-bound for large FactorResult; offloading to
+        a thread pool keeps the event loop responsive.
+        """
+        return await asyncio.to_thread(self.write_one, result)
+
+    async def flush_async(self) -> None:
+        """Async flush — no-op for SingleJsonSink."""
         return None

@@ -13,12 +13,18 @@ serializer logic works for both v2 dict results and new FactorResult objects.
 Output structure:
     output_dir/multi_alpha_<paper_id>.json    # aggregated metrics + per-alpha summary
     output_dir/multi_alpha_<paper_id>.md      # human-readable markdown table
+
+Async API (M4.4 / PR6.8):
+  - write_batch_async: same as sync, offloaded to thread
+  - stream_write_async: NDJSON streaming, one result per line (no aiofiles)
 """
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, AsyncIterator
 
 from ..reporting import (
     BatchReporter,
@@ -111,3 +117,57 @@ class BatchSummarySink:
     def flush(self) -> None:
         """No-op."""
         return None
+
+    # === Async API (M4.4 / PR6.8) ===
+
+    async def write_batch_async(self, results: list[FactorResult]) -> list[Path]:
+        """Async batch write — defaults to ``to_thread(write_batch)``.
+
+        The aggregated JSON+MD are written together; offloading to a worker
+        thread prevents blocking the event loop.
+        """
+        return await asyncio.to_thread(self.write_batch, results)
+
+    async def flush_async(self) -> None:
+        """Async flush — no-op for BatchSummarySink."""
+        return None
+
+    async def stream_write_async(
+        self,
+        results: AsyncIterator[FactorResult],
+        ndjson_filename: str | None = None,
+    ) -> list[Path]:
+        """Stream-write results to NDJSON (newline-delimited JSON).
+
+        Each result is appended as one JSON object per line. Uses
+        ``loop.run_in_executor`` for the actual file write — no aiofiles
+        dependency.
+
+        Args:
+            results: AsyncIterator yielding FactorResult one at a time.
+            ndjson_filename: Override output filename. Default: ``{paper_id}_stream.ndjson``.
+
+        Returns:
+            List with one path (the NDJSON file) if any results were streamed;
+            empty list otherwise.
+        """
+        ndjson_filename = ndjson_filename or f"{self._paper_id}_stream.ndjson"
+        ndjson_path = self._dir / ndjson_filename
+        loop = asyncio.get_event_loop()
+
+        def _append(payload: str) -> None:
+            with open(ndjson_path, "a", encoding="utf-8") as f:
+                f.write(payload + "\n")
+
+        self._dir.mkdir(parents=True, exist_ok=True)
+        count = 0
+        async for result in results:
+            payload = json.dumps(
+                factor_results_to_dicts([result])[0],
+                ensure_ascii=False,
+                default=str,
+            )
+            await loop.run_in_executor(None, _append, payload)
+            count += 1
+
+        return [ndjson_path] if count > 0 else []

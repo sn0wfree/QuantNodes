@@ -18,6 +18,7 @@ Output structure (101 alphas style):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -145,4 +146,22 @@ class YamlDuckdbSink:
 
     def flush(self) -> None:
         """No-op: each write_one persists immediately."""
+        return None
+
+    # === Async API (M4.4 / PR6.8) ===
+
+    async def write_one_async(self, result: FactorResult) -> Path:
+        """Async write — delegates to ``to_thread(write_one)``.
+
+        DuckDB writes are blocking; ``to_thread`` offloads to a worker
+        thread so the event loop stays responsive.
+
+        Note: each call uses its own thread from the default pool. DuckDB
+        connections are not shared across threads, so concurrent writes
+        of multiple results are safe (each gets its own connection).
+        """
+        return await asyncio.to_thread(self.write_one, result)
+
+    async def flush_async(self) -> None:
+        """Async flush — no-op for YamlDuckdbSink."""
         return None
