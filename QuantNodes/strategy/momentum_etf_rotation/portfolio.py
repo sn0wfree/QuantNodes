@@ -63,6 +63,21 @@ class DiversificationCaps:
 # 策略参数
 # ----------------------------------------------------------------------------
 @dataclass
+class TrendFilter:
+    """趋势过滤器 (Stage 9-B): 基于基准指数均线的熊市减仓.
+
+    启用时, 当 benchmark (默认沪深300) 跌破 ma_window 日均线时,
+    整体仓位按 exposure_bear 缩放 (剩余仓位建议转债券).
+    """
+    enabled: bool = False
+    benchmark_code: str = "510300"  # 沪深300
+    ma_window: int = 200
+    exposure_bull: float = 1.0      # 多头满仓
+    exposure_bear: float = 0.5      # 熊市半仓
+    bond_code: str = "511260"       # 国债 ETF (熊市配置)
+
+
+@dataclass
 class RotationConfig:
     """动量轮动策略的所有可调参数."""
     lookback: int = 144                 # 动量回看 (CICC 144)
@@ -86,6 +101,9 @@ class RotationConfig:
     signal_type: str = "momentum"       # "momentum" | "dist_52w" | "fused"
     signal_fused_weight: float = 0.4    # 52周新高在 fused 中的权重
     signal_52w_window: int = 252        # 52 周高点窗口
+
+    # 趋势过滤器 (Stage 9-B)
+    trend_filter: TrendFilter = field(default_factory=TrendFilter)
 
     # 通用
     min_history: int = 144
@@ -307,6 +325,10 @@ def select_and_weight(
         )
     else:
         state.weights = equal_weights(state.chosen)
+
+    # Stage 9-B: 趋势过滤
+    apply_trend_filter(nav_df, cfg, as_of, state)
+
     return state
 
 
@@ -354,6 +376,58 @@ def _maybe_inject_required(
 
 
 # ----------------------------------------------------------------------------
+# 趋势过滤器 (Stage 9-B)
+# ----------------------------------------------------------------------------
+def check_trend_filter(
+    nav_df: pd.DataFrame,
+    benchmark_code: str,
+    ma_window: int,
+    as_of: pd.Timestamp,
+) -> bool:
+    """判断当前是否处于多头趋势.
+
+    返回 True 表示多头 (价格 >= ma_window 日均线), False 表示空头.
+    数据不足时默认多头.
+    """
+    if benchmark_code not in nav_df.columns:
+        return True
+    benchmark = nav_df[benchmark_code].loc[:as_of]
+    if len(benchmark) < ma_window:
+        return True
+    ma = benchmark.iloc[-ma_window:].mean()
+    return bool(benchmark.iloc[-1] >= ma)
+
+
+def apply_trend_filter(
+    nav_df: pd.DataFrame,
+    cfg: RotationConfig,
+    as_of: pd.Timestamp,
+    state: PortfolioState,
+) -> PortfolioState:
+    """对 PortfolioState 应用趋势过滤 (Stage 9-B).
+
+    熊市时 (基准跌破 ma):
+        - 缩放现有权重到 exposure_bear
+        - 剩余仓位配到债券 ETF (bond_code)
+
+    返回新的 state.weights.
+    """
+    if not cfg.trend_filter.enabled:
+        return state
+    tf = cfg.trend_filter
+    is_bull = check_trend_filter(nav_df, tf.benchmark_code, tf.ma_window, as_of)
+    if is_bull:
+        return state
+    scale = tf.exposure_bear
+    new_weights = {k: v * scale for k, v in state.weights.items()}
+    bond_weight = 1.0 - scale
+    if tf.bond_code in nav_df.columns:
+        new_weights[tf.bond_code] = new_weights.get(tf.bond_code, 0.0) + bond_weight
+    state.weights = new_weights
+    return state
+
+
+# ----------------------------------------------------------------------------
 # 规则 4: 止损 + 补位
 # ----------------------------------------------------------------------------
 def apply_stops(
@@ -374,6 +448,7 @@ def apply_stops(
         if w <= 0:
             continue
         if code not in pool.codes:
+            # 池外代码 (如趋势过滤加入的债券) → 不止损
             continue
         if not below_ma(nav_df, code, cfg.ma_window, as_of):
             continue
@@ -382,8 +457,9 @@ def apply_stops(
         if pctl_series[code] < cfg.rank_cutoff:
             to_stop.append(code)
 
-    # 2) 在原 chosen 中去掉被止损的
-    prev_chosen = [c for c, w in prev_weights.items() if w > 0 and c not in to_stop]
+    # 2) 在原 chosen 中去掉被止损的 (只考虑池内代码)
+    prev_chosen = [c for c, w in prev_weights.items()
+                   if w > 0 and c in pool.codes and c not in to_stop]
     stopped = list(to_stop)
     replaced: dict[str, str] = {}
 
@@ -392,6 +468,8 @@ def apply_stops(
             date=as_of, ranked=pctl_series.sort_values(ascending=False).index.tolist(),
             chosen=prev_chosen, weights=dict(prev_weights),
         )
+        # Stage 9-B: 趋势过滤 (无止损时也要应用)
+        apply_trend_filter(nav_df, cfg, as_of, state)
         return state
 
     # 已有持仓的品类计数 (传给 select_and_weight 作为 base, 避免累积超限)
@@ -424,4 +502,8 @@ def apply_stops(
         state.weights = equal_weights(prev_chosen)
     state.stopped = stopped
     state.replaced = replaced
+
+    # Stage 9-B: 趋势过滤
+    apply_trend_filter(nav_df, cfg, as_of, state)
+
     return state
