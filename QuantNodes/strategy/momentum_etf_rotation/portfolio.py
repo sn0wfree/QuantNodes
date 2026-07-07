@@ -1,0 +1,427 @@
+# coding=utf-8
+"""组合管理: 4 条规则 + 权重 + 止损补位.
+
+对齐 CICC 2026-07-03 报告 (图表 2 伪代码 + 主文规则 1-4):
+
+    1. 去重 + 剔高相关 (同指数去重 + 入选项相关 > 0.9 则跳)
+    2. 强制分散 (A 股宽基+行业 ≤ a_share_total, HK ≤ 1, 必含商品+海外)
+    3. 逆波动加权 (权重 ∝ 1/σ, 21 日窗口)
+    4. 止损 + 补位 (跌破 55 日均线 + 排名跌出后 30% 分位)
+
+CICC 伪代码关键约束:
+    - 池先预去重: ``keep_most_liquid_by_tracking_index`` (best liquidity per index)
+    - 主循环检查顺序: caps 先, corr 后
+    - 末尾: ``fill_by_rank_if_needed`` 补回到 TARGET_N
+    - 逆波动窗口: lookback=21 (非 60)
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Mapping, Sequence
+
+import pandas as pd
+
+from .momentum import (
+    below_ma,
+    distance_to_52w_high,
+    fused_signal,
+    pairwise_corr,
+    rank_pctl,
+    realized_vol,
+)
+from .universe import ETFPool
+
+
+# ----------------------------------------------------------------------------
+# 分散规则
+# ----------------------------------------------------------------------------
+@dataclass
+class DiversificationCaps:
+    """强制分散上限.
+
+    CICC 实验: 10 个标的池里 A 股宽基+行业 ≤ 3 (a_share_total), HK ≤ 1, 必含商品与海外.
+    """
+    a_share_broad: int = 2              # A 股宽基 (per-category cap)
+    a_share_sector: int = 2             # A 股行业/策略 (per-category cap)
+    a_share_total: int = 3              # A 股宽基+行业 合并总 cap (CICC: ≤ 3)
+    hk: int = 1
+    require_commodity: bool = True
+    require_overseas: bool = True
+    # 旧字段, 保留向后兼容但实际不使用 (见 a_share_total)
+    a_share: int = 3
+
+    def cap_for(self, category_name: str) -> int:
+        """Per-category cap. 99 = 无限制 (用于 commodity/overseas)."""
+        return {
+            "a_broad": self.a_share_broad,
+            "a_sector": self.a_share_sector,
+            "hk": self.hk,
+        }.get(category_name, 99)
+
+
+# ----------------------------------------------------------------------------
+# 策略参数
+# ----------------------------------------------------------------------------
+@dataclass
+class RotationConfig:
+    """动量轮动策略的所有可调参数."""
+    lookback: int = 144                 # 动量回看 (CICC 144)
+    top_n: int = 10
+    corr_threshold: float = 0.9
+    corr_window: int = 60
+
+    # 规则 4
+    ma_window: int = 55
+    rank_cutoff: float = 0.30           # 排名跌出后 30% 分位 → 剔出
+
+    # 规则 2
+    diversification: DiversificationCaps = field(default_factory=DiversificationCaps)
+
+    # 规则 3
+    weight_method: str = "inv_vol"      # "inv_vol" | "equal"
+    vol_window: int = 21                # CICC 伪代码: lookback=21 (非 60)
+    weight_floor: float = 1e-4
+
+    # 信号类型 (Stage 9-A)
+    signal_type: str = "momentum"       # "momentum" | "dist_52w" | "fused"
+    signal_fused_weight: float = 0.4    # 52周新高在 fused 中的权重
+    signal_52w_window: int = 252        # 52 周高点窗口
+
+    # 通用
+    min_history: int = 144
+
+
+# ----------------------------------------------------------------------------
+# 状态
+# ----------------------------------------------------------------------------
+@dataclass
+class PortfolioState:
+    """一次调仓的快照 (便于日志/回测)."""
+    date: pd.Timestamp
+    ranked: list[str]                          # 动量降序的全榜
+    chosen: list[str]                          # 入选的 (按入选顺序)
+    weights: dict[str, float]                  # 入选 → 权重
+    skipped_dedup: list[str] = field(default_factory=list)
+    skipped_corr: list[str] = field(default_factory=list)
+    skipped_div: list[str] = field(default_factory=list)
+    stopped: list[str] = field(default_factory=list)        # 本轮被止损
+    replaced: dict[str, str] = field(default_factory=dict)  # stop_code → new_code
+
+
+# ----------------------------------------------------------------------------
+# 权重
+# ----------------------------------------------------------------------------
+def inverse_vol_weights(
+    nav_df: pd.DataFrame,
+    codes: Sequence[str],
+    as_of: pd.Timestamp,
+    vol_window: int = 21,
+    floor: float = 1e-4,
+) -> dict[str, float]:
+    """权重 ∝ 1/σ_i, σ 为年化已实现波动率 (CICC 伪代码窗口=21)."""
+    if not codes:
+        return {}
+    vols = realized_vol(nav_df, as_of=as_of, window=vol_window).reindex(list(codes))
+    vols = vols.fillna(vols.median() if not vols.empty and vols.median() > 0 else 1.0)
+    inv = 1.0 / vols
+    inv[inv < floor] = 0.0
+    total = inv.sum()
+    if total <= 0:
+        return equal_weights(codes)
+    return (inv / total).to_dict()
+
+
+def equal_weights(codes: Sequence[str]) -> dict[str, float]:
+    if not codes:
+        return {}
+    w = 1.0 / len(codes)
+    return {c: w for c in codes}
+
+
+# ----------------------------------------------------------------------------
+# 预去重: best liquidity per index (CICC keep_most_liquid_by_tracking_index)
+# ----------------------------------------------------------------------------
+def _compute_best_per_index(
+    pool: ETFPool,
+    blacklist: set[str],
+) -> dict[str, str]:
+    """对每个 index_code, 返回最佳流动性且未在 blacklist 的 code."""
+    result: dict[str, str] = {}
+    for m in pool.members:
+        if m.code in blacklist:
+            continue
+        cur = result.get(m.index_code)
+        if cur is None or m.liquidity_rank < pool.liquidity_rank_of(cur):
+            result[m.index_code] = m.code
+    return result
+
+
+# ----------------------------------------------------------------------------
+# 核心: select_and_weight (调仓日的选择+权重)
+# ----------------------------------------------------------------------------
+def _count_categories(chosen: list[str], pool: ETFPool) -> dict[str, int]:
+    cnt: dict[str, int] = {}
+    for c in chosen:
+        cat = pool.category_of(c).value
+        cnt[cat] = cnt.get(cat, 0) + 1
+    return cnt
+
+
+def select_and_weight(
+    nav_df: pd.DataFrame,
+    pool: ETFPool,
+    cfg: RotationConfig,
+    as_of: pd.Timestamp,
+    blacklist: Sequence[str] = (),
+    base_categories: dict[str, int] | None = None,
+) -> PortfolioState:
+    """单次调仓 (严格按 CICC 伪代码流程).
+
+    流程:
+        1. 预去重: best liquidity per index, 排除 blacklist + NaN momentum
+        2. 主循环: caps (含 a_share_total) → corr → append
+        3. require_* 注入: 替换一个非商品/海外
+        4. fill_by_rank_if_needed: 补回到 top_n
+        5. 加权: 1/σ (21 日)
+
+    Parameters
+    ----------
+    blacklist : 永远不入选的代码 (规则 4 止损后用)
+
+    Stage 9-A: signal_type 支持
+        "momentum":  纯动量 (默认, CICC 原版)
+        "dist_52w":  距离52周新高 (CICC 报告图表 4 备选)
+        "fused":     (1-w) × 动量 + w × 距离52周新高
+    """
+    # 计算信号 (Stage 9-A: 支持 3 种信号)
+    if cfg.signal_type == "dist_52w":
+        score = distance_to_52w_high(
+            nav_df, as_of, window=cfg.signal_52w_window,
+        )
+        pctl = score.rank(method="average", pct=True)
+    elif cfg.signal_type == "fused":
+        score = fused_signal(
+            nav_df, cfg.lookback, as_of,
+            fused_weight=cfg.signal_fused_weight,
+            window_52w=cfg.signal_52w_window,
+        )
+        pctl = score.rank(method="average", pct=True)
+    else:  # "momentum" (默认)
+        pctl = rank_pctl(nav_df, cfg.lookback, as_of)
+
+    ranked = pctl.sort_values(ascending=False).index.tolist()
+    blacklist_set = set(blacklist)
+
+    state = PortfolioState(date=as_of, ranked=ranked, chosen=[], weights={})
+
+    # ── 1. 预去重: best liquidity per index (CICC keep_most_liquid) ──
+    best_per_index = _compute_best_per_index(pool, blacklist_set)
+    deduped_ranked: list[str] = []
+    for code in ranked:
+        if code not in pool.codes:
+            continue
+        if code in blacklist_set:
+            state.skipped_dedup.append(code)
+            continue
+        if pd.isna(pctl.get(code)):
+            state.skipped_dedup.append(code)
+            continue
+        idx = pool.index_of(code)
+        if best_per_index.get(idx) != code:
+            state.skipped_dedup.append(code)
+            continue
+        deduped_ranked.append(code)
+
+    # ── 2. 主循环: caps FIRST, corr SECOND (per CICC pseudocode) ──
+    chosen: list[str] = []
+    chosen_cat_count: dict[str, int] = dict(base_categories or {})
+    for code in deduped_ranked:
+        if len(chosen) >= cfg.top_n:
+            break
+
+        cat_name = pool.category_of(code).value
+
+        # 规则 2a: A 股宽基+行业 总 cap (CICC: ≤ 3)
+        if cat_name in ("a_broad", "a_sector"):
+            current_a_share = (chosen_cat_count.get("a_broad", 0) +
+                                chosen_cat_count.get("a_sector", 0))
+            if current_a_share >= cfg.diversification.a_share_total:
+                state.skipped_div.append(code)
+                continue
+
+        # 规则 2b: per-category cap
+        cap = cfg.diversification.cap_for(cat_name)
+        if chosen_cat_count.get(cat_name, 0) >= cap:
+            state.skipped_div.append(code)
+            continue
+
+        # 规则 1b: 与已选高相关则跳
+        if chosen:
+            corr = pairwise_corr(nav_df, [code] + chosen, as_of, cfg.corr_window)
+            cc = corr.loc[code, chosen]
+            if (cc > cfg.corr_threshold).any():
+                state.skipped_corr.append(code)
+                continue
+
+        chosen.append(code)
+        chosen_cat_count[cat_name] = chosen_cat_count.get(cat_name, 0) + 1
+
+    state.chosen = chosen
+
+    # ── 3. require_* 注入: 替换一个非商品/海外 ──
+    _maybe_inject_required(state, ranked, pctl, pool, cfg)
+
+    # ── 4. fill_by_rank_if_needed: 补回到 top_n (同样检查 caps) ──
+    if len(state.chosen) < cfg.top_n:
+        # 重建计数值 (包含 base_categories + 已选)
+        base = dict(base_categories or {})
+        chosen_cat_count = _count_categories(state.chosen, pool)
+        for k, v in base.items():
+            chosen_cat_count[k] = chosen_cat_count.get(k, 0) + v
+        for code in deduped_ranked:
+            if code in state.chosen:
+                continue
+            cat_name = pool.category_of(code).value
+            # 检查 per-category cap
+            cap = cfg.diversification.cap_for(cat_name)
+            if chosen_cat_count.get(cat_name, 0) >= cap:
+                state.skipped_div.append(code)
+                continue
+            # 检查 A 股合计 cap
+            if cat_name in ("a_broad", "a_sector"):
+                current = (chosen_cat_count.get("a_broad", 0) +
+                           chosen_cat_count.get("a_sector", 0))
+                if current >= cfg.diversification.a_share_total:
+                    state.skipped_div.append(code)
+                    continue
+            state.chosen.append(code)
+            chosen_cat_count[cat_name] = chosen_cat_count.get(cat_name, 0) + 1
+            if len(state.chosen) >= cfg.top_n:
+                break
+
+    # ── 5. 加权 ──
+    if cfg.weight_method == "inv_vol":
+        state.weights = inverse_vol_weights(
+            nav_df, state.chosen, as_of,
+            vol_window=cfg.vol_window, floor=cfg.weight_floor,
+        )
+    else:
+        state.weights = equal_weights(state.chosen)
+    return state
+
+
+def _maybe_inject_required(
+    state: PortfolioState,
+    ranked: list[str],
+    pctl: pd.Series,
+    pool: ETFPool,
+    cfg: RotationConfig,
+) -> None:
+    """如果 chosen 缺少商品/海外, 从 ranked 找一个并替换一个非商品/海外.
+
+    来自 CICC 主文"必须有商品和海外配置" (图表 1 说明).
+    替换而非 append, 是为了保持 top_n 不变.
+    """
+    div = cfg.diversification
+    chosen = state.chosen
+
+    for category in ("commodity", "overseas"):
+        required = (div.require_commodity and category == "commodity") or \
+                    (div.require_overseas and category == "overseas")
+        if not required:
+            continue
+        if any(pool.category_of(c).value == category for c in chosen):
+            continue
+        # 找一个未入选的合格候选
+        for code in ranked:
+            if (code in pool.codes
+                and pool.category_of(code).value == category
+                and code not in chosen
+                and code not in state.skipped_dedup
+                and not pd.isna(pctl.get(code))):
+                replaced = False
+                # 替换最后一个非商品/海外
+                for i in range(len(chosen) - 1, -1, -1):
+                    cn = chosen[i]
+                    if pool.category_of(cn).value not in ("commodity", "overseas"):
+                        chosen[i] = code
+                        state.skipped_div.append(cn)
+                        replaced = True
+                        break
+                if not replaced and len(chosen) < cfg.top_n:
+                    chosen.append(code)
+                break  # 已找到一个, 不再继续
+
+
+# ----------------------------------------------------------------------------
+# 规则 4: 止损 + 补位
+# ----------------------------------------------------------------------------
+def apply_stops(
+    nav_df: pd.DataFrame,
+    pool: ETFPool,
+    cfg: RotationConfig,
+    prev_weights: Mapping[str, float],
+    as_of: pd.Timestamp,
+) -> PortfolioState:
+    """对已有持仓: 跌破 ma 且 排名跌出后 cutoff 分位 → 剔出, 按相同规则补入.
+
+    返回: PortfolioState, 其中 chosen/weights 为"剔出并补位后"的新组合.
+    """
+    # 1) 找到要止损的 (同时满足: 跌破 ma + 排名跌出后 cutoff 分位)
+    pctl_series = rank_pctl(nav_df, cfg.lookback, as_of)
+    to_stop: list[str] = []
+    for code, w in prev_weights.items():
+        if w <= 0:
+            continue
+        if code not in pool.codes:
+            continue
+        if not below_ma(nav_df, code, cfg.ma_window, as_of):
+            continue
+        if code not in pctl_series.index:
+            continue
+        if pctl_series[code] < cfg.rank_cutoff:
+            to_stop.append(code)
+
+    # 2) 在原 chosen 中去掉被止损的
+    prev_chosen = [c for c, w in prev_weights.items() if w > 0 and c not in to_stop]
+    stopped = list(to_stop)
+    replaced: dict[str, str] = {}
+
+    if not stopped:
+        state = PortfolioState(
+            date=as_of, ranked=pctl_series.sort_values(ascending=False).index.tolist(),
+            chosen=prev_chosen, weights=dict(prev_weights),
+        )
+        return state
+
+    # 已有持仓的品类计数 (传给 select_and_weight 作为 base, 避免累积超限)
+    base_cats: dict[str, int] = {}
+    for c in prev_chosen:
+        cat = pool.category_of(c).value
+        base_cats[cat] = base_cats.get(cat, 0) + 1
+
+    # 3) 重新选 (用与 select_and_weight 同样的规则), 但**排除**已止损的
+    state = select_and_weight(nav_df, pool, cfg, as_of, blacklist=stopped,
+                              base_categories=base_cats)
+
+    # 4) 候选 = state.chosen 中 (非 prev_chosen) 的部分
+    available = [c for c in state.chosen if c not in prev_chosen]
+
+    # 5) 补位 (按动量降序, 因为 state.chosen 已按动量排好)
+    for s in stopped:
+        if not available:
+            break
+        new_code = available.pop(0)
+        prev_chosen.append(new_code)
+        replaced[s] = new_code
+
+    state.chosen = prev_chosen
+    if cfg.weight_method == "inv_vol":
+        state.weights = inverse_vol_weights(
+            nav_df, prev_chosen, as_of, vol_window=cfg.vol_window, floor=cfg.weight_floor
+        )
+    else:
+        state.weights = equal_weights(prev_chosen)
+    state.stopped = stopped
+    state.replaced = replaced
+    return state
