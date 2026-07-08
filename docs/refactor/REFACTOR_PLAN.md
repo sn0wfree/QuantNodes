@@ -659,6 +659,14 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
 | M3.2 | 1/1 alpha success, config 加载自 `~/.quantnodes/llm.json` |
 | M3 主 | 1/1 alpha success, 17.6s |
 | M3.3 | 1/1 alpha success, 16.6s |
+| M3.4 | 1/1 alpha success, 21.2s |
+| SignalV2 (M4.1) | 1/1 alpha success, 15.2s |
+| WikiFactor V2 (M3-pre) | 1/1 alpha success, 20.9s |
+| M4.2 配置统一 | 1/1 alpha success, 14.9s |
+| M4.3 wiki.py 拆分 | 1/1 alpha success, 20.9s |
+| M4.4 Sink 异步化 | 1/1 alpha success, 22.3s |
+| M4.5 wiki.py shim 删除 | 1/1 alpha success, 22.1s |
+| **M4.6 caller-async化 (PR6.10)** | **1/1 alpha success, 20.0s** (LLM codegen 走 `asyncio.to_thread` 解决 `asyncio.run()` 嵌套) |
 
 ### Architecture 当前状态
 
@@ -685,4 +693,13 @@ strategies_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "s
                  └─────────────────────────────────────────────┘
 ```
 
-**M3 闭环路径**：M3.3 (库) ✅ → M3.4 (CLI 接入) ⏳ → M3 后置 (删 shim) ⏳
+**M3 闭环路径**：M3.3 (库) ✅ → M3.4 (CLI 接入) ✅ → M3 后置 (删 shim) ✅
+
+**M4 完整路径**：
+- M4.1 SignalV2 (TradeSignal 改名 + bridge) ✅
+- M3-pre WikiFactor V2 (字段合并) ✅
+- M4.2 配置统一 (~/.quantnodes hardcode) ✅
+- M4.3 wiki.py 拆分 (8 文件子包) ✅
+- M4.4 Sink 异步化 (Protocol 双 API) ✅
+- M4.5 wiki.py shim 删除 (direct subpackage) ✅
+- **M4.6 caller-async化 (PR6.10) ✅** — `FactorStage.run()` 改 async driver, `RecordStage.record()` 改 async, sink 写全部 await write_one_async, parallel 模式 (--workers > 1) 改 asyncio.gather + Semaphore, 新增 `--stream-mode` flag → `BatchSummarySink.stream_write_async` (NDJSON streaming). `run_one_factor(idx)` 保留 sync alias (PR0 老 fixture 兼容).

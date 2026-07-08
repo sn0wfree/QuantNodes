@@ -36,6 +36,12 @@ Byte-equal invariant:
 L4-minimal invariant (PR9c scope):
   - This module does NOT touch the backtest engine. L4 is a separate
     change in v2 (inline backtest → `self._engine.run(...)`).
+
+M4.6 caller-async化 (PR6.10):
+  - `record()` 改 async (主入口), `await self.single_sink.write_one_async(result)`
+  - `record_sync()` 保留 sync (PR0 老 fixture 兼容 — `patch.object(RecordStage, 'record', ...)`)
+  - `_persist_one()` 改 async, `_persist_one_sync()` 保留 sync
+  - 4 步顺序保持 byte-equal, sync/async 仅 persist 步不同 (sync 用 write_one, async 用 write_one_async)
 """
 from __future__ import annotations
 
@@ -58,6 +64,10 @@ class RecordStage:
     Composes 4 sub-operations into a single `record()` call. Holds mutable
     state via list references (results is list, failures is [int]).
 
+    M4.6: dual sync/async API
+      - `record()`     — async (preferred, used by FactorStage.run async driver)
+      - `record_sync()` — sync (backward compat for PR0 test fixtures)
+
     Args:
         single_sink: SingleJsonSink (per-signal JSON writer).
         results: Mutable reference to the caller's `results` list
@@ -73,13 +83,15 @@ class RecordStage:
     failures: list = field(default_factory=lambda: [0])
     reporter: Any = None  # BatchReporter class (lazy import to avoid cycles)
 
-    def record(self, result: FactorResult, elapsed_cum: float) -> None:
-        """Atomic record: 4 sub-operations in fixed order.
+    # === 主入口: async (M4.6 新, 默认) ===
+
+    async def record(self, result: FactorResult, elapsed_cum: float) -> None:
+        """Async atomic record: 4 sub-operations in fixed order.
 
         Order (L2 byte-equal):
           1. _update_state   — append to results, +1 failures on fail
           2. log_row         — BatchReporter.log_row (takes dict)
-          3. _persist_one    — SingleJsonSink.write_one
+          3. _persist_one    — await SingleJsonSink.write_one_async
           4. _log_outcome    — success/failure logger
 
         Persist failure is logged but does not raise (Bug: a single sink
@@ -88,7 +100,29 @@ class RecordStage:
         idx = self._idx_from_result(result)
         self._update_state(result)
         self._get_reporter().log_row(idx, result.to_dict(), elapsed_cum)
-        self._persist_one(result)
+        await self._persist_one(result)
+        self._log_outcome(idx, result.to_dict())
+
+    # === Backward-compat: sync wrapper (老 PR0 fixture) ===
+
+    def record_sync(self, result: FactorResult, elapsed_cum: float) -> None:
+        """Sync atomic record: byte-equal to `record()` but uses sync sink.
+
+        Used by:
+          - `FactorStage.run_one_factor(idx)` — sync alias for old tests
+            that do `patch.object(FactorStage, 'run_one_factor', ...)`.
+          - 任何想在 sync 上下文中使用 RecordStage 的 caller.
+
+        Order (L2 byte-equal, 与 record() 顺序相同):
+          1. _update_state
+          2. log_row
+          3. _persist_one_sync   (sync version, write_one 而非 write_one_async)
+          4. _log_outcome
+        """
+        idx = self._idx_from_result(result)
+        self._update_state(result)
+        self._get_reporter().log_row(idx, result.to_dict(), elapsed_cum)
+        self._persist_one_sync(result)
         self._log_outcome(idx, result.to_dict())
 
     def _update_state(self, result: FactorResult) -> None:
@@ -97,8 +131,18 @@ class RecordStage:
         if result.status != "success":
             self.failures[0] += 1
 
-    def _persist_one(self, result: FactorResult) -> None:
-        """SingleJsonSink.write_one with exception tolerance."""
+    async def _persist_one(self, result: FactorResult) -> None:
+        """Async SingleJsonSink.write_one_async with exception tolerance (M4.6)."""
+        try:
+            await self.single_sink.write_one_async(result)
+        except Exception as exc:
+            logger.warning(
+                "[record] SingleJsonSink.write_one_async failed for %s: %s",
+                result.signal.id, exc,
+            )
+
+    def _persist_one_sync(self, result: FactorResult) -> None:
+        """Sync SingleJsonSink.write_one with exception tolerance (backward compat)."""
         try:
             self.single_sink.write_one(result)
         except Exception as exc:

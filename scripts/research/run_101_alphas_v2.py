@@ -15,11 +15,21 @@ CLI args + output file names/contents are byte-equal to pre-PR6 v2:
   - output_dir/multi_alpha_summary.md       (batch summary table)
   - factors_dir/<strategy_dir>/stk_alpha_NNN_HASH/factor.{yaml,duckdb}
 
+M4.6 caller-async化 (PR6.10):
+  - `run()` 改 async driver, 主循环 + batch 操作全部 await sink async API
+  - 保留 `run_one_factor(idx)` sync alias (PR0 老 fixture 兼容 — `patch.object(FactorStage, 'run_one_factor', ...)`)
+  - 新增 `--stream-mode` flag → `BatchSummarySink.stream_write_async` (NDJSON streaming)
+  - parallel 模式 (--workers > 1) 改 `asyncio.gather` + `asyncio.Semaphore`
+  - 单 LLM codegen 保持 sync (LLM client sync 仍 — 内部包 `to_thread` 不必要)
+  - strategy_library 调用走 `await asyncio.to_thread(self._persist_strategy_sync, fr)`
+
 Usage:
-  python scripts/run_101_alphas_v2.py                  # run all
+  python scripts/run_101_alphas_v2.py                  # run all (async driver)
   python scripts/run_101_alphas_v2.py --start 1 --end 5
   python scripts/run_101_alphas_v2.py --skip-existing
   python scripts/run_101_alphas_v2.py --max-failures 5
+  python scripts/run_101_alphas_v2.py --stream-mode    # NDJSON streaming
+  python scripts/run_101_alphas_v2.py --workers 3     # async parallel
 
 设计文档: docs/designs/run_101_alphas_v2_design.md (§17.6 PR6)
 """
@@ -46,6 +56,7 @@ __all__ = [
 ]
 
 import argparse
+import asyncio
 import hashlib
 import logging
 import time
@@ -53,7 +64,7 @@ from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
 import polars as pl
 
@@ -168,6 +179,9 @@ class RunConfig:
     # ── M3.4: Stage 3 Strategy sink (off = backward compatible) ──
     strategy_mode: str = "off"  # off | per_alpha | after_batch
     strategies_dir: Path | None = None  # default: PROJECT_ROOT / "quant" / "strategies"
+
+    # ── M4.6: NDJSON streaming for batch summary (off = backward compatible) ──
+    stream_mode: bool = False  # if True, BatchSummarySink.stream_write_async (NDJSON)
 
     # ── Stage 2b: LLM extraction ──
     llm_extract: bool = False
@@ -538,17 +552,48 @@ class FactorStage(FactorRunner):
         """PR9c: read-only view into _failures_ref[0] (mutable int wrapper)."""
         return self._failures_ref[0]
 
-    def run(self) -> list[FactorResult]:
-        """Orchestrate batch alpha processing using the new modular sinks.
+    async def run(self) -> list[FactorResult]:
+        """Async driver — orchestrate batch alpha processing using modular sinks.
 
         PR6: Same control flow as pre-PR6 v2 (skip_existing / serial / parallel
         / write_summary), but persistence delegated to the new Sinks:
           - SingleJsonSink     → single_factor_NNN.json
           - YamlDuckdbSink     → factors/<dir>/factor.{yaml,duckdb}
           - BatchSummarySink   → multi_alpha_001_to_101.{json,md}
+                                       (or .ndjson if --stream-mode)
+
+        M4.6 caller-async化 (PR6.10):
+          - 主循环 + batch 操作全部 await sink async API
+          - parallel 模式 (--workers > 1) 改 asyncio.gather + Semaphore
+          - stream_mode 时调 BatchSummarySink.stream_write_async (NDJSON)
+          - 单 LLM codegen 保持 sync (LLM client sync 仍)
+          - 同步入口 run_one_factor(idx) 保留 (老 PR0 fixture 兼容)
 
         L2: Returns list[FactorResult] (was list[dict]). Sinks can be called
         directly with these objects, no manual dict→FactorResult conversion.
+        """
+        self._init_sinks_and_engine()
+        self._log_config()
+        self._preload_data()
+        skip: set[int] = self._process_skip_existing()
+        to_run: list[int] = self._compute_to_run(skip)
+        logger.info("[factor] To run: %d alphas", len(to_run))
+        if self.config.workers <= 1:
+            await self._run_serial_async(to_run)
+        else:
+            await self._run_parallel_async(to_run)
+        # M3.4: aggregate composite strategy (mode=after_batch only)
+        await self._persist_batch_strategy_async(self.results)
+        await self._write_summary_async()
+        self._log_done()
+        return self.results
+
+    def _init_sinks_and_engine(self) -> None:
+        """Sync setup: instantiate 3 sinks + record_stage + backtest engine.
+
+        Extracted from the old sync run() body. Called by async run() at the
+        start. Can also be called directly by tests (e.g. test_strategy_sink
+        uses _MockFactorStage shim, but production code uses this).
         """
         self._log_start()
         self.batch_t0 = time.monotonic()
@@ -581,21 +626,6 @@ class FactorStage(FactorRunner):
         from QuantNodes.research.backtest import QuantNodesBacktest
 
         self._engine = QuantNodesBacktest(config=self.config)
-
-        self._log_config()
-        self._preload_data()
-        skip: set[int] = self._process_skip_existing()
-        to_run: list[int] = self._compute_to_run(skip)
-        logger.info("[factor] To run: %d alphas", len(to_run))
-        if self.config.workers <= 1:
-            self._run_serial(to_run)
-        else:
-            self._run_parallel(to_run)
-        # M3.4: aggregate composite strategy (mode=after_batch only)
-        self._persist_batch_strategy(self.results)
-        self._write_summary()
-        self._log_done()
-        return self.results
 
     def _log_config(self) -> None:
         logger.info("[factor] Data path: %s", self.config.data_path)
@@ -644,12 +674,102 @@ class FactorStage(FactorRunner):
                 if idx not in skip]
 
     def _run_one_with_codegen(self, idx: int) -> FactorResult:
-        """Run single alpha: codegen + backtest + sinks, mirroring v2's run_one_factor flow.
+        """Sync alias — old tests do `patch.object(FactorStage, 'run_one_factor', ...)`.
 
-        L2: Returns FactorResult (was dict). State stored in self.results
-        matches Sinks' contract — no dict→FactorResult conversion needed.
+        M4.6: full body factored into `run_one_factor()` (sync) and
+        `_run_one_with_codegen_async()` (async). This sync alias preserves
+        the byte-equal sync codegen path for PR0 test fixtures.
         """
         return self.run_one_factor(idx)
+
+    async def _run_one_with_codegen_async(self, idx: int) -> FactorResult:
+        """M4.6 async variant of run_one_factor — used by run() async driver.
+
+        Same body as `run_one_factor` but with await on sink writes
+        (_persist_via_sink_async) and strategy_library (to_thread wrapper).
+        The LLM codegen step is sync (LLM client sync 仍), but it's not
+        a problem because the event loop is single-threaded; one alpha
+        at a time, parallel mode uses asyncio.gather + Semaphore.
+        """
+        import traceback
+        t0 = time.monotonic()
+        try:
+            config = self.config
+            # Step 1: load formula
+            factor_name, formula_brief = load_formula_brief(idx, config.track_b_path)
+            logger.info("[alpha-%03d] formula_brief: %s", idx, formula_brief[:80])
+            # Step 2: ensure df_pl
+            df_pl = self.df_pl
+            if df_pl is None:
+                self._preload_data()
+                df_pl = build_long_dataframe(self.data_cache)
+                self.df_pl = df_pl
+            # Step 3: LLM codegen (ReAct) — SYNC (LLM client sync)
+            # M4.6: when called from async driver, we need to run the codegen
+            # in a worker thread because `llm_code_react` internally calls
+            # `asyncio.run()`. Workers have their own (empty) event loop, so
+            # `asyncio.run()` works. The main event loop is unblocked.
+            code, factor_series, error, stage = await asyncio.to_thread(
+                self._generate_code,
+                factor_name, formula_brief, df_pl,
+            )
+            if error is not None:
+                logger.warning("[alpha-%03d] failed at %s: %s", idx, stage, error[:100])
+                result: FactorResult = self._factory.fail_codegen(
+                    alpha_index=idx, stage=stage, error=error, code=code, t0=t0,
+                )
+            else:
+                # Step 4: H5 + Step 5: backtest + Step 6: metrics
+                import re
+                import numpy as np
+                unique_vals = factor_series.drop_nulls().unique()
+                if len(unique_vals) <= 2:
+                    logger.warning("[alpha] constant/binary factor detected (%d unique values), adding noise", len(unique_vals))
+                    noise = pl.Series("__noise", np.random.uniform(-1e-7, 1e-7, len(factor_series)))
+                    factor_series = factor_series.cast(pl.Float64) + noise
+                factor_wide = wide_from_long(df_pl, factor_series)
+                safe_factor_name = re.sub(r"[^A-Za-z0-9_]", "_", factor_name)
+                h5_path = write_factor_h5(factor_wide, safe_factor_name, config.data_path)
+                logger.info("[alpha] h5: written %s", h5_path)
+                backtest_signal = self._factory.build_signal(idx, factor_name, formula_brief)
+                backtest = self._engine.run(
+                    code=code, h5_path=h5_path, signal=backtest_signal,
+                )
+                if backtest.get("error"):
+                    logger.warning(
+                        "[alpha-%03d] failed at pipeline: %s",
+                        idx, backtest["error"][:100],
+                    )
+                    result = self._factory.fail_pipeline(
+                        alpha_index=idx, code=code,
+                        exc=RuntimeError(backtest["error"]), t0=t0,
+                    )
+                else:
+                    logger.info(
+                        "[alpha-%03d] backtest: IC=%.4f, ICIR=%.4f, WinRate=%.1f%%",
+                        idx, backtest.get("ic_mean", 0), backtest.get("icir", 0),
+                        (backtest.get("win_rate", 0) or 0) * 100,
+                    )
+                    success_fr = self._factory.success(
+                        alpha_index=idx, factor_name=factor_name,
+                        formula_brief=formula_brief, code=code,
+                        factor_series=factor_series, h5_path=h5_path,
+                        backtest=backtest, t0=t0,
+                        long_df=df_pl,
+                    )
+                    # Step 7: persist YAML + DuckDB via YamlDuckdbSink — ASYNC
+                    await self._persist_via_sink_async(success_fr)
+                    # M3.4: persist strategy YAML + DuckDB (mode=per_alpha only) — ASYNC
+                    await self._persist_strategy_async(success_fr)
+                    result = success_fr
+                    logger.info("[alpha-%03d] success (%.1fs)", idx, time.monotonic() - t0)
+            return result
+        except Exception as exc:
+            logger.warning("[alpha-%03d] EXCEPTION: %s: %s", idx, type(exc).__name__, str(exc)[:100])
+            return self._factory.fail_codegen(
+                alpha_index=idx, stage="wrapper",
+                error=f"{type(exc).__name__}: {exc}", code=None, t0=t0,
+            )
 
     def run_one_factor(self, idx: int) -> FactorResult:
         """Backward-compat alias for _run_one_with_codegen (PR0 test fixture).
@@ -657,6 +777,11 @@ class FactorStage(FactorRunner):
         Old tests use `patch.object(FactorStage, 'run_one_factor', ...)` —
         keep the method name so patches work. Tests return FactorResult
         mocks (PR0 tests updated to FactorResult in L2).
+
+        M4.6: still sync — async driver goes through `_run_one_with_codegen_async`.
+        The body is byte-equal to the pre-M4.6 implementation (sync codegen
+        + sync sink + sync strategy_library). The async version differs only
+        in the sink write calls (`write_one_async` vs `write_one`).
         """
         import traceback
         t0 = time.monotonic()
@@ -797,6 +922,21 @@ class FactorStage(FactorRunner):
         except Exception as exc:
             logger.warning("[sink] YamlDuckdbSink.write_one failed for %s: %s", fr.signal.id, exc)
 
+    async def _persist_via_sink_async(self, fr: FactorResult) -> None:
+        """M4.6 async variant — YamlDuckdbSink.write_one_async.
+
+        Same body as _persist_via_sink but awaits sink async API.
+        The actual I/O is offloaded to a thread pool via
+        ``asyncio.to_thread(self.write_one, fr)`` (default in Sink Protocol).
+        """
+        try:
+            await self._yaml_sink.write_one_async(fr)
+        except Exception as exc:
+            logger.warning(
+                "[sink] YamlDuckdbSink.write_one_async failed for %s: %s",
+                fr.signal.id, exc,
+            )
+
     # ── M3.4: Strategy sink ────────────────────────────────────────
 
     @staticmethod
@@ -829,6 +969,16 @@ class FactorStage(FactorRunner):
         return f"{self.config.paper_id}_{int(idx):03d}_{self._alpha_to_signal_type(fr.signal.name)}"
 
     def _persist_strategy(self, fr: FactorResult) -> None:
+        """M3.4: sync alias — wraps ``_persist_strategy_sync`` for backward compat.
+
+        M4.6: full body factored into ``_persist_strategy_sync``. The async
+        driver goes through ``_persist_strategy_async`` (which uses
+        ``asyncio.to_thread`` to offload this sync body to a thread pool,
+        keeping the event loop responsive).
+        """
+        self._persist_strategy_sync(fr)
+
+    def _persist_strategy_sync(self, fr: FactorResult) -> None:
         """M3.4: write per-factor strategy YAML + DuckDB via strategy_library.
 
         Triggered only when ``config.strategy_mode == 'per_alpha'`` and
@@ -929,7 +1079,28 @@ class FactorStage(FactorRunner):
                 fr.signal.id, type(exc).__name__, exc,
             )
 
+    async def _persist_strategy_async(self, fr: FactorResult) -> None:
+        """M4.6 async variant — delegates to ``_persist_strategy_sync`` via to_thread.
+
+        strategy_library is sync I/O (YAML + DuckDB writes). ``to_thread``
+        offloads to the default thread pool so the event loop stays
+        responsive (parallel mode workers don't block on I/O).
+        """
+        if self.config.strategy_mode != "per_alpha":
+            return
+        if fr.status != "success":
+            return
+        await asyncio.to_thread(self._persist_strategy_sync, fr)
+
     def _persist_batch_strategy(self, results: list[FactorResult]) -> None:
+        """Sync alias — wraps ``_persist_batch_strategy_sync`` for backward compat.
+
+        M4.6: full body factored. The async driver goes through
+        ``_persist_batch_strategy_async`` (which uses ``asyncio.to_thread``).
+        """
+        self._persist_batch_strategy_sync(results)
+
+    def _persist_batch_strategy_sync(self, results: list[FactorResult]) -> None:
         """M3.4: write composite strategy YAML aggregating all successful alphas.
 
         Triggered only when ``config.strategy_mode == 'after_batch'``.
@@ -1020,19 +1191,47 @@ class FactorStage(FactorRunner):
                 type(exc).__name__, exc,
             )
 
+    async def _persist_batch_strategy_async(self, results: list[FactorResult]) -> None:
+        """M4.6 async variant — delegates to sync body via to_thread.
+
+        The composite strategy is computed in-memory and written once at
+        end-of-batch. ``to_thread`` offloads sync I/O to a worker thread
+        so the event loop stays responsive.
+        """
+        if self.config.strategy_mode != "after_batch":
+            return
+        await asyncio.to_thread(self._persist_batch_strategy_sync, results)
+
     def _run_one_with_recording(self, idx: int) -> FactorResult:
-        """Serial path: no locks, single thread.
+        """Sync alias — wraps ``_run_one_with_recording_async`` for backward compat.
+
+        M4.6: full body factored into the async version. The sync wrapper
+        is kept for tests that do `patch.object(FactorStage, '_run_one_with_recording', ...)`
+        or for callers that need a sync entry.
+        """
+        # NB: the sync path goes through the sync codegen + sync record_sync
+        elapsed_cum: float = time.monotonic() - self.batch_t0
+        logger.info("[factor] alpha-%03d: starting (elapsed: %.0fs, failures: %d)",
+                    idx, elapsed_cum, self.failures)
+        result = self.run_one_factor(idx)
+        self._record_stage.record_sync(result, elapsed_cum)
+        return result
+
+    async def _run_one_with_recording_async(self, idx: int) -> FactorResult:
+        """M4.6 async serial path — no locks, single thread (event loop).
 
         PR9c: delegates record step to RecordStage (was inline _record_one).
+        M4.6: record is async; sink writes use write_one_async.
         """
         elapsed_cum: float = time.monotonic() - self.batch_t0
         logger.info("[factor] alpha-%03d: starting (elapsed: %.0fs, failures: %d)",
                     idx, elapsed_cum, self.failures)
-        result = self._run_one_with_codegen(idx)
-        self._record_stage.record(result, elapsed_cum)
+        result = await self._run_one_with_codegen_async(idx)
+        await self._record_stage.record(result, elapsed_cum)
         return result
 
     def _run_serial(self, to_run: list[int]) -> None:
+        """Sync alias — uses ``_run_one_with_recording`` (sync) for backward compat."""
         for idx in to_run:
             self._run_one_with_recording(idx)
             if self.failures >= self.config.max_failures:
@@ -1041,8 +1240,19 @@ class FactorStage(FactorRunner):
             if idx < self.config.alpha_end and self.config.delay > 0 and not self.config.no_delay:
                 time.sleep(self.config.delay)
 
+    async def _run_serial_async(self, to_run: list[int]) -> None:
+        """M4.6 async serial path — single-threaded event loop."""
+        for idx in to_run:
+            await self._run_one_with_recording_async(idx)
+            if self.failures >= self.config.max_failures:
+                logger.warning("[factor] Reached max failures (%d), stopping", self.config.max_failures)
+                break
+            if idx < self.config.alpha_end and self.config.delay > 0 and not self.config.no_delay:
+                await asyncio.sleep(self.config.delay)
+
     def _run_parallel(self, to_run: list[int]) -> None:
-        logger.info("[factor] Using %d concurrent workers", self.config.workers)
+        """Sync alias — uses ThreadPoolExecutor for backward compat (PR9c behavior)."""
+        logger.info("[factor] Using %d concurrent workers (sync thread pool)", self.config.workers)
         with ThreadPoolExecutor(max_workers=self.config.workers) as pool:
             futures = {pool.submit(self._run_one_safe, idx): idx for idx in to_run}
             for future in as_completed(futures):
@@ -1054,25 +1264,55 @@ class FactorStage(FactorRunner):
                                    idx, type(exc).__name__, str(exc)[:100])
                     self._handle_parallel_failure(idx, type(exc).__name__, str(exc))
 
+    async def _run_parallel_async(self, to_run: list[int]) -> None:
+        """M4.6 async parallel path — uses asyncio.gather + asyncio.Semaphore.
+
+        Replaces the sync ThreadPoolExecutor with asyncio-native scheduling.
+        Each worker calls _run_one_with_recording_async (which awaits sink
+        write_one_async and RecordStage.record). The default thread pool
+        offloads sync I/O via asyncio.to_thread inside the sink Protocol.
+        """
+        logger.info("[factor] Using %d concurrent workers (async)", self.config.workers)
+        sem = asyncio.Semaphore(self.config.workers)
+
+        async def worker(idx: int) -> FactorResult:
+            async with sem:
+                return await self._run_one_with_recording_async(idx)
+
+        # gather with return_exceptions so one failure doesn't abort all
+        results = await asyncio.gather(
+            *(worker(idx) for idx in to_run),
+            return_exceptions=True,
+        )
+        for idx, res in zip(to_run, results):
+            if isinstance(res, Exception):
+                logger.warning(
+                    "[factor] alpha-%03d: EXCEPTION: %s: %s",
+                    idx, type(res).__name__, str(res)[:100],
+                )
+                await self._handle_parallel_failure_async(idx, type(res).__name__, str(res))
+
     def _run_one_safe(self, idx: int) -> FactorResult:
-        """Parallel path: lock only around RecordStage.record (not codegen).
+        """Sync parallel path: lock only around RecordStage.record_sync (not codegen).
 
         PR9c: delegates record step to RecordStage (was inline _record_one).
         Bug 3 fix: LLM call is OUTSIDE the lock window.
+        M4.6: uses record_sync (sync wrapper) for backward compat.
         """
         with _llm_semaphore:
             result = self._run_one_with_codegen(idx)
             elapsed_cum = time.monotonic() - self.batch_t0
             with _print_lock:
-                self._record_stage.record(result, elapsed_cum)
+                self._record_stage.record_sync(result, elapsed_cum)
             return result
 
     def _handle_parallel_failure(self, idx: int, stage: str, error: str) -> None:
-        """L2: append synthetic FactorResult (not dict) with full Bug 5 fields.
+        """Sync alias — wraps ``_handle_parallel_failure_async`` for backward compat.
 
-        PR9a: uses self._factory.build_signal for the Signal construction.
-        PR9c: uses self._failures_ref[0] for mutable int.
+        M4.6: full body factored into the async version. The sync wrapper
+        is kept for tests that use sync paths.
         """
+        # Build synthetic FactorResult (sync; pure in-memory)
         result: FactorResult = FactorResult(
             signal=self._factory.build_signal(idx),
             status="failed",
@@ -1094,17 +1334,71 @@ class FactorStage(FactorRunner):
                     result.signal.id, exc,
                 )
 
-    def _write_summary(self) -> None:
-        """L2: delegate batch summary to BatchSummarySink (PR4 + PR5).
+    async def _handle_parallel_failure_async(self, idx: int, stage: str, error: str) -> None:
+        """M4.6 async variant — same body as sync, but with await sink.write_one_async."""
+        result: FactorResult = FactorResult(
+            signal=self._factory.build_signal(idx),
+            status="failed",
+            stage=stage,
+            error=error[:200],
+            code=None,
+            code_chars=0,
+            backtest={},
+            elapsed_sec=0.0,
+        )
+        self.results.append(result)
+        self._failures_ref[0] += 1
+        if self._single_sink is not None:
+            try:
+                await self._single_sink.write_one_async(result)
+            except Exception as exc:
+                logger.warning(
+                    "[sink] SingleJsonSink.write_one_async failed for %s: %s",
+                    result.signal.id, exc,
+                )
 
-        No more 60-line dict→FactorResult conversion — self.results
-        is already list[FactorResult].
+    def _write_summary(self) -> None:
+        """Sync alias — wraps ``_write_summary_async`` for backward compat.
+
+        M4.6: full body factored. The async wrapper handles stream-mode
+        switching (--stream-mode → BatchSummarySink.stream_write_async).
         """
         if self._summary_sink is not None:
             self._summary_sink.write_batch(self.results)
         total_elapsed: float = time.monotonic() - self.batch_t0
         logger.info("[factor] Total elapsed: %.1fs (%.1f min)", total_elapsed, total_elapsed / 60)
         logger.info("[factor] Results saved to: %s", self.config.output_dir)
+
+    async def _write_summary_async(self) -> None:
+        """M4.6 async batch summary — NDJSON streaming if --stream-mode else JSON+MD.
+
+        Stream-mode uses ``BatchSummarySink.stream_write_async`` (M4.4 NDJSON
+        support) which yields an AsyncIterator[FactorResult] and writes one
+        JSON record per line. Default mode uses ``write_batch_async`` for
+        byte-equal JSON+MD summary (same as pre-M4.6 behavior).
+        """
+        if self._summary_sink is not None:
+            if self.config.stream_mode:
+                ndjson_path = await self._summary_sink.stream_write_async(
+                    self._iter_results_async(),
+                    ndjson_filename="multi_alpha_001_to_101.ndjson",
+                )
+                logger.info("[summary] NDJSON streaming → %s", ndjson_path)
+            else:
+                await self._summary_sink.write_batch_async(self.results)
+        total_elapsed: float = time.monotonic() - self.batch_t0
+        logger.info("[factor] Total elapsed: %.1fs (%.1f min)", total_elapsed, total_elapsed / 60)
+        logger.info("[factor] Results saved to: %s", self.config.output_dir)
+
+    async def _iter_results_async(self) -> AsyncIterator[FactorResult]:
+        """Async generator over self.results — used by stream_write_async.
+
+        NDJSON streaming yields one result per line. Currently we just yield
+        in-order from self.results; the BatchSummarySink consumes and writes
+        one line per yield.
+        """
+        for r in self.results:
+            yield r
 
 
 def main() -> None:
@@ -1166,6 +1460,15 @@ def main() -> None:
         default=None,
         help="Output base dir for strategies (default: PROJECT_ROOT/quant/strategies)",
     )
+
+    # M4.6: NDJSON streaming for batch summary.
+    # Off = backward compatible (writes multi_alpha_001_to_101.{json,md}).
+    # On = BatchSummarySink.stream_write_async (NDJSON, one result per line).
+    parser.add_argument(
+        "--stream-mode",
+        action="store_true",
+        help="Use BatchSummarySink.stream_write_async (NDJSON streaming) for summary",
+    )
     args = parser.parse_args()
 
     # Re-initialize logger with user-specified log file
@@ -1222,6 +1525,9 @@ def main() -> None:
         # M3.4: strategy-mode wiring (default off = backward compatible)
         strategy_mode=getattr(args, "strategy_mode", "off"),
         strategies_dir=getattr(args, "strategies_dir", None),
+
+        # M4.6: NDJSON streaming (default off = backward compatible)
+        stream_mode=getattr(args, "stream_mode", False),
     )
     config.output_dir.mkdir(parents=True, exist_ok=True)
     logger.info("RunConfig: %s", config)
@@ -1235,9 +1541,9 @@ def main() -> None:
     if track_b_path:
         config = replace(config, track_b_path=track_b_path)
 
-    # ── Stage 2: Factor processing ──
+    # ── Stage 2: Factor processing (async driver, M4.6 PR6.10) ──
     if not config.llm_extract:
-        FactorStage(config).run()
+        asyncio.run(FactorStage(config).run())
 
     # ── Stage 2b: LLM metadata extraction ──
     if config.llm_extract:

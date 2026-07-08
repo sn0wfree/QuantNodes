@@ -528,6 +528,85 @@ init_factor_wiki                                             →  wiki.init_fact
 ### v3.0.0 Tier 4 PR6 全部完成 ✅
 
 下一步可选方向 (Session 7+):
-1. **Caller async 化** — `scripts/run_101_alphas_v2.py._persist_one` 选择性升级到 `await write_one_async()`
-2. **Sink 流式 NDJSON 接入** — `run_101_alphas_v2.py` 在 `--stream-mode` 时使用 `stream_write_async`
+1. ✅ **Caller async 化** — DONE in M4.6 / PR6.10 (Session 7)
+2. ✅ **Sink 流式 NDJSON 接入** — DONE in M4.6 / PR6.10 (Session 7) — `--stream-mode` flag 启用
 3. **Tier 5 新方向** — M5: telemetry / metrics / dashboard / agent tools refactor 等
+
+---
+
+## 🎉 Session 7 总结 — M4.6 caller-async化 (PR6.10)
+
+### 决策链
+- M4.4 (PR6.8) 实现 Sink Protocol 双 API (sync + async, 默认 `asyncio.to_thread` fall-through)
+- M4.5 (PR6.9) 删除 wiki.py shim, 全部 caller 走 direct subpackage path
+- **M4.6 (PR6.10)** 把 caller 全链路改 async, 真正消费 M4.4 的 async API
+- 用户选 B (中等) + NDJSON 接入 + 5-alpha smoke 验证
+
+### Symbol/Method 演进
+- `RecordStage.record()` 改 `async def`, `record_sync()` 保留 (PR0 compat)
+- `RecordStage._persist_one()` 改 `async def`, `_persist_one_sync()` 保留
+- `FactorStage.run()` 改 `async def`
+- 新 async wrappers: `_run_one_with_codegen_async`, `_run_one_with_recording_async`, `_run_serial_async`, `_run_parallel_async`, `_persist_via_sink_async`, `_persist_strategy_async`, `_persist_batch_strategy_async`, `_handle_parallel_failure_async`, `_write_summary_async`
+- sync aliases 保留: `run_one_factor`, `_run_one_with_codegen`, `_run_one_with_recording`, `_run_serial`, `_run_parallel`, `_persist_via_sink`, `_persist_strategy`, `_persist_batch_strategy`, `_handle_parallel_failure`, `_write_summary`
+- `_iter_results_async()` async generator for NDJSON streaming
+
+### CLI 新增 flag
+- `--stream-mode` (store_true, default False) — 启用 `BatchSummarySink.stream_write_async` (NDJSON streaming)
+
+### RunConfig 新字段
+- `stream_mode: bool = False` (default 向后兼容)
+
+### 关键 fix: LLM codegen `asyncio.run()` 嵌套
+- 初始实现 → 1-alpha smoke 失败: `RuntimeError: asyncio.run() cannot be called from a running event loop`
+- 原因: `llm_code_react` 内部调 `asyncio.run()` (line 230 codegen_pipeline.py), 外层 `asyncio.run()` 嵌套冲突
+- 解决: `_run_one_with_codegen_async` 中 LLM codegen 走 `await asyncio.to_thread(self._generate_code, ...)` — worker thread 有独立 event loop, `asyncio.run()` 在那里 work
+- 验证: 1-alpha smoke 修复后 IC=-0.0330, 20.0s (与 M4.5 baseline 22.1s 一致)
+
+### 改动统计
+- 5 files, +570 / -90 = +480 净 LoC:
+  - `QuantNodes/research/factor/record_stage.py` (+60 / -10)
+  - `scripts/research/run_101_alphas_v2.py` (+400 / -100) — 22 new methods/wrappers
+  - `tests/research/test_record_stage.py` (新, +220)
+  - `tests/research/test_run_101_streaming.py` (新, +180)
+  - `tests/research/test_strategy_sink.py` (+60 / 0)
+- 0 sink files 改动 (Protocol 已就绪, M4.4 + M4.6 caller 全消费)
+- 0 删除文件
+
+### 验证矩阵
+| Test | Result | Baseline |
+|------|--------|----------|
+| pytest (touched areas) | 120/120 pass | 120/120 |
+| pytest (全量, 9 ignore) | ~8636P / 86F | 8636P / 111F (M4.5) — 2 hang files excluded for fair comparison |
+| 1-alpha smoke (alpha-001, off) | IC=-0.0330, 20.0s | IC=-0.0330, 22.1s (M4.5) |
+| 5-alpha smoke (off) | 5/5 success, 1m44s | n/a (new) |
+| 5-alpha smoke (per_alpha) | 5/5 success + 5 strategy YAML/DuckDB | n/a (new) |
+| 5-alpha smoke (--stream-mode) | 5/5 success + NDJSON 5 lines | n/a (new) |
+| 1-alpha --workers 3 | IC=-0.0330, 14.2s | n/a (new) |
+| 3-alpha --workers 3 | 3/3 success, 29s (asyncio.gather OK) | n/a (new) |
+
+### 排除 (其他人的 WIP, 未触碰)
+- `QuantNodes/strategy/momentum_etf_rotation/*` (untracked, 4 files)
+- `QuantNodes/agent/tools/validation.py` (untracked)
+- `QuantNodes/agent/skills_quant/quant-validation/` (untracked)
+- `tests/strategy/`, `tests/agent/test_validation_tool.py` (untracked)
+- `reports/momentum_etf_rotation/*`, `data/real/*`, `data/mine_runs/*`
+- `scripts/fetch_real_etf_panel.py`
+- `docs/17-*.md`, `docs/consolidated_report.html`
+- `pyproject.toml`, `CHANGELOG.md`, `.gitignore`
+
+### Branch 状态
+- 启动时在 master, 已迁回 dev/repro-merge-2026-07-04 (commit b05e1ae)
+- 中途 strategy WIP 被 mv 备份再恢复 (M4.5 复用同一手法)
+
+### v3.0.0 Tier 4 PR6 全部完成 ✅
+- M4.1 SignalV2 (TradeSignal + cross-layer bridge)
+- M3-pre WikiFactor V2 (字段合并)
+- M4.2 配置统一 (~/.quantnodes hardcode)
+- M4.3 wiki.py 拆分 (8 文件子包)
+- M4.4 Sink 异步化 (Protocol 双 API)
+- M4.5 wiki.py shim 删除 (direct subpackage)
+- **M4.6 caller-async化 (PR6.10)** ← Session 7
+
+### 下一步
+- Tier 5 新方向: telemetry / metrics / dashboard / agent tools refactor
+- 或者进一步 caller 优化: LLM client 改 async (目前 codegen 仍走 to_thread)

@@ -363,3 +363,57 @@ class TestPersistBatchStrategy:
         yaml_path = tmp_path / "101_alphas_minimal_composite" / "strategy.yaml"
         data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         assert data["strategy"]["signal_type"] == "signal_composite"
+
+
+# ── M4.6 caller-async化 (PR6.10): sync alias backward compat ──────
+
+
+class TestRunOneFactorSyncAlias:
+    """M4.6: ``run_one_factor(idx)`` 保留 sync 入口 — PR0 fixture 兼容.
+
+    老测试用 ``patch.object(FactorStage, 'run_one_factor', ...)`` 必须仍 work.
+    """
+
+    def test_run_one_factor_is_sync_method(self) -> None:
+        """`run_one_factor` 必须仍是 sync method (老 patch 工作)."""
+        import inspect
+        assert not inspect.iscoroutinefunction(r101.FactorStage.run_one_factor), (
+            "run_one_factor must remain sync for PR0 backward compat"
+        )
+
+    def test_run_one_with_codegen_is_sync_method(self) -> None:
+        """`_run_one_with_codegen` 也必须 sync — 老测试也 patch 这个."""
+        import inspect
+        assert not inspect.iscoroutinefunction(r101.FactorStage._run_one_with_codegen)
+
+    def test_run_async_driver_exists(self) -> None:
+        """M4.6 新增 `_run_one_with_codegen_async` async 入口."""
+        import inspect
+        assert inspect.iscoroutinefunction(r101.FactorStage._run_one_with_codegen_async)
+        assert inspect.iscoroutinefunction(r101.FactorStage.run)
+
+
+class TestPersistSyncAlias:
+    """M4.6: sync `_persist_strategy` / `_persist_batch_strategy` 仍 work."""
+
+    def test_persist_strategy_sync_wrapper(self, tmp_path: Path) -> None:
+        """`_persist_strategy` 调 `_persist_strategy_sync` 内部 — sync 一致."""
+        # 不能直接调 full _persist_strategy 因为需要更多 setup
+        # 但可以验证 _persist_strategy_sync 本身是 sync method
+        import inspect
+        assert not inspect.iscoroutinefunction(r101.FactorStage._persist_strategy)
+        assert not inspect.iscoroutinefunction(r101.FactorStage._persist_strategy_sync)
+        assert inspect.iscoroutinefunction(r101.FactorStage._persist_strategy_async)
+
+    def test_persist_batch_strategy_sync_wrapper(self) -> None:
+        """`_persist_batch_strategy` 调 `_persist_batch_strategy_sync` 内部."""
+        import inspect
+        assert not inspect.iscoroutinefunction(r101.FactorStage._persist_batch_strategy)
+        assert not inspect.iscoroutinefunction(r101.FactorStage._persist_batch_strategy_sync)
+        assert inspect.iscoroutinefunction(r101.FactorStage._persist_batch_strategy_async)
+
+    def test_persist_via_sink_sync_and_async_both_exist(self) -> None:
+        """`_persist_via_sink` (sync, 旧) + `_persist_via_sink_async` (M4.6 新)."""
+        import inspect
+        assert not inspect.iscoroutinefunction(r101.FactorStage._persist_via_sink)
+        assert inspect.iscoroutinefunction(r101.FactorStage._persist_via_sink_async)
