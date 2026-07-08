@@ -424,25 +424,110 @@ tests/research/test_sink_async.py:
 - `post-m4.3-wiki-split` → `7f1bc04` (Session 5)
 - `post-m4.2-config-unification` → `753f1d4` (Session 6)
 - `post-m4.4-sink-async` → `06c8351` (Session 6)
+- `post-m4.5-shim-removed` → `2e16ea0` (Session 6 ext)
 
-### 累计测试 (Session 1 → 6)
+### 累计测试 (Session 1 → 6+)
 - Session 1: 3062P / 16F / 14E
-- Session 6: **3172P / 17F / 14E** (+110 net new tests, 0 回归)
+- Session 6: **3172P / 17F / 14E** (+110 net new tests, 0 回归, 旧 baseline)
+- Session 6 ext (M4.5 + jieba 装回): **8636P / 111F / 0E** (全 baseline 包含 llmwikify-driven tests, 与 M4.5 pre-change 一致, **0 回归**)
 
 ### Tier 4 PR6 全部完成 ✅
 - ✅ M4.1 PR6 SignalV2 (TradeSignal + cross-layer bridge)
 - ✅ M3-pre PR6.5 WikiFactor V2 (字段合并)
 - ✅ M4.2 PR6.7 配置统一 (~/.quantnodes hardcode)
-- ✅ M4.3 PR6.6 wiki.py 拆分 (8 文件子包)
+- ✅ M4.3 PR6.6 wiki.py 拆分 (8 文件子包 + 29 行 shim)
 - ✅ M4.4 PR6.8 Sink 异步化 (Protocol 双 API)
+- ✅ M4.5 PR6.9 wiki.py shim **删除** (direct subpackage imports)
 
 ---
 
-## 🔮 Session 7 计划 (待执行)
+## 🎉 Session 6 ext 补充 — M4.5 wiki.py shim 删除 (PR6.9)
 
-可选方向（任选或全部）：
+### 决策链
+- M4.3 (PR6.6) 拆分时故意保留 29 行 shim 让所有 caller 零改动 (`from QuantNodes.research.wiki import X` 仍可用)
+- shim 文件本身仅 29 行，但提供的是"模块代理"语义 — 模块不存在时 Python 找不到，破坏 import
+- **M4.5 移除 shim** = 显式迁 11+ caller + mock patch path + docstring
 
-1. **删 wiki.py shim** (M4.5) — mechanical sed 11+ production caller 到 `from ...wiki.{factor,proxy,enums} import ...`
-2. **Caller async 化** — `factor/record_stage.py._persist_one` + `scripts/run_101_alphas_v2.py` 选择性升级到 `await write_one_async()`
-3. **Sink 流式 NDJSON 接入** — `run_101_alphas_v2.py` 在 `--stream-mode` 时使用 `stream_write_async`
-4. **Tier 5 新方向** — M5: telemetry / metrics / dashboard / agent tools refactor 等
+### Symbol → 子包映射 (11 public symbols)
+```
+FactorSource/FactorCategory/LogicSource/QUANT_RELATION_TYPES  →  wiki.enums
+WikiFactor                                                   →  wiki.factor
+WikiFactorProxy                                              →  wiki.proxy
+WikiLogic                                                    →  wiki.logic
+WikiStrategy                                                 →  wiki.strategy
+WikiReproduction                                             →  wiki.reproduction
+WikiProxyError                                               →  wiki.errors
+init_factor_wiki                                             →  wiki.init_factor_wiki
+```
+
+### Migration 统计
+- **22 文件** 修改, **+72 / -103 = -31 净** (删 -49 行 shim 抵消多行 import 增长)
+- 9 production files + 10 test files + 3 mock patch paths + 2 docstrings
+
+### Production caller migration (9 files)
+1. `QuantNodes/research/__init__.py` — facade re-exports 11 symbols (multi-line)
+2. `QuantNodes/research/report_reproducer.py` — 6 imports → wiki.enums + wiki.factor + wiki.logic + wiki.proxy
+3. `QuantNodes/research/quant_alpha/pipeline.py` — 4 imports → wiki.enums + wiki.factor + wiki.proxy
+4. `QuantNodes/research/quant_alpha/logic_driven_pipeline.py` — 4 lazy imports
+5. `QuantNodes/research/quant_alpha/logic_mining/generator.py` — 2 lazy imports
+6. `QuantNodes/research/quant_alpha/workflow/alpha_logics.py` — 3 lazy imports
+7. `QuantNodes/cli/_helpers.py` — `init_factor_wiki` → wiki.init_factor_wiki
+8. `QuantNodes/agent/__init__.py` — docstring + 1 lazy import
+9. `QuantNodes/research/paper_understanding/schemas.py` — docstring only
+
+### Test caller migration (10 files) + 3 mock patch paths
+- `tests/agent/test_wiki_tool.py` — multi-line import
+- `tests/factor_node/test_factor_db_deprecation.py` — 1 fixture import
+- `tests/quant_alpha/test_alpha_logics.py` — 2 imports
+- `tests/quant_alpha/test_alpha_logics_coverage.py` — 3 imports
+- `tests/quant_alpha/test_logic_driven_pipeline_coverage.py` — **3 mock patches**
+- `tests/quant_alpha/test_pipeline.py` — 1 lazy import
+- `tests/research/conftest.py` — 1 fixture import (wiki_proxy)
+- `tests/research/test_report_reproducer.py` — 1 import
+- `tests/research/test_repro_integration.py` — 2 lazy imports
+- `tests/research/test_wiki.py` — multi-line import + 1 lazy import
+- `tests/research/test_schemas.py` — docstring only
+
+### Mock patch path 关键决策
+- 旧: `patch("QuantNodes.research.wiki.WikiFactorProxy")` (target facade package)
+- 新: `patch("QuantNodes.research.wiki.proxy.WikiFactorProxy")` (target Proxy 类的 home module)
+- 原因: caller 现在用 `from wiki.proxy import WikiFactorProxy` (lazy), patch 必须打 Proxy 类定义所在 module, 否则 `from ... import` 会重新 import 真实类而不是 MagicMock
+
+### 验证
+- **pytest**: `8636P / 111F / 0E` 与 pre-M4.5 baseline **完全一致** (0 回归)
+- **wiki-related tests**: 177 passed (test_wiki + test_report_reproducer + test_wiki_tool + 4 quant_alpha + test_repro_integration + test_schemas + test_factor_db_deprecation)
+- **1-alpha smoke** (alpha-001): IC=-0.0330, 22.1s (M4.4 baseline 22.3s, 一致)
+
+### 排除 (其他人的 WIP, 未触碰)
+- `QuantNodes/strategy/momentum_etf_rotation/{covariance,fi_plus,risk_parity,universe}.py` (untracked)
+- `reports/momentum_etf_rotation/*` (其他人的输出)
+- `QuantNodes/agent/tools/validation.py` (untracked)
+- `tests/strategy/` (untracked)
+- `scripts/fetch_real_etf_panel.py` (untracked)
+
+### Branch 状态发现
+- 启动时在 `master` 分支 (6a16809), Session 1-6 全部工作在 `dev/repro-merge-2026-07-04`
+- 已用 `git checkout dev/...` 迁回正确分支
+- 中途有 strategy WIP 被 mv 备份再恢复的小插曲, 已用 `git stash + selective checkout` 把 strategy 改动剔出 M4.5 commit (他人 WIP 保留)
+
+### 最终 LoC 累计 (Session 1-6 ext)
+| Phase | Tag | Files | LoC 净 |
+|-------|-----|-------|--------|
+| Session 1 (M1+M2) | post-m1/m2 | 26 | -3109 |
+| Session 2 (Phase B + M3.2) | post-m3.2 | 19 | +642 |
+| Session 3 (M3 main + M3.3 + M3 docs) | post-m3.x | 32 | +1130 |
+| Session 4 (M3.4 + SignalV2 + WikiFactorV2) | post-m3.4/v2 | 19 | +1433 |
+| Session 5 (M4.3 wiki split) | post-m4.3-wiki-split | 12 | -884 |
+| Session 6 (M4.2 config) | post-m4.2-config-unification | 17 | +456 |
+| Session 6 (M4.4 sink async) | post-m4.4-sink-async | 5 | +376 |
+| Session 6 ext (M4.5 shim removed) | post-m4.5-shim-removed | 22 | -31 |
+| **累计 8 phases** | 13 tags | ~152 files | **+13 净** |
+
+(注: Session 1 大量删 deadcode, 单 phase 净减最大; 后续 session 是净增测试/功能)
+
+### v3.0.0 Tier 4 PR6 全部完成 ✅
+
+下一步可选方向 (Session 7+):
+1. **Caller async 化** — `scripts/run_101_alphas_v2.py._persist_one` 选择性升级到 `await write_one_async()`
+2. **Sink 流式 NDJSON 接入** — `run_101_alphas_v2.py` 在 `--stream-mode` 时使用 `stream_write_async`
+3. **Tier 5 新方向** — M5: telemetry / metrics / dashboard / agent tools refactor 等
