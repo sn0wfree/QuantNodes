@@ -99,7 +99,7 @@ class TestFactorDBReplacementHints:
 
     def test_wiki_alternative_available(self):
         """替代方案 2: WikiFactorProxy 可用。"""
-        from QuantNodes.research.wiki import WikiFactorProxy
+        from QuantNodes.research.wiki.proxy import WikiFactorProxy
 
         assert hasattr(WikiFactorProxy, "store_factor")
         assert hasattr(WikiFactorProxy, "get_factor")

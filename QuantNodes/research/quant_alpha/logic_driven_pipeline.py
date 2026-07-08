@@ -361,12 +361,12 @@ class LogicDrivenPipeline:
     def _persist_to_wiki(self, result: LogicDrivenPipelineResult) -> None:
         """持久化到 Wiki"""
         try:
-            from QuantNodes.research.wiki import (
-                WikiFactorProxy,
-                WikiFactor,
-                FactorSource,
+            from QuantNodes.research.wiki.enums import (
                 FactorCategory,
+                FactorSource,
             )
+            from QuantNodes.research.wiki.factor import WikiFactor
+            from QuantNodes.research.wiki.proxy import WikiFactorProxy
             wiki = WikiFactorProxy(self.config.wiki_path)
             for f in result.final_pool:
                 try:

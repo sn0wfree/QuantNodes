@@ -79,7 +79,11 @@ class TestSchemasWithSessions:
         WikiFactor V2 (PR6.5) 合并后, 23 字段 WikiFactor 替代旧 schemas.WikiFactor.
         此处仅校验 V2 status 默认值. 详见 tests/research/test_wiki.py::TestWikiFactorV2.
         """
-        from QuantNodes.research.wiki import WikiFactor, FactorSource, FactorCategory
+        from QuantNodes.research.wiki.enums import (
+            FactorCategory,
+            FactorSource,
+        )
+        from QuantNodes.research.wiki.factor import WikiFactor
         f = WikiFactor(
             name="momentum",
             formula="rank(corr(close, time, 20))",
@@ -91,7 +95,11 @@ class TestSchemasWithSessions:
 
     def test_wiki_factor_v2_factor_params(self) -> None:
         """WikiFactor V2: factor_params 可显式设置."""
-        from QuantNodes.research.wiki import WikiFactor, FactorSource, FactorCategory
+        from QuantNodes.research.wiki.enums import (
+            FactorCategory,
+            FactorSource,
+        )
+        from QuantNodes.research.wiki.factor import WikiFactor
         f = WikiFactor(
             name="momentum",
             formula="rank(corr(close, time, 20))",

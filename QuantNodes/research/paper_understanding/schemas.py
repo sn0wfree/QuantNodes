@@ -9,7 +9,7 @@ WikiFactor V2 (M3 前置, PR6.5):
   测试文件使用 — 现在统一到 wiki.py 的 23 字段 WikiFactor。
 
   需要 `factor_params` / `status` 字段的代码请 import:
-    from QuantNodes.research.wiki import WikiFactor
+    from QuantNodes.research.wiki.factor import WikiFactor
 
 当前保留的 schema 类:
   - BacktestResult       (生产用, run_backtest/factor_backtest)

@@ -47,12 +47,12 @@ from QuantNodes.research.quant_alpha.mcts.search import (
 )
 from QuantNodes.research.quant_alpha.mcts.cache import MCTSCache, MCTSCacheConfig
 from QuantNodes.research.quant_alpha.operator_vocab import OperatorVocab
-from QuantNodes.research.wiki import (
-    WikiFactorProxy,
-    WikiFactor,
-    FactorSource,
+from QuantNodes.research.wiki.enums import (
     FactorCategory,
+    FactorSource,
 )
+from QuantNodes.research.wiki.factor import WikiFactor
+from QuantNodes.research.wiki.proxy import WikiFactorProxy
 
 logger = logging.getLogger(__name__)
 

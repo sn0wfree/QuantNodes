@@ -108,21 +108,21 @@ class TestLazyImports:
     def test_get_wiki_proxy(self):
         """_get_wiki_proxy() 返回 WikiFactorProxy 类"""
         from QuantNodes.research.quant_alpha.workflow.alpha_logics import _get_wiki_proxy
-        from QuantNodes.research.wiki import WikiFactorProxy
+        from QuantNodes.research.wiki.proxy import WikiFactorProxy
         result = _get_wiki_proxy()
         assert result is WikiFactorProxy
 
     def test_get_wiki_logic(self):
         """_get_wiki_logic() 返回 WikiLogic 类"""
         from QuantNodes.research.quant_alpha.workflow.alpha_logics import _get_wiki_logic
-        from QuantNodes.research.wiki import WikiLogic
+        from QuantNodes.research.wiki.logic import WikiLogic
         result = _get_wiki_logic()
         assert result is WikiLogic
 
     def test_get_logic_source(self):
         """_get_logic_source() 返回 LogicSource 类"""
         from QuantNodes.research.quant_alpha.workflow.alpha_logics import _get_logic_source
-        from QuantNodes.research.wiki import LogicSource
+        from QuantNodes.research.wiki.enums import LogicSource
         result = _get_logic_source()
         assert result is LogicSource
 

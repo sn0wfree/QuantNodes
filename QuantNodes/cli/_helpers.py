@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 from typing import Optional, Sequence
 
-from QuantNodes.research.wiki import init_factor_wiki
+from QuantNodes.research.wiki.init_factor_wiki import init_factor_wiki
 from QuantNodes.core.path_utils import ensure_dir
 
 PROG_NAME = "quantnodes"

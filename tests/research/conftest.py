@@ -15,7 +15,7 @@ def wiki_path(tmp_path):
 @pytest.fixture
 def wiki_proxy(wiki_path):
     """WikiFactorProxy 实例（使用临时目录）"""
-    from QuantNodes.research.wiki import WikiFactorProxy
+    from QuantNodes.research.wiki.proxy import WikiFactorProxy
     return WikiFactorProxy(wiki_path)
 
 

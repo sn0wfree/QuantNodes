@@ -27,14 +27,14 @@ from QuantNodes.research.quant_alpha.evaluation.contracts import (
 from QuantNodes.research.quant_alpha.evaluation.evaluators.polars_evaluator import (
     PolarsAlphaCalculatorEvaluator,
 )
-from QuantNodes.research.wiki import (
+from QuantNodes.research.wiki.enums import (
     FactorCategory,
     FactorSource,
     LogicSource,
-    WikiFactor,
-    WikiFactorProxy,
-    WikiLogic,
 )
+from QuantNodes.research.wiki.factor import WikiFactor
+from QuantNodes.research.wiki.logic import WikiLogic
+from QuantNodes.research.wiki.proxy import WikiFactorProxy
 
 
 # ==================== 数据模型 ====================

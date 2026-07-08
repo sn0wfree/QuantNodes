@@ -16,7 +16,7 @@ from QuantNodes.research.report_reproducer import (
     ReproductionResult,
     ReproductionReport,
 )
-from QuantNodes.research.wiki import init_factor_wiki
+from QuantNodes.research.wiki.init_factor_wiki import init_factor_wiki
 
 
 @pytest.fixture

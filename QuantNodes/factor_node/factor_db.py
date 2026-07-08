@@ -8,7 +8,7 @@
 
 替代方案:
 - SQL 因子存储 → 使用 L1 `database_node/BaseDBNode`
-- 因子元数据 / Wiki → 使用 L7 `research/wiki.py::WikiFactorProxy`
+- 因子元数据 / Wiki → 使用 L7 `research/wiki/proxy.py::WikiFactorProxy`
 - Table 4 polars 数据 → 使用 L6 `research/quant_alpha/evaluation/contracts.py::DataLoader`
 
 保留原因: 保持向后兼容 (factor_node/__init__.py re-export),
@@ -35,7 +35,7 @@ class FactorDB(QuantNodesObject):
     .. deprecated::
         v3.0+. 所有方法返回 0/None, 无生产实现。
         请使用 `database_node.BaseDBNode` (L1) 或
-        `research.wiki.WikiFactorProxy` (L7)。
+        `research.wiki.proxy.WikiFactorProxy` (L7)。
     """
     name: str = "FactorDB"
 

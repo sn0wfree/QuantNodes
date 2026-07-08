@@ -1,7 +1,7 @@
 """Tests for schemas: 2 个 dataclass (BacktestResult + FactorBacktestResult).
 
 WikiFactor V2 (PR6.5): WikiFactor 和 WikiStrategy 已被合并到
-`QuantNodes.research.wiki.WikiFactor` (23 字段)。相关 V2 测试见
+`QuantNodes.research.wiki.factor.WikiFactor` (23 字段)。相关 V2 测试见
 `tests/research/test_wiki.py::TestWikiFactorV2`。
 """
 

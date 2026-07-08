@@ -42,11 +42,11 @@ from QuantNodes.research.quant_alpha.logic_mining.parser import (
 # WikiLogic 在 research.wiki 中定义，会引用 logic_mining.models，
 # 故在此延迟导入以避免循环依赖。
 def _get_wiki_logic_class():
-    from QuantNodes.research.wiki import WikiLogic
+    from QuantNodes.research.wiki.logic import WikiLogic
     return WikiLogic
 
 def _get_logic_source_class():
-    from QuantNodes.research.wiki import LogicSource
+    from QuantNodes.research.wiki.enums import LogicSource
     return LogicSource
 
 logger = logging.getLogger(__name__)

@@ -12,17 +12,19 @@ QuantNodes.research - Wiki 因子库代理层 + 研报复现
 - Alpha-GPT 工作流 → `QuantNodes.research.quant_alpha.workflow.AlphaGptWorkflow`
 """
 
-from QuantNodes.research.wiki import (
-    WikiFactorProxy,
-    WikiFactor,
-    WikiLogic,
-    FactorSource,
-    FactorCategory,
-    LogicSource,
-    WikiProxyError,
+from QuantNodes.research.wiki.enums import (
     QUANT_RELATION_TYPES,
-    init_factor_wiki,
+    FactorCategory,
+    FactorSource,
+    LogicSource,
 )
+from QuantNodes.research.wiki.errors import WikiProxyError
+from QuantNodes.research.wiki.factor import WikiFactor
+from QuantNodes.research.wiki.init_factor_wiki import init_factor_wiki
+from QuantNodes.research.wiki.logic import WikiLogic
+from QuantNodes.research.wiki.proxy import WikiFactorProxy
+from QuantNodes.research.wiki.reproduction import WikiReproduction
+from QuantNodes.research.wiki.strategy import WikiStrategy
 
 from QuantNodes.research.report_reproducer import (
     ResearchReportReproducer,

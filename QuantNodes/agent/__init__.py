@@ -25,7 +25,7 @@ Usage (向后兼容 v2.x 签名):
         response = await agent.run("帮我生成一个动量策略")
     else:
         # 量化工具库仍可用
-        from QuantNodes.research.wiki import WikiFactorProxy
+        from QuantNodes.research.wiki.proxy import WikiFactorProxy
         wiki = WikiFactorProxy()
         factor = await wiki.get("momentum_20")
 """

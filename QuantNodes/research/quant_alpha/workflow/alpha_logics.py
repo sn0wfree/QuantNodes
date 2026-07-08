@@ -69,15 +69,15 @@ from QuantNodes.research.quant_alpha.workflow import (
 
 # 延迟导入避免循环
 def _get_wiki_proxy():
-    from QuantNodes.research.wiki import WikiFactorProxy
+    from QuantNodes.research.wiki.proxy import WikiFactorProxy
     return WikiFactorProxy
 
 def _get_wiki_logic():
-    from QuantNodes.research.wiki import WikiLogic
+    from QuantNodes.research.wiki.logic import WikiLogic
     return WikiLogic
 
 def _get_logic_source():
-    from QuantNodes.research.wiki import LogicSource
+    from QuantNodes.research.wiki.enums import LogicSource
     return LogicSource
 
 logger = logging.getLogger(__name__)

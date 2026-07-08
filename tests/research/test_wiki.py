@@ -6,11 +6,18 @@ import tempfile
 import os
 from pathlib import Path
 
-from QuantNodes.research.wiki import (
-    WikiFactorProxy, WikiFactor, WikiLogic, WikiStrategy, WikiReproduction,
-    FactorSource, FactorCategory, LogicSource,
-    WikiProxyError, init_factor_wiki,
+from QuantNodes.research.wiki.enums import (
+    FactorCategory,
+    FactorSource,
+    LogicSource,
 )
+from QuantNodes.research.wiki.errors import WikiProxyError
+from QuantNodes.research.wiki.factor import WikiFactor
+from QuantNodes.research.wiki.init_factor_wiki import init_factor_wiki
+from QuantNodes.research.wiki.logic import WikiLogic
+from QuantNodes.research.wiki.proxy import WikiFactorProxy
+from QuantNodes.research.wiki.reproduction import WikiReproduction
+from QuantNodes.research.wiki.strategy import WikiStrategy
 
 
 @pytest.fixture
@@ -405,7 +412,7 @@ class TestWikiFactorV2:
 
     def test_roundtrip_via_wiki(self, proxy) -> None:
         """factor_params + status 经 _render/_parse round-trip 保留."""
-        from QuantNodes.research.wiki import WikiFactorProxy
+        from QuantNodes.research.wiki.proxy import WikiFactorProxy
         assert isinstance(proxy, WikiFactorProxy)
 
         f = WikiFactor(

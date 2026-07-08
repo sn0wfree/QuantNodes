@@ -391,7 +391,7 @@ class TestPersistToWiki:
 
         result = LogicDrivenPipelineResult(final_pool=mock_factors, best_logic_name="test")
 
-        with patch("QuantNodes.research.wiki.WikiFactorProxy") as mock_proxy_class:
+        with patch("QuantNodes.research.wiki.proxy.WikiFactorProxy") as mock_proxy_class:
             mock_proxy = MagicMock()
             mock_proxy.store_factor = MagicMock(side_effect=lambda f: f"page_{f.name}")
             mock_proxy_class.return_value = mock_proxy
@@ -406,7 +406,7 @@ class TestPersistToWiki:
         f = MagicMock(formula_id="F1", formula="f1", ir=0.1, ic_mean=0.05, ic_std=0.01, rank_ic_mean=0.04)
         result = LogicDrivenPipelineResult(final_pool=[f], best_logic_name="test")
 
-        with patch("QuantNodes.research.wiki.WikiFactorProxy") as mock_proxy_class:
+        with patch("QuantNodes.research.wiki.proxy.WikiFactorProxy") as mock_proxy_class:
             mock_proxy = MagicMock()
             mock_proxy.store_factor = MagicMock(side_effect=RuntimeError("Wiki error"))
             mock_proxy_class.return_value = mock_proxy
@@ -422,7 +422,7 @@ class TestPersistToWiki:
         """WikiFactorProxy 创建失败时, 整体 graceful"""
         result = LogicDrivenPipelineResult(final_pool=[MagicMock()], best_logic_name="test")
 
-        with patch("QuantNodes.research.wiki.WikiFactorProxy",
+        with patch("QuantNodes.research.wiki.proxy.WikiFactorProxy",
                    side_effect=RuntimeError("Wiki init failed")):
             pipeline = LogicDrivenPipeline(config=default_config)
             # 不抛

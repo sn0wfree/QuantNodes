@@ -11,12 +11,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from QuantNodes.agent.tools.wiki import WikiTool
-from QuantNodes.research.wiki import (
-    WikiFactor,
-    WikiStrategy,
-    FactorSource,
+from QuantNodes.research.wiki.enums import (
     FactorCategory,
+    FactorSource,
 )
+from QuantNodes.research.wiki.factor import WikiFactor
+from QuantNodes.research.wiki.strategy import WikiStrategy
 
 
 @pytest.fixture

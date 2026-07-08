@@ -189,7 +189,7 @@ class TestAlphaPipeline:
 
     def test_to_wiki_factor(self, pipeline):
         """转换为 WikiFactor"""
-        from QuantNodes.research.wiki import FactorSource
+        from QuantNodes.research.wiki.enums import FactorSource
 
         metrics = FactorMetrics(
             formula_id="test_formula",

@@ -29,7 +29,8 @@ from QuantNodes.research.quant_alpha.workflow.alpha_logics import (
     InnerLoopResult,
     _build_inner_evidence,
 )
-from QuantNodes.research.wiki import WikiLogic, LogicSource
+from QuantNodes.research.wiki.enums import LogicSource
+from QuantNodes.research.wiki.logic import WikiLogic
 
 
 # ==============================================================================
@@ -316,7 +317,7 @@ class TestIntegration:
 
     def test_serialize_with_evidence(self):
         """含证据的序列化"""
-        from QuantNodes.research.wiki import WikiLogic
+        from QuantNodes.research.wiki.logic import WikiLogic
 
         structured = WikiLogicStructured(
             predicates=[LogicCondition(variable="close", op="ts_mean", threshold=0, window=20)],
