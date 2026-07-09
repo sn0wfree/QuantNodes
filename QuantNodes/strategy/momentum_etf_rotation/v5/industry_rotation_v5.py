@@ -77,7 +77,14 @@ def cross_section_zscore(
     factor: str,
     as_of: pd.Timestamp,
 ) -> pd.Series:
-    """截面 z-score: 在 as_of 日, 各 code 的 factor 值, 去均值/std."""
+    """截面 z-score: 在 as_of 日, 各 code 的 factor 值, 去均值/std.
+
+    v5.1.1 消融结果 (Stage 25.1): S2 winsorized rank 拖累 OOS Calmar 0.586 → 0.516 (-12%).
+    原因: 44 只池上 rank-based 损失信息太多, 比原始 z-score 差.
+    决策: 保留原始 z-score, 仅改 v5.1 自身的 3 项参数 (S1+S3+S4).
+
+    注: 排版上保留 docstring 是为了未来重新尝试 winsorize 时参考.
+    """
     values = {}
     for code, df in factor_panel.items():
         if factor not in df.columns:

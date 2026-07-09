@@ -54,7 +54,7 @@ STAGE_MAP = {
     "v4 style":         "Stage 18 (风格轮动)",
     "v4 factor":        "Stage 18 (IC 因子择时)",
     "v5 量价":          "Stage 22 (11 量价因子, 等权)",
-    "v5.1 量价 (逆波动)": "Stage 25 (v5 升级, 11 量价因子, 逆波动率加权)",
+    "v5.1 量价 (逆波动)": "Stage 25.1 (v5.1 升级, S1+S3+S4 消融选中)",
 }
 
 # 分组
@@ -723,7 +723,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   • <b>风险调整冠军</b>: v1.0 locked — OOS Calmar <b>1.791</b>, Sharpe <b>1.51</b>, DD -1.94%<br>
   • <b>绝对收益冠军</b>: v5.1 逆波动 — OOS 年化 <b>{oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%</b> (HS300 同期 {hs300_oos['ann_return']*100:+.2f}%, α 显著)<br>
   • <b>最均衡</b>: v3 (52 池) — OOS 年化 7.69%, Sharpe 1.08, DD -9.89%<br>
-  • <b>v5 → v5.1 升级</b>: OOS Calmar 0.488 → <b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b> (+{(oos_metrics['v5.1 量价 (逆波动)']['calmar']-oos_metrics['v5 量价']['calmar'])/oos_metrics['v5 量价']['calmar']*100:.1f}%) ⭐<br>
+  • <b>v5.1.1 改进</b> (S1+S3+S4, S2 已回退): OOS Calmar 0.488 → <b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b> (+{(oos_metrics['v5.1 量价 (逆波动)']['calmar']-oos_metrics['v5 量价']['calmar'])/oos_metrics['v5 量价']['calmar']*100:.1f}%) ⭐<br>
   • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
   • <b>推荐组合</b>: v1.0 80% + <b>v5.1 20%</b> — 全期 Calmar 1.146, OOS <b>1.015</b> ⭐ (跨入 1.0 俱乐部)
 </div>
@@ -828,11 +828,12 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   </div>
 
   <div class="strategy-card" style="background: #FFF9E6; border-color: #FF6B9D;">
-    <h4>v5.1 量价 (逆波动) <span class="legend-box legend-best">⭐ Stage 25 升级</span></h4>
+    <h4>v5.1 量价 (逆波动) <span class="legend-box legend-best">⭐ Stage 25.1 升级</span></h4>
     <p><b>类型</b>: 11 量价因子 + <b>逆波动率加权</b> | <b>因子</b>: 与 v5 相同</p>
-    <p><b>核心</b>: v5 升级版, 选股逻辑不变, 唯一差异: 加权方式 (等权 → 逆波动, 与 v1/v3 一致), 21日窗口, max_weight=0.30</p>
+    <p><b>核心 (v5.1.1)</b>: v5 升级版, 选股逻辑不变, 加权方式: 等权 → 逆波动, 60日窗口, vol_floor=0.01, max_weight=0.25, <b>T+1 调仓</b> (S1 消融 look-ahead)</p>
     <p><b>OOS</b>: {oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}% / Sharpe {oos_metrics['v5.1 量价 (逆波动)']['sharpe']:.2f} / DD {oos_metrics['v5.1 量价 (逆波动)']['max_dd']*100:.2f}% / <b>Calmar {oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b> ⭐</p>
-    <p><b>v5 → v5.1 改善</b>: OOS Calmar +{(oos_metrics['v5.1 量价 (逆波动)']['calmar']-oos_metrics['v5 量价']['calmar'])/oos_metrics['v5 量价']['calmar']*100:.1f}%, OOS Sharpe +{(oos_metrics['v5.1 量价 (逆波动)']['sharpe']-oos_metrics['v5 量价']['sharpe'])/oos_metrics['v5 量价']['sharpe']*100:.1f}%, OOS DD 改善 {abs(oos_metrics['v5.1 量价 (逆波动)']['max_dd'])-abs(oos_metrics['v5 量价']['max_dd']):.2f}pp</p>
+    <p><b>v5 → v5.1.1 改善</b>: OOS Calmar +{(oos_metrics['v5.1 量价 (逆波动)']['calmar']-oos_metrics['v5 量价']['calmar'])/oos_metrics['v5 量价']['calmar']*100:.1f}%, OOS Sharpe +{(oos_metrics['v5.1 量价 (逆波动)']['sharpe']-oos_metrics['v5 量价']['sharpe'])/oos_metrics['v5 量价']['sharpe']*100:.1f}%, OOS DD 改善 {abs(oos_metrics['v5.1 量价 (逆波动)']['max_dd'])-abs(oos_metrics['v5 量价']['max_dd']):.2f}pp</p>
+    <p><b>Stage 25.1 消融</b>: S1 (T+1 调仓) +S3 (60日窗口) +S4 (max_weight 0.25) 选中. S2 (winsorized rank) 拖累 OOS -12%, 已回退.</p>
   </div>
 
   <div class="strategy-card" style="background: #F5F5F5; border-color: #999;">

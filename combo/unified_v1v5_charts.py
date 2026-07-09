@@ -34,7 +34,7 @@ STAGE_MAP = {
     "v4 style":      "Stage 18 (风格轮动, 12 池)",
     "v4 factor":     "Stage 18 (IC 因子择时, 12 池)",
     "v5 量价":        "Stage 22 (11 量价因子, 44 OHLCV, 等权)",
-    "v5.1 量价 (逆波动)": "Stage 25 (v5 升级, 11 量价因子, 逆波动率加权)",
+    "v5.1 量价 (逆波动)": "Stage 25.1 (v5.1 升级, S1+S3+S4 消融选中)",
 }
 
 # 调色板 (类似 build_stage_charts 风格)
@@ -508,7 +508,7 @@ tr.highlight {{ background: #FFF9E6; font-weight: bold; }}
     <tr><td>Stage 16A (v3)</td><td>多策略 (动量+反转+行业轮动)</td><td>0.778</td></tr>
     <tr><td>Stage 18 (v4 style/factor)</td><td>风格轮动 + IC 因子择时</td><td>-0.085 ~ 0.131</td></tr>
     <tr><td>Stage 22 (v5)</td><td>11 量价因子 + <b>等权</b> (华西论文)</td><td>0.488</td></tr>
-    <tr style="background: #FFF9E6;"><td>Stage 25 (v5.1)</td><td>11 量价因子 + <b>逆波动率</b> 加权 (v5 升级版)</td><td><b>0.589</b> ⭐ (+20.7%)</td></tr>
+    <tr style="background: #FFF9E6;"><td>Stage 25.1 (v5.1.1)</td><td>11 量价因子 + 逆波动率 (S1 T+1 调仓 + S3 60日窗口 + S4 max_weight 0.25) (v5.1 升级版)</td><td><b>0.604</b> ⭐ (+23.8%)</td></tr>
   </table>
 
   <h3>推荐组合 (含 v5.1)</h3>

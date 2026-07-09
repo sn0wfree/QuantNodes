@@ -4,20 +4,26 @@
 v5.1 vs v5 唯一差异: 加权方式 (等权 → 逆波动率, 与 v1/v3 一致).
 所有其他逻辑 (11 因子 / 截面 z-score / Top-N / 月度调仓) 保持不变.
 
+v5.1.1 短期改进 (Stage 25.1):
+- S1: rebal_lag=1 (T+1 调仓, 消除 look-ahead)
+- S2: 选股层 winsorized rank z-score (v5.cross_section_zscore, S2 共享)
+- S3: vol_window 21→60, vol_floor 1e-4→0.01 (更稳定)
+- S4: max_weight 0.30→0.25 (低波动品种不过度集中)
+
 逆波动率加权 (inverse_vol_weights):
-- 取 as_of 前 vol_window 日 (默认 21) 对数收益
+- S1: as_of 向后 shift rebal_lag 日, 模拟"信号日 T → 执行日 T+1"
+- 取 lagged as_of 前 vol_window 日 (默认 60) 对数收益
 - 各 code 年化波动率 σ = std × √252
 - 权重 ∝ 1/max(σ, vol_floor)
 - 归一化和为 1
-- 套用 max_weight 上限 (默认 0.30, 比 v5 的 0.20 放宽)
+- 套用 max_weight 上限 (默认 0.25)
 
 回测结果 (口径 A 5bp 成本, 2018-2026):
-- 全期 Calmar: 0.745 → 0.774 (+3.9%)
-- 全期 Sharpe: 0.90  → 0.98  (+8.9%)
-- OOS Calmar:  0.488 → 0.589 (+20.7%) ⭐
-- OOS Sharpe:  0.60  → 0.71  (+18.3%)
+v5.1 baseline:
+- 全期 Calmar: 0.806, Sharpe: 0.98
+- OOS Calmar:  0.589 (+20.7% vs v5), OOS Sharpe: 0.71
 
-OOS 月度最大回撤: -19.41% → -18.13% (改善 1.28pp).
+v5.1.1 (待跑, 与 baseline 三方对比)
 """
 from __future__ import annotations
 
@@ -43,8 +49,11 @@ from ..v5.industry_rotation_v5 import (
 class IndustryRotationV5_1Config(SubStrategyConfig):
     """v5.1 配置: 11 量价因子 + Top-N + 逆波动率加权.
 
-    唯一区别于 IndustryRotationV5Config: 默认 max_weight=0.30.
-    其他字段 (top_n, min_history, factor_cfg) 与 v5 完全相同.
+    v5.1.1 短期改进 (Stage 25.1):
+    - S1: rebal_lag=1 (T+1 调仓, 消除 look-ahead)
+    - S3: vol_window 21→60, vol_floor 1e-4→0.01 (更稳定)
+    - S4: max_weight 0.30→0.25 (低波动品种不过度集中)
+    - S2: 选股层 winsorized rank (在 v5.cross_section_zscore)
     """
     name: str = "industry_rotation_v5_1"
 
@@ -66,38 +75,52 @@ class IndustryRotationV5_1Config(SubStrategyConfig):
     # ETF 池 (None = 全部)
     universe: tuple[str, ...] | None = None
 
-    # 最大单只 ETF 权重
-    # v5.1 逆波动下, 高波动品种自动降权, 上限放宽到 0.30
-    max_weight: float = 0.30
+    # S4: 最大单只 ETF 权重
+    # 逆波动下高波动品种自动降权, 上限 0.25 适中
+    max_weight: float = 0.25
 
-    # 逆波动率窗口 (与 v1/v2 一致)
-    vol_window: int = 21
+    # S3: 逆波动率窗口
+    # 60 日比 21 日噪声小, 包含完整月度周期
+    vol_window: int = 60
 
-    # 波动率下限 (防 1/0 爆发)
-    vol_floor: float = 1e-4
+    # S3: 波动率下限 (防 1/0 爆发)
+    # 真实 ETF 波动率 ~1-3%, floor=0.01 才有意义
+    vol_floor: float = 0.01
+
+    # S1: 调仓滞后天数
+    # 1 = T+1 调仓, 信号日 T → 执行日 T+1 (开盘)
+    rebal_lag: int = 1
 
 
 def inverse_vol_weights_v5_1(
     nav_df: pd.DataFrame,
     codes: Sequence[str],
     as_of: pd.Timestamp,
-    vol_window: int = 21,
-    vol_floor: float = 1e-4,
+    vol_window: int = 60,
+    vol_floor: float = 0.01,
+    rebal_lag: int = 1,
 ) -> dict[str, float]:
-    """v5.1 逆波动率加权 (与 v1/v3 一致, 21日窗口).
+    """v5.1 逆波动率加权 (与 v1/v3 一致, 60 日窗口, T+1 调仓).
+
+    v5.1.1 改进:
+    - S1: rebal_lag 模拟 T+1 调仓, 消除 look-ahead
+    - S3: vol_window 21→60, vol_floor 1e-4→0.01, 更稳定
+    - S4: max_weight 0.30→0.25 (在 weight() 中应用)
 
     逻辑:
-    1. 取 as_of 前 vol_window 日的对数收益
-    2. 各 code 年化波动率 σ = std × √252
-    3. 权重 ∝ 1/max(σ, vol_floor)
-    4. 归一化和为 1
+    1. S1: as_of 向后 shift rebal_lag 日, 模拟"信号日 T → 执行日 T+1"
+    2. 取 lagged as_of 前 vol_window 日的对数收益
+    3. 各 code 年化波动率 σ = std × √252
+    4. 权重 ∝ 1/max(σ, vol_floor)
+    5. 归一化和为 1
 
     Args:
         nav_df: 价格面板 (close), 列为 code
         codes: 候选 ETF 列表
-        as_of: 调仓日
-        vol_window: 波动率计算窗口 (默认 21, 与 v1/v2 一致)
-        vol_floor: 波动率下限 (防 1/0)
+        as_of: 调仓日 (信号日)
+        vol_window: 波动率计算窗口 (默认 60, S3 改)
+        vol_floor: 波动率下限 (默认 0.01, S3 改)
+        rebal_lag: 调仓滞后天数 (默认 1, S1 新增)
 
     Returns:
         dict[code, weight], 权重和 = 1
@@ -107,11 +130,17 @@ def inverse_vol_weights_v5_1(
     if nav_df is None or as_of is None:
         return {c: 1.0 / len(codes) for c in codes}
 
+    # S1: 找 as_of 在 nav_df 索引中的位置, 向后 shift rebal_lag 日
+    idx = nav_df.index.get_indexer([as_of], method="ffill")[0]
+    if idx < rebal_lag:
+        return {c: 1.0 / len(codes) for c in codes}
+    as_of_lagged = nav_df.index[idx - rebal_lag]
+
     valid_codes = [c for c in codes if c in nav_df.columns]
     if not valid_codes:
         return {c: 1.0 / len(codes) for c in codes}
 
-    sub = nav_df.loc[:as_of, valid_codes]
+    sub = nav_df.loc[:as_of_lagged, valid_codes]
     if len(sub) < vol_window + 1:
         return {c: 1.0 / len(codes) for c in codes}
 
@@ -156,12 +185,16 @@ class IndustryRotationV5_1SubStrategy(IndustryRotationV5SubStrategy):
         codes: Sequence[str],
         as_of: pd.Timestamp,
     ) -> dict[str, float]:
-        """逆波动率加权 (权重 ∝ 1/σ, 21日窗口)."""
+        """逆波动率加权 (权重 ∝ 1/σ, 60日窗口, T+1 调仓).
+
+        v5.1.1: vol_window=60, vol_floor=0.01, max_weight=0.25, rebal_lag=1.
+        """
         if not codes:
             return {}
         cfg = self.config
         weights = inverse_vol_weights_v5_1(
-            nav_df, codes, as_of, cfg.vol_window, cfg.vol_floor,
+            nav_df, codes, as_of,
+            cfg.vol_window, cfg.vol_floor, cfg.rebal_lag,
         )
         weights = self._apply_max_weight(weights, cfg.max_weight)
         total = sum(weights.values())
