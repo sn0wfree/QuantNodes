@@ -33,6 +33,13 @@ from .reversion_v3 import (
     ReversionSubStrategy,
     reversion_score,
 )
+from .industry_rotation_v3 import (
+    IndustryRotationConfig,
+    IndustryRotationSubStrategy,
+    industry_rotation_score,
+    get_industry_codes,
+    get_rebalance_dates,
+)
 
 
 __all__ = [
@@ -51,4 +58,10 @@ __all__ = [
     "ReversionConfig",
     "ReversionSubStrategy",
     "reversion_score",
+    # Industry Rotation (v3 specific)
+    "IndustryRotationConfig",
+    "IndustryRotationSubStrategy",
+    "industry_rotation_score",
+    "get_industry_codes",
+    "get_rebalance_dates",
 ]
