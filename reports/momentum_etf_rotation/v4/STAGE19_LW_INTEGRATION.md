@@ -206,9 +206,55 @@ FactorTimingConfig(lw_enabled=True, lw_lambda_mode="rolling")
 
 ---
 
-## 八、下一步
+## 八、未来扩展 (Future-Ready LW Framework)
+
+**当前状态**: LW 框架已完整实现 (commit `e17098c`), 在 5 ETF 类别设置下未发挥优势, 但**代码已 ready for future factor expansion**.
+
+### 8.1 触发条件
+当以下任一条件满足时, **建议切换到 LW 模式** (`lw_enabled=True`):
+- **因子数 ≥ 8** (论文阈值): 协方差矩阵估计稳定性下降, LW 收缩开始体现价值
+- **多信号输入** (≥3 信号): L1 归一化避免权重过极化
+- **因子间相关性 > 0.5**: LW 协方差考虑相关性, IC^2 忽略
+
+### 8.2 启用路径
+```python
+# 1. 等因子扩展到 8+ (e.g. 加入 industry, size, value sub-factors)
+FactorTimingConfig(
+    factor_fw={...},  # 加入新因子
+    lw_enabled=True,  # ← 启用 LW
+    lw_lambda_mode="rolling",  # 滚动选 λ
+    lw_candidate_lambdas=(0.0, 1.0, 5.0, 10.0, 30.0, 100.0),
+    lw_train_window=120,  # 论文用 120m
+)
+
+# 2. 加多信号 (论文用 11 信号)
+# - 宏观信号: 期限利差 / 长端利率 / 短端利率 / HS300 动量 × 2 / HS300 波动
+# - 因子特异: 1m/3m/12m return + 3m vol + 3m downside vol + 12m drawdown
+# - 全部 z-score 标准化 + 滞后 1m
+```
+
+### 8.3 重新启用时的验证步骤
+1. **数据准备**: 确认新因子历史 > 312 天 (LW 训练 120m + 验证 12m + 缓冲)
+2. **协方差稳定性**: 跑 `ledoit_wolf_shrinkage` 在新因子上, 检查 δ 是否合理 (0.3-0.7 健康)
+3. **λ 滚动验证**: 在 252d OOS 上看最优 λ 分布, 论文 A 股预期 λ=30-100
+4. **对比 IC^2**: 跑 `v4_lw_integrated_test.py`, 确认 LW Calmar ≥ IC^2 Calmar 才切换
+5. **生产配置**: v3 80% + v4 LW 20% (基于当前 OOS 数据)
+
+### 8.4 关键代码位置
+- `v4/lw_factor_timing.py:33-95` — `ledoit_wolf_shrinkage()` (Ledoit-Wolf 2004 公式)
+- `v4/lw_factor_timing.py:99-130` — `mvo_weights()` (long-only + L1 norm)
+- `v4/lw_factor_timing.py:134-149` — `compute_lambda_weights()` (λ 收缩)
+- `v4/factor_timing_v4.py:294-360` — `compute_factor_weights_lw()` (regime + LW 集成)
+- `v4/factor_timing_v4.py:362-410` — `_select_lambda_rolling_lw()` (滚动验证)
+- `FactorTimingConfig.lw_*` 字段 (factor_timing_v4.py:101-115)
+
+---
+
+## 九、下一步
 
 1. **生产部署**: v3 80% + v4 IC^2 20% (OOS Calmar 0.903, Sharpe 1.11)
-2. **Stage 20**: 实时 paper trade 验证 LW 滚动 λ
-3. **Stage 21**: 多信号输入 (论文用 11 信号, 我们仅 1 IC)
-4. **更新 Stage 17 INDEX**: 标记 Stage 19 v4 LW 完成
+2. **Stage 20**: 实时 paper trade 验证 v3+v4 IC^2 组合
+3. **Stage 21 (条件触发)**: 当因子数 ≥ 8 时, 启用 LW 滚动 λ 模式
+4. **Stage 22 (条件触发)**: 加入论文 11 信号 (5 宏观 + 6 因子特异)
+5. **更新 Stage 17 INDEX**: 标记 Stage 19 v4 LW 完成, 注明未来扩展路径
+
