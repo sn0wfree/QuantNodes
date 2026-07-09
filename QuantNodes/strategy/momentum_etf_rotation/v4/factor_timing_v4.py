@@ -122,6 +122,22 @@ class FactorTimingConfig:
         "quality":  "smart_beta",
     })
 
+    # Stage 19: Nagel 风格 Ledoit-Wolf + λ 收缩 (可选, 默认关闭)
+    # 参考: 《Optimal Factor Timing in a High-Dimensional Setting》 (Nagel 团队)
+    # A 股复现: QuantML《论文复现 | 最优因子择时框架》
+    # 启用: lw_enabled=True, lw_lambda 选择 "fixed"/"rolling"
+    # 效果: 更稳健 (Sharpe 高), 但 Calmar 略低于 IC^2 (v4 默认)
+    lw_enabled: bool = False
+    lw_lambda_mode: str = "fixed"  # "fixed" | "rolling"
+    lw_lambda_fixed: float = 10.0
+    lw_candidate_lambdas: tuple[float, ...] = (
+        0.0, 0.1, 0.5, 1.0, 5.0, 10.0, 30.0, 100.0
+    )
+    lw_train_window: int = 60
+    lw_val_window: int = 12
+    lw_long_only: bool = True
+    lw_l1_norm: float = 1.0
+
 
 def get_active_factors(cfg: FactorTimingConfig) -> tuple[str, ...]:
     """当前活跃因子 (考虑 use_low_vol)."""
@@ -314,8 +330,20 @@ def backtest_factor_weights_history(
     cfg: FactorTimingConfig | None = None,
     start: str | pd.Timestamp = "2020-01-01",
     end: str | pd.Timestamp = "2026-06-30",
+    regime_series: pd.Series | None = None,
 ) -> pd.DataFrame:
-    """回测因子权重时序 (Stage 18)."""
+    """回测因子权重时序 (Stage 18 + Stage 19 LW 模式).
+
+    Args:
+        nav_df: 价格面板
+        all_codes: 候选 ETF
+        cfg: 配置
+        start/end: 范围
+        regime_series: (可选) 预计算的 regime 时序 (用于 LW 模式需要更多历史时)
+
+    Returns:
+        pd.DataFrame, index=date, columns=factor weights
+    """
     cfg = cfg or FactorTimingConfig()
     ic_history = backtest_factor_timing(
         nav_df, all_codes, cfg, start, end,
@@ -325,8 +353,20 @@ def backtest_factor_weights_history(
 
     weights_list = []
     dates = []
-    for ts, row in ic_history.iterrows():
-        f_w = compute_factor_weights(pd.DataFrame([row.to_dict()], index=[ts]), cfg)
+    for i, (ts, row) in enumerate(ic_history.iterrows()):
+        ic_window = ic_history.iloc[:i + 1]
+        if cfg.lw_enabled:
+            regime = "sideways"
+            if regime_series is not None and ts in regime_series.index:
+                regime = str(regime_series.loc[ts])
+            f_w = compute_factor_weights_lw(ic_window, cfg, regime=regime)
+        else:
+            regime = "sideways"
+            if regime_series is not None and ts in regime_series.index:
+                regime = str(regime_series.loc[ts])
+            f_w = compute_factor_weights(
+                pd.DataFrame([row.to_dict()], index=[ts]), cfg, regime=regime,
+            )
         weights_list.append(f_w)
         dates.append(ts)
 
@@ -341,4 +381,116 @@ __all__ = [
     "backtest_factor_timing",
     "backtest_factor_weights_history",
     "get_active_factors",
+    "compute_factor_weights_lw",
 ]
+
+
+def compute_factor_weights_lw(
+    ic_history: pd.DataFrame,
+    cfg: FactorTimingConfig,
+    regime: str = "sideways",
+) -> dict[str, float]:
+    """Nagel 风格 Ledoit-Wolf + λ 收缩 因子权重 (Stage 19).
+
+    算法:
+        1. regime-conditioned 因子选择 (同 IC^2)
+        2. 用 ic_history 计算 mean (μ) + Ledoit-Wolf 协方差
+        3. MVO: w ∝ cov_lw⁻¹ · μ (long-only + L1 norm)
+        4. λ 收缩: w = (1-shrink)·w_mvo + shrink·w_equal
+           shrink = λ / (1+λ)
+        5. 归一化 (L1 = lw_l1_norm)
+
+    Args:
+        ic_history: IC DataFrame (index=date, columns=factor)
+        cfg: 配置 (需 lw_enabled=True)
+        regime: "bull" | "bear" | "sideways"
+
+    Returns:
+        dict, factor name → weight (sum=|w|=lw_l1_norm)
+    """
+    from .lw_factor_timing import (
+        compute_lambda_weights,
+        ledoit_wolf_shrinkage,
+        mvo_weights,
+    )
+
+    active = get_active_factors(cfg)
+    available = cfg.regime_factors.get(regime, active)
+    available = [f for f in available if f in ic_history.columns]
+
+    if not available or ic_history.empty:
+        return {n: 0.0 for n in available}
+
+    X = ic_history[available].fillna(0.0).values
+    T, N = X.shape
+    if T < 12 or N < 2:
+        equal = cfg.lw_l1_norm / max(N, 1)
+        return {f: equal for f in available}
+
+    mu = X.mean(axis=0)
+    cov, _ = ledoit_wolf_shrinkage(X)
+    w_mvo = mvo_weights(mu, cov, long_only=cfg.lw_long_only, l1_norm=cfg.lw_l1_norm)
+
+    if cfg.lw_lambda_mode == "rolling":
+        lam = _select_lambda_rolling_lw(
+            X, cfg, ic_history, available,
+        )
+    else:
+        lam = cfg.lw_lambda_fixed
+
+    equal_w = np.ones(N) * (cfg.lw_l1_norm / N)
+    w_final = compute_lambda_weights(w_mvo, equal_w, lam)
+
+    if cfg.factor_ic_threshold > 0:
+        for i, fac in enumerate(available):
+            if abs(mu[i]) < cfg.factor_ic_threshold:
+                w_final[i] = 0.0
+        l1 = np.abs(w_final).sum()
+        if l1 > 1e-12:
+            w_final = w_final * (cfg.lw_l1_norm / l1)
+        else:
+            w_final = equal_w
+
+    return {f: float(w) for f, w in zip(available, w_final)}
+
+
+def _select_lambda_rolling_lw(
+    X_full: np.ndarray,
+    cfg: FactorTimingConfig,
+    ic_history: pd.DataFrame,
+    available: list[str],
+) -> float:
+    """在 X_full 上滚动选 λ: train 后段 vs val 后段 选最大 dot product."""
+    from .lw_factor_timing import (
+        compute_lambda_weights,
+        ledoit_wolf_shrinkage,
+        mvo_weights,
+    )
+
+    T, N = X_full.shape
+    val_end = T
+    val_start = max(0, val_end - cfg.lw_val_window)
+    train_end = val_start
+    train_start = max(0, train_end - cfg.lw_train_window)
+
+    if val_end - val_start < 3 or train_end - train_start < 12:
+        return cfg.lw_lambda_fixed
+
+    X_train = X_full[train_start:train_end]
+    X_val = X_full[val_start:val_end]
+
+    mu = X_train.mean(axis=0)
+    cov, _ = ledoit_wolf_shrinkage(X_train)
+    w_mvo = mvo_weights(mu, cov, long_only=cfg.lw_long_only, l1_norm=cfg.lw_l1_norm)
+    equal_w = np.ones(N) * (cfg.lw_l1_norm / N)
+
+    mean_val = X_val.mean(axis=0)
+    best_lam = cfg.lw_candidate_lambdas[len(cfg.lw_candidate_lambdas) // 2]
+    best_score = -np.inf
+    for lam in cfg.lw_candidate_lambdas:
+        w = compute_lambda_weights(w_mvo, equal_w, lam)
+        score = float(np.dot(mean_val, w))
+        if score > best_score:
+            best_score = score
+            best_lam = lam
+    return best_lam
