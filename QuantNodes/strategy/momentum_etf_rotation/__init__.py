@@ -10,8 +10,9 @@ CICC 2026-07-03 《固收+:"可靠"的动量 ETF 轮动及 Agent 检验实践》
     4. 止损 + 补位 (跌破 ma_window 且 排名跌出后 rank_cutoff 分位)
 
 版本:
-    - v1: CICC 原始复现 (仅 price momentum, 纯 4 步组合管理)
-    - v2: 增强版 (hybrid momentum + VT + Cost + TF — 默认)
+    - v1: CICC 原始复现 (Stage 8, 仅 price momentum, 纯 4 步组合管理)
+    - v2: 增强版 (Stage 12A, hybrid momentum + VT + Cost + TF — 已冻结, 默认)
+    - v3: 多策略组合 (Stage 16A, 动量 + 均值反转 + 行业轮动 — 新建)
 """
 from __future__ import annotations
 
@@ -95,6 +96,13 @@ from .strategy_versions import (
     v1_0, VERSIONS, LATEST, get_version,
 )
 
+# ─── v3 (Stage 16A, 多策略组合 — 新建) ──────────────────────
+from .v3 import (
+    SubStrategy as SubStrategy_v3,
+    SubStrategyConfig as SubStrategyConfig_v3,
+    SubStrategyResult as SubStrategyResult_v3,
+)
+
 __all__ = [
     "ETFPool", "ETFCategorizer", "DEFAULT_POOL",
     "rank_by_momentum", "rank_pctl", "distance_to_52w_high",
@@ -127,4 +135,6 @@ __all__ = [
     "v0_0_baseline", "v0_1_vt_only", "v0_2_tf_only",
     "v0_3_vt_cost", "v0_4_hybrid", "v1_0",
     "VERSIONS", "LATEST", "get_version",
+    # v3 (Stage 16A)
+    "SubStrategy_v3", "SubStrategyConfig_v3", "SubStrategyResult_v3",
 ]

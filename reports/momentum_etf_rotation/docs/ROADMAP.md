@@ -85,12 +85,16 @@
 
 ## 4. P2 — 战略级扩展 (需数据/算力)
 
-### Stage 16A: 多策略组合
+### Stage 16A: 多策略组合 → **v3.0**
 - 动量 + 均值反转 + 行业轮动
 - 不同子策略 ETF 重叠度小，组合可降低 DD
 - 预期: DD 进一步降至 -2%
 - 成本: ★★★
-- 状态: 📋 规划完成 (`stage16a_plan.md`)
+- 状态: 📋 规划完成 (`stage16a_plan.md`) + 🚧 实施中
+- 架构决策 (2026-07-09): **v2 已冻结, 新建 v3/ 目录**
+  - `common/sub_strategy.py` → `v3/sub_strategy_v3.py`
+  - v3/ 继承 common/ 共享模块
+  - parent `__init__.py` 暴露 v3 抽象基类 (`SubStrategy_v3`)
 - 实施顺序: 先验证后实施 (Stage 16A 优先)
 
 ### Stage 16B: RSRS 择时
