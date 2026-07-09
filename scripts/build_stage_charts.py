@@ -53,6 +53,28 @@ if _PLOTLY_SRC.exists() and (not _PLOTLY_DST.exists() or _PLOTLY_SRC.stat().st_m
     print(f"[copy] plotly.min.js → {_PLOTLY_DST}")
 
 
+def align_navs(nav_dict):
+    """将多策略 NAV 对齐到同一起始日并归一化到 1.0.
+
+    nav_dict: {name: pd.Series}
+    返回: {name: pd.Series} 全部从 latest_first_trade 开始, 起点 = 1.0
+    """
+    latest = None
+    for name, nav in nav_dict.items():
+        non_one = nav[nav != 1.0]
+        if len(non_one) > 0:
+            ft = non_one.index[0]
+        else:
+            ft = nav.index[0]
+        if latest is None or ft > latest:
+            latest = ft
+    out = {}
+    for name, nav in nav_dict.items():
+        trimmed = nav.loc[latest:]
+        out[name] = trimmed / trimmed.iloc[0]
+    return out
+
+
 def ann_return(nav):
     r = nav.iloc[-1] / nav.iloc[0]
     n = (nav.index[-1] - nav.index[0]).days / 365.25
@@ -104,7 +126,7 @@ def load_data():
 # ============================================================
 def chart_stage17_navs(data):
     """v3 / v4A / v4B / v4C / v4D NAV 走势 (8y)."""
-    navs = data["v3"]
+    navs = pd.DataFrame(align_navs(data["v3"].to_dict("series")))
     fig = go.Figure()
 
     colors = {
@@ -231,9 +253,12 @@ def chart_stage17_v4a_dd(data):
 # ============================================================
 def chart_stage18_style_rotation(data):
     """v4 风格升级前后对比: 单窗口 vs 多窗口 Long-biased."""
-    v4s = data["v4_merged"]["v4_style_merged"]
-    v3 = data["v3"]["v3_baseline"]
-    v3_78 = v4s / v4s.iloc[0] * 1.0
+    aligned = align_navs({
+        "v3 基准": data["v3"]["v3_baseline"],
+        "v4 风格 (Stage 18)": data["v4_merged"]["v4_style_merged"],
+    })
+    v3 = aligned["v3 基准"]
+    v4s = aligned["v4 风格 (Stage 18)"]
 
     fig = make_subplots(rows=1, cols=2,
                         subplot_titles=("升级前 (L60_T3) vs 升级后 (多窗口 5/20/120/180)",
@@ -284,8 +309,12 @@ def chart_stage18_style_rotation(data):
 # ============================================================
 def chart_stage18_factor_timing(data):
     """v4 因子升级前后: 6 因子统一 20d vs 5 因子特异 FW."""
-    v4f = data["v4_merged"]["v4_factor_merged"]
-    v3 = data["v3"]["v3_baseline"]
+    aligned = align_navs({
+        "v3 基准": data["v3"]["v3_baseline"],
+        "v4 因子 (Stage 18)": data["v4_merged"]["v4_factor_merged"],
+    })
+    v3 = aligned["v3 基准"]
+    v4f = aligned["v4 因子 (Stage 18)"]
 
     fig = make_subplots(rows=1, cols=2,
                         subplot_titles=("升级前后 NAV", "Calmar + Sharpe 对比"))
@@ -333,8 +362,12 @@ def chart_stage18_factor_timing(data):
 # ============================================================
 def chart_stage19_lw_comparison(data):
     """LW 模式 vs IC^2 模式对比."""
-    v4f = data["v4_merged"]["v4_factor_merged"]
-    v4f_lw = data["v4_lw"]["lw_rolling"]
+    aligned = align_navs({
+        "v4 因子 (IC²)": data["v4_merged"]["v4_factor_merged"],
+        "LW 滚动 λ": data["v4_lw"]["lw_rolling"],
+    })
+    v4f = aligned["v4 因子 (IC²)"]
+    v4f_lw = aligned["LW 滚动 λ"]
 
     fig = make_subplots(rows=1, cols=2,
                         subplot_titles=("IC^2 vs LW 滚动 λ NAV", "Calmar 对比"))
@@ -377,9 +410,14 @@ def chart_stage19_lw_comparison(data):
 # ============================================================
 def chart_stage22_v5_vs_v4(data):
     """v5 量价 vs v4 因子 NAV 对比."""
-    v5 = data["v5"]["v5_industry"]
-    v4f = data["v4_merged"]["v4_factor_merged"]
-    v3 = data["v3"]["v3_baseline"]
+    aligned = align_navs({
+        "v3 基准": data["v3"]["v3_baseline"],
+        "v4 因子": data["v4_merged"]["v4_factor_merged"],
+        "v5 行业量价": data["v5"]["v5_industry"],
+    })
+    v3 = aligned["v3 基准"]
+    v4f = aligned["v4 因子"]
+    v5 = aligned["v5 行业量价"]
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
@@ -503,10 +541,16 @@ def chart_stage22_v5_monthly_dist(data):
 # ============================================================
 def chart_stage22_portfolio_recommend(data):
     """4 档风险偏好组合 (8y + OOS Calmar)."""
-    v3 = data["v3"]["v3_baseline"]
-    v4f = data["v4_merged"]["v4_factor_merged"]
-    v5 = data["v5"]["v5_industry"]
-    v4s = data["v4_merged"]["v4_style_merged"]
+    aligned = align_navs({
+        "v3": data["v3"]["v3_baseline"],
+        "v4f": data["v4_merged"]["v4_factor_merged"],
+        "v5": data["v5"]["v5_industry"],
+        "v4s": data["v4_merged"]["v4_style_merged"],
+    })
+    v3 = aligned["v3"]
+    v4f = aligned["v4f"]
+    v5 = aligned["v5"]
+    v4s = aligned["v4s"]
 
     portfolios = {
         "v3 only": v3,
@@ -567,7 +611,7 @@ def chart_stage22_portfolio_recommend(data):
     fig.update_yaxes(title_text="Sharpe", row=1, col=2)
     fig.update_layout(
         title=dict(text="<b>Stage 22: 4 档风险偏好组合 (8y + OOS 2022-2026)</b><br>"
-                       "<sub>v3 80% + v5 20% OOS Calmar 0.850, Sharpe 1.01 (最稳健)</sub>",
+                        "<sub>v3 80% + v5 20% OOS Calmar 0.869, Sharpe 1.04 (最稳健)</sub>",
                     x=0.5),
         template="plotly_white",
         height=500,
@@ -582,13 +626,20 @@ def chart_stage22_portfolio_recommend(data):
 # ============================================================
 def chart_stage22_summary_grouped(data):
     """同比汇总: 年化收益 + 波动 grouped bar."""
-    navs = {
+    aligned = align_navs({
         "v3 baseline": data["v3"]["v3_baseline"],
         "v4 风格": data["v4_merged"]["v4_style_merged"],
         "v4 因子": data["v4_merged"]["v4_factor_merged"],
         "v5 量价": data["v5"]["v5_industry"],
-        "v3 80% + v5 20%": 0.8 * data["v3"]["v3_baseline"] + 0.2 * data["v5"]["v5_industry"],
-        "v3 33% + v4f 33% + v5 34%": 0.33 * data["v3"]["v3_baseline"] + 0.33 * data["v4_merged"]["v4_factor_merged"] + 0.34 * data["v5"]["v5_industry"],
+    })
+    v3_a, v4s_a, v4f_a, v5_a = (aligned[k] for k in ["v3 baseline", "v4 风格", "v4 因子", "v5 量价"])
+    navs = {
+        "v3 baseline": v3_a,
+        "v4 风格": v4s_a,
+        "v4 因子": v4f_a,
+        "v5 量价": v5_a,
+        "v3 80% + v5 20%": 0.8 * v3_a + 0.2 * v5_a,
+        "v3 33% + v4f 33% + v5 34%": 0.33 * v3_a + 0.33 * v4f_a + 0.34 * v5_a,
     }
 
     rows = []
@@ -850,7 +901,7 @@ def build_html(charts_dict, title="Stage 17-22 完整研究 — 交互式图表"
 <div class="header">
   <h1>📊 {title}</h1>
   <div class="meta">
-    QuantNodes 量化研究 | 2018-2026 8y 回测 + 2022-2026 4.5y OOS 验证
+    QuantNodes 量化研究 | 2019-2026 7.2y 对齐回测 + 2022-2026 4.5y OOS 验证
   </div>
 </div>
 
@@ -868,20 +919,21 @@ def build_html(charts_dict, title="Stage 17-22 完整研究 — 交互式图表"
 <section id="summary">
   <h2>最终生产推荐 (基于 OOS 2022-2026 4.5y)</h2>
   <div class="key-finding">
-    <strong>🏆 最稳健 (推荐):</strong> v3 80% + v5 20% — OOS Calmar <strong>0.850</strong>, Sharpe <strong>1.01</strong>, DD -13.45%<br>
-    <strong>⚖️ 平衡:</strong> v3 70% + v5 30% — OOS Calmar 0.790, Sharpe 0.91, DD -15.22%<br>
-    <strong>🎯 分散 (8y 最高):</strong> v3 33% + v4f 33% + v5 34% — 8y Calmar <strong>0.753</strong>, OOS 0.747<br>
-    <strong>🚀 进取:</strong> v3 50% + v4f 25% + v5 25% — 8y Calmar 0.733, OOS 0.788, Sharpe 0.91
+    <strong>🏆 最稳健 (推荐):</strong> v3 80% + v5 20% — OOS Calmar <strong>0.869</strong>, Sharpe <strong>1.04</strong>, OOS DD -12.96%<br>
+    <strong>⚖️ 平衡:</strong> v3 70% + v5 30% — OOS Calmar 0.808, Sharpe 0.94, OOS DD -14.66%<br>
+    <strong>🎯 分散 (7.2y 最高):</strong> v3 33% + v4f 33% + v5 34% — 7.2y Calmar <strong>0.888</strong>, OOS 0.752<br>
+    <strong>🚀 进取:</strong> v3 50% + v4f 25% + v5 25% — 7.2y Calmar 0.883, OOS 0.796, Sharpe 0.93
   </div>
   <table>
-    <tr><th>策略</th><th>8y Calmar</th><th>OOS Calmar</th><th>OOS Sharpe</th><th>年化收益</th><th>年化波动</th></tr>
-    <tr><td>v3 baseline</td><td>0.484</td><td>1.012</td><td>1.29</td><td>6.76%</td><td>7.76%</td></tr>
-    <tr class="highlight"><td>v4 风格 (5 改进)</td><td>0.439</td><td>-</td><td>-</td><td>10.06%</td><td>16.15%</td></tr>
-    <tr><td>v4 因子 (5 改进)</td><td>0.613</td><td>0.581</td><td>0.65</td><td>11.15%</td><td>18.03%</td></tr>
-    <tr><td>v5 量价 (11 因子)</td><td>0.643</td><td>0.600</td><td>0.67</td><td>17.59%</td><td>21.24%</td></tr>
-    <tr class="highlight"><td>v3 80% + v5 20%</td><td><strong>0.619</strong></td><td><strong>0.850</strong></td><td><strong>1.01</strong></td><td>9.65%</td><td>10.54%</td></tr>
-    <tr><td>v3 33% + v4f 33% + v5 34%</td><td><strong>0.753</strong></td><td>0.747</td><td>0.84</td><td>12.56%</td><td>14.15%</td></tr>
+    <tr><th>策略</th><th>7.2y Calmar*</th><th>OOS Calmar</th><th>OOS Sharpe</th><th>年化收益</th><th>年化波动</th></tr>
+    <tr><td>v3 baseline</td><td>0.654</td><td>1.012</td><td>1.29</td><td>9.07%</td><td>7.98%</td></tr>
+    <tr><td>v4 风格 (5 改进)</td><td>0.452</td><td>0.672</td><td>0.78</td><td>10.37%</td><td>17.34%</td></tr>
+    <tr><td>v4 因子 (5 改进)</td><td>0.722</td><td>0.581</td><td>0.65</td><td>13.13%</td><td>19.62%</td></tr>
+    <tr><td>v5 量价 (11 因子)</td><td>0.714</td><td>0.600</td><td>0.67</td><td>19.52%</td><td>23.03%</td></tr>
+    <tr class="highlight"><td>v3 80% + v5 20%</td><td><strong>0.779</strong></td><td><strong>0.869</strong></td><td><strong>1.04</strong></td><td>11.69%</td><td>10.76%</td></tr>
+    <tr><td>v3 33% + v4f 33% + v5 34%</td><td><strong>0.888</strong></td><td>0.752</td><td>0.86</td><td>14.47%</td><td>14.95%</td></tr>
   </table>
+  <p style="font-size:12px;color:#666;">* 全部从 2019-04-30 对齐起跑线, 回测 7.2 年, 剔除各策略初始 flat 期</p>
 </section>
 
 </body>
