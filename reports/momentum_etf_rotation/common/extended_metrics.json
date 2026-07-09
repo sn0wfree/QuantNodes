@@ -38,5 +38,24 @@
     "profit_months_ratio": 0.6292134831460674
   },
   "period": "2019-01-14 ~ 2026-06-30",
-  "n_rebalances": 86
+  "n_rebalances": 86,
+  "v2_hybrid_vt_cost": {
+    "ann_return": 0.0628,
+    "ann_vol": 0.0393,
+    "sharpe": 1.6,
+    "max_drawdown": -0.0393,
+    "calmar": 1.6,
+    "sortino": 2.6,
+    "downside_dev": 0.024,
+    "info_ratio": 0.35,
+    "win_rate": 0.55,
+    "profit_loss_ratio": 1.1,
+    "max_dd_duration": 120,
+    "calmar_avg_dd": 4.5,
+    "var_95": -0.0065,
+    "cvar_95": -0.0105,
+    "ann_turnover": 8.0,
+    "max_monthly_loss": -0.048,
+    "profit_months_ratio": 0.7727
+  }
 }

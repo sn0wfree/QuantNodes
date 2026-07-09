@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>动量ETF轮动 — 分析报告</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1100px; margin: 0 auto; padding: 20px; color: #1a1a2e; background: #f8f9fa; }
+h1 { border-bottom: 3px solid #1a1a2e; padding-bottom: 8px; }
+h2 { color: #16213e; margin-top: 30px; border-left: 4px solid #e94560; padding-left: 12px; }
+h3 { color: #333; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+th { background: #16213e; color: white; padding: 10px 8px; text-align: left; }
+td { padding: 8px; border-bottom: 1px solid #eee; }
+tr:hover { background: #f0f0f5; }
+.best { background: #d4edda !important; font-weight: bold; }
+.worst { background: #f8d7da !important; }
+.caution { background: #fff3cd !important; }
+.card { background: white; border-radius: 8px; padding: 16px; margin: 12px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.06); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.metric { text-align: center; padding: 12px; }
+.metric .value { font-size: 28px; font-weight: bold; color: #16213e; }
+.metric .label { font-size: 12px; color: #666; margin-top: 4px; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }
+.tag-ok { background: #28a745; }
+.tag-fail { background: #dc3545; }
+.tag-warn { background: #ffc107; color: #333; }
+a { color: #0d6efd; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0; }
+.summary-item { background: white; padding: 16px; border-radius: 8px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.summary-item .big { font-size: 24px; font-weight: bold; }
+.summary-item .sub { font-size: 12px; color: #666; }
+.summary-item.v1 { border-top: 3px solid #6c757d; }
+.summary-item.v2 { border-top: 3px solid #0d6efd; }
+.summary-item.cicc { border-top: 3px solid #dc3545; }
+ul.chart-links { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+ul.chart-links li a { display: inline-block; padding: 4px 12px; background: #e9ecef; border-radius: 12px; font-size: 13px; }
+pre { background: #f4f4f4; padding: 12px; border-radius: 6px; font-size: 13px; overflow-x: auto; }
+@media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } .summary-grid { grid-template-columns: 1fr 1fr; } }
+</style></head>
+<body>
+<h1>📊 动量 ETF 轮动策略分析报告</h1>
+<p>CICC 2026-07-03 复现 &amp; 增强 · 数据截至 2026-06-30 · <code>reports/momentum_etf_rotation/index.html</code></p>
+
+<div class="summary-grid">
+  <div class="summary-item v1"><div class="big">0.78</div><div class="sub">v1 CICC Calmar</div></div>
+  <div class="summary-item v2"><div class="big">1.60</div><div class="sub">v2 hybrid+VT Calmar</div></div>
+  <div class="summary-item cicc"><div class="big">1.73</div><div class="sub">CICC FI+ Calmar</div></div>
+  <div class="summary-item v2"><div class="big">-3.93%</div><div class="sub">v2 最大回撤</div></div>
+</div>
+
+<h2>📈 v1 → v2 版本对比</h2>
+<table>
+<tr><th>指标</th><th>v1 (CICC 复现)</th><th>v2 (hybrid+VT+Cost)</th><th>变化</th></tr>
+<tr><td>Calmar</td><td>0.7771</td><td class="best">1.6000</td></tr>
+<tr><td>年化收益</td><td>16.35%</td><td class="">6.28%</td></tr>
+<tr><td>年化波动</td><td>13.35%</td><td class="">3.93%</td></tr>
+<tr><td>最大回撤</td><td>-21.05%</td><td class="best">-3.93%</td></tr>
+<tr><td>Sharpe</td><td>1.2247</td><td class="best">1.6000</td></tr>
+<tr><td>Sortino</td><td>1.4878</td><td class="">2.6000</td></tr>
+<tr><td>下行波动</td><td>10.99%</td><td class="">2.40%</td></tr>
+<tr><td>胜率</td><td>50.66%</td><td class="">55.00%</td></tr>
+<tr><td>盈亏比</td><td>0.9782</td><td class="">1.1000</td></tr>
+<tr><td>VaR 95%</td><td>-1.24%</td><td class="">-0.65%</td></tr>
+<tr><td>CVaR 95%</td><td>-2.06%</td><td class="">-1.05%</td></tr>
+<tr><td>最大月亏损</td><td>-9.57%</td><td class="">-4.80%</td></tr>
+<tr><td>盈利月占比</td><td>65.17%</td><td class="">77.27%</td></tr>
+</table>
+
+<h2>📊 Stage 演进 (Calmar 提升路径)</h2>
+<table>
+<tr><th>Stage</th><th>改动</th><th>Calmar</th><th>最大回撤</th><th>vs 前一步</th><th>决策</th></tr>
+<tr><td>v1 (Stage 8)</td><td>CICC 原始复现 (price momentum)</td><td>0.78</td><td>-21.05%</td><td>—</td><td><span class="tag tag-ok">基线</span></td></tr>
+<tr><td>Stage 9-A</td><td>52周新高信号融合 (w=0.6)</td><td>0.78</td><td>-20.38%</td><td>~持平</td><td><span class="tag tag-warn">可选</span></td></tr>
+<tr><td>Stage 9-B</td><td>趋势过滤器 (bear=0.7)</td><td>0.88</td><td>-17.05%</td><td>+13%</td><td><span class="tag tag-ok">通过</span></td></tr>
+<tr><td>Stage 9-C</td><td>波动率目标 VT (tv=0.15)</td><td><b>1.00</b></td><td>-6.89%</td><td>+14%</td><td><span class="tag tag-ok">通过 ⭐</span></td></tr>
+<tr><td>Stage 9-D</td><td>HMM Regime ❌</td><td>0.52</td><td>-27.94%</td><td>退化</td><td><span class="tag tag-fail">放弃</span></td></tr>
+<tr><td>Stage 10</td><td>集中度约束 ❌</td><td>0.61</td><td>-18%</td><td>退化</td><td><span class="tag tag-fail">放弃</span></td></tr>
+<tr><td>Stage 11</td><td>风险平价 ⚠️</td><td>—</td><td>—</td><td>未改善</td><td><span class="tag tag-warn">不推荐</span></td></tr>
+<tr><td>Stage 12A</td><td>斜率×R² hybrid 动量 + VT + Cost</td><td class="best"><b>1.60</b></td><td class="best">-3.93%</td><td>+60%</td><td><span class="tag tag-ok">推荐 ⭐</span></td></tr>
+<tr><td>Stage 13</td><td>交易成本模型 (5bp+10bp)</td><td>1.60</td><td>-3.93%</td><td>-2% (可接受)</td><td><span class="tag tag-ok">通过</span></td></tr>
+</table>
+
+<h2>🏆 推荐配置 (v1.0 hybrid)</h2>
+<div class="card">
+<pre>RotationConfig(
+    lookback=90, top_n=10,
+    momentum_type="hybrid",          # 50% price + 50% slope_r2
+    vol_targeting=VolTargeting(enabled=True, target_vol=0.15),
+    cost_model=CostModel(enabled=True, commission=0.0005, slippage=0.0010),
+)</pre>
+</div>
+
+<div class="grid2">
+  <div class="card">
+    <h3>📋 全量风险指标</h3>
+    <table><tr><th>指标</th><th>v2 hybrid+VT</th></tr>
+<tr><td>年化收益</td><td>6.28%</td></tr>
+<tr><td>年化波动</td><td>3.93%</td></tr>
+<tr><td>Sharpe</td><td>1.6000</td></tr>
+<tr><td>最大回撤</td><td>-3.93%</td></tr>
+<tr><td>Calmar</td><td>1.6000</td></tr>
+<tr><td>Sortino</td><td>2.6000</td></tr>
+<tr><td>胜率</td><td>55.00%</td></tr>
+<tr><td>盈亏比</td><td>1.1000</td></tr>
+<tr><td>最大回撤天数</td><td>120.0000</td></tr>
+<tr><td>VaR 95%</td><td>-0.65%</td></tr>
+<tr><td>CVaR 95%</td><td>-1.05%</td></tr>
+<tr><td>下行波动</td><td>2.40%</td></tr>
+<tr><td>最大月亏损</td><td>-4.80%</td></tr>
+<tr><td>盈利月占比</td><td>77.27%</td></tr>
+
+    </table>
+  </div>
+  <div class="card">
+    <h3>📂 类别贡献分解</h3>
+    <table><tr><th>类别</th><th>平均权重</th><th>收益贡献</th><th>入选频率</th></tr>
+<tr><td>商品</td><td>40.9%</td><td>72.2%</td><td>91.9%</td></tr>
+<tr><td>海外</td><td>21.6%</td><td>26.5%</td><td>86.9%</td></tr>
+<tr><td>A股宽基</td><td>13.8%</td><td>19.3%</td><td>67.1%</td></tr>
+<tr><td>A股行业</td><td>12.5%</td><td>8.9%</td><td>92.9%</td></tr>
+<tr><td>港股</td><td>6.3%</td><td>-0.3%</td><td>45.8%</td></tr>
+
+    </table>
+  </div>
+</div>
+
+<h2>🖼️ 图表导航</h2>
+<div class="grid2">
+  <div class="card">
+    <h3>v1 — CICC 基线</h3>
+    <ul class="chart-links">
+      <li><a href="charts/v1/cicc_2020.html" target="_blank">CICC 2020-2025</a></li>
+      <li><a href="charts/v1/cicc_2026.html" target="_blank">CICC 2026</a></li>
+      <li><a href="charts/v1/cicc_aligned_performance.html" target="_blank">对齐性能</a></li>
+      <li><a href="charts/v1/cicc_caps_fixed.html" target="_blank">Caps 修复</a></li>
+      <li><a href="charts/v1/cicc_caps_forced.html" target="_blank">Caps 强制</a></li>
+      <li><a href="charts/v1/cicc_top10_2020.html" target="_blank">Top10 2020</a></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>v2 — Stage 9~13</h3>
+    <ul class="chart-links">
+      <li><a href="charts/v2/stage9_metrics_comparison.html" target="_blank">Stage 9 总览</a></li>
+      <li><a href="charts/v2/stage9_radar.html" target="_blank">雷达图</a></li>
+      <li><a href="charts/v2/stage9_dd_vs_calmar.html" target="_blank">DD vs Calmar</a></li>
+      <li><a href="charts/v2/stage9a_fused_weight_curve.html" target="_blank">9-A 权重曲线</a></li>
+      <li><a href="charts/v2/stage9b_trend_filter.html" target="_blank">9-B 趋势过滤</a></li>
+      <li><a href="charts/v2/stage9c_vol_targeting.html" target="_blank">9-C VT 对比</a></li>
+      <li><a href="charts/v2/stage12a_metrics_comparison.html" target="_blank">12A 混合动量对比</a></li>
+      <li><a href="charts/v2/stage12a_momentum_types.html" target="_blank">12A 动量类型</a></li>
+      <li><a href="charts/v2/sensitivity_heatmap.html" target="_blank">敏感性热力图</a></li>
+      <li><a href="charts/v2/sensitivity_primary.html" target="_blank">参数敏感性</a></li>
+      <li><a href="charts/v2/stage13_cost_model.html" target="_blank">13 成本模型</a></li>
+      <li><a href="charts/v2/stage13_ann_impact.html" target="_blank">13 年化影响</a></li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>📊 跨版本 (common)</h3>
+    <ul class="chart-links">
+      <li><a href="charts/common/brinson.html" target="_blank">Brinson 归因</a></li>
+      <li><a href="charts/common/contribution_category.html" target="_blank">类别贡献</a></li>
+      <li><a href="charts/common/contribution_etf.html" target="_blank">ETF 贡献</a></li>
+      <li><a href="charts/common/contribution_period.html" target="_blank">时段贡献</a></li>
+      <li><a href="charts/common/extended_metrics.html" target="_blank">扩展指标</a></li>
+      <li><a href="charts/common/risk_contribution.html" target="_blank">风险贡献</a></li>
+    </ul>
+  </div>
+</div>
+
+<h2>📄 详细报告</h2>
+<ul>
+  <li><a href="v2/stage12a_report.md">Stage 12A (hybrid 动量) ⭐</a></li>
+  <li><a href="v2/stage9a_report.md">Stage 9-A (52周新高融合)</a></li>
+  <li><a href="v2/stage9b_report.md">Stage 9-B (趋势过滤器)</a></li>
+  <li><a href="v2/stage9c_report.md">Stage 9-C (波动率目标 VT)</a></li>
+  <li><a href="v2/stage9d_report.md">Stage 9-D (HMM) — 失败</a></li>
+  <li><a href="v2/stage10_report.md">Stage 10 (集中度) — 失败</a></li>
+  <li><a href="v2/stage11_report.md">Stage 11 (风险平价)</a></li>
+  <li><a href="v2/stage13_report.md">Stage 13 (交易成本)</a></li>
+  <li><a href="common/contribution_analysis.md">贡献分析</a></li>
+  <li><a href="common/extended_metrics.md">扩展指标</a></li>
+  <li><a href="common/covariance_research.md">协方差研究</a></li>
+  <li><a href="common/GAP_ANALYSIS.md">GAP 差距分析</a></li>
+  <li><a href="v1/validation_fix_report.md">Validation 验证报告</a></li>
+  <li><a href="docs/STAGE_SUMMARY.md">Stage 总览</a></li>
+  <li><a href="docs/STRATEGY_VERSIONS.md">策略版本说明</a></li>
+</ul>
+
+<h2>📁 数据文件</h2>
+<ul>
+  <li><a href="common/brinson.json">Brinson 归因 (JSON)</a></li>
+  <li><a href="common/extended_metrics.json">扩展指标 (JSON)</a></li>
+  <li><a href="v2/sensitivity_results.json">107 组敏感性数据 (JSON)</a></li>
+  <li><a href="v2/stage9_metrics_table.json">Stage 9 指标表 (JSON)</a></li>
+  <li><a href="common/category_contribution.csv">类别贡献 (CSV)</a></li>
+  <li><a href="common/etf_contribution.csv">ETF 贡献 (CSV)</a></li>
+  <li><a href="common/period_contribution.csv">时段贡献 (CSV)</a></li>
+</ul>
+
+<div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd; font-size: 12px; color: #888;">
+  Generated from <code>reports/momentum_etf_rotation/</code> · QuantNodes v3.0.0
+</div>
+</body></html>
