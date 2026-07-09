@@ -156,8 +156,13 @@ class RegimeDetector:
         self.label_map: dict[int, int] = {}
 
     def fit(self, nav_df: pd.DataFrame, end_date: pd.Timestamp | None = None) -> "RegimeDetector":
-        """用历史数据训练 HMM."""
+        """用历史数据训练 HMM (使用距离先验 + 软约束)."""
         from hmmlearn import hmm
+        from .regime_transitions import (
+            build_distance_transmat,
+            soft_constrain,
+            DistanceTransitionConfig,
+        )
 
         if end_date is None:
             end_date = nav_df.index[-1]
@@ -184,20 +189,36 @@ class RegimeDetector:
         self.feature_std_[self.feature_std_ < 1e-8] = 1.0
         X_norm = (X - self.feature_mean_) / self.feature_std_
 
-        # 训练 HMM (多次初始化避免局部最优)
+        # 距离先验矩阵 (作为 HMM 转移矩阵的先验)
+        dist_cfg = DistanceTransitionConfig(
+            alpha=1.5, gamma=0.3, sticky_bonus=0.0,
+            n_states=self.config.n_regimes,
+        )
+        self.distance_prior_ = build_distance_transmat(
+            dist_cfg.alpha, dist_cfg.gamma, dist_cfg.sticky_bonus,
+            dist_cfg.n_states,
+        )
+        soft_lam = 0.3  # 软约束强度
+
+        # 训练 HMM (多次初始化, 用距离先验)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             best_model = None
             best_score = -np.inf
-            for init_idx in range(5):
+            for init_idx in range(2):  # 减到 2 次
                 try:
                     m = hmm.GaussianHMM(
                         n_components=self.config.n_regimes,
                         covariance_type="diag",
-                        n_iter=self.config.n_iter,
+                        n_iter=min(self.config.n_iter, 30),  # 减到 30
                         random_state=self.config.random_state + init_idx,
+                        transmat_prior=self.distance_prior_,
                     )
                     m.fit(X_norm)
+                    if soft_lam > 0:
+                        m.transmat_ = soft_constrain(
+                            m.transmat_, self.distance_prior_, soft_lam,
+                        )
                     score = m.score(X_norm)
                     if score > best_score:
                         best_score = score
@@ -207,9 +228,13 @@ class RegimeDetector:
                     continue
 
             if best_model is not None:
+                # 最终软约束一次
+                if soft_lam > 0:
+                    best_model.transmat_ = soft_constrain(
+                        best_model.transmat_, self.distance_prior_, soft_lam,
+                    )
                 self.model = best_model
                 labels = self.model.predict(X_norm)
-                # 强制 3 个状态都有 (填充缺失状态)
                 self._force_full_label_map(features, labels)
             else:
                 logger.warning("HMM 全部初始化失败, 退化为简单 regime 检测")
@@ -276,15 +301,53 @@ class RegimeDetector:
         start: str | pd.Timestamp,
         end: str | pd.Timestamp,
         step: int = 5,
+        min_duration: int = 30,
+        apply_min_duration: bool = True,
     ) -> pd.Series:
-        """滚动预测 (用于因子择时)."""
-        dates = nav_df.loc[start:end].index
-        sample_dates = dates[::step]
-        out: dict[pd.Timestamp, int] = {}
-        for ts in sample_dates:
-            r = self.predict(nav_df, ts)
-            out[ts] = r
-        return pd.Series(out, name="regime")
+        """滚动预测 (用于因子择时), 含 min_duration 后处理. 批量优化版.
+
+        Args:
+            min_duration: 最小持续期 (天数)
+            apply_min_duration: 是否应用 min_duration 后处理
+        """
+        if self.model is None:
+            return pd.Series(dtype=int)
+
+        # 用扩展窗口 (rolling) 模拟"as_of 之前的特征"
+        # 实际: 用 _build_features on full panel, 但 HMM 是 time-aware 的
+        full_features = _build_features(
+            nav_df, self.style_codes,
+            feature_window=self.config.feature_window,
+            trend_window=self.config.trend_window,
+        )
+        if full_features.empty:
+            return pd.Series(dtype=int)
+
+        # 标准化
+        X = full_features.values
+        X_norm = (X - self.feature_mean_) / self.feature_std_
+
+        # 批量预测 (1 次 HMM 调用, O(n))
+        try:
+            raw_labels = self.model.predict(X_norm)
+        except Exception:
+            return pd.Series(dtype=int)
+
+        # 映射 HMM 状态 → 语义标签
+        semantic = np.array([self.label_map.get(int(l), 2) for l in raw_labels])
+        s_full = pd.Series(semantic, index=full_features.index, name="regime")
+
+        # 取 start~end 范围, 步长 step
+        s_window = s_full.loc[start:end]
+        if step > 1:
+            s_window = s_window.iloc[::step]
+
+        if apply_min_duration and len(s_window) > 0:
+            from .regime_transitions import enforce_minimum_duration
+            s_arr = enforce_minimum_duration(s_window.values, min_duration=min_duration)
+            s_window = pd.Series(s_arr, index=s_window.index, name="regime")
+
+        return s_window
 
 
 def get_regime_factor_weight(

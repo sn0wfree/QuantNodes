@@ -178,12 +178,14 @@ def _performance_metrics(nav: pd.Series) -> dict:
 def run_v4_backtest(
     panel: pd.DataFrame,
     cfg: V4Config | None = None,
+    hmm_regime_series: pd.Series | None = None,
 ) -> V4Result:
     """v4 多策略回测主入口.
 
     Args:
         panel: 12 只 Smart β ETF 价格面板
         cfg: v4 配置
+        hmm_regime_series: (可选) HMM 预测的 regime 时序, 用于 v4E/v4F 融合
 
     Returns:
         V4Result: NAV + 子策略 NAV + 状态
@@ -246,7 +248,8 @@ def run_v4_backtest(
                 sub_results.append(r)
                 last_sub_results["smart_beta"] = r
 
-            # 2. 因子择时 (覆盖子策略权重)
+            # 2. 因子择时 (IC + HMM 融合)
+            current_regime = -1
             if cfg.factor_timing_enabled and not ic_history.empty:
                 idx = ic_history.index.get_indexer([date], method="ffill")[0]
                 if idx >= 0:
@@ -257,10 +260,31 @@ def run_v4_backtest(
                     pd.DataFrame([ic_dict], index=[date]),
                     cfg.factor_timing,
                 )
+
+                # HMM regime 调整
+                if hmm_regime_series is not None and date in hmm_regime_series.index:
+                    current_regime = int(hmm_regime_series.loc[date])
+                elif hmm_regime_series is not None and len(hmm_regime_series) > 0:
+                    idx_r = hmm_regime_series.index.get_indexer([date], method="ffill")[0]
+                    if idx_r >= 0:
+                        current_regime = int(hmm_regime_series.iloc[idx_r])
+
+                if current_regime >= 0:
+                    # HMM 调整 IC 权重: 按 regime 偏好乘
+                    from .regime_detector_v4 import get_regime_factor_weight
+                    adjusted = {}
+                    for f, w in f_w.items():
+                        regime_w = get_regime_factor_weight(current_regime, f)
+                        adjusted[f] = w * regime_w
+                    # 重新归一化
+                    total_adj = sum(adjusted.values())
+                    if total_adj > 0:
+                        adjusted = {k: v / total_adj for k, v in adjusted.items()}
+                    f_w = adjusted
+
                 s_w = compute_strategy_weights(
                     f_w, cfg.factor_timing.factor_to_strategy,
                 )
-                # 用 IC 权重, 缺省 fallback 到等权
                 sub_weights = s_w if s_w else sub_weights
                 # 归一化
                 total = sum(sub_weights.values())
@@ -289,6 +313,7 @@ def run_v4_backtest(
             states.append({
                 "date": date, "weights": combined,
                 "sub_weights": sub_weights, "sub_results": sub_results,
+                "regime": current_regime,
             })
             rebal_actual.append(date)
 
@@ -343,10 +368,20 @@ def run_v4_mode(
     panel: pd.DataFrame,
     mode: str,
     factor_timing_cfg: FactorTimingConfig | None = None,
+    hmm_detector: "RegimeDetector | None" = None,
 ) -> V4Result:
-    """按 mode 跑 v4 回测 (便捷接口)."""
+    """按 mode 跑 v4 回测 (便捷接口).
+
+    Args:
+        panel: 价格面板
+        mode: V4Mode value
+        factor_timing_cfg: 因子择时配置
+        hmm_detector: 已训练好的 HMM 检测器 (v4E/v4F 必需)
+    """
     cfg = V4Config()
     cfg.mode = mode
+
+    hmm_series: pd.Series | None = None
 
     if mode == "v4A_style":
         cfg.style_enabled = True
@@ -363,19 +398,33 @@ def run_v4_mode(
         cfg.factor_timing_enabled = True
         cfg.factor_timing = factor_timing_cfg or FactorTimingConfig()
     elif mode == "v4E_hmm":
-        # 待实施
-        logger.warning("v4E_hmm 暂未实施, 退化为 v4C_combo")
+        # 仅 HMM 因子择时
         cfg.style_enabled = True
         cfg.smart_beta_enabled = True
+        cfg.factor_timing_enabled = True  # 必须开启
+        cfg.factor_timing = factor_timing_cfg or FactorTimingConfig()
+        if hmm_detector is not None:
+            hmm_series = hmm_detector.predict_series(
+                panel, panel.index[0], panel.index[-1], step=5,
+            )
+        else:
+            logger.warning("v4E_hmm 需要 hmm_detector, 退化为 v4D_ic")
     elif mode == "v4F_fusion":
-        # 待实施
-        logger.warning("v4F_fusion 暂未实施, 退化为 v4C_combo")
+        # IC + HMM 融合
         cfg.style_enabled = True
         cfg.smart_beta_enabled = True
+        cfg.factor_timing_enabled = True
+        cfg.factor_timing = factor_timing_cfg or FactorTimingConfig()
+        if hmm_detector is not None:
+            hmm_series = hmm_detector.predict_series(
+                panel, panel.index[0], panel.index[-1], step=5,
+            )
+        else:
+            logger.warning("v4F_fusion 需要 hmm_detector, 退化为 v4D_ic")
     else:
         raise ValueError(f"未知 mode: {mode}")
 
-    return run_v4_backtest(panel, cfg)
+    return run_v4_backtest(panel, cfg, hmm_regime_series=hmm_series)
 
 
 __all__ = [

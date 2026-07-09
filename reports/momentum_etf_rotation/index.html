@@ -102,6 +102,33 @@ pre { background: #f4f4f4; padding: 12px; border-radius: 6px; font-size: 13px; o
 <li>📋 下一步: 动态子策略权重 + 趋势市自适应 (反转策略关闭)</li>
 </ul>
 
+<h2>🆕 Stage 17: 风格轮动 + Smart β + 因子择时 (v4) — 独立实验</h2>
+<div class="card" style="background: linear-gradient(135deg, #f3e5f5 0%, #ffffff 100%); border-left: 4px solid #6f42c1;">
+<p><b>实现时间</b>: 2026-07-09 · <b>状态</b>: ✅ 全 6 模式可跑 · <a href="v4/STAGE17_VALIDATION.md">详细报告</a> · <a href="v4/IC_PERFORMANCE_REPORT.md">IC 验证</a></p>
+<p><b>核心思路</b>: 12 只 Smart β ETF (5 风格组 + 7 Smart β 工具), 3 个子策略 (风格轮动 / Smart β / 因子择时). <b>与 v3 完全独立, 不修改 v3 任何代码</b>.</p>
+<p><b>因子择时</b>: 6 因子 IC (momentum/reversal/value/low_vol/dividend/quality) + HMM 距离先验. IC 滚动 60d 驱动子策略权重</p>
+</div>
+
+<table>
+<tr><th>模式</th><th>Sharpe</th><th>Calmar</th><th>年化</th><th>DD</th><th>Nav</th><th>924</th><th>2026 H1</th><th>结论</th></tr>
+<tr><td><b>v3_baseline</b></td><td class="best">0.916</td><td class="best">0.504</td><td>7.04%</td><td class="best">-13.97%</td><td class="best">1.743</td><td>+3.89%</td><td>-1.32%</td><td><span class="tag tag-ok">v3 稳健</span></td></tr>
+<tr><td><b>v4A_style</b></td><td>0.311</td><td>0.092</td><td>4.54%</td><td>-49.31%</td><td>1.437</td><td>+13.81%</td><td class="best">+18.66%</td><td><span class="tag tag-warn">抓反弹 ⭐</span></td></tr>
+<tr><td><b>v4B_smartbeta</b></td><td>0.387</td><td>0.140</td><td>5.69%</td><td>-40.56%</td><td>1.572</td><td class="best">+20.63%</td><td>-0.51%</td><td><span class="tag tag-warn">924 冠军</span></td></tr>
+<tr><td><b>v4C_combo</b></td><td>0.311</td><td>0.097</td><td>4.43%</td><td>-45.70%</td><td>1.424</td><td>+16.58%</td><td>+10.72%</td><td><span class="tag tag-warn">待优化</span></td></tr>
+<tr><td><b>v4D_ic</b></td><td>0.311</td><td>0.097</td><td>4.43%</td><td>-45.70%</td><td>1.424</td><td>+16.58%</td><td>+10.72%</td><td><span class="tag tag-warn">因子择时被 cap 吸收</span></td></tr>
+<tr><td><b>v4E_hmm</b></td><td>0.311</td><td>0.097</td><td>4.43%</td><td>-45.70%</td><td>1.424</td><td>+16.58%</td><td>+10.72%</td><td><span class="tag tag-warn">HMM 主识别 bear</span></td></tr>
+<tr><td><b>v4F_fusion</b></td><td>0.311</td><td>0.097</td><td>4.43%</td><td>-45.70%</td><td>1.424</td><td>+16.58%</td><td>+10.72%</td><td><span class="tag tag-warn">IC+HMM 融合</span></td></tr>
+</table>
+
+<p><b>关键发现</b>:</p>
+<ul>
+<li>⚠️ <b>v4 DD 过大</b> (-40%~-49%): 子策略集中 (5-7 ETF), max_weight=0.20 cap 吸收因子择时差异</li>
+<li>✅ <b>v4 抓反弹突出</b>: 924 +20.6% (v4B), 2026 H1 +18.7% (v4A), 远超 v3</li>
+<li>✅ <b>IC 验证</b>: value 因子 Hit Rate 60% (+0.044 IC), 是 2018-2026 唯一显著正 IC</li>
+<li>✅ <b>距离先验 HMM</b>: alpha=1.5 gamma=0.3, bull↔bear 直接跳转仅 ~3% (符合金融常识)</li>
+<li>📋 <b>整合方向</b>: v3 (稳健 DD -14%) + v4 (进攻, 抓反弹) 互补. 因子择时改为个股层面</li>
+</ul>
+
 <h3>Stage 演进 (含 Stage 16A)</h3>
 <table>
 <tr><th>Stage</th><th>改动</th><th>年化收益</th><th>年化波动</th><th>Sharpe</th><th>Calmar</th><th>最大回撤</th><th>vs 前一步</th><th>决策</th></tr>
@@ -207,6 +234,17 @@ pre { background: #f4f4f4; padding: 12px; border-radius: 6px; font-size: 13px; o
     </ul>
   </div>
   <div class="card">
+    <h3>🆕 v4 — Stage 17 风格轮动+Smart β+因子择时</h3>
+    <ul class="chart-links">
+      <li><a href="charts/v4/mode_comparison.html" target="_blank">6 模式 NAV 对比</a></li>
+      <li><a href="charts/v4/factor_ic_heatmap.html" target="_blank">6 因子 IC 时序</a></li>
+      <li><a href="charts/v4/factor_weights.html" target="_blank">因子权重时序</a></li>
+      <li><a href="charts/v4/hmm_regime.html" target="_blank">HMM Regime + NAV</a></li>
+      <li><a href="charts/v4/distance_transmat.html" target="_blank">距离先验矩阵</a></li>
+      <li><a href="charts/v4/period_returns.html" target="_blank">关键区间收益</a></li>
+    </ul>
+  </div>
+  <div class="card">
     <h3>📊 跨版本 (common)</h3>
     <ul class="chart-links">
       <li><a href="charts/common/brinson.html" target="_blank">Brinson 归因</a></li>
@@ -224,6 +262,8 @@ pre { background: #f4f4f4; padding: 12px; border-radius: 6px; font-size: 13px; o
 
 <h2>📄 详细报告</h2>
 <ul>
+  <li><a href="v4/STAGE17_VALIDATION.md">Stage 17 (风格轮动+Smart β+因子择时) 🆕</a></li>
+  <li><a href="v4/IC_PERFORMANCE_REPORT.md">IC 因子验证报告 🆕</a></li>
   <li><a href="v3/stage16a_validation.md">Stage 16A (多策略组合 v3) 🆕</a></li>
   <li><a href="docs/CICC_VS_STAGE12A_COMPARISON.md">CICC vs Stage 12A 对比 🆕</a></li>
   <li><a href="v2/stage14_924_analysis.md">Stage 14 (924 专项分析)</a></li>
@@ -249,6 +289,11 @@ pre { background: #f4f4f4; padding: 12px; border-radius: 6px; font-size: 13px; o
 <ul>
   <li><a href="v3/stage16a_summary.json">Stage 16A 验证结果 (JSON) 🆕</a></li>
   <li><a href="v3/stage16a_navs.parquet">Stage 16A NAV 序列 (Parquet) 🆕</a></li>
+  <li><a href="v4/stage17_summary.json">Stage 17 验证结果 (JSON) 🆕</a></li>
+  <li><a href="v4/stage17_navs.parquet">Stage 17 NAV 序列 (Parquet) 🆕</a></li>
+  <li><a href="v4/ic_summary.json">IC 验证汇总 (JSON) 🆕</a></li>
+  <li><a href="v4/ic_history.parquet">IC 时序 (Parquet) 🆕</a></li>
+  <li><a href="v4/factor_weights.parquet">因子权重时序 (Parquet) 🆕</a></li>
   <li><a href="docs/cicc_vs_stage12a_summary.json">CICC vs Stage 12A (JSON) 🆕</a></li>
   <li><a href="docs/cicc_vs_stage12a_navs.parquet">CICC vs Stage 12A NAV (Parquet) 🆕</a></li>
   <li><a href="common/brinson.json">Brinson 归因 (JSON)</a></li>

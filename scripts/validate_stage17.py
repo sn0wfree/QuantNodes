@@ -39,8 +39,13 @@ from QuantNodes.strategy.momentum_etf_rotation.v3 import (
     DEFAULT_POOL,
     run_multi_strategy_backtest as run_v3_backtest,
 )
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*not supported.*")
 from QuantNodes.strategy.momentum_etf_rotation.v4 import (
     FactorTimingConfig,
+    RegimeConfig,
+    RegimeDetector,
     load_smartbeta_panel,
     run_v4_mode,
 )
@@ -110,17 +115,27 @@ def main():
         results[mode] = (r.nav, m)
         print(f"  {mode}: Sharpe={m.get('sharpe', 0):.3f}, Calmar={m.get('calmar', 0):.3f}, Nav={m.get('final_nav', 0):.3f}")
 
-    # v4E / v4F: HMM (待实施, 退化为 v4C)
-    print("\n[4/6] v4E_hmm / v4F_fusion (HMM 待实施, 用 v4C 退化)...")
-    r_E = run_v4_mode(panel_v4, "v4E_hmm", factor_timing_cfg=cfg_ft)
+    # v4E / v4F: HMM 训练
+    print("\n[4/6] v4E_hmm / v4F_fusion (HMM 距离先验)...")
+    hmm_detector = RegimeDetector(RegimeConfig(n_iter=30))
+    hmm_detector.fit(panel_v4, panel_v4.index[-1])
+    print(f"  HMM label_map: {hmm_detector.label_map}")
+
+    # 打印 HMM regime 分布 (用更短的 min_duration 让 3 状态都出现)
+    hmm_series = hmm_detector.predict_series(
+        panel_v4, panel_v4.index[0], panel_v4.index[-1], step=5, min_duration=6,
+    )
+    print(f"  HMM regime 分布: {hmm_series.value_counts().to_dict()}")
+
+    r_E = run_v4_mode(panel_v4, "v4E_hmm", factor_timing_cfg=cfg_ft, hmm_detector=hmm_detector)
     m_E = metrics(r_E.nav)
     results["v4E_hmm"] = (r_E.nav, m_E)
-    print(f"  v4E: Sharpe={m_E.get('sharpe', 0):.3f}, Calmar={m_E.get('calmar', 0):.3f} (degraded to v4C)")
+    print(f"  v4E: Sharpe={m_E.get('sharpe', 0):.3f}, Calmar={m_E.get('calmar', 0):.3f}")
 
-    r_F = run_v4_mode(panel_v4, "v4F_fusion", factor_timing_cfg=cfg_ft)
+    r_F = run_v4_mode(panel_v4, "v4F_fusion", factor_timing_cfg=cfg_ft, hmm_detector=hmm_detector)
     m_F = metrics(r_F.nav)
     results["v4F_fusion"] = (r_F.nav, m_F)
-    print(f"  v4F: Sharpe={m_F.get('sharpe', 0):.3f}, Calmar={m_F.get('calmar', 0):.3f} (degraded to v4C)")
+    print(f"  v4F: Sharpe={m_F.get('sharpe', 0):.3f}, Calmar={m_F.get('calmar', 0):.3f}")
 
     # 关键区间分析
     print("\n[5/6] 关键区间分析...")
@@ -150,6 +165,9 @@ def main():
     nav_all = pd.DataFrame({name: nav for name, (nav, _) in results.items()})
     nav_all.to_parquet(out_dir / "stage17_navs.parquet")
     print(f"  NAV: {out_dir / 'stage17_navs.parquet'}, shape={nav_all.shape}")
+
+    # Save HMM regime history
+    hmm_series.to_csv(out_dir / "hmm_regime_history.csv", header=True)
 
     # summary JSON
     summary = {

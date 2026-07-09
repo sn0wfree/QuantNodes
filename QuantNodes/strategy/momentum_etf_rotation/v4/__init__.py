@@ -70,6 +70,17 @@ from .factor_timing_v4 import (
     compute_factor_weights,
     compute_strategy_weights,
 )
+from .regime_transitions import (
+    POTENTIAL,
+    DistanceTransitionConfig,
+    build_distance_transmat,
+    distance_between,
+    distance_rate,
+    effective_distance,
+    enforce_minimum_duration,
+    soft_constrain,
+    validate_transmat,
+)
 from .multi_strategy_v4 import (
     V4Config,
     V4Mode,
@@ -77,9 +88,6 @@ from .multi_strategy_v4 import (
     run_v4_backtest,
     run_v4_mode,
 )
-
-# 以下为 Stage 17 后续阶段 (待实现)
-# from .regime_transitions import ...   # 距离先验 (本阶段未实施)
 
 __all__ = [
     # Universe
@@ -132,6 +140,16 @@ __all__ = [
     "compute_strategy_weights",
     "backtest_factor_timing",
     "backtest_factor_weights_history",
+    # Regime Transitions (距离先验)
+    "POTENTIAL",
+    "DistanceTransitionConfig",
+    "build_distance_transmat",
+    "distance_between",
+    "distance_rate",
+    "effective_distance",
+    "enforce_minimum_duration",
+    "soft_constrain",
+    "validate_transmat",
     # Multi Strategy
     "V4Config",
     "V4Mode",
