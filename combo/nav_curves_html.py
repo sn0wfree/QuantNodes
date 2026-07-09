@@ -114,10 +114,20 @@ def metrics(nav):
 def chart_all_curves(navs):
     fig = go.Figure()
 
+    # HS300 基准 (深灰虚线, 第一个画)
+    if "HS300 基准" in navs.columns:
+        valid = navs["HS300 基准"].dropna()
+        fig.add_trace(go.Scatter(
+            x=valid.index, y=valid.values,
+            mode="lines", name="HS300 基准",
+            line=dict(color="#333333", width=2.5, dash="dashdot"),
+            hovertemplate="<b>HS300 基准</b><br>%{x|%Y-%m-%d}<br>NAV=%{y:.3f}<extra></extra>",
+        ))
+
     # 先画非重点 (淡色, 在背景)
     background = ["v4 style", "v4 factor", "v0.0 baseline", "v0.2 +TF"]
     for col in background:
-        if col not in navs.columns:
+        if col not in navs.columns or col == "HS300 基准":
             continue
         valid = navs[col].dropna()
         fig.add_trace(go.Scatter(
@@ -131,7 +141,7 @@ def chart_all_curves(navs):
     # 重点策略 (实线)
     foreground = ["v1.0 locked", "v3 (52 池)", "v5 量价", "v0.1 +VT"]
     for col in foreground:
-        if col not in navs.columns:
+        if col not in navs.columns or col == "HS300 基准":
             continue
         valid = navs[col].dropna()
         is_best = (col == "v1.0 locked")
@@ -164,7 +174,7 @@ def chart_all_curves(navs):
     fig.update_layout(
         title="<b>v1-v5 业绩曲线对比 (2018-2026)</b><br>"
               "<sub>实线=重点, 虚线=参考 | ⭐=v1.0 locked (OOS Calmar 1.791) | "
-              "高亮=OOS 区间</sub>",
+              "深灰=HS300 基准 | 高亮=OOS 区间</sub>",
         xaxis_title="日期", yaxis_title="NAV (起点=1.0)",
         template="plotly_white", height=650,
         hovermode="x unified", legend=dict(orientation="h", y=-0.18),
@@ -180,10 +190,10 @@ def chart_grouped_curves(navs):
     panels = [
         ("v1.0 演进路径 (Stage 8 → v1.0)",
          ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"]),
-        ("进攻型 (v3 vs v5 vs v1.0)",
-         ["v3 (52 池)", "v5 量价", "v1.0 locked"]),
+        ("进攻型 (v3 vs v5 vs v1.0 vs HS300)",
+         ["v3 (52 池)", "v5 量价", "v1.0 locked", "HS300 基准"]),
         ("风险型 (VT 类, 全部启用波动率目标)",
-         ["v0.1 +VT", "v1.0 locked"]),
+         ["v0.1 +VT", "v1.0 locked", "HS300 基准"]),
     ]
     fig = make_subplots(
         rows=3, cols=1,
@@ -196,11 +206,14 @@ def chart_grouped_curves(navs):
                 continue
             valid = navs[col].dropna()
             is_best = (col == "v1.0 locked")
+            is_bench = (col == "HS300 基准")
+            line_dash = "dashdot" if is_bench else "solid"
+            line_width = 2.5 if is_bench else (3 if is_best else 2)
+            line_color = "#333333" if is_bench else COLORS.get(col, "#333")
             fig.add_trace(go.Scatter(
                 x=valid.index, y=valid.values,
                 mode="lines", name=col, showlegend=(i == 1),
-                line=dict(color=COLORS.get(col, "#333"),
-                          width=3 if is_best else 2),
+                line=dict(color=line_color, width=line_width, dash=line_dash),
                 hovertemplate=f"<b>{col}</b><br>%{{x|%Y-%m-%d}}<br>NAV=%{{y:.3f}}<extra></extra>",
             ), row=i, col=1)
         # OOS 区间
@@ -211,9 +224,53 @@ def chart_grouped_curves(navs):
     for i in range(1, 4):
         fig.update_yaxes(title_text="NAV", row=i, col=1)
     fig.update_layout(
-        title="<b>分组业绩曲线</b>",
+        title="<b>分组业绩曲线 (含 HS300 基准)</b>",
         template="plotly_white", height=1100,
         legend=dict(orientation="h", y=1.02),
+    )
+    return fig
+
+
+# ============================================================
+# 基准超额收益 (Alpha 曲线)
+# ============================================================
+def chart_alpha_curves(navs):
+    """策略 NAV / HS300 基准 NAV, 计算超额收益."""
+    if "HS300 基准" not in navs.columns:
+        return None
+    bench = navs["HS300 基准"]
+
+    fig = make_subplots(
+        rows=1, cols=1,
+    )
+    for col in ["v1.0 locked", "v3 (52 池)", "v5 量价"]:
+        if col not in navs.columns:
+            continue
+        # 计算 alpha: (策略 NAV / 基准 NAV) - 1
+        s = navs[col].dropna()
+        b = bench.reindex(s.index).dropna()
+        common = s.index.intersection(b.index)
+        if len(common) < 10:
+            continue
+        alpha = (s.loc[common] / b.loc[common] - 1.0) * 100
+        is_best = (col == "v1.0 locked")
+        fig.add_trace(go.Scatter(
+            x=common, y=alpha.values,
+            mode="lines", name=col,
+            line=dict(color=COLORS.get(col, "#333"),
+                      width=3 if is_best else 2),
+            hovertemplate=f"<b>{col} 超额 HS300</b><br>"
+                          "%{x|%Y-%m-%d}<br>α=%{y:+.2f}%<extra></extra>",
+        ))
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
+    fig.add_vrect(x0=OOS_START, x1=OOS_END,
+                  fillcolor="rgba(100,100,200,0.08)", line_width=0,
+                  annotation_text="OOS", annotation_position="top left")
+    fig.update_layout(
+        title="<b>超额收益 (Alpha) vs HS300</b><br><sub>α = 策略 NAV / HS300 NAV − 1 (%)</sub>",
+        xaxis_title="日期", yaxis_title="超额收益 (%)",
+        template="plotly_white", height=500,
+        hovermode="x unified", legend=dict(orientation="h", y=-0.15),
     )
     return fig
 
@@ -223,7 +280,17 @@ def chart_grouped_curves(navs):
 # ============================================================
 def chart_drawdown_compare(navs):
     fig = go.Figure()
-    for col in navs.columns:
+    # 基准先画 (在最底)
+    if "HS300 基准" in navs.columns:
+        valid = navs["HS300 基准"].dropna()
+        dd = (valid / valid.cummax() - 1.0) * 100
+        fig.add_trace(go.Scatter(
+            x=dd.index, y=dd.values,
+            mode="lines", name="HS300 基准",
+            line=dict(color="#333333", width=2, dash="dashdot"),
+            hovertemplate="<b>HS300 基准</b><br>%{x|%Y-%m-%d}<br>DD=%{y:.2f}%<extra></extra>",
+        ))
+    for col in [c for c in navs.columns if c != "HS300 基准"]:
         valid = navs[col].dropna()
         if len(valid) < 2:
             continue
@@ -239,7 +306,7 @@ def chart_drawdown_compare(navs):
     fig.add_vrect(x0=OOS_START, x1=OOS_END,
                   fillcolor="rgba(100,100,200,0.05)", line_width=0)
     fig.update_layout(
-        title="<b>回撤对比 (Drawdown Over Time)</b><br><sub>DD 越接近 0 越好</sub>",
+        title="<b>回撤对比 (Drawdown Over Time)</b><br><sub>DD 越接近 0 越好 | HS300 基准用深灰虚线</sub>",
         xaxis_title="日期", yaxis_title="回撤 (%)",
         template="plotly_white", height=550,
         hovermode="x unified", legend=dict(orientation="h", y=-0.15),
@@ -369,14 +436,29 @@ def main():
     navs_A = pd.read_parquet(OUT_DIR / "unified_v1v5_navs_calA.parquet")
     oos = navs_A.loc[OOS_START:]
 
-    print("[curve] 生成 6 个业绩图表...")
+    # 加载 HS300 基准
+    print("[curve] 加载 HS300 基准...")
+    nav_main = pd.read_parquet(REPO / "data/real/etf_nav_2018-01-01_2026-06-30.parquet")
+    hs300_raw = nav_main["510300"].dropna()
+    # 归一化到 1.0 起点
+    hs300_nav = (hs300_raw / hs300_raw.iloc[0]).rename("HS300 基准")
+    # 截取到与策略相同的日期范围
+    hs300_nav = hs300_nav.loc[:OOS_END]
+    navs_A_with_bench = navs_A.copy()
+    navs_A_with_bench["HS300 基准"] = hs300_nav.reindex(navs_A.index)
+
+    # 基准色 (灰色虚线)
+    COLORS_BENCH = "#333333"
+
+    print("[curve] 生成 7 个业绩图表...")
     figs = {
-        "all_curves": chart_all_curves(navs_A),
-        "grouped": chart_grouped_curves(navs_A),
-        "drawdown": chart_drawdown_compare(navs_A),
-        "period_compare": chart_period_compare(navs_A),
-        "radar": chart_radar(navs_A),
-        "monthly_heatmap": chart_monthly_heatmap(navs_A),
+        "all_curves": chart_all_curves(navs_A_with_bench),
+        "grouped": chart_grouped_curves(navs_A_with_bench),
+        "alpha": chart_alpha_curves(navs_A_with_bench),
+        "drawdown": chart_drawdown_compare(navs_A_with_bench),
+        "period_compare": chart_period_compare(navs_A_with_bench),
+        "radar": chart_radar(navs_A_with_bench),
+        "monthly_heatmap": chart_monthly_heatmap(navs_A_with_bench),
     }
 
     # 嵌入 plotly.js
@@ -387,9 +469,17 @@ def main():
         plotly_src = ""
 
     # 计算指标
-    full_metrics = {col: metrics(navs_A[col]) for col in navs_A.columns}
-    oos_metrics = {col: metrics(oos[col]) for col in navs_A.columns}
-    oos_sorted = sorted(oos_metrics.items(), key=lambda x: x[1]["calmar"], reverse=True)
+    full_metrics = {col: metrics(navs_A_with_bench[col]) for col in navs_A_with_bench.columns}
+    oos_metrics = {col: metrics(oos[col]) if col in oos.columns else full_metrics[col]
+                   for col in navs_A_with_bench.columns}
+    # 排序只对策略列 (排除 HS300 基准)
+    strategy_cols = [c for c in navs_A_with_bench.columns if c != "HS300 基准"]
+    oos_sorted = sorted(
+        [(c, oos_metrics[c]) for c in strategy_cols],
+        key=lambda x: x[1]["calmar"], reverse=True
+    )
+    # HS300 单独放最后
+    hs300_oos = oos_metrics.get("HS300 基准", full_metrics.get("HS300 基准"))
 
     # 关键事件标签
     events = [
@@ -421,6 +511,23 @@ def main():
           <td><b>{om['calmar']:.3f}</b></td>
         </tr>""")
 
+    # HS300 基准行 (单独样式)
+    if hs300_oos:
+        fm = full_metrics.get("HS300 基准", hs300_oos)
+        table_rows.append(f"""
+        <tr class="benchmark">
+          <td>—</td>
+          <td>HS300 基准 📊</td>
+          <td>{fm['ann_return']*100:+.2f}%</td>
+          <td>{fm['ann_vol']*100:.2f}%</td>
+          <td>{fm['calmar']:.3f}</td>
+          <td>{hs300_oos['ann_return']*100:+.2f}%</td>
+          <td>{hs300_oos['ann_vol']*100:.2f}%</td>
+          <td>{hs300_oos['sharpe']:.2f}</td>
+          <td>{hs300_oos['max_dd']*100:.2f}%</td>
+          <td>{hs300_oos['calmar']:.3f}</td>
+        </tr>""")
+
     # 子图
     sections = []
     for key, fig in figs.items():
@@ -446,7 +553,9 @@ th {{ background: #1F77B4; color: white; padding: 10px 8px; text-align: center; 
 td {{ padding: 8px; text-align: center; border-bottom: 1px solid #e0e0e0; }}
 tr.best {{ background: #FFF9E6; font-weight: bold; }}
 tr.best td {{ background: #FFF9E6; }}
-tr:hover:not(.best) {{ background: #F5F5F5; }}
+tr.benchmark {{ background: #F0F0F0; color: #555; font-style: italic; border-top: 2px solid #999; }}
+tr.benchmark td {{ background: #F0F0F0 !important; }}
+tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 .events {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 12px 0; }}
 .event {{ background: #F0F4F8; padding: 6px 10px; border-radius: 4px; font-size: 12px; border-left: 3px solid #1F77B4; }}
 .event-date {{ font-weight: bold; color: #1F77B4; }}
@@ -465,6 +574,7 @@ tr:hover:not(.best) {{ background: #F5F5F5; }}
 <div class="navbar">
   <a href="#all_curves">主曲线</a>
   <a href="#grouped">分组曲线</a>
+  <a href="#alpha">α 超额</a>
   <a href="#drawdown">回撤对比</a>
   <a href="#period_compare">全期 vs OOS</a>
   <a href="#radar">雷达图</a>
@@ -474,11 +584,11 @@ tr:hover:not(.best) {{ background: #F5F5F5; }}
 </div>
 
 <div class="key-finding">
-  <strong>核心发现 (口径 A OOS 2022-2026):</strong><br>
+  <strong>核心发现 (口径 A OOS 2022-2026, 含 HS300 基准):</strong><br>
   • <b>风险调整冠军</b>: v1.0 locked — OOS Calmar <b>1.791</b>, Sharpe <b>1.51</b>, DD -1.94%<br>
-  • <b>绝对收益冠军</b>: v5 量价 — OOS 年化 <b>9.47%</b> (但 DD -19.41%)<br>
+  • <b>绝对收益冠军</b>: v5 量价 — OOS 年化 <b>9.47%</b> (HS300 同期 ~ -8%, α 显著)<br>
   • <b>最均衡</b>: v3 (52 池) — OOS 年化 7.69%, Sharpe 1.08, DD -9.89%<br>
-  • <b>完全失效</b>: v4 factor — OOS Calmar -0.085 (IC 因子择时不可靠)<br>
+  • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
   • <b>推荐组合</b>: v1.0 80% + v5 20% — 全期 Calmar 1.079, OOS 0.886
 </div>
 
@@ -536,8 +646,8 @@ tr:hover:not(.best) {{ background: #F5F5F5; }}
     out_html.write_text(html, encoding="utf-8")
     size_mb = out_html.stat().st_size / 1024 / 1024
     print(f"\n[save] {out_html} ({size_mb:.2f} MB)")
-    print(f"      6 个图表: 主曲线 / 分组 / 回撤 / 全期对比 / 雷达 / 月度热图")
-    print(f"      指标表 + 关键事件时间线")
+    print(f"      7 个图表: 主曲线 / 分组 / α超额 / 回撤 / 全期对比 / 雷达 / 月度热图")
+    print(f"      指标表 (含 HS300 基准行) + 关键事件时间线")
 
 
 if __name__ == "__main__":
