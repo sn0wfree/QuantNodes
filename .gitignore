@@ -136,8 +136,8 @@ dmypy.json
 # Generated outputs
 outputs/
 output/
-pipeline_output*/
-pipeline_result.json
+/pipeline_output*/
+/pipeline_result.json
 scripts/quant/factors/
 scripts/quant/strategies/
 

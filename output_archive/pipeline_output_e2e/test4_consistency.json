@@ -1,0 +1,47 @@
+{
+  "test": "consistency_hook",
+  "total_cases": 4,
+  "passed_cases": 2,
+  "results": [
+    {
+      "formula": "sign(-ts_corr(rank(open), rank(volume), 10))",
+      "description": "应高匹配",
+      "score": 1.0,
+      "passed": true,
+      "mode": "structured_logic_match",
+      "operator_overlap": 1.0,
+      "variable_overlap": 1.0,
+      "direction_match": 1.0
+    },
+    {
+      "formula": "ts_argmax(close, 5)",
+      "description": "应低匹配（算子不在白名单）",
+      "score": 0.3,
+      "passed": false,
+      "mode": "structured_logic_match",
+      "operator_overlap": 0.0,
+      "variable_overlap": 0.0,
+      "direction_match": 0.0
+    },
+    {
+      "formula": "rank(close)",
+      "description": "应中匹配（close 不在变量白名单）",
+      "score": 0.44999999999999996,
+      "passed": false,
+      "mode": "structured_logic_match",
+      "operator_overlap": 0.5,
+      "variable_overlap": 0.0,
+      "direction_match": 0.0
+    },
+    {
+      "formula": "rank(ts_corr(close, close, 10))",
+      "description": "应中匹配（close 不在变量白名单）",
+      "score": 0.6,
+      "passed": true,
+      "mode": "structured_logic_match",
+      "operator_overlap": 1.0,
+      "variable_overlap": 0.0,
+      "direction_match": 0.0
+    }
+  ]
+}
