@@ -136,6 +136,10 @@ dmypy.json
 # Generated outputs
 outputs/
 output/
+pipeline_output*/
+pipeline_result.json
+scripts/quant/factors/
+scripts/quant/strategies/
 
 # Frontend
 frontend/node_modules/
