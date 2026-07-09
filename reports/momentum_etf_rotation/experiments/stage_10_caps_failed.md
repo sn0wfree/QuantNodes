@@ -14,7 +14,7 @@
 - `QuantNodes/strategy/momentum_etf_rotation/portfolio.py` (修改, +60 行)
 - `tests/strategy/momentum_etf_rotation/test_concentration.py` (新增, 165 行)
 - `reports/momentum_etf_rotation/charts/stage10_*.html` (2 个图表)
-- `reports/momentum_etf_rotation/stage10_report.md` (详细报告)
+- `reports/momentum_etf_rotation/v2/stage10_report.md` (详细报告)
 
 ### 代码量
 - 代码: ~60 行
@@ -98,7 +98,7 @@ class ConcentrationCaps:
 
 ## 相关文档
 
-- 详细报告: `../stage10_report.md`
+- 详细报告: `../v2/stage10_report.md`
 - 图表: `../charts/stage10_concentration.html`, `../charts/stage10_max_weight.html`
 - 集成 bug: `apply_stops` 重新 `inverse_vol_weights` 时覆盖 caps
   (后续在 `portfolio.py` 中二次应用 caps 修复)

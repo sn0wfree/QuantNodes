@@ -16,7 +16,7 @@
 - `QuantNodes/strategy/momentum_etf_rotation/backtest.py` (修改, +20 行)
 - `tests/strategy/momentum_etf_rotation/test_regime_detector.py` (新增, 115 行)
 - `reports/momentum_etf_rotation/charts/stage9d_*.html` (2 个图表)
-- `reports/momentum_etf_rotation/stage9d_report.md` (详细报告)
+- `reports/momentum_etf_rotation/v2/stage9d_report.md` (详细报告)
 
 ### 代码量
 - 代码: ~175 行
@@ -82,7 +82,7 @@ class RegimeDetector:
 
 ## 相关文档
 
-- 详细报告: `../stage9d_report.md`
+- 详细报告: `../v2/stage9d_report.md`
 - 图表: `../charts/stage9d_hmm_regime.html`, `../charts/stage9d_regime_timeline.html`
 - 协方差讨论: `../COVARIANCE_RESEARCH.md`
 

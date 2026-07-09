@@ -417,7 +417,7 @@ reports/momentum_etf_rotation/
 ├── experiments/                 # 失败的实验归档
 │   ├── stage_9d_hmm_failed.md
 │   └── stage_10_caps_failed.md
-├── charts/                      # 所有 HTML 图表
+├── charts/{v1,v2,common}/       # HTML 图表 (按版本拆分)
 │   └── *.html
 ├── *.csv                        # 中间数据
 └── *.json                       # 中间数据

@@ -200,15 +200,26 @@ reports/momentum_etf_rotation/
 ├── COVARIANCE_RESEARCH.md                 # 协方差调研
 ├── stage9a_report.md ~ stage13_report.md # 各阶段报告
 ├── stage12a_report.md                     # Stage 12A 报告 (新建)
-├── stage9_extended_comparison.md          # 横向对比
 ├── experiments/                           # 失败实验归档
 │   ├── stage_9d_hmm_failed.md
 │   └── stage_10_caps_failed.md
-├── charts/                                # 15+ HTML
-│   ├── stage9a_*.html, stage9b_*.html, ...
-│   ├── stage12a_*.html                    # Stage 12A 图表
-│   └── stage10_*.html, stage13_*.html
-└── *.csv, *.json                           # 数据
+├── v1/                                    # CICC 原始复现
+│   ├── validation_fix_report.md
+│   └── charts/                            # CICC 基线图表
+├── v2/                                    # 增强版 (Stage 9~13)
+│   ├── stage9a~d_report.md
+│   ├── stage10~13_report.md
+│   ├── sensitivity_*.json
+│   └── charts/                            # Stage 专用图表
+├── common/                                # 跨版本分析
+│   ├── contribution_analysis.md
+│   ├── extended_metrics.*, *.csv / json
+│   └── charts/                            # 贡献/风险图表
+├── docs/                                  # 开发文档
+│   ├── STAGE_SUMMARY.md (本文件)
+│   ├── STRATEGY_VERSIONS.md
+│   ├── CHANGELOG.md, DECISION_LOG.md
+│   └── DEV_WORKFLOW.md, CODE_REVIEW_CHECKLIST.md
 ```
 
 ---
