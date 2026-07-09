@@ -47,6 +47,11 @@ from .sub_weighting_v3 import (
     signal_weighted_sub_weights,
     sub_weights_from_results,
 )
+from .multi_strategy_v3 import (
+    MultiStrategyConfig,
+    MultiStrategyResult,
+    run_multi_strategy_backtest,
+)
 
 
 __all__ = [
@@ -77,4 +82,8 @@ __all__ = [
     "risk_parity_sub_weights",
     "signal_weighted_sub_weights",
     "combine_sub_results",
+    # Multi-Strategy Backtest (v3 specific)
+    "MultiStrategyConfig",
+    "MultiStrategyResult",
+    "run_multi_strategy_backtest",
 ]
