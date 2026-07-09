@@ -6,6 +6,33 @@
 
 ---
 
+## 2026-07-08: Stage 12A 斜率×R² 动量 + 策略 v1.0 锁定
+
+- **决策**: ✅ GO (推荐 `momentum_type="hybrid"` 作为默认)
+- **配置** (v1.0 锁定):
+  ```python
+  RotationConfig(
+      lookback=90, top_n=10,
+      momentum_type="hybrid",             # price + slope_r2
+      momentum_fused_weight=0.5,
+      vol_targeting=VolTargeting(enabled=True, target_vol=0.15, ...),
+      cost_model=CostModel(enabled=True, commission_bp=5, ...),
+  )
+  ```
+- **v1.0 关键指标 (2019-2026)**:
+  - Calmar **1.60** (vs Stage 8 baseline 0.78, +105%)
+  - DD **-3.93%** (vs -21.05%, 改善 17pp)
+  - Ann 6.28% (vs 16.35%, 降低)
+  - OOS Calmar 0.84 (vs 1.72, 退化但 DD 远优)
+- **原因**:
+  - hybrid 方式在样本内 Calmar 1.17 (+10% vs price)
+  - 与 VT 组合达 Calmar 1.60, DD 仅 -3.93%
+  - OOS 中等退化, 接受为风险厌恶型配置
+- **证据**: `stage12a_report.md`
+- **v1.0 状态**: 锁定为基准版本, 后续 v1.x 在此基础上迭代
+
+---
+
 ## 2026-07-07: 协方差优化方向 (调研)
 
 - **决策**: ⚠️ 继续调研, 暂不实施

@@ -118,4 +118,14 @@ __all__ = [
     "DEFAULT_PERIODS",
     "brinson_attribution",
     "CATEGORIES",
+    "estimate_covariance",
+    "ledoit_wolf_shrinkage",
+    "solve_risk_parity",
+    "solve_max_diversification",
 ]
+
+# 版本管理 (Stage 12A 引入)
+from .strategy_versions import (
+    v0_0_baseline, v0_1_vt_only, v0_2_tf_only, v0_3_vt_cost, v0_4_hybrid,
+    v1_0, VERSIONS, LATEST, get_version,
+)
