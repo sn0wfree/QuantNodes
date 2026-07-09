@@ -53,24 +53,22 @@ if _PLOTLY_SRC.exists() and (not _PLOTLY_DST.exists() or _PLOTLY_SRC.stat().st_m
     print(f"[copy] plotly.min.js → {_PLOTLY_DST}")
 
 
-def align_navs(nav_dict):
+# 全局起跑对齐日 (所有策略首次交易的最晚日期)
+GLOBAL_ALIGN_START = "2019-04-30"
+
+
+def align_navs(nav_dict, start_date=None):
     """将多策略 NAV 对齐到同一起始日并归一化到 1.0.
 
+    使用全局 GLOBAL_ALIGN_START, 确保跨图表可对比.
     nav_dict: {name: pd.Series}
-    返回: {name: pd.Series} 全部从 latest_first_trade 开始, 起点 = 1.0
+    返回: {name: pd.Series} 全部从 start_date 开始, 起点 = 1.0
     """
-    latest = None
-    for name, nav in nav_dict.items():
-        non_one = nav[nav != 1.0]
-        if len(non_one) > 0:
-            ft = non_one.index[0]
-        else:
-            ft = nav.index[0]
-        if latest is None or ft > latest:
-            latest = ft
+    if start_date is None:
+        start_date = GLOBAL_ALIGN_START
     out = {}
     for name, nav in nav_dict.items():
-        trimmed = nav.loc[latest:]
+        trimmed = nav.loc[start_date:]
         out[name] = trimmed / trimmed.iloc[0]
     return out
 
@@ -933,7 +931,7 @@ def build_html(charts_dict, title="Stage 17-22 完整研究 — 交互式图表"
     <tr class="highlight"><td>v3 80% + v5 20%</td><td><strong>0.779</strong></td><td><strong>0.869</strong></td><td><strong>1.04</strong></td><td>11.69%</td><td>10.76%</td></tr>
     <tr><td>v3 33% + v4f 33% + v5 34%</td><td><strong>0.888</strong></td><td>0.752</td><td>0.86</td><td>14.47%</td><td>14.95%</td></tr>
   </table>
-  <p style="font-size:12px;color:#666;">* 全部从 2019-04-30 对齐起跑线, 回测 7.2 年, 剔除各策略初始 flat 期</p>
+  <p style="font-size:12px;color:#666;">* 全部从 2019-04-30 起跑 (全局统一), 回测 7.2 年, 剔除各策略初始 flat 期</p>
 </section>
 
 </body>
