@@ -772,7 +772,12 @@ def chart_stage22_correlation(data):
 # Main: Build HTML
 # ============================================================
 def build_html(charts_dict, title="Stage 17-22 完整研究 — 交互式图表"):
-    """构建单 HTML 文件包含所有图表."""
+    """构建单 HTML 文件包含所有图表 (plotly.js 内嵌, 无需网络)."""
+    # 读取 plotly.min.js 内嵌到 HTML (避免 file:// CORS 限制)
+    plotly_js = ""
+    if _PLOTLY_SRC.exists():
+        plotly_js = _PLOTLY_SRC.read_text(encoding="utf-8")
+
     sections = []
     for section_title, charts in charts_dict.items():
         chart_htmls = []
@@ -787,7 +792,7 @@ def build_html(charts_dict, title="Stage 17-22 完整研究 — 交互式图表"
 <head>
 <meta charset="UTF-8">
 <title>{title}</title>
-<script src="plotly.min.js"></script>
+<script>{plotly_js}</script>
 <style>
   body {{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
