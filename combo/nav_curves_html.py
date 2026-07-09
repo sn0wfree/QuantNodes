@@ -120,7 +120,7 @@ def chart_all_curves(navs):
         fig.add_trace(go.Scatter(
             x=valid.index, y=valid.values,
             mode="lines", name="HS300 基准",
-            line=dict(color="#333333", width=2.5, dash="dashdot"),
+            line=dict(color="#333333", width=2, dash="dashdot"),
             hovertemplate="<b>HS300 基准</b><br>%{x|%Y-%m-%d}<br>NAV=%{y:.3f}<extra></extra>",
         ))
 
@@ -133,8 +133,8 @@ def chart_all_curves(navs):
         fig.add_trace(go.Scatter(
             x=valid.index, y=valid.values,
             mode="lines", name=col,
-            line=dict(color=COLORS.get(col, "#aaa"), width=1.5, dash="dot"),
-            opacity=0.4,
+            line=dict(color=COLORS.get(col, "#aaa"), width=1.2, dash="dot"),
+            opacity=0.45,
             hovertemplate=f"<b>{col}</b><br>%{{x|%Y-%m-%d}}<br>NAV=%{{y:.3f}}<extra></extra>",
         ))
 
@@ -148,7 +148,8 @@ def chart_all_curves(navs):
         fig.add_trace(go.Scatter(
             x=valid.index, y=valid.values,
             mode="lines", name=f"⭐ {col}" if is_best else col,
-            line=dict(color=COLORS.get(col, "#333"), width=3 if is_best else 2),
+            line=dict(color=COLORS.get(col, "#333"), width=2.2 if is_best else 1.6,
+                      shape="spline", smoothing=0.6),
             hovertemplate=f"<b>{col}</b> ({STAGE_MAP.get(col, '')})<br>"
                           "%{x|%Y-%m-%d}<br>NAV=%{y:.3f}<extra></extra>",
         ))
@@ -156,28 +157,45 @@ def chart_all_curves(navs):
     # OOS 区间高亮
     fig.add_vrect(
         x0=OOS_START, x1=OOS_END,
-        fillcolor="rgba(100, 100, 200, 0.08)",
+        fillcolor="rgba(100, 100, 200, 0.06)",
         line_width=0, annotation_text="OOS 2022-2026",
         annotation_position="top left",
+        annotation_font_size=10,
     )
 
     # 关键事件标注
     fig.add_vline(x=pd.Timestamp("2024-09-23"),
-                  line_dash="dash", line_color="#FF6B6B", line_width=1.5,
+                  line_dash="dot", line_color="#FF6B6B", line_width=1.2,
                   annotation_text="2024-09 政策", annotation_position="top right",
-                  annotation_font_size=10, annotation_font_color="#FF6B6B")
+                  annotation_font_size=9, annotation_font_color="#FF6B6B")
     fig.add_vline(x=pd.Timestamp("2022-04-26"),
-                  line_dash="dash", line_color="#999", line_width=1,
+                  line_dash="dot", line_color="#888", line_width=1,
                   annotation_text="2022 熊市", annotation_position="bottom right",
-                  annotation_font_size=10, annotation_font_color="#999")
+                  annotation_font_size=9, annotation_font_color="#888")
 
     fig.update_layout(
-        title="<b>v1-v5 业绩曲线对比 (2018-2026)</b><br>"
-              "<sub>实线=重点, 虚线=参考 | ⭐=v1.0 locked (OOS Calmar 1.791) | "
-              "深灰=HS300 基准 | 高亮=OOS 区间</sub>",
-        xaxis_title="日期", yaxis_title="NAV (起点=1.0)",
-        template="plotly_white", height=650,
-        hovermode="x unified", legend=dict(orientation="h", y=-0.18),
+        title=dict(
+            text="<b>v1-v5 业绩曲线对比 (2018-2026)</b>"
+                 "<br><sub>实线=重点, 虚线=参考 | ⭐=v1.0 locked (OOS Calmar 1.791) | "
+                 "深灰虚线=HS300 基准 | 高亮=OOS 区间</sub>",
+            x=0.02, xanchor="left", font=dict(size=15),
+        ),
+        xaxis=dict(
+            title="日期", showgrid=True, gridcolor="rgba(0,0,0,0.06)",
+            gridwidth=1, zeroline=False,
+            rangeslider=dict(visible=False),
+        ),
+        yaxis=dict(
+            title="NAV (起点=1.0)", showgrid=True,
+            gridcolor="rgba(0,0,0,0.06)", gridwidth=1, zeroline=False,
+        ),
+        template="plotly_white",
+        height=520,
+        margin=dict(l=70, r=40, t=90, b=70),
+        hovermode="x unified",
+        legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center",
+                    bgcolor="rgba(255,255,255,0.85)",
+                    bordercolor="rgba(0,0,0,0.1)", borderwidth=1),
     )
     return fig
 
@@ -186,21 +204,26 @@ def chart_all_curves(navs):
 # 分组对比 (subplot grid)
 # ============================================================
 def chart_grouped_curves(navs):
-    """3 行 subplot: v1.0 演进 / 进攻型 / 风险型."""
+    """2x2 subplot: v1.0 演进 / 进攻型 / 风险型 / 全部对比."""
     panels = [
-        ("v1.0 演进路径 (Stage 8 → v1.0)",
+        ("v1.0 演进 (Stage 8 → v1.0)",
          ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"]),
-        ("进攻型 (v3 vs v5 vs v1.0 vs HS300)",
+        ("进攻型 (v3 / v5 / v1.0 / HS300)",
          ["v3 (52 池)", "v5 量价", "v1.0 locked", "HS300 基准"]),
-        ("风险型 (VT 类, 全部启用波动率目标)",
+        ("风险型 (VT 类, 含基准)",
          ["v0.1 +VT", "v1.0 locked", "HS300 基准"]),
+        ("Top-3 策略 vs 基准",
+         ["v1.0 locked", "v3 (52 池)", "v5 量价", "HS300 基准"]),
     ]
     fig = make_subplots(
-        rows=3, cols=1,
+        rows=2, cols=2,
         subplot_titles=[p[0] for p in panels],
-        vertical_spacing=0.08,
+        vertical_spacing=0.14,
+        horizontal_spacing=0.08,
     )
     for i, (title, cols) in enumerate(panels, 1):
+        row = (i - 1) // 2 + 1
+        col_idx = (i - 1) % 2 + 1
         for col in cols:
             if col not in navs.columns:
                 continue
@@ -208,26 +231,36 @@ def chart_grouped_curves(navs):
             is_best = (col == "v1.0 locked")
             is_bench = (col == "HS300 基准")
             line_dash = "dashdot" if is_bench else "solid"
-            line_width = 2.5 if is_bench else (3 if is_best else 2)
+            line_width = 1.8 if is_bench else (2.5 if is_best else 1.6)
             line_color = "#333333" if is_bench else COLORS.get(col, "#333")
             fig.add_trace(go.Scatter(
                 x=valid.index, y=valid.values,
                 mode="lines", name=col, showlegend=(i == 1),
-                line=dict(color=line_color, width=line_width, dash=line_dash),
+                line=dict(color=line_color, width=line_width, dash=line_dash,
+                          shape="spline", smoothing=0.5),
                 hovertemplate=f"<b>{col}</b><br>%{{x|%Y-%m-%d}}<br>NAV=%{{y:.3f}}<extra></extra>",
-            ), row=i, col=1)
+            ), row=row, col=col_idx)
         # OOS 区间
         fig.add_vrect(x0=OOS_START, x1=OOS_END,
-                      fillcolor="rgba(100,100,200,0.08)", line_width=0, row=i, col=1)
+                      fillcolor="rgba(100,100,200,0.06)", line_width=0,
+                      row=row, col=col_idx)
 
-    fig.update_xaxes(title_text="日期", row=3, col=1)
-    for i in range(1, 4):
-        fig.update_yaxes(title_text="NAV", row=i, col=1)
     fig.update_layout(
-        title="<b>分组业绩曲线 (含 HS300 基准)</b>",
-        template="plotly_white", height=1100,
-        legend=dict(orientation="h", y=1.02),
+        title=dict(text="<b>分组业绩曲线 (2×2 网格)</b>",
+                   x=0.02, xanchor="left", font=dict(size=15)),
+        template="plotly_white",
+        height=720,
+        margin=dict(l=60, r=30, t=80, b=60),
+        legend=dict(orientation="h", y=-0.08, x=0.5, xanchor="center",
+                    bgcolor="rgba(255,255,255,0.85)",
+                    bordercolor="rgba(0,0,0,0.1)", borderwidth=1),
     )
+    for r in range(1, 3):
+        for c in range(1, 3):
+            fig.update_xaxes(showgrid=True, gridcolor="rgba(0,0,0,0.05)",
+                             zeroline=False, row=r, col=c)
+            fig.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.05)",
+                             zeroline=False, row=r, col=c)
     return fig
 
 
@@ -240,13 +273,10 @@ def chart_alpha_curves(navs):
         return None
     bench = navs["HS300 基准"]
 
-    fig = make_subplots(
-        rows=1, cols=1,
-    )
-    for col in ["v1.0 locked", "v3 (52 池)", "v5 量价"]:
+    fig = go.Figure()
+    for col in ["v1.0 locked", "v3 (52 池)", "v5 量价", "v0.1 +VT"]:
         if col not in navs.columns:
             continue
-        # 计算 alpha: (策略 NAV / 基准 NAV) - 1
         s = navs[col].dropna()
         b = bench.reindex(s.index).dropna()
         common = s.index.intersection(b.index)
@@ -258,19 +288,33 @@ def chart_alpha_curves(navs):
             x=common, y=alpha.values,
             mode="lines", name=col,
             line=dict(color=COLORS.get(col, "#333"),
-                      width=3 if is_best else 2),
+                      width=2.2 if is_best else 1.6,
+                      shape="spline", smoothing=0.5),
+            fill="tozeroy" if is_best else None,
+            fillcolor="rgba(44,160,44,0.08)" if is_best else None,
             hovertemplate=f"<b>{col} 超额 HS300</b><br>"
                           "%{x|%Y-%m-%d}<br>α=%{y:+.2f}%<extra></extra>",
         ))
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", line_width=1)
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", line_width=1)
     fig.add_vrect(x0=OOS_START, x1=OOS_END,
-                  fillcolor="rgba(100,100,200,0.08)", line_width=0,
-                  annotation_text="OOS", annotation_position="top left")
+                  fillcolor="rgba(100,100,200,0.06)", line_width=0,
+                  annotation_text="OOS", annotation_position="top left",
+                  annotation_font_size=9)
     fig.update_layout(
-        title="<b>超额收益 (Alpha) vs HS300</b><br><sub>α = 策略 NAV / HS300 NAV − 1 (%)</sub>",
-        xaxis_title="日期", yaxis_title="超额收益 (%)",
-        template="plotly_white", height=500,
-        hovermode="x unified", legend=dict(orientation="h", y=-0.15),
+        title=dict(text="<b>超额收益 (Alpha) vs HS300</b>"
+                        "<br><sub>α = 策略 NAV / HS300 NAV − 1 (%)</sub>",
+                   x=0.02, xanchor="left", font=dict(size=15)),
+        xaxis=dict(title="日期", showgrid=True,
+                   gridcolor="rgba(0,0,0,0.05)", zeroline=False),
+        yaxis=dict(title="超额收益 (%)", showgrid=True,
+                   gridcolor="rgba(0,0,0,0.05)", zeroline=True,
+                   zerolinecolor="rgba(0,0,0,0.3)"),
+        template="plotly_white", height=460,
+        margin=dict(l=60, r=30, t=80, b=60),
+        hovermode="x unified",
+        legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center",
+                    bgcolor="rgba(255,255,255,0.85)",
+                    bordercolor="rgba(0,0,0,0.1)", borderwidth=1),
     )
     return fig
 
@@ -287,7 +331,7 @@ def chart_drawdown_compare(navs):
         fig.add_trace(go.Scatter(
             x=dd.index, y=dd.values,
             mode="lines", name="HS300 基准",
-            line=dict(color="#333333", width=2, dash="dashdot"),
+            line=dict(color="#333333", width=1.8, dash="dashdot"),
             hovertemplate="<b>HS300 基准</b><br>%{x|%Y-%m-%d}<br>DD=%{y:.2f}%<extra></extra>",
         ))
     for col in [c for c in navs.columns if c != "HS300 基准"]:
@@ -296,20 +340,36 @@ def chart_drawdown_compare(navs):
             continue
         dd = (valid / valid.cummax() - 1.0) * 100
         is_best = (col == "v1.0 locked")
+        hex_c = COLORS.get(col, "#333").lstrip("#")
+        rgb = tuple(int(hex_c[i:i+2], 16) for i in (0, 2, 4))
         fig.add_trace(go.Scatter(
             x=dd.index, y=dd.values,
             mode="lines", name=col,
-            line=dict(color=COLORS.get(col, "#333"), width=2),
-            fill="tozeroy", fillcolor=f"rgba{tuple(list(int(COLORS.get(col, '#333').lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + [0.15])}",
+            line=dict(color=COLORS.get(col, "#333"),
+                      width=1.6 if not is_best else 2,
+                      shape="spline", smoothing=0.5),
+            fill="tozeroy" if is_best else None,
+            fillcolor=f"rgba{rgb + (0.10,)}" if is_best else None,
+            opacity=0.85,
             hovertemplate=f"<b>{col}</b><br>%{{x|%Y-%m-%d}}<br>DD=%{{y:.2f}}%<extra></extra>",
         ))
     fig.add_vrect(x0=OOS_START, x1=OOS_END,
-                  fillcolor="rgba(100,100,200,0.05)", line_width=0)
+                  fillcolor="rgba(100,100,200,0.04)", line_width=0)
     fig.update_layout(
-        title="<b>回撤对比 (Drawdown Over Time)</b><br><sub>DD 越接近 0 越好 | HS300 基准用深灰虚线</sub>",
-        xaxis_title="日期", yaxis_title="回撤 (%)",
-        template="plotly_white", height=550,
-        hovermode="x unified", legend=dict(orientation="h", y=-0.15),
+        title=dict(text="<b>回撤对比 (Drawdown Over Time)</b>"
+                        "<br><sub>DD 越接近 0 越好 | v1.0 locked 用绿色填充 | HS300 基准用深灰虚线</sub>",
+                   x=0.02, xanchor="left", font=dict(size=15)),
+        xaxis=dict(title="日期", showgrid=True,
+                   gridcolor="rgba(0,0,0,0.05)", zeroline=False),
+        yaxis=dict(title="回撤 (%)", showgrid=True,
+                   gridcolor="rgba(0,0,0,0.05)", zeroline=True,
+                   zerolinecolor="rgba(0,0,0,0.3)"),
+        template="plotly_white", height=480,
+        margin=dict(l=60, r=30, t=80, b=60),
+        hovermode="x unified",
+        legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center",
+                    bgcolor="rgba(255,255,255,0.85)",
+                    bordercolor="rgba(0,0,0,0.1)", borderwidth=1),
     )
     return fig
 
@@ -325,31 +385,48 @@ def chart_period_compare(navs):
     fig = make_subplots(
         rows=1, cols=2,
         subplot_titles=("全期 (2018-2026) 年化收益", "OOS (2022-2026) 年化收益"),
-        horizontal_spacing=0.1,
+        horizontal_spacing=0.10,
     )
     for col in navs.columns:
         full_ret = full_metrics[col]["ann_return"] * 100
         oos_ret = oos_metrics[col]["ann_return"] * 100
         is_best = (col == "v1.0 locked")
+        is_bench = (col == "HS300 基准")
+        line_color = "#888888" if is_bench else COLORS.get(col, "#333")
+        line_w = 1.5 if is_bench else (2 if is_best else 1)
+        opacity = 0.6 if is_bench else 1
         fig.add_trace(go.Bar(
             x=[col], y=[full_ret], name=col, showlegend=False,
-            marker_color=COLORS.get(col, "#333"),
-            marker_line_color="gold" if is_best else "black",
-            marker_line_width=2 if is_best else 0.5,
+            marker=dict(
+                color=line_color,
+                line=dict(color="gold" if is_best else "rgba(0,0,0,0.3)",
+                          width=2 if is_best else 0.5),
+            ),
+            opacity=opacity,
+            text=[f"{full_ret:+.1f}%"], textposition="outside",
+            textfont=dict(size=10),
         ), row=1, col=1)
         fig.add_trace(go.Bar(
             x=[col], y=[oos_ret], name=col, showlegend=False,
-            marker_color=COLORS.get(col, "#333"),
-            marker_line_color="gold" if is_best else "black",
-            marker_line_width=2 if is_best else 0.5,
+            marker=dict(
+                color=line_color,
+                line=dict(color="gold" if is_best else "rgba(0,0,0,0.3)",
+                          width=2 if is_best else 0.5),
+            ),
+            opacity=opacity,
+            text=[f"{oos_ret:+.1f}%"], textposition="outside",
+            textfont=dict(size=10),
         ), row=1, col=2)
-    fig.update_yaxes(title_text="年化收益 (%)", row=1, col=1)
-    fig.update_yaxes(title_text="年化收益 (%)", row=1, col=2)
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", row=1, col=1)
-    fig.add_hline(y=0, line_dash="dash", line_color="gray", row=1, col=2)
+    fig.update_yaxes(title_text="年化收益 (%)", row=1, col=1, gridcolor="rgba(0,0,0,0.05)")
+    fig.update_yaxes(title_text="年化收益 (%)", row=1, col=2, gridcolor="rgba(0,0,0,0.05)")
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", row=1, col=1)
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", row=1, col=2)
     fig.update_layout(
-        title="<b>全期 vs OOS 年化收益</b><br><sub>金边=最佳 (v1.0 locked)</sub>",
-        template="plotly_white", height=500, barmode="group",
+        title=dict(text="<b>全期 vs OOS 年化收益</b>"
+                        "<br><sub>金边=最佳 (v1.0 locked), 灰色=HS300 基准 | 柱顶=年化收益</sub>",
+                   x=0.02, xanchor="left", font=dict(size=15)),
+        template="plotly_white", height=480,
+        margin=dict(l=60, r=30, t=80, b=80), barmode="group",
     )
     return fig
 
@@ -362,32 +439,51 @@ def chart_radar(navs):
     full_metrics = {col: metrics(navs[col]) for col in navs.columns}
     oos_metrics = {col: metrics(navs.loc[OOS_START:][col]) for col in navs.columns}
 
-    categories = ["年化收益", "Sharpe", "Calmar", "1/|DD|", "年化收益(逆)", "胜率(逆)"]
+    categories = ["年化收益", "Sharpe", "Calmar", "1/|DD|", "低波动", "稳定性"]
     fig = go.Figure()
 
     for col in navs.columns:
         m = oos_metrics[col]
         # 归一化到 0-1
-        ann_ret_norm = min(max(m["ann_return"] * 100, -10) / 20, 1.0)  # 0-20% 映射 0-1
-        sharpe_norm = min(max(m["sharpe"], -1) / 3, 1.0)  # -1 to 2
-        calmar_norm = min(max(m["calmar"], -0.5) / 2, 1.0)  # -0.5 to 1.5
-        inv_dd_norm = min(10 / max(abs(m["max_dd"]) * 100, 1), 1.0)  # 0-40% 反向
+        ann_ret_norm = min(max(m["ann_return"] * 100, -10) / 20, 1.0)
+        sharpe_norm = min(max(m["sharpe"], -1) / 3, 1.0)
+        calmar_norm = min(max(m["calmar"], -0.5) / 2, 1.0)
+        inv_dd_norm = min(10 / max(abs(m["max_dd"]) * 100, 1), 1.0)
+        vol_norm = min(5 / max(m["ann_vol"] * 100, 1), 1.0)  # 越低越好
+        stability_norm = inv_dd_norm  # 同 1/|DD|
+
         is_best = (col == "v1.0 locked")
-        vals = [ann_ret_norm, sharpe_norm, calmar_norm, inv_dd_norm, ann_ret_norm, inv_dd_norm]
-        vals.append(vals[0])  # 闭合
+        is_bench = (col == "HS300 基准")
+        opacity = 0.35 if is_bench else (1.0 if is_best else 0.6)
+        line_color = "#666666" if is_bench else COLORS.get(col, "#333")
+        vals = [ann_ret_norm, sharpe_norm, calmar_norm, inv_dd_norm,
+                vol_norm, stability_norm, ann_ret_norm]  # 闭合
         fig.add_trace(go.Scatterpolar(
             r=vals, theta=categories + [categories[0]],
             mode="lines+markers", name=col,
-            line=dict(color=COLORS.get(col, "#333"),
-                      width=3 if is_best else 1.5),
-            marker=dict(size=6 if is_best else 4),
-            opacity=0.7 if not is_best else 1.0,
+            line=dict(color=line_color,
+                      width=2.5 if is_best else 1.2,
+                      dash="dashdot" if is_bench else "solid"),
+            marker=dict(size=5 if is_best else 3),
+            opacity=opacity,
+            fill="toself" if is_best else None,
+            fillcolor="rgba(44,160,44,0.10)" if is_best else None,
         ))
     fig.update_layout(
-        title="<b>OOS 性能雷达图 (2022-2026)</b><br><sub>6 维归一化指标, ⭐=v1.0 locked</sub>",
-        template="plotly_white", height=600,
-        polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-        legend=dict(orientation="h", y=-0.1),
+        title=dict(text="<b>OOS 性能雷达图 (2022-2026)</b>"
+                        "<br><sub>6 维归一化指标, 越靠外越好 | ⭐=v1.0 locked (绿色填充)</sub>",
+                   x=0.02, xanchor="left", font=dict(size=15)),
+        template="plotly_white", height=520,
+        margin=dict(l=60, r=60, t=80, b=60),
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 1],
+                            gridcolor="rgba(0,0,0,0.1)",
+                            tickfont=dict(size=9)),
+            angularaxis=dict(gridcolor="rgba(0,0,0,0.1)"),
+        ),
+        legend=dict(orientation="h", y=-0.08, x=0.5, xanchor="center",
+                    bgcolor="rgba(255,255,255,0.85)",
+                    bordercolor="rgba(0,0,0,0.1)", borderwidth=1),
     )
     return fig
 
@@ -417,13 +513,20 @@ def chart_monthly_heatmap(navs):
     fig = go.Figure(data=go.Heatmap(
         z=matrix.values, x=ym_labels, y=valid_cols,
         colorscale="RdYlGn", zmid=0, zmin=-15, zmax=15,
-        colorbar=dict(title="月收益 %"),
+        colorbar=dict(title="月收益 %", thickness=15, len=0.85),
         hovertemplate="%{y}<br>%{x}<br>%{z:.2f}%<extra></extra>",
+        xgap=1, ygap=2,
     ))
     fig.update_layout(
-        title="<b>月度收益热图 (2018-2026)</b><br><sub>红=亏损, 绿=盈利</sub>",
-        template="plotly_white", height=600,
-        xaxis_title="月份", yaxis_title="策略",
+        title=dict(text="<b>月度收益热图 (2018-2026)</b>"
+                        "<br><sub>红=亏损, 绿=盈利 | 列=月份, 行=策略</sub>",
+                   x=0.02, xanchor="left", font=dict(size=15)),
+        template="plotly_white", height=480,
+        margin=dict(l=120, r=80, t=80, b=80),
+        xaxis=dict(title="月份", tickangle=-45, tickfont=dict(size=9),
+                   showgrid=False),
+        yaxis=dict(title="策略", tickfont=dict(size=11),
+                   showgrid=False, autorange="reversed"),
     )
     return fig
 
