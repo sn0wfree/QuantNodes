@@ -18,24 +18,24 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-from .fi_plus import (
+from .fi_plus_v2 import (
     FixedIncomePlus,
     FixedIncomePlusConfig,
     FixedIncomePlusResult,
     performance_metrics,
 )
-from .portfolio import (
+from ..common.universe import ETFPool
+from .portfolio_v2 import (
     DiversificationCaps,
     PortfolioState,
     RotationConfig,
-    apply_stops,
-    apply_vol_targeting,
-    calculate_turnover_cost,
-    equal_weights,
-    inverse_vol_weights,
-    select_and_weight,
+    apply_stops_v2 as apply_stops,
+    apply_vol_targeting_v2 as apply_vol_targeting,
+    calculate_turnover_cost_v2 as calculate_turnover_cost,
+    equal_weights_v2 as equal_weights,
+    inverse_vol_weights_v2 as inverse_vol_weights,
+    select_and_weight_v2 as select_and_weight,
 )
-from .common.universe import ETFPool
 
 
 @dataclass
@@ -87,7 +87,7 @@ def run_rotation_backtest(
     # Stage 9-D: 训练 HMM regime 检测器
     detector = None
     if rot.regime_detector is not None and rot.regime_detector.enabled:
-        from .regime_detector import HMMRegimeDetector, get_regime_params
+        from ..common.regime_detector import HMMRegimeDetector, get_regime_params
         detector = HMMRegimeDetector(
             n_regimes=rot.regime_detector.n_regimes,
             lookback_train=rot.regime_detector.lookback_train,

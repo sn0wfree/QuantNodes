@@ -22,18 +22,18 @@ from typing import TYPE_CHECKING, Mapping, Sequence
 import numpy as np
 import pandas as pd
 
-from .momentum import (
-    below_ma,
-    compute_momentum_score,
-    distance_to_52w_high,
-    fused_signal,
-    hybrid_momentum_score,
-    pairwise_corr,
-    rank_pctl,
-    realized_vol,
-    slope_r2_score,
+from .momentum_v2 import (
+    below_ma_v2 as below_ma,
+    compute_momentum_score_v2 as compute_momentum_score,
+    distance_to_52w_high_v2 as distance_to_52w_high,
+    fused_signal_v2 as fused_signal,
+    hybrid_momentum_score_v2 as hybrid_momentum_score,
+    pairwise_corr_v2 as pairwise_corr,
+    rank_pctl_v2 as rank_pctl,
+    realized_vol_v2 as realized_vol,
+    slope_r2_score_v2 as slope_r2_score,
 )
-from .common.universe import ETFPool
+from ..common.universe import ETFPool
 
 
 # ----------------------------------------------------------------------------
@@ -123,7 +123,7 @@ class CostModel:
     impact_factor: float = 0.1       # 冲击成本因子 (基于换手率)
 
 
-def calculate_turnover_cost(turnover: float, cost: CostModel) -> float:
+def calculate_turnover_cost_v2(turnover: float, cost: CostModel) -> float:
     """计算单次换手成本.
 
     turnover: 单边换手率 (如 0.5 表示 50% 换手)
@@ -211,7 +211,7 @@ class PortfolioState:
 # ----------------------------------------------------------------------------
 # 权重
 # ----------------------------------------------------------------------------
-def inverse_vol_weights(
+def inverse_vol_weights_v2(
     nav_df: pd.DataFrame,
     codes: Sequence[str],
     as_of: pd.Timestamp,
@@ -231,7 +231,7 @@ def inverse_vol_weights(
     return (inv / total).to_dict()
 
 
-def equal_weights(codes: Sequence[str]) -> dict[str, float]:
+def equal_weights_v2(codes: Sequence[str]) -> dict[str, float]:
     if not codes:
         return {}
     w = 1.0 / len(codes)
@@ -267,7 +267,7 @@ def _count_categories(chosen: list[str], pool: ETFPool) -> dict[str, int]:
     return cnt
 
 
-def select_and_weight(
+def select_and_weight_v2(
     nav_df: pd.DataFrame,
     pool: ETFPool,
     cfg: RotationConfig,
@@ -500,7 +500,7 @@ def _maybe_inject_required(
 # ----------------------------------------------------------------------------
 # 趋势过滤器 (Stage 9-B)
 # ----------------------------------------------------------------------------
-def check_trend_filter(
+def check_trend_filter_v2(
     nav_df: pd.DataFrame,
     benchmark_code: str,
     ma_window: int,
@@ -520,7 +520,7 @@ def check_trend_filter(
     return bool(benchmark.iloc[-1] >= ma)
 
 
-def apply_trend_filter(
+def apply_trend_filter_v2(
     nav_df: pd.DataFrame,
     cfg: RotationConfig,
     as_of: pd.Timestamp,
@@ -552,7 +552,7 @@ def apply_trend_filter(
 # ----------------------------------------------------------------------------
 # 波动率目标 (Stage 9-C)
 # ----------------------------------------------------------------------------
-def vol_targeting_scale(
+def vol_targeting_scale_v2(
     nav: pd.Series,
     target_vol: float,
     lookback: int,
@@ -574,7 +574,7 @@ def vol_targeting_scale(
     return float(np.clip(scale, min_scale, max_scale))
 
 
-def apply_vol_targeting(
+def apply_vol_targeting_v2(
     cfg: RotationConfig,
     nav: pd.Series,
     as_of: pd.Timestamp,
@@ -599,7 +599,7 @@ def apply_vol_targeting(
 # ----------------------------------------------------------------------------
 # 集中度约束 (Stage 10)
 # ----------------------------------------------------------------------------
-def _apply_concentration_caps(
+def _apply_concentration_caps_v2(
     weights: dict[str, float],
     caps: ConcentrationCaps,
     pool: ETFPool | None = None,
@@ -653,7 +653,7 @@ def _apply_concentration_caps(
     return w
 
 
-def apply_concentration_caps(
+def apply_concentration_caps_v2(
     cfg: RotationConfig,
     pool: ETFPool,
     state: PortfolioState,
@@ -670,7 +670,7 @@ def apply_concentration_caps(
 # ----------------------------------------------------------------------------
 # 规则 4: 止损 + 补位
 # ----------------------------------------------------------------------------
-def apply_stops(
+def apply_stops_v2(
     nav_df: pd.DataFrame,
     pool: ETFPool,
     cfg: RotationConfig,
