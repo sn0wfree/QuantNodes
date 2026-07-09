@@ -335,7 +335,7 @@ def v4_factor_patched(close_52):
 
 
 # ============================================================
-# v5 在 OHLCV 面板中
+# v5 在 OHLCV 面板中 (等权, 保留旧实现)
 # ============================================================
 def v5_52(close_52, ohlcv_44, top_n=5):
     from QuantNodes.strategy.momentum_etf_rotation.v5 import (
@@ -384,6 +384,79 @@ def v5_52(close_52, ohlcv_44, top_n=5):
 
 
 # ============================================================
+# v5.1 在 OHLCV 面板中 (逆波动率加权)
+# ============================================================
+def v5_1_52(close_52, ohlcv_44, top_n=5):
+    from QuantNodes.strategy.momentum_etf_rotation.v5 import (
+        compute_all_factors_panel, compute_composite_factor,
+    )
+    from QuantNodes.strategy.momentum_etf_rotation.v5_1 import (
+        IndustryRotationV5_1Config, inverse_vol_weights_v5_1,
+    )
+
+    dates = close_52.index
+    rebal_dates = dates.to_series().resample("ME").last().index
+    rebal_set = set(d for d in rebal_dates if d in dates)
+
+    cfg = IndustryRotationV5_1Config(top_n=top_n)
+    factor_panel = compute_all_factors_panel(ohlcv_44, cfg.factor_cfg)
+
+    nav = np.ones(len(dates))
+    last_weights = {}
+
+    for i, date in enumerate(dates):
+        if i == 0:
+            continue
+        if date in rebal_set and i > 252:
+            composite = compute_composite_factor(
+                factor_panel, cfg.factor_cfg, date, cfg.factor_weights,
+            )
+            valid = [c for c in composite.index if c in close_52.columns]
+            composite = composite[valid]
+            if len(composite) >= top_n:
+                top = composite.nlargest(top_n)
+                chosen = list(top.index)
+                # 逆波动率加权
+                last_weights = inverse_vol_weights_v5_1(
+                    close_52, chosen, date, cfg.vol_window, cfg.vol_floor,
+                )
+                # max_weight 约束
+                max_w = cfg.max_weight
+                capped = dict(last_weights)
+                for _ in range(10):
+                    excess = 0.0
+                    for c, w in capped.items():
+                        if w > max_w:
+                            excess += w - max_w
+                            capped[c] = max_w
+                    if excess <= 1e-6:
+                        break
+                    non_capped = [c for c, w in capped.items() if w < max_w]
+                    nc_sum = sum(capped[c] for c in non_capped)
+                    if nc_sum > 0 and non_capped:
+                        for c in non_capped:
+                            capped[c] += excess * (capped[c] / nc_sum)
+                last_weights = capped
+                total = sum(last_weights.values())
+                if total > 0:
+                    last_weights = {k: v / total for k, v in last_weights.items()}
+
+        if last_weights:
+            daily_ret = 0.0
+            for code, w in last_weights.items():
+                if code in close_52.columns:
+                    p_t = close_52[code].iloc[i]
+                    p_prev = close_52[code].iloc[i - 1]
+                    if pd.notna(p_t) and pd.notna(p_prev) and p_prev > 0:
+                        daily_ret += w * (p_t / p_prev - 1.0)
+            nav[i] = nav[i - 1] * (1 + daily_ret)
+        else:
+            nav[i] = nav[i - 1]
+
+    return pd.Series(nav, index=dates, name="v5_1")
+
+
+# ============================================================
 # 主对比
 # ============================================================
 def run_caliber(cost_enabled: bool, label: str):
@@ -423,6 +496,9 @@ def run_caliber(cost_enabled: bool, label: str):
 
     print("[8] v5 量价 (44 OHLCV)...")
     navs["v5 量价"] = v5_52(close_52, ohlcv_44, top_n=5)
+
+    print("[8.1] v5.1 量价 (44 OHLCV, 逆波动)...")
+    navs["v5.1 量价 (逆波动)"] = v5_1_52(close_52, ohlcv_44, top_n=5)
 
     navs_df = pd.DataFrame(navs)
 
@@ -498,10 +574,15 @@ def run_all():
     print("=" * 70)
     combos = {
         "v1.0 80% + v5 20%": 0.8 * navs_A["v1.0 locked"] + 0.2 * navs_A["v5 量价"],
+        "v1.0 80% + v5.1 20%": 0.8 * navs_A["v1.0 locked"] + 0.2 * navs_A["v5.1 量价 (逆波动)"],
         "v1.0 70% + v5 30%": 0.7 * navs_A["v1.0 locked"] + 0.3 * navs_A["v5 量价"],
+        "v1.0 70% + v5.1 30%": 0.7 * navs_A["v1.0 locked"] + 0.3 * navs_A["v5.1 量价 (逆波动)"],
         "v3 50% + v5 50%":   0.5 * navs_A["v3 (52 池)"] + 0.5 * navs_A["v5 量价"],
+        "v3 50% + v5.1 50%": 0.5 * navs_A["v3 (52 池)"] + 0.5 * navs_A["v5.1 量价 (逆波动)"],
         "v1.0 50% + v3 25% + v5 25%":
             0.5 * navs_A["v1.0 locked"] + 0.25 * navs_A["v3 (52 池)"] + 0.25 * navs_A["v5 量价"],
+        "v1.0 50% + v3 25% + v5.1 25%":
+            0.5 * navs_A["v1.0 locked"] + 0.25 * navs_A["v3 (52 池)"] + 0.25 * navs_A["v5.1 量价 (逆波动)"],
     }
     print(f"\n全期:")
     print(f"{'组合':<28s} {'年化':>7s} {'波动':>7s} {'Sharpe':>7s} {'DD':>8s} {'Calmar':>7s}")

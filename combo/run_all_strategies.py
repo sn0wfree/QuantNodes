@@ -34,6 +34,11 @@ from QuantNodes.strategy.momentum_etf_rotation.v5 import (
     IndustryRotationV5Config,
     IndustryRotationV5SubStrategy,
 )
+from QuantNodes.strategy.momentum_etf_rotation.v5_1 import (
+    IndustryRotationV5_1Config,
+    IndustryRotationV5_1SubStrategy,
+    inverse_vol_weights_v5_1,
+)
 
 REPO = Path("/home/ll/Public/QuantNodes")
 START = "2018-01-01"
@@ -111,10 +116,10 @@ def make_expanded_pool():
 
 
 # ============================================================
-# v5 回测 (与 v5_backtest.py 相同逻辑)
+# v5 回测 (与 v5_backtest.py 相同逻辑, 等权 — 保留 v5 旧实现)
 # ============================================================
 def backtest_v5(panel_close, panel_ohlcv, top_n=5):
-    """用 close 面板 + OHLCV 回测 v5."""
+    """用 close 面板 + OHLCV 回测 v5 (等权, 论文做法, 保留旧实现)."""
     dates = panel_close.index
     rebal_dates = dates.to_series().resample("ME").last().index
     rebal_set = set(d for d in rebal_dates if d in dates)
@@ -155,6 +160,77 @@ def backtest_v5(panel_close, panel_ohlcv, top_n=5):
             nav[i] = nav[i - 1]
 
     return pd.Series(nav, index=dates, name="v5")
+
+
+# ============================================================
+# v5.1 回测 (逆波动率加权 — Stage 25 升级版)
+# ============================================================
+def backtest_v5_1(panel_close, panel_ohlcv, top_n=5):
+    """v5.1: 11 量价因子 + 逆波动率加权 (与 v1/v3 一致)."""
+    dates = panel_close.index
+    rebal_dates = dates.to_series().resample("ME").last().index
+    rebal_set = set(d for d in rebal_dates if d in dates)
+
+    from QuantNodes.strategy.momentum_etf_rotation.v5 import (
+        compute_all_factors_panel,
+        compute_composite_factor,
+    )
+    cfg = IndustryRotationV5_1Config(top_n=top_n)
+    factor_panel = compute_all_factors_panel(panel_ohlcv, cfg.factor_cfg)
+
+    nav = np.ones(len(dates))
+    last_weights = {}
+
+    for i, date in enumerate(dates):
+        if i == 0:
+            continue
+        if date in rebal_set and i > 252:
+            composite = compute_composite_factor(
+                factor_panel, cfg.factor_cfg, date, cfg.factor_weights,
+            )
+            valid = [c for c in composite.index if c in panel_close.columns]
+            composite = composite[valid]
+            if len(composite) >= top_n:
+                top = composite.nlargest(top_n)
+                chosen = list(top.index)
+                # 逆波动率加权 (与 v1/v3 一致)
+                last_weights = inverse_vol_weights_v5_1(
+                    panel_close, chosen, date, cfg.vol_window, cfg.vol_floor,
+                )
+                # max_weight 约束 (默认 0.30)
+                max_w = cfg.max_weight
+                capped = dict(last_weights)
+                for _ in range(10):
+                    excess = 0.0
+                    for c, w in capped.items():
+                        if w > max_w:
+                            excess += w - max_w
+                            capped[c] = max_w
+                    if excess <= 1e-6:
+                        break
+                    non_capped = [c for c, w in capped.items() if w < max_w]
+                    nc_sum = sum(capped[c] for c in non_capped)
+                    if nc_sum > 0 and non_capped:
+                        for c in non_capped:
+                            capped[c] += excess * (capped[c] / nc_sum)
+                last_weights = capped
+                total = sum(last_weights.values())
+                if total > 0:
+                    last_weights = {k: v / total for k, v in last_weights.items()}
+
+        if last_weights:
+            daily_ret = 0.0
+            for code, w in last_weights.items():
+                if code in panel_close.columns:
+                    p_t = panel_close[code].iloc[i]
+                    p_prev = panel_close[code].iloc[i - 1]
+                    if pd.notna(p_t) and pd.notna(p_prev) and p_prev > 0:
+                        daily_ret += w * (p_t / p_prev - 1.0)
+            nav[i] = nav[i - 1] * (1 + daily_ret)
+        else:
+            nav[i] = nav[i - 1]
+
+    return pd.Series(nav, index=dates, name="v5_1")
 
 
 # ============================================================
@@ -338,9 +414,15 @@ def main():
 
     # 5. v5 回测 (44 只 OHLCV)
     print("\n" + "=" * 50)
-    print("5. v5 量价 (44 只 ETF)")
+    print("5. v5 量价 (44 只 ETF, 等权)")
     print("=" * 50)
     n_v5 = backtest_v5(close_52, ohlcv_44, top_n=5)
+
+    # 5.1 v5.1 回测 (44 只 OHLCV, 逆波动率)
+    print("\n" + "=" * 50)
+    print("5.1 v5.1 量价 (44 只 ETF, 逆波动率加权)")
+    print("=" * 50)
+    n_v5_1 = backtest_v5_1(close_52, ohlcv_44, top_n=5)
 
     # ============================================================
     # 汇总
@@ -351,6 +433,7 @@ def main():
         "v4 因子": n_v4f,
         "v4 combo": n_v4c,
         "v5 量价": n_v5,
+        "v5.1 量价 (逆波动)": n_v5_1,
     }).dropna()
 
     print("\n" + "=" * 70)
@@ -408,11 +491,17 @@ def main():
     print("=" * 70)
     combos = {
         "v3 80% + v5 20%": 0.8 * navs["v3 baseline"] + 0.2 * navs["v5 量价"],
+        "v3 80% + v5.1 20%": 0.8 * navs["v3 baseline"] + 0.2 * navs["v5.1 量价 (逆波动)"],
         "v3 70% + v5 30%": 0.7 * navs["v3 baseline"] + 0.3 * navs["v5 量价"],
+        "v3 70% + v5.1 30%": 0.7 * navs["v3 baseline"] + 0.3 * navs["v5.1 量价 (逆波动)"],
         "v3 50% + v4f 25% + v5 25%": 0.5 * navs["v3 baseline"] + 0.25 * navs["v4 因子"] + 0.25 * navs["v5 量价"],
+        "v3 50% + v4f 25% + v5.1 25%": 0.5 * navs["v3 baseline"] + 0.25 * navs["v4 因子"] + 0.25 * navs["v5.1 量价 (逆波动)"],
         "v3 33% + v4f 33% + v5 34%": 0.33 * navs["v3 baseline"] + 0.33 * navs["v4 因子"] + 0.34 * navs["v5 量价"],
+        "v3 33% + v4f 33% + v5.1 34%": 0.33 * navs["v3 baseline"] + 0.33 * navs["v4 因子"] + 0.34 * navs["v5.1 量价 (逆波动)"],
         "v3 60% + v4c 20% + v5 20%": 0.6 * navs["v3 baseline"] + 0.2 * navs["v4 combo"] + 0.2 * navs["v5 量价"],
-        "等权 5 策略": navs.mean(axis=1),
+        "v3 60% + v4c 20% + v5.1 20%": 0.6 * navs["v3 baseline"] + 0.2 * navs["v4 combo"] + 0.2 * navs["v5.1 量价 (逆波动)"],
+        "等权 5 策略": navs[["v3 baseline", "v4 风格", "v4 因子", "v4 combo", "v5 量价"]].mean(axis=1),
+        "等权 6 策略 (含 v5.1)": navs.mean(axis=1),
     }
 
     print(f"\n全期:")

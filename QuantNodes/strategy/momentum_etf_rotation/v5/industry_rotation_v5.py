@@ -44,6 +44,9 @@ class IndustryRotationV5Config(SubStrategyConfig):
     - min_history: 252 (1 年)
     - max_weight: 0.20 (Top-5 等权 = 0.20)
     - 复合因子: 等权 z-score (论文用 IC 加权, 我们用等权)
+    - 加权方式: 等权 (1/N, 论文做法)
+
+    注: v5 升级版 (v5.1) 引入逆波动率加权, 见 industry_rotation_v5_1.py.
     """
     name: str = "industry_rotation_v5"
 
@@ -177,7 +180,10 @@ class IndustryRotationV5SubStrategy(SubStrategy):
         codes: Sequence[str],
         as_of: pd.Timestamp,
     ) -> dict[str, float]:
-        """Top-N 等权 (默认 max_weight=0.20 = 1/5)."""
+        """Top-N 等权 (默认 max_weight=0.20 = 1/5).
+
+        注: v5.1 升级版支持逆波动率加权, 见 industry_rotation_v5_1.py.
+        """
         if not codes:
             return {}
         n = len(codes)

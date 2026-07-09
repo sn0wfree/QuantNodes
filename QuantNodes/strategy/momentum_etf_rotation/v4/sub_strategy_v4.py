@@ -102,23 +102,37 @@ class SubStrategy(ABC):
         weights: dict[str, float],
         max_w: float,
     ) -> dict[str, float]:
-        """约束单只 ETF 权重上限."""
+        """约束单只 ETF 权重上限.
+
+        实现: 迭代将超额部分按"封顶剩余空间"比例分配给非封顶标的.
+        调用方应做最终归一化 (本方法不保证 sum=1, 只保证单项 ≤ max_w).
+        若无法全部承接 (如非封顶标的只有 1 个且 capacity < excess),
+        接受该项封顶, 剩余 excess 留在下一次迭代继续尝试, 至多 50 轮.
+        """
         if not weights or max_w >= 1.0:
             return weights
         result = dict(weights)
-        for _ in range(10):
+        for _ in range(50):
+            # 1. 截超过 max_w 的, 累计 excess
             excess_total = 0.0
             for c, w in result.items():
                 if w > max_w:
                     excess_total += w - max_w
                     result[c] = max_w
-            if excess_total <= 1e-6:
+            if excess_total <= 1e-9:
                 break
-            non_capped = [c for c, w in result.items() if w < max_w]
-            non_capped_sum = sum(result[c] for c in non_capped)
-            if non_capped_sum > 0 and non_capped:
-                for c in non_capped:
-                    result[c] += excess_total * (result[c] / non_capped_sum)
+            # 2. 找非封顶标的
+            non_capped = [c for c, w in result.items() if w < max_w - 1e-12]
+            if not non_capped:
+                break
+            # 3. 按 capacity 比例分配
+            capacity_total = sum(max_w - result[c] for c in non_capped)
+            if capacity_total <= 1e-9:
+                break
+            for c in non_capped:
+                cap = max_w - result[c]
+                share = excess_total * (cap / capacity_total)
+                result[c] = min(max_w, result[c] + share)
         return result
 
     def __repr__(self) -> str:

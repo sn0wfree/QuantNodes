@@ -1,5 +1,5 @@
 # coding=utf-8
-"""v5 策略模块 — Stage 22 行业量价因子行业轮动.
+"""v5 策略模块 — Stage 22 行业量价因子行业轮动 (等权, 论文做法).
 
 基于华西证券《行业有效量价因子与行业轮动策略》 (2022-08-22):
 - 6 大类 11 月频因子 (动量/交易波动/换手率/多空对比/量价背离/量幅同向)
@@ -11,14 +11,16 @@ v5 vs Stage 19 industry_factors.py:
 - 完整接口: select/weight/run_step
 - 可与 v3/v4 在 multi_strategy 框架下组合
 
+升级版: v5_1/industry_rotation_v5_1.py (逆波动率加权, OOS Calmar 0.488 → 0.589)
+
 诊断基础:
 - reports/momentum_etf_rotation/v4/INDUSTRY_ROTATION_REPORT.md (Stage 19 实施)
 - reports/momentum_etf_rotation/v4/SUB_STRATEGY_DIAGNOSTIC.md (Stage 18 诊断)
 
-回测 (2018-2026 8y):
-- 量价因子 Top-5 单独:   Calmar 0.643  (vs v4 因子 0.613)
-- v3 70% + 量价 30%:    Calmar 0.614  OOS 0.790 ⭐
-- v3 80% + 量价 20%:    Calmar 0.619  OOS 0.850 ⭐⭐
+回测 (2018-2026 8y, 等权):
+- 量价因子 Top-5 单独:   Calmar 0.745  OOS 0.488
+- v3 80% + 量价 20%:    Calmar 0.706  OOS 0.955 ⭐
+- v3 70% + 量价 30%:    Calmar 0.723  OOS 0.903
 """
 from .industry_factors import (
     FactorEngineConfig,
