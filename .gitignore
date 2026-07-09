@@ -179,3 +179,4 @@ conn.ini
 data/mine_runs/
 quant/
 wiki_auto/
+reports/momentum_etf_rotation/plotly.min.js

@@ -44,6 +44,14 @@ sys.path.insert(0, "/home/ll/Public/QuantNodes")
 REPO = Path("/home/ll/Public/QuantNodes")
 OUT_DIR = REPO / "reports/momentum_etf_rotation"
 
+# 复制 plotly.min.js 到输出目录 (免 CDN)
+_PLOTLY_SRC = Path(__file__).resolve().parent.parent / ".venv-mig" / "lib" / "python3.11" / "site-packages" / "plotly" / "package_data" / "plotly.min.js"
+_PLOTLY_DST = OUT_DIR / "plotly.min.js"
+if _PLOTLY_SRC.exists() and (not _PLOTLY_DST.exists() or _PLOTLY_SRC.stat().st_mtime > _PLOTLY_DST.stat().st_mtime):
+    import shutil
+    shutil.copy2(str(_PLOTLY_SRC), str(_PLOTLY_DST))
+    print(f"[copy] plotly.min.js → {_PLOTLY_DST}")
+
 
 def ann_return(nav):
     r = nav.iloc[-1] / nav.iloc[0]
@@ -128,7 +136,6 @@ def chart_stage17_navs(data):
                     x=0.5),
         xaxis_title="日期",
         yaxis_title="NAV (起点 = 1.0)",
-        yaxis_type="log",
         template="plotly_white",
         height=500,
         hovermode="x unified",
@@ -193,7 +200,7 @@ def chart_stage17_v4a_dd(data):
     dd = (nav / pk - 1.0) * 100
 
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        subplot_titles=("v4A 风格轮动 NAV (log)", "v4A Drawdown (%)"),
+                        subplot_titles=("v4A 风格轮动 NAV", "v4A Drawdown (%)"),
                         row_heights=[0.6, 0.4])
 
     fig.add_trace(go.Scatter(
@@ -207,7 +214,7 @@ def chart_stage17_v4a_dd(data):
         line=dict(color="#d62728", width=1),
     ), row=2, col=1)
 
-    fig.update_yaxes(type="log", title_text="NAV (log)", row=1, col=1)
+    fig.update_yaxes(title_text="NAV", row=1, col=1)
     fig.update_yaxes(title_text="DD (%)", row=2, col=1)
     fig.update_layout(
         title=dict(text="<b>Stage 17: v4A 风格轮动 (单窗口 L60_T3) Drawdown</b><br>"
@@ -260,7 +267,7 @@ def chart_stage18_style_rotation(data):
         textposition="outside",
     ), row=1, col=2)
 
-    fig.update_yaxes(type="log", title_text="NAV (log)", row=1, col=1)
+    fig.update_yaxes(title_text="NAV", row=1, col=1)
     fig.update_yaxes(title_text="指标", row=1, col=2)
     fig.update_layout(
         title=dict(text="<b>Stage 18: v4 风格轮动 4 改进 (27x Calmar 提升)</b><br>"
@@ -281,7 +288,7 @@ def chart_stage18_factor_timing(data):
     v3 = data["v3"]["v3_baseline"]
 
     fig = make_subplots(rows=1, cols=2,
-                        subplot_titles=("升级前后 NAV (log)", "Calmar + Sharpe 对比"))
+                        subplot_titles=("升级前后 NAV", "Calmar + Sharpe 对比"))
 
     fig.add_trace(go.Scatter(
         x=v3.index, y=v3, mode="lines",
@@ -309,7 +316,7 @@ def chart_stage18_factor_timing(data):
         textposition="outside",
     ), row=1, col=2)
 
-    fig.update_yaxes(type="log", title_text="NAV (log)", row=1, col=1)
+    fig.update_yaxes(title_text="NAV", row=1, col=1)
     fig.update_yaxes(title_text="指标", row=1, col=2)
     fig.update_layout(
         title=dict(text="<b>Stage 18: v4 因子择时 5 改进 (6.7x Calmar 提升)</b><br>"
@@ -330,7 +337,7 @@ def chart_stage19_lw_comparison(data):
     v4f_lw = data["v4_lw"]["lw_rolling"]
 
     fig = make_subplots(rows=1, cols=2,
-                        subplot_titles=("IC^2 vs LW 滚动 λ NAV (log)", "Calmar 对比"))
+                        subplot_titles=("IC^2 vs LW 滚动 λ NAV", "Calmar 对比"))
 
     fig.add_trace(go.Scatter(
         x=v4f.index, y=v4f, mode="lines",
@@ -353,7 +360,7 @@ def chart_stage19_lw_comparison(data):
         showlegend=False,
     ), row=1, col=2)
 
-    fig.update_yaxes(type="log", title_text="NAV (log)", row=1, col=1)
+    fig.update_yaxes(title_text="NAV", row=1, col=1)
     fig.update_yaxes(title_text="Calmar (8y)", row=1, col=2)
     fig.update_layout(
         title=dict(text="<b>Stage 19: LW 协方差 + λ 收缩 (Nagel 论文复现)</b><br>"
@@ -393,8 +400,7 @@ def chart_stage22_v5_vs_v4(data):
                        "<sub>v5 Calmar 0.643 > v4 因子 0.613, 11 因子等权优势</sub>",
                     x=0.5),
         xaxis_title="日期",
-        yaxis_title="NAV (log)",
-        yaxis_type="log",
+        yaxis_title="NAV",
         template="plotly_white",
         height=500,
     )
@@ -781,7 +787,7 @@ def build_html(charts_dict, title="Stage 17-22 完整研究 — 交互式图表"
 <head>
 <meta charset="UTF-8">
 <title>{title}</title>
-<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script src="plotly.min.js"></script>
 <style>
   body {{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -890,7 +896,7 @@ def main():
     print("\n[chart] 生成所有图表 ...")
     charts_dict = {
         "Stage 17 — v4 失败诊断": {
-            "1. v4 各模式 NAV 走势 (log)": chart_stage17_navs(data),
+            "1. v4 各模式 NAV 走势": chart_stage17_navs(data),
             "2. v4 Calmar + DD 对比": chart_stage17_failure(data),
             "3. v4A 风格轮动 Drawdown": chart_stage17_v4a_dd(data),
         },
