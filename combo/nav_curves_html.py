@@ -633,11 +633,24 @@ def main():
 
     # 子图
     sections = []
+    chart_descriptions = {
+        "all_curves": "8 策略 NAV 曲线叠加, 重点策略用实线, 参考策略用虚线变淡. 蓝色高亮为 OOS 区间 (2022-2026), 红色虚线标记 2024-09 政策利好, 灰色虚线标记 2022 熊市底. 任何策略 NAV 持续高于 HS300 基准 (深灰 dashdot) 即代表跑赢大盘.",
+        "grouped": "2×2 网格分组对比: 左上是 v1.0 的演进路径 (Stage 8→v1.0, 看每个优化的贡献), 右上和下排是不同风格策略对比. 每组独立 Y 轴, 重点看相对走势而非绝对值.",
+        "alpha": "α = 策略 NAV / HS300 NAV - 1. 持续为正代表跑赢大盘. v1.0 locked 在大多数时间跑赢 (绿色填充区域), v3 长期稳定正 α, v5 在 2022 后 α 显著为正.",
+        "drawdown": "从历史峰值的最大回撤. v1.0 locked (绿色填充) 几乎无回撤, v0.1+VT 类似. v4 因子/风格在 2022 熊市时回撤达 -38%, 是结构性风险. HS300 基准 (深灰) 用于对比大盘回撤.",
+        "period_compare": "全期 vs OOS 双柱状图, 金边标记最佳 (v1.0 locked). 可看出哪些策略在 OOS 期间仍保持稳定表现 (v1.0/v3), 哪些出现衰减 (v5 在 OOS 期间年化从 14% 降到 9%).",
+        "radar": "6 维归一化指标, 越靠外越好: 年化收益 / Sharpe / Calmar / 1/|DD| (回撤倒数) / 低波动 / 稳定性. v1.0 locked (绿色填充) 在 DD/Calmar 维度最突出, v5 在收益维度最突出.",
+        "monthly_heatmap": "月度收益热图, 行=策略, 列=月份. 绿色 = 正收益, 红色 = 负收益. 可看策略在不同月份的表现一致性: v1.0 全期基本无红格 (DD 控制好), v4 因子在 2022 集中出现红格.",
+    }
     for key, fig in figs.items():
+        desc = chart_descriptions.get(key, "")
         sections.append(f"""
         <section id="{key}">
           <h2>{fig.layout.title.text.split('<')[0].strip() if fig.layout.title else key}</h2>
           {fig.to_html(full_html=False, include_plotlyjs=False, div_id=key)}
+          <p style="font-size:13px;color:#555;background:#F8F9FA;padding:10px 14px;border-left:3px solid #1F77B4;border-radius:4px;margin-top:12px;">
+            <b>解读</b>: {desc}
+          </p>
         </section>""")
 
     # 全期 HTML
@@ -647,9 +660,10 @@ def main():
 <meta charset="utf-8">
 <title>v1-v5 业绩曲线对比</title>
 <style>
-body {{ font-family: -apple-system, "Segoe UI", sans-serif; max-width: 1280px; margin: 20px auto; padding: 0 20px; background: #fafafa; color: #2C3E50; }}
-h1 {{ color: #1F77B4; border-bottom: 3px solid #1F77B4; padding-bottom: 8px; margin-top: 0; }}
-h2 {{ color: #2C3E50; margin-top: 40px; border-left: 5px solid #1F77B4; padding-left: 10px; }}
+body {{ font-family: -apple-system, "Segoe UI", sans-serif; max-width: 1280px; margin: 20px auto; padding: 0 20px; background: #fafafa; color: #2C3E50; line-height: 1.65; }}
+h1 {{ color: #1F77B4; border-bottom: 3px solid #1F77B4; padding-bottom: 8px; margin-top: 0; font-size: 28px; }}
+h2 {{ color: #2C3E50; margin-top: 40px; border-left: 5px solid #1F77B4; padding-left: 10px; font-size: 20px; }}
+h3 {{ color: #34495E; margin-top: 24px; font-size: 16px; border-bottom: 1px dashed #ddd; padding-bottom: 4px; }}
 section {{ background: white; padding: 20px; border-radius: 8px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }}
 table {{ border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }}
 th {{ background: #1F77B4; color: white; padding: 10px 8px; text-align: center; font-weight: 600; }}
@@ -663,11 +677,23 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 .event {{ background: #F0F4F8; padding: 6px 10px; border-radius: 4px; font-size: 12px; border-left: 3px solid #1F77B4; }}
 .event-date {{ font-weight: bold; color: #1F77B4; }}
 .key-finding {{ background: linear-gradient(135deg, #E8F5E9 0%, #FFF9E6 100%); padding: 16px; border-radius: 8px; margin: 12px 0; border-left: 5px solid #2CA02C; }}
+.methodology {{ background: #F8F9FA; padding: 18px; border-radius: 8px; margin: 12px 0; border-left: 4px solid #1F77B4; font-size: 14px; }}
+.methodology b {{ color: #1F77B4; }}
+.methodology code {{ background: #e9ecef; padding: 1px 5px; border-radius: 3px; font-size: 13px; color: #c7254e; }}
+.legend-box {{ display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 12px; margin-right: 6px; }}
+.legend-best {{ background: #FFF9E6; color: #B8860B; border: 1px solid #FFD700; }}
+.legend-bench {{ background: #F0F0F0; color: #555; border: 1px solid #999; font-style: italic; }}
+.legend-good {{ background: #E8F5E9; color: #2E7D32; border: 1px solid #66BB6A; }}
+.legend-bad {{ background: #FFEBEE; color: #C62828; border: 1px solid #EF5350; }}
+.strategy-card {{ background: #FAFBFC; border: 1px solid #E0E4E8; border-radius: 6px; padding: 12px 16px; margin: 10px 0; }}
+.strategy-card h4 {{ margin: 0 0 6px 0; color: #1F77B4; font-size: 14px; }}
+.strategy-card p {{ margin: 4px 0; font-size: 13px; color: #555; }}
 .navbar {{ position: sticky; top: 0; background: rgba(255,255,255,0.95); padding: 12px; border-bottom: 1px solid #ddd; z-index: 100; backdrop-filter: blur(10px); }}
 .navbar a {{ margin-right: 14px; color: #1F77B4; text-decoration: none; font-size: 14px; padding: 4px 8px; border-radius: 4px; }}
 .navbar a:hover {{ background: #E8F5E9; text-decoration: none; }}
-.navbar a.active {{ background: #1F77B4; color: white; }}
 .color-tag {{ display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }}
+.toc {{ background: #FFFEF7; border: 1px solid #FFE082; border-radius: 6px; padding: 12px 18px; margin: 16px 0; font-size: 13px; }}
+.toc b {{ color: #F57C00; }}
 </style>
 </head>
 <body>
@@ -689,11 +715,118 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 <div class="key-finding">
   <strong>核心发现 (口径 A OOS 2022-2026, 含 HS300 基准):</strong><br>
   • <b>风险调整冠军</b>: v1.0 locked — OOS Calmar <b>1.791</b>, Sharpe <b>1.51</b>, DD -1.94%<br>
-  • <b>绝对收益冠军</b>: v5 量价 — OOS 年化 <b>9.47%</b> (HS300 同期 ~ -8%, α 显著)<br>
+  • <b>绝对收益冠军</b>: v5 量价 — OOS 年化 <b>9.47%</b> (HS300 同期 {hs300_oos['ann_return']*100:+.2f}%, α 显著)<br>
   • <b>最均衡</b>: v3 (52 池) — OOS 年化 7.69%, Sharpe 1.08, DD -9.89%<br>
   • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
   • <b>推荐组合</b>: v1.0 80% + v5 20% — 全期 Calmar 1.079, OOS 0.886
 </div>
+
+<div class="toc">
+  <b>📖 图表阅读指南:</b> 实线粗线 = 重点策略 | 虚线 = 参考策略 | 深灰虚线 = HS300 基准 | 金边/绿色填充 = 最佳 (v1.0 locked) | 蓝色高亮 = OOS 区间<br>
+  排名按 <b>OOS Calmar</b> (年化收益 / |最大回撤|) 降序排列, 该指标兼顾收益与回撤控制, 是评价策略稳健性的核心指标
+</div>
+
+<section id="methodology">
+  <h2>方法论与口径说明</h2>
+
+  <h3>1. 统一 ETF 池 (52 只)</h3>
+  <div class="methodology">
+    <b>主池 44 只</b> (来自 <code>common/universe.py</code>): 6 只 A 股宽基 + 20 只 A 股行业 + 5 只港股 + 6 只商品 + 6 只海外 + 1 只国债<br>
+    <b>SmartBeta 8 只</b> (来自 <code>v4/universe_v4.py</code>): 红利低波/低波/质量/价值/现金流等<br>
+    <b>例外</b>: v4 子策略固定使用 12 只 SmartBeta (设计意图) | v5 使用 44 只 OHLCV (需要 volume 数据)
+  </div>
+
+  <h3>2. 统一时间区间</h3>
+  <div class="methodology">
+    <b>回测区间</b>: 2018-01-01 ~ 2026-06-30 (8.5 年, 2058 个交易日)<br>
+    <b>OOS 区间</b>: 2022-01-01 ~ 2026-06-30 (4.5 年) — Walk-Forward 验证, 无 look-ahead bias<br>
+    <b>预热期</b>: 252 天 (1 年) — 满足 v1.0 斜率×R² 与 v5 量价因子的最小历史需求
+  </div>
+
+  <h3>3. 风险控制 (CICC 规则)</h3>
+  <div class="methodology">
+    A 股宽基 + 行业 ≤ <b>3</b> 只 | 港股 ≤ 1 只 | 必含商品 + 海外 | 单边成本 <b>5bp</b> (v1.0 含 5+10bp 全部)<br>
+    v1.0 额外启用 <b>波动率目标 (VT)</b>: target_vol=15%, 将仓位缩放到目标波动, 极端时只保留 30% 仓位
+  </div>
+
+  <h3>4. 指标定义</h3>
+  <div class="methodology">
+    <b>年化收益</b>: NAV 终值 / NAV 初值 ^ (365.25 / 天数) - 1<br>
+    <b>年化波动</b>: 日收益标准差 × √252<br>
+    <b>Sharpe</b>: (日均收益 × 252) / 年化波动 (无风险利率 = 0)<br>
+    <b>最大回撤</b>: 历史 NAV 从峰值到谷底的最大跌幅<br>
+    <b>Calmar</b>: 年化收益 / |最大回撤| — 风险调整核心指标
+  </div>
+</section>
+
+<section id="strategies">
+  <h2>8 个策略简述</h2>
+
+  <div class="strategy-card">
+    <h4>v0.0 baseline <span class="legend-box legend-good">Stage 8</span></h4>
+    <p><b>类型</b>: CICC 原始复现 | <b>信号</b>: 144 日纯价格动量 | <b>选股</b>: 池中 Top-10 | <b>加权</b>: 逆波动</p>
+    <p><b>核心</b>: CICC 报告 (2026-07-03) 的 4 步组合管理, 仅价格动量, 无任何增强</p>
+    <p><b>OOS</b>: 7.88% / Sharpe 0.77 / DD -16.27% / <b>Calmar 0.484</b></p>
+  </div>
+
+  <div class="strategy-card">
+    <h4>v0.1 +VT <span class="legend-box legend-good">Stage 9-C</span></h4>
+    <p><b>类型</b>: 波动率目标 | <b>增强</b>: 在 v0.0 基础上启用 VT (target=0.15, lookback=60, scale∈[0.3, 1.5])</p>
+    <p><b>核心</b>: 高波动期降仓, 目标年化波动 15%, 极端时只保留 30% 仓位</p>
+    <p><b>OOS</b>: 2.51% / Sharpe 0.78 / DD -5.10% / <b>Calmar 0.492</b> — 收益被压低但 DD 大幅改善</p>
+  </div>
+
+  <div class="strategy-card">
+    <h4>v0.2 +TF <span class="legend-box legend-good">Stage 9-B</span></h4>
+    <p><b>类型</b>: 趋势过滤 | <b>增强</b>: 在 v0.0 基础上启用 TF (HS300 MA200, bear=0.7)</p>
+    <p><b>核心</b>: 沪深 300 跌破 200 日均线时, 整体仓位缩至 70% (剩余 30% 转 511260 国债 ETF)</p>
+    <p><b>OOS</b>: 8.28% / Sharpe 0.87 / DD -16.27% / <b>Calmar 0.509</b> — TF 收益略高于 VT</p>
+  </div>
+
+  <div class="strategy-card">
+    <h4>v1.0 locked <span class="legend-box legend-best">⭐ OOS 最佳</span></h4>
+    <p><b>类型</b>: v1.0 锁定配置 | <b>增强</b>: 斜率×R² 混合动量 + VT + 成本 (5bp+10bp)</p>
+    <p><b>核心</b>: 用 (价格动量 × 0.5 + 斜率×R² × 0.5) 替代纯价格动量, 信号更稳定; VT 缩放降低 DD; 含完整交易成本</p>
+    <p><b>OOS</b>: 3.47% / Sharpe <b>1.51</b> / DD <b>-1.94%</b> / <b>Calmar 1.791</b> — 风险调整冠军</p>
+  </div>
+
+  <div class="strategy-card">
+    <h4>v3 (52 池) <span class="legend-box legend-good">Stage 16A</span></h4>
+    <p><b>类型</b>: 多策略组合 | <b>子策略</b>: 动量(144d) + 均值反转(60d 反向+MA 金叉) + 行业轮动(60d 动量+加速度, 周度)</p>
+    <p><b>核心</b>: 三子策略互补, 动量抓趋势/反转抓修复/行业轮动抓短期切换, 子策略等权</p>
+    <p><b>OOS</b>: 7.69% / Sharpe 1.08 / DD -9.89% / <b>Calmar 0.778</b> — 最均衡</p>
+  </div>
+
+  <div class="strategy-card">
+    <h4>v4 style <span class="legend-box legend-bad">Stage 18 ⚠️</span></h4>
+    <p><b>类型</b>: 风格轮动 | <b>池</b>: 5 风格组 (HS300/CSI500/ChiNext/STAR50/红利) | <b>信号</b>: 多窗口 (5/20/120/180) 动量</p>
+    <p><b>核心</b>: 多窗口动量排名 + 20% 红利底仓 + Top-2 精选 + Sideways 缩仓 50%</p>
+    <p><b>问题</b>: 5 风格组高度相关 (0.86-0.90), 选股 ≈ 噪声; 70% 时间是 sideways, 年化 -2.5%</p>
+    <p><b>OOS</b>: 5.07% / Sharpe 0.36 / DD -38.73% / <b>Calmar 0.131</b> — 表现差</p>
+  </div>
+
+  <div class="strategy-card">
+    <h4>v4 factor <span class="legend-box legend-bad">Stage 18 ❌ 失效</span></h4>
+    <p><b>类型</b>: IC 因子择时 | <b>因子</b>: 5 个 (momentum/reversal/value/dividend/quality) | <b>权重</b>: max(0, IC+0.05)²</p>
+    <p><b>核心</b>: 滚动 IC 估计 + 因子特异性窗口 + Regime 条件化 (bull/bear/sideways)</p>
+    <p><b>问题</b>: IC 信噪比极差 (84-94% 低于 0.05 阈值); 70% 时间退化为单因子 (value only)</p>
+    <p><b>OOS</b>: -3.24% / Sharpe -0.07 / DD -38.04% / <b>Calmar -0.085</b> — 完全失效</p>
+  </div>
+
+  <div class="strategy-card">
+    <h4>v5 量价 <span class="legend-box legend-good">Stage 22 最高收益</span></h4>
+    <p><b>类型</b>: 11 量价因子复合 | <b>因子</b>: 6 大类 (动量/交易波动/换手率/多空对比/量价背离/量幅同向)</p>
+    <p><b>核心</b>: 华西证券论文方法, 截面 z-score + 等权复合因子 + Top-5 等权, 需要 OHLCV 数据</p>
+    <p><b>OOS</b>: 9.47% / Sharpe 0.60 / DD -19.41% / <b>Calmar 0.488</b> — 最高年化收益, 但波动大</p>
+  </div>
+
+  <div class="strategy-card" style="background: #F5F5F5; border-color: #999;">
+    <h4>HS300 基准 📊 <span class="legend-box legend-bench">沪深 300</span></h4>
+    <p><b>类型</b>: 被动指数 | <b>数据</b>: 510300 ETF, 归一化到 1.0 起点</p>
+    <p><b>用途</b>: 用于 (1) 业绩曲线对比 (2) 计算策略 α 超额 (3) 风险调整基准</p>
+    <p><b>OOS</b>: {hs300_oos['ann_return']*100:+.2f}% / Sharpe {hs300_oos['sharpe']:.2f} / DD {hs300_oos['max_dd']*100:.2f}% / Calmar {hs300_oos['calmar']:.3f}</p>
+  </div>
+</section>
 
 <div class="events">
 """
@@ -725,18 +858,57 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 <section id="events">
   <h2>关键事件时间线</h2>
   <table>
-    <tr><th>日期</th><th>事件</th><th>对策略的影响</th></tr>
-    <tr><td>2018-01-29</td><td>2018 春节前</td><td>v3 / v4 启动期, v1.0 早期动量信号</td></tr>
-    <tr><td>2020-03-23</td><td>疫情底</td><td>v5 量价 反弹后 +40% 收益</td></tr>
-    <tr><td>2022-04-26</td><td>2022 熊市底</td><td>v4 因子 -23.59%, v1.0 VT 保护 -0.71%</td></tr>
-    <tr><td>2024-09-23</td><td>政策利好</td><td>v5 量价 +35% / 2024, v3 +12%</td></tr>
-    <tr><td>2025-09-30</td><td>Q3 末</td><td>v1.0 +5.26%, v5 +32.29% (2025 最佳)</td></tr>
+    <tr><th>日期</th><th>事件</th><th>市场背景</th><th>对策略的影响</th></tr>
+    <tr><td>2018-01-29</td><td>2018 春节前</td><td>A 股 2018 年初快速冲高后回落</td><td>v3 / v4 启动期, v1.0 早期动量信号建立</td></tr>
+    <tr><td>2020-03-23</td><td>疫情底</td><td>新冠疫情全球爆发, A 股急跌后反弹</td><td>v5 量价在反弹后 +40% 收益, v3 抓住回升</td></tr>
+    <tr><td>2022-04-26</td><td>2022 熊市底</td><td>俄乌冲突 + 美联储加息, A 股深度调整</td><td>v4 因子 -23.59% (IC 信号失效), v1.0 VT 保护仅 -0.71%</td></tr>
+    <tr><td>2022-10-31</td><td>2022 反弹</td><td>10 月后政策预期转向, 风险偏好回升</td><td>v3 反弹 +25%, v1.0 +5% (VT 仍保守)</td></tr>
+    <tr><td>2024-09-23</td><td>政策利好</td><td>央行/证监会组合政策, 股市快速反弹</td><td>v5 量价 +35% (年化), v3 +12%, v1.0 仅 +5% (VT 限制)</td></tr>
+    <tr><td>2025-09-30</td><td>2025 Q3 末</td><td>市场震荡上行, 风格分化</td><td>v5 +32.29% (年度最佳), v1.0 +5.26% (低波动防御)</td></tr>
   </table>
-  <p style="font-size:12px;color:#666;margin-top:20px;">
-  <b>注</b>: 表格中"全期"和"OOS"分别指 2018-2026 和 2022-2026 的回测区间。
-  数据源: <code>combo/unified_v1v5_compare.py</code> (口径 A: 52 ETF 池 + 5bp 单边成本 + CICC cap=3)。
-  </p>
 </section>
+
+<section id="recommendations">
+  <h2>策略推荐与组合方案</h2>
+
+  <h3>1. 单策略推荐 (按风险偏好)</h3>
+  <table>
+    <tr><th>风险偏好</th><th>推荐策略</th><th>理由</th><th>OOS Calmar</th></tr>
+    <tr><td>🛡️ 极保守</td><td>v1.0 locked</td><td>波动率目标限制 DD 至 -1.94%, 适合低风险偏好</td><td><b>1.791</b></td></tr>
+    <tr><td>⚖️ 均衡</td><td>v3 (52 池)</td><td>三子策略互补, 风险与收益平衡</td><td>0.778</td></tr>
+    <tr><td>🚀 进取</td><td>v5 量价</td><td>11 量价因子, 最高年化 9.47%, 适合能承受波动</td><td>0.488</td></tr>
+    <tr><td>📊 基准</td><td>HS300</td><td>被动指数, 无主动管理成本</td><td>{hs300_oos['calmar']:.3f}</td></tr>
+  </table>
+
+  <h3>2. 组合推荐 (多策略分散)</h3>
+  <div class="methodology">
+    <b>v1.0 80% + v5 20%</b> — 全期 Calmar <b>1.079</b>, OOS <b>0.886</b>, OOS Sharpe 0.84<br>
+    优势: 利用 v1.0 (低 DD) + v5 (高收益) 的低相关性 0.42, 攻防兼备<br>
+    <br>
+    <b>v1.0 50% + v3 25% + v5 25%</b> — 全期 Calmar 0.906, OOS 0.841, OOS Sharpe 0.81<br>
+    优势: 三策略分散, 风险/收益/胜率都平衡<br>
+    <br>
+    <b>v3 50% + v5 50%</b> — 全期 Calmar 0.752, OOS 0.709, OOS Sharpe 0.70<br>
+    优势: 无 VT 拖累, 进攻性最强, 适合牛市环境
+  </div>
+
+  <h3>3. 风险提示</h3>
+  <div class="methodology" style="border-left-color: #F57C00; background: #FFF8E1;">
+    <b>⚠️ 实盘前需注意:</b><br>
+    1. <b>回测非预测</b>: 8.5 年样本量有限, 实盘可能与回测差异较大<br>
+    2. <b>交易成本</b>: v5 月换手 161%, 实际成本可能侵蚀 2-3% 年化<br>
+    3. <b>流动性</b>: 部分 SmartBeta ETF 流动性低, 大资金调仓冲击大<br>
+    4. <b>政策风险</b>: 2022/2024 政策窗口期表现差异巨大, 未来不可预测<br>
+    5. <b>数据依赖</b>: v5 需 OHLCV 数据, 缺数据期间退化为 v3 逻辑
+  </div>
+</section>
+
+<footer style="margin-top: 40px; padding: 20px; background: #F0F4F8; border-radius: 8px; font-size: 12px; color: #666;">
+  <b>📊 数据来源</b>: <code>combo/unified_v1v5_compare.py</code> 生成 NAV, <code>combo/nav_curves_html.py</code> 生成此 HTML<br>
+  <b>📁 输出文件</b>: <code>reports/momentum_etf_rotation/combo/V1V5_NAV_CURVES.html</code> (内联 plotly.js, 脱机可用)<br>
+  <b>🔗 相关文件</b>: <code>UNIFIED_V1V5_EVOLUTION.html</code> (v1-v5 演进专题, 含更多子图) | <code>UNIFIED_V1V5_REPORT.md</code> (完整 markdown 报告)<br>
+  <b>⚙️ 统一口径</b>: 52 ETF 池 | 2018-2026 | 5bp 单边成本 | A 股 cap=3 (CICC 规则) | v4 用 12 SmartBeta 子集
+</footer>
 
 </body>
 </html>"""
