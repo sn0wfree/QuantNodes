@@ -1,8 +1,8 @@
 # 动量 ETF 轮动策略 — 当前状态总结
 
-> 最后更新: 2026-07-08
-> 当前阶段: Stage 12A (斜率×R² 动量) 完成 → **策略 v1.0 锁定**
-> 下一阶段: 设计策略迭代体系 (v1.x → v2.0)
+> 最后更新: 2026-07-09
+> 当前阶段: Stage 14 (924专项分析) 完成 → **分析报告已生成**
+> 下一阶段: Stage 14A (事件检测机制实现)
 
 ---
 
@@ -68,6 +68,7 @@ RotationConfig(
 | 10 | 集中度约束 | ❌ **放弃** | Calmar 0.61 (限制过严) |
 | **12A** | **斜率×R² 动量 (hybrid)** | ✅ **推荐** | **Calmar 1.17 (v1.0 base)** |
 | 13 | 交易成本建模 | ✅ pass | Calmar 0.98 |
+| **14** | **924专项分析** | ✅ **分析完成** | **发现A股低配问题** |
 
 ### 2.2 测试统计
 
@@ -206,11 +207,13 @@ reports/momentum_etf_rotation/
 ├── v1/                                    # CICC 原始复现
 │   ├── validation_fix_report.md
 │   └── charts/                            # CICC 基线图表
-├── v2/                                    # 增强版 (Stage 9~13)
+├── v2/                                    # 增强版 (Stage 9~14)
 │   ├── stage9a~d_report.md
 │   ├── stage10~13_report.md
+│   ├── stage14_924_analysis.md             # 924专项分析 (新建)
 │   ├── sensitivity_*.json
 │   └── charts/                            # Stage 专用图表
+│       └── 924_analysis.html              # 924分析图表 (新建)
 ├── common/                                # 跨版本分析
 │   ├── contribution_analysis.md
 │   ├── extended_metrics.*, *.csv / json

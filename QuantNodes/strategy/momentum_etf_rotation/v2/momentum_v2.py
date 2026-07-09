@@ -52,11 +52,11 @@ def rank_pctl_v2(
             - "hybrid": 50/50 混合
     """
     if momentum_type == "slope_r2":
-        score = slope_r2_score(nav_df, lookback, as_of)
+        score = slope_r2_score_v2(nav_df, lookback, as_of)
     elif momentum_type == "hybrid":
-        score = hybrid_momentum_score(nav_df, lookback, as_of)
+        score = hybrid_momentum_score_v2(nav_df, lookback, as_of)
     else:  # "price"
-        score = rank_by_momentum(nav_df, lookback, as_of)
+        score = rank_by_momentum_v2(nav_df, lookback, as_of)
     return score.rank(method="average", pct=True)
 
 
@@ -73,11 +73,11 @@ def compute_momentum_score_v2(
         momentum_type: "price" | "slope_r2" | "hybrid"
     """
     if momentum_type == "slope_r2":
-        return slope_r2_score(nav_df, lookback, as_of)
+        return slope_r2_score_v2(nav_df, lookback, as_of)
     elif momentum_type == "hybrid":
-        return hybrid_momentum_score(nav_df, lookback, as_of, fused_weight)
+        return hybrid_momentum_score_v2(nav_df, lookback, as_of, fused_weight)
     else:  # "price"
-        return rank_by_momentum(nav_df, lookback, as_of)
+        return rank_by_momentum_v2(nav_df, lookback, as_of)
 
 
 def distance_to_52w_high_v2(
@@ -168,11 +168,11 @@ def hybrid_momentum_score_v2(
     Returns:
         pd.Series, index=code, values=score (越大越强)
     """
-    mom = rank_by_momentum(nav_df, lookback, as_of)
+    mom = rank_by_momentum_v2(nav_df, lookback, as_of)
     mom_max = mom.abs().max()
     mom_norm = mom / mom_max if mom_max > 0 else mom
 
-    slope = slope_r2_score(nav_df, lookback, as_of, scale=10000.0)
+    slope = slope_r2_score_v2(nav_df, lookback, as_of, scale=10000.0)
     slope_max = slope.abs().max()
     slope_norm = slope / slope_max if slope_max > 0 else slope
 
@@ -194,7 +194,7 @@ def fused_signal_v2(
         - 52周新高捕获趋势强度 (避免假突破)
     默认 w=0.4 与 CICC 报告图表 4 一致.
     """
-    mom = rank_by_momentum(nav_df, lookback, as_of)
+    mom = rank_by_momentum_v2(nav_df, lookback, as_of)
     # 归一化到 [-1, 1] 范围
     mom_max = mom.abs().max()
     mom_norm = mom / mom_max if mom_max > 0 else mom

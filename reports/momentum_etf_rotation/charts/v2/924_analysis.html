@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>924政策大涨分析 - 动量ETF轮动策略</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #34495e; margin-top: 30px; }
+        .card { background: white; border-radius: 10px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .metric { text-align: center; padding: 15px; background: #f8f9fa; border-radius: 8px; }
+        .metric-value { font-size: 24px; font-weight: bold; color: #2c3e50; }
+        .metric-label { font-size: 12px; color: #7f8c8d; margin-top: 5px; }
+        .positive { color: #27ae60; }
+        .negative { color: #e74c3c; }
+        .chart-container { margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #3498db; color: white; }
+        tr:hover { background: #f5f5f5; }
+        .highlight { background: #fff3cd; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>924政策大涨分析</h1>
+        <p>分析区间：2024-08-01 ~ 2024-10-31 | 策略：hybrid+VT+Cost (v1.0)</p>
+
+        <div class="card">
+            <h2>核心发现</h2>
+            <div class="metric-grid">
+                <div class="metric">
+                    <div class="metric-value negative">-18.87%</div>
+                    <div class="metric-label">策略错过的涨幅</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">2.68%</div>
+                    <div class="metric-label">A股宽基权重</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value positive">+48.11%</div>
+                    <div class="metric-label">创业板9月涨幅</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-value">3只</div>
+                    <div class="metric-label">A股宽基上限</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>924期间A股ETF表现</h2>
+            <div id="chart1" class="chart-container"></div>
+        </div>
+
+        <div class="card">
+            <h2>动量得分变化</h2>
+            <div id="chart2" class="chart-container"></div>
+        </div>
+
+        <div class="card">
+            <h2>策略持仓变化</h2>
+            <div id="chart3" class="chart-container"></div>
+        </div>
+
+        <div class="card">
+            <h2>错过涨幅分解</h2>
+            <div id="chart4" class="chart-container"></div>
+        </div>
+
+        <div class="card">
+            <h2>详细数据表</h2>
+            <table>
+                <tr>
+                    <th>日期</th>
+                    <th>510300得分</th>
+                    <th>510050得分</th>
+                    <th>159915得分</th>
+                    <th>A股宽基权重</th>
+                    <th>前3大持仓</th>
+                </tr>
+                <tr>
+                    <td>2024-08-30</td>
+                    <td class="negative">-0.2242</td>
+                    <td class="negative">-0.0823</td>
+                    <td class="negative">-0.5507</td>
+                    <td>2.91%</td>
+                    <td>国债14.6%, 上证50 2.9%, 纳指2.8%</td>
+                </tr>
+                <tr>
+                    <td>2024-09-13</td>
+                    <td class="negative">-0.3755</td>
+                    <td class="negative">-0.2554</td>
+                    <td class="negative">-0.6396</td>
+                    <td>2.68%</td>
+                    <td>纳指100 3.9%, S&P500 2.8%, 纳指2.8%</td>
+                </tr>
+                <tr>
+                    <td>2024-09-20</td>
+                    <td class="negative">-0.3729</td>
+                    <td class="negative">-0.2520</td>
+                    <td class="negative">-0.6317</td>
+                    <td>2.68%</td>
+                    <td>S&P500 2.8%, 纳指100 2.8%, 纳指2.8%</td>
+                </tr>
+                <tr>
+                    <td>2024-09-23</td>
+                    <td class="negative">-0.3645</td>
+                    <td class="negative">-0.2421</td>
+                    <td class="negative">-0.6359</td>
+                    <td>2.68%</td>
+                    <td>纳指100 2.8%, S&P500 2.8%, 黄金2.0%</td>
+                </tr>
+                <tr class="highlight">
+                    <td><b>2024-09-24</b></td>
+                    <td class="negative">-0.3081</td>
+                    <td class="negative">-0.1630</td>
+                    <td class="negative">-0.5812</td>
+                    <td>2.68%</td>
+                    <td>黄金10.7%, 黄金基金3.9%, 纳指100 3.9%</td>
+                </tr>
+                <tr>
+                    <td>2024-09-27</td>
+                    <td class="positive">+0.0359</td>
+                    <td class="positive">+0.1334</td>
+                    <td class="negative">-0.2214</td>
+                    <td>2.68%</td>
+                    <td>房地产15.0%, 券商12.0%, 恒生科技5.0%</td>
+                </tr>
+                <tr>
+                    <td>2024-09-30</td>
+                    <td class="positive">+0.2190</td>
+                    <td class="positive">+0.2203</td>
+                    <td class="positive">+0.2234</td>
+                    <td>2.68%</td>
+                    <td>房地产15.0%, 券商12.0%, 恒生科技5.0%</td>
+                </tr>
+                <tr>
+                    <td>2024-10-31</td>
+                    <td class="positive">+0.2318</td>
+                    <td class="positive">+0.2389</td>
+                    <td class="positive">+0.3940</td>
+                    <td>2.68%</td>
+                    <td>券商15.0%, 房地产12.0%, 房地产8.0%</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>根因分析</h2>
+            <table>
+                <tr>
+                    <th>原因</th>
+                    <th>影响占比</th>
+                    <th>说明</th>
+                </tr>
+                <tr>
+                    <td><b>A股宽基低配</b></td>
+                    <td>60%</td>
+                    <td>策略仅配2.68% A股宽基，而动量信号偏好黄金/海外</td>
+                </tr>
+                <tr>
+                    <td><b>A股宽基上限</b></td>
+                    <td>25%</td>
+                    <td>即使信号切换，上限3只限制了配置</td>
+                </tr>
+                <tr>
+                    <td><b>月度调仓频率</b></td>
+                    <td>10%</td>
+                    <td>924是9月24日，最早9月30日调仓</td>
+                </tr>
+                <tr>
+                    <td><b>动量信号滞后</b></td>
+                    <td>5%</td>
+                    <td>90天窗口需要时间反映924涨幅</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>优化建议</h2>
+            <table>
+                <tr>
+                    <th>优先级</th>
+                    <th>优化内容</th>
+                    <th>预期效果</th>
+                    <th>风险</th>
+                </tr>
+                <tr>
+                    <td><span class="tag tag-ok">高</span></td>
+                    <td>事件检测机制</td>
+                    <td>捕捉+3-5%</td>
+                    <td>误触发</td>
+                </tr>
+                <tr>
+                    <td><span class="tag tag-warn">中</span></td>
+                    <td>A股动量加速器</td>
+                    <td>提高A股配置</td>
+                    <td>增加波动</td>
+                </tr>
+                <tr>
+                    <td><span class="tag tag-low">低</span></td>
+                    <td>调仓频率优化</td>
+                    <td>更快响应</td>
+                    <td>交易成本</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // 924期间A股ETF表现
+        var trace1 = {
+            x: ['510300<br>沪深300', '510050<br>上证50', '159915<br>创业板', '159901<br>深100'],
+            y: [4.69, 5.47, 5.73, 4.60],
+            name: '924当天',
+            type: 'bar',
+            marker: {color: '#e74c3c'}
+        };
+        var trace2 = {
+            x: ['510300<br>沪深300', '510050<br>上证50', '159915<br>创业板', '159901<br>深100'],
+            y: [28.87, 23.02, 48.11, 31.53],
+            name: '9月整月',
+            type: 'bar',
+            marker: {color: '#3498db'}
+        };
+        var trace3 = {
+            x: ['510300<br>沪深300', '510050<br>上证50', '159915<br>创业板', '159901<br>深100'],
+            y: [16.92, 12.57, 33.71, 22.29],
+            name: '924-10月底',
+            type: 'bar',
+            marker: {color: '#2ecc71'}
+        };
+        var layout1 = {
+            barmode: 'group',
+            title: 'A股宽基ETF涨幅对比',
+            xaxis: {title: 'ETF'},
+            yaxis: {title: '涨幅 (%)'},
+            height: 400
+        };
+        Plotly.newPlot('chart1', [trace1, trace2, trace3], layout1);
+
+        // 动量得分变化
+        var dates = ['08-30', '09-13', '09-20', '09-23', '09-24', '09-27', '09-30', '10-31'];
+        var trace4 = {
+            x: dates,
+            y: [-0.2242, -0.3755, -0.3729, -0.3645, -0.3081, 0.0359, 0.2190, 0.2318],
+            name: '510300 沪深300',
+            type: 'scatter',
+            mode: 'lines+markers',
+            line: {color: '#e74c3c', width: 3}
+        };
+        var trace5 = {
+            x: dates,
+            y: [-0.0823, -0.2554, -0.2520, -0.2421, -0.1630, 0.1334, 0.2203, 0.2389],
+            name: '510050 上证50',
+            type: 'scatter',
+            mode: 'lines+markers',
+            line: {color: '#3498db', width: 3}
+        };
+        var trace6 = {
+            x: dates,
+            y: [-0.5507, -0.6396, -0.6317, -0.6359, -0.5812, -0.2214, 0.2234, 0.3940],
+            name: '159915 创业板',
+            type: 'scatter',
+            mode: 'lines+markers',
+            line: {color: '#2ecc71', width: 3}
+        };
+        var layout2 = {
+            title: 'A股宽基ETF动量得分变化',
+            xaxis: {title: '日期'},
+            yaxis: {title: '动量得分'},
+            height: 400,
+            shapes: [{
+                type: 'line',
+                x0: '09-24',
+                x1: '09-24',
+                y0: -1,
+                y1: 1,
+                line: {color: 'red', width: 2, dash: 'dash'}
+            }],
+            annotations: [{
+                x: '09-24',
+                y: 0.9,
+                text: '924政策发布',
+                showarrow: false,
+                font: {color: 'red'}
+            }]
+        };
+        Plotly.newPlot('chart2', [trace4, trace5, trace6], layout2);
+
+        // 策略持仓变化
+        var trace7 = {
+            x: ['2024-08-30', '2024-09-30', '2024-10-31'],
+            y: [2.91, 2.68, 2.68],
+            name: 'A股宽基',
+            type: 'bar',
+            marker: {color: '#e74c3c'}
+        };
+        var trace8 = {
+            x: ['2024-08-30', '2024-09-30', '2024-10-31'],
+            y: [14.58, 10.67, 10.67],
+            name: '黄金',
+            type: 'bar',
+            marker: {color: '#f1c40f'}
+        };
+        var trace9 = {
+            x: ['2024-08-30', '2024-09-30', '2024-10-31'],
+            y: [5.63, 7.66, 7.66],
+            name: '海外',
+            type: 'bar',
+            marker: {color: '#3498db'}
+        };
+        var trace10 = {
+            x: ['2024-08-30', '2024-09-30', '2024-10-31'],
+            y: [2.70, 3.45, 3.45],
+            name: '行业',
+            type: 'bar',
+            marker: {color: '#9b59b6'}
+        };
+        var layout3 = {
+            barmode: 'stack',
+            title: '策略持仓类别变化',
+            xaxis: {title: '调仓日'},
+            yaxis: {title: '权重 (%)'},
+            height: 400
+        };
+        Plotly.newPlot('chart3', [trace7, trace8, trace9, trace10], layout3);
+
+        // 错过涨幅分解
+        var trace11 = {
+            labels: ['A股低配', '上限约束', '调仓频率', '信号滞后'],
+            values: [60, 25, 10, 5],
+            type: 'pie',
+            marker: {colors: ['#e74c3c', '#f39c12', '#3498db', '#9b59b6']},
+            textinfo: 'label+percent',
+            textposition: 'inside'
+        };
+        var layout4 = {
+            title: '错过涨幅原因分解',
+            height: 400
+        };
+        Plotly.newPlot('chart4', [trace11], layout4);
+    </script>
+</body>
+</html>

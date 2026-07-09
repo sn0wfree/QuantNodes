@@ -227,7 +227,7 @@ def inverse_vol_weights_v2(
     inv[inv < floor] = 0.0
     total = inv.sum()
     if total <= 0:
-        return equal_weights(codes)
+        return equal_weights_v2(codes)
     return (inv / total).to_dict()
 
 
@@ -309,7 +309,7 @@ def select_and_weight_v2(
         )
         pctl = score.rank(method="average", pct=True)
     elif cfg.signal_type == "fused":
-        score = fused_signal(
+        score = fused_signal_v2(
             nav_df, cfg.lookback, as_of,
             fused_weight=cfg.signal_fused_weight,
             window_52w=cfg.signal_52w_window,
@@ -427,21 +427,21 @@ def select_and_weight_v2(
 
     # ── 5. 加权 ──
     if cfg.weight_method == "inv_vol":
-        state.weights = inverse_vol_weights(
+        state.weights = inverse_vol_weights_v2(
             nav_df, state.chosen, as_of,
             vol_window=cfg.vol_window, floor=cfg.weight_floor,
         )
     else:
-        state.weights = equal_weights(state.chosen)
+        state.weights = equal_weights_v2(state.chosen)
 
     # Stage 10: 集中度约束 (缩放单 ETF / Top N / 类别集中度)
     if cfg.concentration.enabled:
-        state.weights = _apply_concentration_caps(
+        state.weights = _apply_concentration_caps_v2(
             state.weights, cfg.concentration, pool,
         )
 
     # Stage 9-B: 趋势过滤
-    apply_trend_filter(nav_df, cfg, as_of, state)
+    apply_trend_filter_v2(nav_df, cfg, as_of, state)
 
     return state
 
@@ -537,7 +537,7 @@ def apply_trend_filter_v2(
     if not cfg.trend_filter.enabled:
         return state
     tf = cfg.trend_filter
-    is_bull = check_trend_filter(nav_df, tf.benchmark_code, tf.ma_window, as_of)
+    is_bull = check_trend_filter_v2(nav_df, tf.benchmark_code, tf.ma_window, as_of)
     if is_bull:
         return state
     scale = tf.exposure_bear
@@ -584,7 +584,7 @@ def apply_vol_targeting_v2(
     if not cfg.vol_targeting.enabled:
         return state
     vt = cfg.vol_targeting
-    scale = vol_targeting_scale(
+    scale = vol_targeting_scale_v2(
         nav.loc[:as_of],
         vt.target_vol,
         vt.lookback,
@@ -661,7 +661,7 @@ def apply_concentration_caps_v2(
     """对 PortfolioState 应用集中度约束 (Stage 10)."""
     if not cfg.concentration.enabled:
         return state
-    state.weights = _apply_concentration_caps(
+    state.weights = _apply_concentration_caps_v2(
         state.weights, cfg.concentration, pool,
     )
     return state
@@ -713,7 +713,7 @@ def apply_stops_v2(
             chosen=prev_chosen, weights=dict(prev_weights),
         )
         # Stage 9-B: 趋势过滤 (无止损时也要应用)
-        apply_trend_filter(nav_df, cfg, as_of, state)
+        apply_trend_filter_v2(nav_df, cfg, as_of, state)
         return state
 
     # 已有持仓的品类计数 (传给 select_and_weight 作为 base, 避免累积超限)
@@ -723,7 +723,7 @@ def apply_stops_v2(
         base_cats[cat] = base_cats.get(cat, 0) + 1
 
     # 3) 重新选 (用与 select_and_weight 同样的规则), 但**排除**已止损的
-    state = select_and_weight(nav_df, pool, cfg, as_of, blacklist=stopped,
+    state = select_and_weight_v2(nav_df, pool, cfg, as_of, blacklist=stopped,
                               base_categories=base_cats)
 
     # 4) 候选 = state.chosen 中 (非 prev_chosen) 的部分
@@ -739,21 +739,21 @@ def apply_stops_v2(
 
     state.chosen = prev_chosen
     if cfg.weight_method == "inv_vol":
-        state.weights = inverse_vol_weights(
+        state.weights = inverse_vol_weights_v2(
             nav_df, prev_chosen, as_of, vol_window=cfg.vol_window, floor=cfg.weight_floor
         )
     else:
-        state.weights = equal_weights(prev_chosen)
+        state.weights = equal_weights_v2(prev_chosen)
     state.stopped = stopped
     state.replaced = replaced
 
     # Stage 10: 集中度约束 (在重新加权后再次应用)
     if cfg.concentration.enabled:
-        state.weights = _apply_concentration_caps(
+        state.weights = _apply_concentration_caps_v2(
             state.weights, cfg.concentration, pool,
         )
 
     # Stage 9-B: 趋势过滤
-    apply_trend_filter(nav_df, cfg, as_of, state)
+    apply_trend_filter_v2(nav_df, cfg, as_of, state)
 
     return state
