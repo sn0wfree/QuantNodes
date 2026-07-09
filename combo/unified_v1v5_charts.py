@@ -33,7 +33,8 @@ STAGE_MAP = {
     "v3 (52 池)":     "Stage 16A (多策略组合, 52 池)",
     "v4 style":      "Stage 18 (风格轮动, 12 池)",
     "v4 factor":     "Stage 18 (IC 因子择时, 12 池)",
-    "v5 量价":        "Stage 22 (11 量价因子, 44 OHLCV)",
+    "v5 量价":        "Stage 22 (11 量价因子, 44 OHLCV, 等权)",
+    "v5.1 量价 (逆波动)": "Stage 25 (v5 升级, 11 量价因子, 逆波动率加权)",
 }
 
 # 调色板 (类似 build_stage_charts 风格)
@@ -46,6 +47,7 @@ COLORS = {
     "v4 style":      "#9467BD",
     "v4 factor":     "#8C564B",
     "v5 量价":        "#E377C2",
+    "v5.1 量价 (逆波动)": "#FF6B9D",  # v5 粉红 + 加深 → 区分
 }
 
 
@@ -312,12 +314,19 @@ def chart_v1_evolution(navs):
 def chart_portfolio_combos(navs_A):
     combos = {
         "v1.0 80% + v5 20%":      0.8 * navs_A["v1.0 locked"] + 0.2 * navs_A["v5 量价"],
+        "v1.0 80% + v5.1 20% ⭐":  0.8 * navs_A["v1.0 locked"] + 0.2 * navs_A["v5.1 量价 (逆波动)"],
         "v1.0 70% + v5 30%":      0.7 * navs_A["v1.0 locked"] + 0.3 * navs_A["v5 量价"],
+        "v1.0 70% + v5.1 30%":    0.7 * navs_A["v1.0 locked"] + 0.3 * navs_A["v5.1 量价 (逆波动)"],
         "v3 50% + v5 50%":         0.5 * navs_A["v3 (52 池)"] + 0.5 * navs_A["v5 量价"],
+        "v3 50% + v5.1 50%":       0.5 * navs_A["v3 (52 池)"] + 0.5 * navs_A["v5.1 量价 (逆波动)"],
         "v1.0 50% + v3 25% + v5 25%":
             0.5 * navs_A["v1.0 locked"] + 0.25 * navs_A["v3 (52 池)"] + 0.25 * navs_A["v5 量价"],
+        "v1.0 50% + v3 25% + v5.1 25%":
+            0.5 * navs_A["v1.0 locked"] + 0.25 * navs_A["v3 (52 池)"] + 0.25 * navs_A["v5.1 量价 (逆波动)"],
         "v1.0 60% + v3 20% + v5 20%":
             0.6 * navs_A["v1.0 locked"] + 0.2 * navs_A["v3 (52 池)"] + 0.2 * navs_A["v5 量价"],
+        "v1.0 60% + v3 20% + v5.1 20%":
+            0.6 * navs_A["v1.0 locked"] + 0.2 * navs_A["v3 (52 池)"] + 0.2 * navs_A["v5.1 量价 (逆波动)"],
     }
     fig = go.Figure()
     for name, nav in combos.items():
@@ -454,7 +463,8 @@ tr.highlight {{ background: #FFF9E6; font-weight: bold; }}
 <div class="key-finding">
   <strong>关键发现 (口径 A OOS 2022-2026):</strong><br>
   • <b>最佳风险调整</b>: {best_oos[0]} — OOS Calmar <b>{best_oos[1]['calmar']:.3f}</b>, Sharpe <b>{best_oos[1]['sharpe']:.2f}</b>, DD <b>{best_oos[1]['max_dd']*100:.2f}%</b><br>
-  • <b>最高绝对收益</b>: v5 量价 — OOS 年化 <b>{oos_A['v5 量价']['ann_return']*100:.2f}%</b>, Calmar 0.488<br>
+  • <b>最高绝对收益</b>: v5.1 逆波动 — OOS 年化 <b>{oos_A.get('v5.1 量价 (逆波动)', oos_A.get('v5 量价', {'ann_return': 0}))['ann_return']*100:.2f}%</b>, Calmar {oos_A.get('v5.1 量价 (逆波动)', oos_A.get('v5 量价', {'calmar': 0}))['calmar']:.3f}<br>
+  • <b>v5 → v5.1 升级</b>: OOS Calmar 0.488 → <b>{oos_A.get('v5.1 量价 (逆波动)', {'calmar': 0})['calmar']:.3f}</b> (+{(oos_A.get('v5.1 量价 (逆波动)', {'calmar': 0})['calmar'] - oos_A.get('v5 量价', {'calmar': 0})['calmar'])/oos_A.get('v5 量价', {'calmar': 1})['calmar']*100:.1f}%) ⭐ 逆波动率加权<br>
   • <b>最稳</b>: v1.0 locked — OOS DD 仅 -1.94%, 波动率 2.38%<br>
   • <b>成本影响</b>: 5bp 月度成本对长期 Calmar 影响 &lt; 0.04
 </div>
@@ -497,13 +507,54 @@ tr.highlight {{ background: #FFF9E6; font-weight: bold; }}
     <tr><td>Stage 12A (v1.0 locked)</td><td>斜率×R² 混合 + VT + Cost</td><td><b>1.791</b></td></tr>
     <tr><td>Stage 16A (v3)</td><td>多策略 (动量+反转+行业轮动)</td><td>0.778</td></tr>
     <tr><td>Stage 18 (v4 style/factor)</td><td>风格轮动 + IC 因子择时</td><td>-0.085 ~ 0.131</td></tr>
-    <tr><td>Stage 22 (v5)</td><td>11 量价因子等权 (华西论文)</td><td>0.488</td></tr>
+    <tr><td>Stage 22 (v5)</td><td>11 量价因子 + <b>等权</b> (华西论文)</td><td>0.488</td></tr>
+    <tr style="background: #FFF9E6;"><td>Stage 25 (v5.1)</td><td>11 量价因子 + <b>逆波动率</b> 加权 (v5 升级版)</td><td><b>0.589</b> ⭐ (+20.7%)</td></tr>
+  </table>
+
+  <h3>推荐组合 (含 v5.1)</h3>
+  <table>
+    <tr><th>组合</th><th>全期 Calmar</th><th>OOS Calmar</th><th>改进 (vs v5)</th></tr>"""
+
+    # 添加推荐组合
+    navs_combos = {
+        "v1.0 80% + v5 20%":  0.8 * navs_A["v1.0 locked"] + 0.2 * navs_A["v5 量价"],
+        "v1.0 80% + v5.1 20%": 0.8 * navs_A["v1.0 locked"] + 0.2 * navs_A["v5.1 量价 (逆波动)"],
+        "v3 50% + v5 50%":     0.5 * navs_A["v3 (52 池)"] + 0.5 * navs_A["v5 量价"],
+        "v3 50% + v5.1 50%":   0.5 * navs_A["v3 (52 池)"] + 0.5 * navs_A["v5.1 量价 (逆波动)"],
+        "v1.0 50% + v3 25% + v5 25%":
+            0.5 * navs_A["v1.0 locked"] + 0.25 * navs_A["v3 (52 池)"] + 0.25 * navs_A["v5 量价"],
+        "v1.0 50% + v3 25% + v5.1 25%":
+            0.5 * navs_A["v1.0 locked"] + 0.25 * navs_A["v3 (52 池)"] + 0.25 * navs_A["v5.1 量价 (逆波动)"],
+    }
+    for name, nav in navs_combos.items():
+        full = metrics(nav)
+        oos = metrics(nav.loc[OOS_START:])
+        is_v51 = "v5.1" in name
+        cls = "highlight" if is_v51 else ""
+        star = " ⭐" if is_v51 and "v1.0 80%" in name else ""
+        # 计算 v5 vs v5.1 的 OOS Calmar 差
+        if "v5.1" in name:
+            v5_name = name.replace("v5.1", "v5")
+            v5_nav = navs_combos[v5_name]
+            v5_oos = metrics(v5_nav.loc[OOS_START:])["calmar"]
+            delta = (oos["calmar"] - v5_oos) / v5_oos * 100 if v5_oos else 0
+            delta_str = f"+{delta:.1f}%" if delta > 0 else f"{delta:.1f}%"
+        else:
+            delta_str = "—"
+        html += f"""    <tr class="{cls}"><td>{name}{star}</td>
+      <td>{full['calmar']:.3f}</td>
+      <td><b>{oos['calmar']:.3f}</b></td>
+      <td>{delta_str}</td></tr>
+"""
+
+    html += """
   </table>
 
   <p style="font-size: 12px; color: #666; margin-top: 30px;">
   统一口径: 52 ETF (44 主池 + 8 SmartBeta) | 2018-2026 | 5bp 单边成本 | A 股 cap=3 (CICC 规则)<br>
   数据: 前复权 close (scripts/fix_ohlcv_adjust.py 已修正 9 只 ETF 拆合股跳变)<br>
-  v4 池: 12 SmartBeta 子集 (v4 设计意图) | v5 池: 44 OHLCV
+  v4 池: 12 SmartBeta 子集 (v4 设计意图) | v5/v5.1 池: 44 OHLCV<br>
+  <b>v5.1</b>: v5 升级版, 11 量价因子 + 逆波动率加权 (与 v1/v3 一致), OOS Calmar +20.7%
   </p>
 </section>
 

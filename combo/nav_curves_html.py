@@ -42,25 +42,28 @@ COLORS = {
     "v4 style":         "#9467BD",
     "v4 factor":        "#8C564B",
     "v5 量价":          "#E377C2",
+    "v5.1 量价 (逆波动)": "#FF6B9D",
 }
 
 STAGE_MAP = {
-    "v0.0 baseline": "Stage 8 (原始 CICC 复现)",
-    "v0.1 +VT":      "Stage 9-C (波动率目标)",
-    "v0.2 +TF":      "Stage 9-B (趋势过滤)",
-    "v1.0 locked":   "Stage 12A (斜率×R² 混合, v1.0 锁定)",
-    "v3 (52 池)":    "Stage 16A (多策略组合)",
-    "v4 style":      "Stage 18 (风格轮动)",
-    "v4 factor":     "Stage 18 (IC 因子择时)",
-    "v5 量价":       "Stage 22 (11 量价因子)",
+    "v0.0 baseline":    "Stage 8 (原始 CICC 复现)",
+    "v0.1 +VT":         "Stage 9-C (波动率目标)",
+    "v0.2 +TF":         "Stage 9-B (趋势过滤)",
+    "v1.0 locked":      "Stage 12A (斜率×R² 混合, v1.0 锁定)",
+    "v3 (52 池)":       "Stage 16A (多策略组合)",
+    "v4 style":         "Stage 18 (风格轮动)",
+    "v4 factor":        "Stage 18 (IC 因子择时)",
+    "v5 量价":          "Stage 22 (11 量价因子, 等权)",
+    "v5.1 量价 (逆波动)": "Stage 25 (v5 升级, 11 量价因子, 逆波动率加权)",
 }
 
 # 分组
 GROUPS = {
     "v1.0 演进路径": ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"],
-    "进攻型":       ["v3 (52 池)", "v5 量价", "v1.0 locked"],
+    "进攻型":       ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v1.0 locked"],
+    "v5 vs v5.1":   ["v5 量价", "v5.1 量价 (逆波动)"],
     "风险型 (VT)":  ["v1.0 locked", "v0.1 +VT"],
-    "全部 8 策略":  None,  # 全部
+    "全部 9 策略":  None,  # 全部
 }
 
 
@@ -139,16 +142,18 @@ def chart_all_curves(navs):
         ))
 
     # 重点策略 (实线)
-    foreground = ["v1.0 locked", "v3 (52 池)", "v5 量价", "v0.1 +VT"]
+    foreground = ["v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v0.1 +VT"]
     for col in foreground:
         if col not in navs.columns or col == "HS300 基准":
             continue
         valid = navs[col].dropna()
         is_best = (col == "v1.0 locked")
+        is_v51 = (col == "v5.1 量价 (逆波动)")
         fig.add_trace(go.Scatter(
             x=valid.index, y=valid.values,
-            mode="lines", name=f"⭐ {col}" if is_best else col,
-            line=dict(color=COLORS.get(col, "#333"), width=2.2 if is_best else 1.6,
+            mode="lines", name=f"⭐ {col}" if is_best else (f"🆕 {col}" if is_v51 else col),
+            line=dict(color=COLORS.get(col, "#333"),
+                      width=2.2 if is_best else (1.9 if is_v51 else 1.6),
                       shape="spline", smoothing=0.6),
             hovertemplate=f"<b>{col}</b> ({STAGE_MAP.get(col, '')})<br>"
                           "%{x|%Y-%m-%d}<br>NAV=%{y:.3f}<extra></extra>",
@@ -208,12 +213,12 @@ def chart_grouped_curves(navs):
     panels = [
         ("v1.0 演进 (Stage 8 → v1.0)",
          ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"]),
-        ("进攻型 (v3 / v5 / v1.0 / HS300)",
-         ["v3 (52 池)", "v5 量价", "v1.0 locked", "HS300 基准"]),
-        ("风险型 (VT 类, 含基准)",
-         ["v0.1 +VT", "v1.0 locked", "HS300 基准"]),
+        ("进攻型 (v3 / v5 / v5.1 / v1.0 / HS300)",
+         ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v1.0 locked", "HS300 基准"]),
+        ("v5 vs v5.1 升级对比",
+         ["v5 量价", "v5.1 量价 (逆波动)"]),
         ("Top-3 策略 vs 基准",
-         ["v1.0 locked", "v3 (52 池)", "v5 量价", "HS300 基准"]),
+         ["v1.0 locked", "v3 (52 池)", "v5.1 量价 (逆波动)", "HS300 基准"]),
     ]
     fig = make_subplots(
         rows=2, cols=2,
@@ -274,7 +279,7 @@ def chart_alpha_curves(navs):
     bench = navs["HS300 基准"]
 
     fig = go.Figure()
-    for col in ["v1.0 locked", "v3 (52 池)", "v5 量价", "v0.1 +VT"]:
+    for col in ["v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v0.1 +VT"]:
         if col not in navs.columns:
             continue
         s = navs[col].dropna()
@@ -537,7 +542,8 @@ def chart_monthly_heatmap(navs):
 def main():
     print("[curve] 加载数据...")
     navs_A = pd.read_parquet(OUT_DIR / "unified_v1v5_navs_calA.parquet")
-    oos = navs_A.loc[OOS_START:]
+    oos = navs_A.loc[OOS_START:]  # DataFrame (用于表格)
+    oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}  # dict (用于显示)
 
     # 加载 HS300 基准
     print("[curve] 加载 HS300 基准...")
@@ -715,10 +721,11 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 <div class="key-finding">
   <strong>核心发现 (口径 A OOS 2022-2026, 含 HS300 基准):</strong><br>
   • <b>风险调整冠军</b>: v1.0 locked — OOS Calmar <b>1.791</b>, Sharpe <b>1.51</b>, DD -1.94%<br>
-  • <b>绝对收益冠军</b>: v5 量价 — OOS 年化 <b>9.47%</b> (HS300 同期 {hs300_oos['ann_return']*100:+.2f}%, α 显著)<br>
+  • <b>绝对收益冠军</b>: v5.1 逆波动 — OOS 年化 <b>{oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%</b> (HS300 同期 {hs300_oos['ann_return']*100:+.2f}%, α 显著)<br>
   • <b>最均衡</b>: v3 (52 池) — OOS 年化 7.69%, Sharpe 1.08, DD -9.89%<br>
+  • <b>v5 → v5.1 升级</b>: OOS Calmar 0.488 → <b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b> (+{(oos_metrics['v5.1 量价 (逆波动)']['calmar']-oos_metrics['v5 量价']['calmar'])/oos_metrics['v5 量价']['calmar']*100:.1f}%) ⭐<br>
   • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
-  • <b>推荐组合</b>: v1.0 80% + v5 20% — 全期 Calmar 1.079, OOS 0.886
+  • <b>推荐组合</b>: v1.0 80% + <b>v5.1 20%</b> — 全期 Calmar 1.146, OOS <b>1.015</b> ⭐ (跨入 1.0 俱乐部)
 </div>
 
 <div class="toc">
@@ -814,10 +821,18 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   </div>
 
   <div class="strategy-card">
-    <h4>v5 量价 <span class="legend-box legend-good">Stage 22 最高收益</span></h4>
+    <h4>v5 量价 <span class="legend-box legend-good">Stage 22 基础版</span></h4>
     <p><b>类型</b>: 11 量价因子复合 | <b>因子</b>: 6 大类 (动量/交易波动/换手率/多空对比/量价背离/量幅同向)</p>
     <p><b>核心</b>: 华西证券论文方法, 截面 z-score + 等权复合因子 + Top-5 等权, 需要 OHLCV 数据</p>
-    <p><b>OOS</b>: 9.47% / Sharpe 0.60 / DD -19.41% / <b>Calmar 0.488</b> — 最高年化收益, 但波动大</p>
+    <p><b>OOS</b>: 9.47% / Sharpe 0.60 / DD -19.41% / <b>Calmar 0.488</b> — 基础版, 高收益但波动大</p>
+  </div>
+
+  <div class="strategy-card" style="background: #FFF9E6; border-color: #FF6B9D;">
+    <h4>v5.1 量价 (逆波动) <span class="legend-box legend-best">⭐ Stage 25 升级</span></h4>
+    <p><b>类型</b>: 11 量价因子 + <b>逆波动率加权</b> | <b>因子</b>: 与 v5 相同</p>
+    <p><b>核心</b>: v5 升级版, 选股逻辑不变, 唯一差异: 加权方式 (等权 → 逆波动, 与 v1/v3 一致), 21日窗口, max_weight=0.30</p>
+    <p><b>OOS</b>: {oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}% / Sharpe {oos_metrics['v5.1 量价 (逆波动)']['sharpe']:.2f} / DD {oos_metrics['v5.1 量价 (逆波动)']['max_dd']*100:.2f}% / <b>Calmar {oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b> ⭐</p>
+    <p><b>v5 → v5.1 改善</b>: OOS Calmar +{(oos_metrics['v5.1 量价 (逆波动)']['calmar']-oos_metrics['v5 量价']['calmar'])/oos_metrics['v5 量价']['calmar']*100:.1f}%, OOS Sharpe +{(oos_metrics['v5.1 量价 (逆波动)']['sharpe']-oos_metrics['v5 量价']['sharpe'])/oos_metrics['v5 量价']['sharpe']*100:.1f}%, OOS DD 改善 {abs(oos_metrics['v5.1 量价 (逆波动)']['max_dd'])-abs(oos_metrics['v5 量价']['max_dd']):.2f}pp</p>
   </div>
 
   <div class="strategy-card" style="background: #F5F5F5; border-color: #999;">
@@ -837,7 +852,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
     html += f"""</div>
 
 <section id="metrics_table">
-  <h2>8 策略 OOS 业绩表 (按 Calmar 排序)</h2>
+  <h2>9 策略 OOS 业绩表 (按 Calmar 排序)</h2>
   <table>
     <tr>
       <th rowspan="2">排名</th>
@@ -876,20 +891,22 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
     <tr><th>风险偏好</th><th>推荐策略</th><th>理由</th><th>OOS Calmar</th></tr>
     <tr><td>🛡️ 极保守</td><td>v1.0 locked</td><td>波动率目标限制 DD 至 -1.94%, 适合低风险偏好</td><td><b>1.791</b></td></tr>
     <tr><td>⚖️ 均衡</td><td>v3 (52 池)</td><td>三子策略互补, 风险与收益平衡</td><td>0.778</td></tr>
-    <tr><td>🚀 进取</td><td>v5 量价</td><td>11 量价因子, 最高年化 9.47%, 适合能承受波动</td><td>0.488</td></tr>
+    <tr><td>🚀 进取</td><td>v5.1 逆波动 🆕</td><td>11 量价因子 + 逆波动, 年化 {oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%, 风险调整优</td><td><b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b></td></tr>
     <tr><td>📊 基准</td><td>HS300</td><td>被动指数, 无主动管理成本</td><td>{hs300_oos['calmar']:.3f}</td></tr>
   </table>
 
   <h3>2. 组合推荐 (多策略分散)</h3>
   <div class="methodology">
-    <b>v1.0 80% + v5 20%</b> — 全期 Calmar <b>1.079</b>, OOS <b>0.886</b>, OOS Sharpe 0.84<br>
-    优势: 利用 v1.0 (低 DD) + v5 (高收益) 的低相关性 0.42, 攻防兼备<br>
+    <b>⭐ v1.0 80% + v5.1 20%</b> (推荐, <b>v5 → v5.1 升级</b>) — 全期 Calmar <b>1.146</b>, OOS <b>1.015</b> ⭐, OOS Sharpe 0.95<br>
+    优势: 利用 v1.0 (低 DD) + v5.1 (高收益+逆波动) 的低相关性, 攻防兼备, 跨入'1.0 俱乐部'<br>
     <br>
-    <b>v1.0 50% + v3 25% + v5 25%</b> — 全期 Calmar 0.906, OOS 0.841, OOS Sharpe 0.81<br>
+    <b>v1.0 50% + v3 25% + v5.1 25%</b> — 全期 Calmar 0.958, OOS 0.951, OOS Sharpe 0.91<br>
     优势: 三策略分散, 风险/收益/胜率都平衡<br>
     <br>
-    <b>v3 50% + v5 50%</b> — 全期 Calmar 0.752, OOS 0.709, OOS Sharpe 0.70<br>
-    优势: 无 VT 拖累, 进攻性最强, 适合牛市环境
+    <b>v3 50% + v5.1 50%</b> — 全期 Calmar 0.764, OOS 0.765, OOS Sharpe 0.80<br>
+    优势: 无 VT 拖累, 进攻性较强<br>
+    <br>
+    <i>v5 (等权) 旧组合作为参考: v1.0 80% + v5 20% — OOS Calmar 0.886 (v5.1 升级后 +14.6%)</i>
   </div>
 
   <h3>3. 风险提示</h3>
