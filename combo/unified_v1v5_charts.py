@@ -462,23 +462,27 @@ tr.highlight {{ background: #FFF9E6; font-weight: bold; }}
 {"".join(sections)}
 
 <section id="summary">
-  <h2>最终推荐 (基于 OOS Calmar)</h2>
+  <h2>最终推荐 (基于 OOS Calmar 2022-2026)</h2>
+  <div style="font-size:13px;color:#666;margin-bottom:8px;">按 OOS Calmar 降序排列</div>
   <table>
-    <tr><th>策略</th><th>全期 Calmar</th><th>OOS Calmar</th><th>OOS Sharpe</th><th>年化收益</th><th>年化波动</th><th>最大回撤</th></tr>
+    <tr>
+      <th>排名</th><th>策略</th><th>年化收益率</th><th>年化波动</th>
+      <th>OOS Sharpe</th><th>最大回撤</th><th>OOS Calmar</th>
+    </tr>
 """
 
-    for col in navs_A.columns:
-        m = metrics(navs_A[col])
-        o = oos_A[col]
-        is_best = (col == best_oos[0])
-        cls = "highlight" if is_best else ""
-        html += f"""    <tr class="{cls}"><td>{col}</td>
-      <td>{m['calmar']:.3f}</td>
-      <td><b>{o['calmar']:.3f}</b></td>
-      <td>{o['sharpe']:.2f}</td>
+    # 按 OOS Calmar 降序排序
+    oos_A_with_name = [(col, oos_A[col]) for col in navs_A.columns]
+    oos_A_sorted = sorted(oos_A_with_name, key=lambda x: x[1]["calmar"], reverse=True)
+    for rank, (col, o) in enumerate(oos_A_sorted, 1):
+        cls = "highlight" if rank == 1 else ""
+        star = " ⭐" if rank == 1 else ""
+        html += f"""    <tr class="{cls}"><td>{rank}</td><td>{col}{star}</td>
       <td>{o['ann_return']*100:+.2f}%</td>
       <td>{o['ann_vol']*100:.2f}%</td>
-      <td>{o['max_dd']*100:.2f}%</td></tr>
+      <td>{o['sharpe']:.2f}</td>
+      <td>{o['max_dd']*100:.2f}%</td>
+      <td><b>{o['calmar']:.3f}</b></td></tr>
 """
 
     html += """
