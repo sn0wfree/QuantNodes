@@ -28,6 +28,11 @@ from .sub_strategy_v3 import (
     SubStrategyResult,
     validate_sub_strategy_result,
 )
+from .reversion_v3 import (
+    ReversionConfig,
+    ReversionSubStrategy,
+    reversion_score,
+)
 
 
 __all__ = [
@@ -42,4 +47,8 @@ __all__ = [
     "SubStrategyConfig",
     "SubStrategyResult",
     "validate_sub_strategy_result",
+    # Reversion (v3 specific)
+    "ReversionConfig",
+    "ReversionSubStrategy",
+    "reversion_score",
 ]
