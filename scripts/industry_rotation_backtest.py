@@ -259,7 +259,7 @@ def backtest_top_n_benchmark(
 
 def main():
     print(f"[data] 加载 OHLCV 面板 ...")
-    panel = pd.read_parquet(REPO / "data/real/etf_ohlcv_2018-01-01_2026-06-30.parquet")
+    panel = pd.read_parquet(REPO / "data/real/etf_ohlcv_2018-01-01_2026-06-30_adjusted.parquet")
     panel = panel.loc[START:END]
     print(f"[data] {panel.shape[0]} 天 × {panel.shape[1]} 列 ({len(panel.columns.get_level_values(0).unique())} codes)")
 

@@ -73,6 +73,21 @@ def trim_flat_prefix(nav_dict):
     return out
 
 
+def make_combo(weighted_series, name=None):
+    """组合多条不同起跑日的策略为单一组合 NAV.
+
+    weighted_series: [(weight, pd.Series), ...]
+    在策略未激活期间用 1.0 (现金) 填充, 确保组合从最早起点开始.
+    """
+    from functools import reduce
+    all_idx = reduce(lambda a, b: a.union(b.index), (s for _, s in weighted_series), pd.Index([]))
+    total = pd.Series(0.0, index=sorted(all_idx))
+    for w, s in weighted_series:
+        filled = s.reindex(total.index).fillna(1.0)
+        total += w * filled
+    return total
+
+
 def ann_return(nav):
     r = nav.iloc[-1] / nav.iloc[0]
     n = (nav.index[-1] - nav.index[0]).days / 365.25
@@ -433,7 +448,7 @@ def chart_stage22_v5_vs_v4(data):
 
     fig.update_layout(
         title=dict(text="<b>Stage 22: v5 量价 vs v4 因子 (8y NAV)</b><br>"
-                       "<sub>v5 Calmar 0.643 > v4 因子 0.613, 11 因子等权优势</sub>",
+                        "<sub>v5 Calmar 0.764 > v4 因子 0.628, 前复权后更稳健</sub>",
                     x=0.5),
         xaxis_title="日期",
         yaxis_title="NAV",
@@ -539,16 +554,18 @@ def chart_stage22_v5_monthly_dist(data):
 # ============================================================
 def chart_stage22_portfolio_recommend(data):
     """4 档风险偏好组合 (8y + OOS Calmar)."""
-    aligned = trim_flat_prefix({
+    trimmed = trim_flat_prefix({
         "v3": data["v3"]["v3_baseline"],
         "v4f": data["v4_merged"]["v4_factor_merged"],
         "v5": data["v5"]["v5_industry"],
         "v4s": data["v4_merged"]["v4_style_merged"],
     })
-    v3 = aligned["v3"]
-    v4f = aligned["v4f"]
-    v5 = aligned["v5"]
-    v4s = aligned["v4s"]
+    # 未激活期间用 1.0 (现金) 填充, 确保组合始终有值
+    all_idx = sorted(set.union(*[set(v.index) for v in trimmed.values()]))
+    v3 = trimmed["v3"].reindex(all_idx).fillna(1.0)
+    v4f = trimmed["v4f"].reindex(all_idx).fillna(1.0)
+    v5 = trimmed["v5"].reindex(all_idx).fillna(1.0)
+    v4s = trimmed["v4s"].reindex(all_idx).fillna(1.0)
 
     portfolios = {
         "v3 only": v3,
@@ -624,13 +641,17 @@ def chart_stage22_portfolio_recommend(data):
 # ============================================================
 def chart_stage22_summary_grouped(data):
     """同比汇总: 年化收益 + 波动 grouped bar."""
-    aligned = trim_flat_prefix({
+    trimmed = trim_flat_prefix({
         "v3 baseline": data["v3"]["v3_baseline"],
         "v4 风格": data["v4_merged"]["v4_style_merged"],
         "v4 因子": data["v4_merged"]["v4_factor_merged"],
         "v5 量价": data["v5"]["v5_industry"],
     })
-    v3_a, v4s_a, v4f_a, v5_a = (aligned[k] for k in ["v3 baseline", "v4 风格", "v4 因子", "v5 量价"])
+    all_idx = sorted(set.union(*[set(v.index) for v in trimmed.values()]))
+    v3_a = trimmed["v3 baseline"].reindex(all_idx).fillna(1.0)
+    v4s_a = trimmed["v4 风格"].reindex(all_idx).fillna(1.0)
+    v4f_a = trimmed["v4 因子"].reindex(all_idx).fillna(1.0)
+    v5_a = trimmed["v5 量价"].reindex(all_idx).fillna(1.0)
     navs = {
         "v3 baseline": v3_a,
         "v4 风格": v4s_a,
@@ -915,23 +936,24 @@ def build_html(charts_dict, title="Stage 17-22 完整研究 — 交互式图表"
 {"".join(sections)}
 
 <section id="summary">
-  <h2>最终生产推荐 (基于 OOS 2022-2026 4.5y)</h2>
+   <h2>最终生产推荐 (基于 OOS 2022-2026 4.5y, 数据已前复权)</h2>
   <div class="key-finding">
-    <strong>🏆 最稳健 (推荐):</strong> v3 80% + v5 20% — OOS Calmar <strong>0.869</strong>, Sharpe <strong>1.04</strong>, OOS DD -12.96%<br>
-    <strong>⚖️ 平衡:</strong> v3 70% + v5 30% — OOS Calmar 0.808, Sharpe 0.94, OOS DD -14.66%<br>
-    <strong>🎯 分散 (7.2y 最高):</strong> v3 33% + v4f 33% + v5 34% — 7.2y Calmar <strong>0.888</strong>, OOS 0.752<br>
-    <strong>🚀 进取:</strong> v3 50% + v4f 25% + v5 25% — 7.2y Calmar 0.883, OOS 0.796, Sharpe 0.93
+    <strong>🏆 最稳健 (推荐):</strong> v3 80% + v5 20% — OOS Calmar <strong>0.980</strong>, Sharpe <strong>0.99</strong>, OOS DD -9.93%<br>
+    <strong>⚖️ 平衡:</strong> v3 70% + v5 30% — OOS Calmar 0.939, Sharpe 0.89, OOS DD -10.32%<br>
+    <strong>🎯 分散 (全期最高):</strong> v3 50% + v4f 25% + v5 25% — 全期 Calmar <strong>0.862</strong>, OOS 0.905, Sharpe 0.87<br>
+    <strong>🚀 进取:</strong> v3 33% + v4f 33% + v5 34% — 全期 Calmar 0.846, OOS 0.854, Sharpe 0.79
   </div>
   <table>
-    <tr><th>策略</th><th>7.2y Calmar*</th><th>OOS Calmar</th><th>OOS Sharpe</th><th>年化收益</th><th>年化波动</th></tr>
-    <tr><td>v3 baseline</td><td>0.654</td><td>1.012</td><td>1.29</td><td>9.07%</td><td>7.98%</td></tr>
-    <tr><td>v4 风格 (5 改进)</td><td>0.452</td><td>0.672</td><td>0.78</td><td>10.37%</td><td>17.34%</td></tr>
-    <tr><td>v4 因子 (5 改进)</td><td>0.722</td><td>0.581</td><td>0.65</td><td>13.13%</td><td>19.62%</td></tr>
-    <tr><td>v5 量价 (11 因子)</td><td>0.714</td><td>0.600</td><td>0.67</td><td>19.52%</td><td>23.03%</td></tr>
-    <tr class="highlight"><td>v3 80% + v5 20%</td><td><strong>0.779</strong></td><td><strong>0.869</strong></td><td><strong>1.04</strong></td><td>11.69%</td><td>10.76%</td></tr>
-    <tr><td>v3 33% + v4f 33% + v5 34%</td><td><strong>0.888</strong></td><td>0.752</td><td>0.86</td><td>14.47%</td><td>14.95%</td></tr>
+    <tr><th>策略</th><th>全期 Calmar</th><th>OOS Calmar</th><th>OOS Sharpe</th><th>年化收益</th><th>年化波动</th></tr>
+    <tr><td>v3 baseline</td><td>0.503</td><td>1.012</td><td>1.29</td><td>7.03%</td><td>7.91%</td></tr>
+    <tr><td>v4 风格 (5 改进)</td><td>0.453</td><td>0.672</td><td>0.79</td><td>10.40%</td><td>16.46%</td></tr>
+    <tr><td>v4 因子 (5 改进)</td><td>0.628</td><td>0.581</td><td>0.65</td><td>11.43%</td><td>18.37%</td></tr>
+    <tr><td>v5 量价 (11 因子, 前复权)</td><td>0.764</td><td>0.488</td><td>0.60</td><td>14.83%</td><td>17.54%</td></tr>
+    <tr class="highlight"><td>v3 80% + v5 20%</td><td>0.737</td><td><strong>0.980</strong></td><td><strong>0.99</strong></td><td>8.94%</td><td>9.84%</td></tr>
+    <tr><td>v3 50% + v4f 25% + v5 25%</td><td><strong>0.862</strong></td><td>0.905</td><td>0.87</td><td>10.44%</td><td>11.82%</td></tr>
+    <tr><td>v3 33% + v4f 33% + v5 34%</td><td>0.846</td><td>0.854</td><td>0.79</td><td>11.46%</td><td>13.26%</td></tr>
   </table>
-  <p style="font-size:12px;color:#666;">* 全部从 2019-04-30 起跑 (全局统一), 回测 7.2 年, 剔除各策略初始 flat 期</p>
+  <p style="font-size:12px;color:#666;">* 全期 = 各策略从自身首次交易日到 2026-06-30. OHLCV 已前复权修正拆合股跳变 (9 只 ETF).</p>
 </section>
 
 </body>
