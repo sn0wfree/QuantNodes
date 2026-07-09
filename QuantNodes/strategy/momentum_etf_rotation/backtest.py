@@ -155,7 +155,12 @@ def run_rotation_backtest(
                 daily_ret = 0.0
                 for code, w in prev_weights.items():
                     if code in etf_norm.columns:
-                        a, b = etf_norm[code].iloc[i], etf_norm[code].iloc[i - 1]
+                        col = etf_norm[code]
+                        # 防御: 列重复时 .iloc[i] 返回 Series
+                        a = col.iloc[i] if hasattr(col, 'iloc') else col
+                        b = col.iloc[i - 1] if hasattr(col, 'iloc') else col
+                        if isinstance(a, pd.Series): a = a.iloc[0]
+                        if isinstance(b, pd.Series): b = b.iloc[0]
                         if not pd.isna(a) and not pd.isna(b) and b != 0:
                             daily_ret += w * (a / b - 1)
                 nav[i] = nav[i - 1] * (1 + daily_ret)

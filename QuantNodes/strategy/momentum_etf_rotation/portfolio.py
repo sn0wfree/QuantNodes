@@ -24,11 +24,14 @@ import pandas as pd
 
 from .momentum import (
     below_ma,
+    compute_momentum_score,
     distance_to_52w_high,
     fused_signal,
+    hybrid_momentum_score,
     pairwise_corr,
     rank_pctl,
     realized_vol,
+    slope_r2_score,
 )
 from .universe import ETFPool
 
@@ -164,6 +167,11 @@ class RotationConfig:
     signal_fused_weight: float = 0.4    # 52周新高在 fused 中的权重
     signal_52w_window: int = 252        # 52 周高点窗口
 
+    # 动量打分方式 (Stage 12A)
+    momentum_type: str = "price"        # "price" | "slope_r2" | "hybrid"
+    momentum_fused_weight: float = 0.5  # hybrid 中 slope_r2 权重
+    momentum_scale: float = 10000.0     # slope_r2 缩放系数
+
     # 趋势过滤器 (Stage 9-B)
     trend_filter: TrendFilter = field(default_factory=TrendFilter)
 
@@ -286,7 +294,16 @@ def select_and_weight(
         "fused":     (1-w) × 动量 + w × 距离52周新高
     """
     # 计算信号 (Stage 9-A: 支持 3 种信号)
-    if cfg.signal_type == "dist_52w":
+    # Stage 12A: momentum_type 优先 (slope_r2 / hybrid)
+    if cfg.momentum_type in ("slope_r2", "hybrid"):
+        # 斜率信号直接用 compute_momentum_score
+        score = compute_momentum_score(
+            nav_df, cfg.lookback, as_of,
+            momentum_type=cfg.momentum_type,
+            fused_weight=cfg.momentum_fused_weight,
+        )
+        pctl = score.rank(method="average", pct=True)
+    elif cfg.signal_type == "dist_52w":
         score = distance_to_52w_high(
             nav_df, as_of, window=cfg.signal_52w_window,
         )
@@ -315,7 +332,15 @@ def select_and_weight(
         if code in blacklist_set:
             state.skipped_dedup.append(code)
             continue
-        if pd.isna(pctl.get(code)):
+        # pctl.get 可能因索引重复返回 Series, 用 .iloc 安全获取
+        try:
+            pctl_val = pctl.loc[code]
+        except KeyError:
+            state.skipped_dedup.append(code)
+            continue
+        if isinstance(pctl_val, pd.Series):
+            pctl_val = pctl_val.iloc[0]
+        if pd.isna(pctl_val):
             state.skipped_dedup.append(code)
             continue
         idx = pool.index_of(code)
@@ -351,9 +376,18 @@ def select_and_weight(
         if chosen:
             corr = pairwise_corr(nav_df, [code] + chosen, as_of, cfg.corr_window)
             cc = corr.loc[code, chosen]
-            if (cc > cfg.corr_threshold).any():
-                state.skipped_corr.append(code)
-                continue
+            # 防御: cc 可能是 DataFrame (列重复) 或 Series
+            if isinstance(cc, pd.DataFrame):
+                cc = cc.iloc[:, 0]
+            if isinstance(cc, pd.Series):
+                if (cc > cfg.corr_threshold).any():
+                    state.skipped_corr.append(code)
+                    continue
+            else:
+                # cc 是 scalar
+                if cc > cfg.corr_threshold:
+                    state.skipped_corr.append(code)
+                    continue
 
         chosen.append(code)
         chosen_cat_count[cat_name] = chosen_cat_count.get(cat_name, 0) + 1
@@ -439,8 +473,16 @@ def _maybe_inject_required(
             if (code in pool.codes
                 and pool.category_of(code).value == category
                 and code not in chosen
-                and code not in state.skipped_dedup
-                and not pd.isna(pctl.get(code))):
+                and code not in state.skipped_dedup):
+                # 单独检查 pctl 值 (避免重复索引时返回 Series)
+                try:
+                    pctl_val = pctl.loc[code]
+                except KeyError:
+                    continue
+                if isinstance(pctl_val, pd.Series):
+                    pctl_val = pctl_val.iloc[0]
+                if pd.isna(pctl_val):
+                    continue
                 replaced = False
                 # 替换最后一个非商品/海外
                 for i in range(len(chosen) - 1, -1, -1):
@@ -652,7 +694,11 @@ def apply_stops(
             continue
         if code not in pctl_series.index:
             continue
-        if pctl_series[code] < cfg.rank_cutoff:
+        # 防御: pctl_series[code] 可能因索引重复返回 Series
+        pctl_val = pctl_series[code]
+        if isinstance(pctl_val, pd.Series):
+            pctl_val = pctl_val.iloc[0]
+        if pctl_val < cfg.rank_cutoff:
             to_stop.append(code)
 
     # 2) 在原 chosen 中去掉被止损的 (只考虑池内代码)

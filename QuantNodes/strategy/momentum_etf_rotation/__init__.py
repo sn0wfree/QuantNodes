@@ -12,7 +12,10 @@ CICC 2026-07-03 《固收+:"可靠"的动量 ETF 轮动及 Agent 检验实践》
 from __future__ import annotations
 
 from .universe import ETFPool, ETFCategorizer, DEFAULT_POOL
-from .momentum import rank_by_momentum, rank_pctl, distance_to_52w_high
+from .momentum import (
+    rank_by_momentum, rank_pctl, distance_to_52w_high,
+    slope_r2_score, hybrid_momentum_score, compute_momentum_score,
+)
 from .portfolio import (
     DiversificationCaps,
     RotationConfig,
