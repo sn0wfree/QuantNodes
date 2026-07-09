@@ -40,6 +40,13 @@ from .industry_rotation_v3 import (
     get_industry_codes,
     get_rebalance_dates,
 )
+from .sub_weighting_v3 import (
+    combine_sub_results,
+    equal_sub_weights,
+    risk_parity_sub_weights,
+    signal_weighted_sub_weights,
+    sub_weights_from_results,
+)
 
 
 __all__ = [
@@ -64,4 +71,10 @@ __all__ = [
     "industry_rotation_score",
     "get_industry_codes",
     "get_rebalance_dates",
+    # Sub-Strategy Weighting (v3 specific)
+    "equal_sub_weights",
+    "sub_weights_from_results",
+    "risk_parity_sub_weights",
+    "signal_weighted_sub_weights",
+    "combine_sub_results",
 ]
