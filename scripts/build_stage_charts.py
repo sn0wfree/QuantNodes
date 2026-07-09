@@ -53,23 +53,23 @@ if _PLOTLY_SRC.exists() and (not _PLOTLY_DST.exists() or _PLOTLY_SRC.stat().st_m
     print(f"[copy] plotly.min.js → {_PLOTLY_DST}")
 
 
-# 全局起跑对齐日 (所有策略首次交易的最晚日期)
-GLOBAL_ALIGN_START = "2019-04-30"
+def trim_flat_prefix(nav_dict):
+    """每条策略切掉前段 NAV=1.0 的 flat 期, 从首次交易日归一化到 1.0.
 
-
-def align_navs(nav_dict, start_date=None):
-    """将多策略 NAV 对齐到同一起始日并归一化到 1.0.
-
-    使用全局 GLOBAL_ALIGN_START, 确保跨图表可对比.
+    各策略起跑日可能不同 (不强制全局对齐). 目的是消除 '未交易' 的平线,
+    同时保留各策略真实的首次交易时间和早期收益.
     nav_dict: {name: pd.Series}
-    返回: {name: pd.Series} 全部从 start_date 开始, 起点 = 1.0
+    返回: {name: pd.Series} 每条从自己的首次交易日开始, 起点 = 1.0
     """
-    if start_date is None:
-        start_date = GLOBAL_ALIGN_START
     out = {}
     for name, nav in nav_dict.items():
-        trimmed = nav.loc[start_date:]
-        out[name] = trimmed / trimmed.iloc[0]
+        non_one = nav[nav != 1.0]
+        if len(non_one) > 0:
+            ft = non_one.index[0]
+            trimmed = nav.loc[ft:]
+            out[name] = trimmed / trimmed.iloc[0]
+        else:
+            out[name] = nav / nav.iloc[0]
     return out
 
 
@@ -124,7 +124,7 @@ def load_data():
 # ============================================================
 def chart_stage17_navs(data):
     """v3 / v4A / v4B / v4C / v4D NAV 走势 (8y)."""
-    navs = pd.DataFrame(align_navs(data["v3"].to_dict("series")))
+    navs = pd.DataFrame(trim_flat_prefix(data["v3"].to_dict("series")))
     fig = go.Figure()
 
     colors = {
@@ -251,7 +251,7 @@ def chart_stage17_v4a_dd(data):
 # ============================================================
 def chart_stage18_style_rotation(data):
     """v4 风格升级前后对比: 单窗口 vs 多窗口 Long-biased."""
-    aligned = align_navs({
+    aligned = trim_flat_prefix({
         "v3 基准": data["v3"]["v3_baseline"],
         "v4 风格 (Stage 18)": data["v4_merged"]["v4_style_merged"],
     })
@@ -307,7 +307,7 @@ def chart_stage18_style_rotation(data):
 # ============================================================
 def chart_stage18_factor_timing(data):
     """v4 因子升级前后: 6 因子统一 20d vs 5 因子特异 FW."""
-    aligned = align_navs({
+    aligned = trim_flat_prefix({
         "v3 基准": data["v3"]["v3_baseline"],
         "v4 因子 (Stage 18)": data["v4_merged"]["v4_factor_merged"],
     })
@@ -360,7 +360,7 @@ def chart_stage18_factor_timing(data):
 # ============================================================
 def chart_stage19_lw_comparison(data):
     """LW 模式 vs IC^2 模式对比."""
-    aligned = align_navs({
+    aligned = trim_flat_prefix({
         "v4 因子 (IC²)": data["v4_merged"]["v4_factor_merged"],
         "LW 滚动 λ": data["v4_lw"]["lw_rolling"],
     })
@@ -408,7 +408,7 @@ def chart_stage19_lw_comparison(data):
 # ============================================================
 def chart_stage22_v5_vs_v4(data):
     """v5 量价 vs v4 因子 NAV 对比."""
-    aligned = align_navs({
+    aligned = trim_flat_prefix({
         "v3 基准": data["v3"]["v3_baseline"],
         "v4 因子": data["v4_merged"]["v4_factor_merged"],
         "v5 行业量价": data["v5"]["v5_industry"],
@@ -539,7 +539,7 @@ def chart_stage22_v5_monthly_dist(data):
 # ============================================================
 def chart_stage22_portfolio_recommend(data):
     """4 档风险偏好组合 (8y + OOS Calmar)."""
-    aligned = align_navs({
+    aligned = trim_flat_prefix({
         "v3": data["v3"]["v3_baseline"],
         "v4f": data["v4_merged"]["v4_factor_merged"],
         "v5": data["v5"]["v5_industry"],
@@ -624,7 +624,7 @@ def chart_stage22_portfolio_recommend(data):
 # ============================================================
 def chart_stage22_summary_grouped(data):
     """同比汇总: 年化收益 + 波动 grouped bar."""
-    aligned = align_navs({
+    aligned = trim_flat_prefix({
         "v3 baseline": data["v3"]["v3_baseline"],
         "v4 风格": data["v4_merged"]["v4_style_merged"],
         "v4 因子": data["v4_merged"]["v4_factor_merged"],
@@ -899,7 +899,7 @@ def build_html(charts_dict, title="Stage 17-22 完整研究 — 交互式图表"
 <div class="header">
   <h1>📊 {title}</h1>
   <div class="meta">
-    QuantNodes 量化研究 | 2019-2026 7.2y 对齐回测 + 2022-2026 4.5y OOS 验证
+    QuantNodes 量化研究 | 各策略从自身首次交易日开始 (削平 flat 期)
   </div>
 </div>
 
