@@ -225,7 +225,7 @@ def run_bl_v7_backtest(
     pi = np.full(n_etf, 0.07)
 
     rebal_dates = []
-    for d in panel.resample("ME").last().index:
+    for d in panel.resample("BME").last().index:
         if d >= tl_df.index[0] and d in panel.index:
             rebal_dates.append(d)
 

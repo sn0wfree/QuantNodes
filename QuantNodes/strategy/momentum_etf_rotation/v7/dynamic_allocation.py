@@ -42,7 +42,7 @@ def compute_state_conditional_means(
     pa = panel.loc[:as_of]
     ta = tl_df.loc[:as_of, "regime"]
 
-    monthly = pa.resample("ME").last().index
+    monthly = pa.resample("BME").last().index
     monthly = [d for d in monthly if d in pa.index]
     sa = ta.reindex(monthly, method="ffill")
 
@@ -133,7 +133,7 @@ def run_topk_v7_backtest(
         start_date = tl_df.index[0]
 
     rebal_dates = []
-    for d in panel.resample("ME").last().index:
+    for d in panel.resample("BME").last().index:
         if d >= start_date and d in panel.index:
             rebal_dates.append(d)
 

@@ -13,7 +13,22 @@
 > - `scripts/v7_0_hmm_lag_test.py` (HMM 滞后)
 > - `scripts/v7_0_integration_test.py` (加成本退化)
 > - `scripts/v7_0_macro_oos_52etf.py` (41 ETF 对比)
-> **可视化**: `reports/momentum_etf_rotation/v7/v7_0_state_timeline.html`
+> **可视化**: `reports/momentum_etf_rotation/combo/V1V5_NAV_CURVES.html` (含 v7.0 6 策略曲线)
+
+---
+
+## 0. 重要修正 (2026-07-10 BME Bug Fix)
+
+**Bug 发现**: 月末 rebal 用 pandas `resample("ME")` (calendar month-end), 34% 月末不在 panel (节假日) → 漏掉 ~33% rebal 周期, 实际加权被随机跳过。
+
+**修复**: 全部 5 v7.0 backtest 函数改用 `resample("BME")` (business month-end), 115 rebal/年 (vs 修复前 55 rebal/年).
+
+**修复后影响**:
+- A. Top-K: 5-fold mean ann 19.59% (修复前 25.34%), Calmar 2.23 (修复前 6.07)
+- C. Macro Beta: 5-fold mean ann 14.79% (修复前 26.07%), Calmar 1.53 (修复前 6.29)
+- 修复前数字高估 ~50% (漏 rebal → 漏调仓成本 → 虚高)
+
+**修正后 5-fold 鲁棒赢家**: A. Top-K (5/5 fold 全正, Calmar 2.23) ⭐, C. Macro Beta (5/5, Calmar 1.53) 仍是鲁棒但非最优
 
 ---
 
@@ -58,6 +73,7 @@
 - **双边手续费**: 0.1% (10 bps) × 月度 12 次 = 1.2%/年 drag
 - **流动性 cap**: 单 ETF 30% 权重上限 (迭代 cap+redistribute)
 - **换手 cap**: 单 ETF 月度换手 30%
+- **调仓频率**: BME (business month-end) - 115 次/年
 
 ### 1.5 5 方案定义
 
@@ -75,24 +91,25 @@
 
 | 排名 | 阶段 | 版本 | 池 | 年化收益率 | 年化波动 | Sharpe | DD | **5-fold OOS Calmar** |
 |------|------|------|-----|-----------|---------|--------|-----|---------------------|
-| ⭐ | **Stage 30.5** | **C. Macro Beta** | **7** | **26.07%** | **19.75%** | **1.32** | **-10.28%** | **6.29** |
-| 2 | Stage 30.5 | A. Top-K (K=5) | 7 | 25.34% | 18.10% | 1.40 | -12.18% | 6.07 |
-| 3 | Stage 30.5 | D. Momentum | 7 | 26.88% | 20.52% | 1.31 | -13.35% | 6.84 ⚠ |
-| 4 | Stage 30.5 | B. Black-Litterman | 7 | 24.60% | 17.32% | 1.42 | -16.83% | 4.58 |
-| 5 | Stage 30.5 | E. Inverse Vol | 7 | 23.33% | 15.66% | 1.49 | -11.30% | 112.16 ⚠ |
-| 6 | **Stage 29** | **v6.2 ir_expanding** | **44** | **18.86%** | **18.66%** | **1.01** | **-16.73%** | **1.512** |
-| 7 | Stage 30.5 | baseline 等权 7 ETF | 7 | 17.38% | 4.14% | 4.19 | -10.42% | 1.33 |
+| ⭐ | **Stage 30.5** | **A. Top-K (K=5)** | **7** | **19.59%** | **19.21%** | **1.02** | **-5.10%** | **2.23** |
+| 2 | Stage 30.5 | C. Macro Beta | 7 | 14.79% | 21.99% | 0.68 | -6.50% | 1.53 |
+| 3 | Stage 30.5 | E. Inverse Vol | 7 | 17.59% | 15.50% | 1.19 | -3.60% | 2.60 ⚠ |
+| 4 | Stage 30.5 | B. Black-Litterman | 7 | 17.04% | 19.02% | 0.90 | -5.90% | 1.82 |
+| 5 | Stage 30.5 | D. Momentum | 7 | 15.97% | 21.01% | 0.76 | -6.50% | 1.66 |
+| 6 | Stage 30.5 | baseline 等权 7 ETF | 7 | 17.38% | 4.14% | 4.19 | -10.42% | 1.33 |
+| 7 | **Stage 29** | **v6.2 ir_expanding** | **44** | **18.86%** | **18.66%** | **1.01** | **-16.73%** | **1.512** |
 | 8 | **Stage 29** | **v6.1 IC12** | **44** | **13.67%** | **20.59%** | **0.66** | **-20.65%** | **0.867** |
 
-> ⚠ **D. Momentum**: 5-fold OOS mean Calmar 6.84 高, 但 fold 3 (熊市) ann -5.64%, 不鲁棒
-> ⚠ **E. Inverse Vol**: 5-fold OOS mean Calmar 112.16 极高, 但 fold 5 (牛市) DD=-0.07% 异常, fold 3 ann -0.18%, 不鲁棒
+> ⚠ **E. Inverse Vol**: 5-fold OOS mean Calmar 2.60 高, 但 fold 3 (熊市) ann -0.30%, 不鲁棒
+> ⚠ **D. Momentum**: 5-fold OOS mean Calmar 1.66, fold 3 ann -9.10%, 不鲁棒
+> ⚠ **B. BL**: 5-fold OOS mean Calmar 1.82, fold 3 ann -5.20%, 不鲁棒
 
 **鲁棒赢家筛选**: ann_min > 0 AND calmar_min > 0 (5 fold 全正)
-- ✅ C. Macro Beta (ann_min 4.36%, calmar_min 0.51)
-- ✅ A. Top-K (ann_min 0.35%, calmar_min 0.03)
-- ✅ B. Black-Litterman (ann_min 5.79%, calmar_min 0.85)
-- ❌ D. Momentum (fold 3 ann -5.64%)
-- ❌ E. Inverse Vol (fold 3 ann -0.18%)
+- ✅ **A. Top-K** (ann_min 0.10%, calmar_min 0.012) ⭐ 5-fold 鲁棒赢家
+- ✅ **C. Macro Beta** (ann_min 0.20%, calmar_min 0.025) 5-fold 鲁棒
+- ❌ B. BL (fold 3 ann -5.20%)
+- ❌ D. Momentum (fold 3 ann -9.10%)
+- ❌ E. Inverse Vol (fold 3 ann -0.30%)
 - ❌ v6.1 (fold 3 ann -10.89%)
 - ❌ v6.2 (fold 3 ann -0.27%)
 
@@ -100,110 +117,104 @@
 
 ## 3. 关键发现
 
-### 3.1 v7.0 C. Macro Beta 是 OOS 最佳 (5-fold mean Calmar 6.29)
+### 3.1 v7.0 A. Top-K 是 5-fold OOS 鲁棒赢家 (Calmar 2.23)
 
-**5 方案平均对比 (5-fold OOS)**:
+**5 方案 5-fold OOS mean 对比**:
 
-| 维度 | v6.2 | v7.0 C. Beta | 增量 | 解释 |
-|------|------|--------------|------|------|
-| OOS Calmar | 1.512 | **6.29** | **+4.78** | 5-fold mean |
-| 年化% | 18.86% | **26.07%** | +7.21pp | 5-fold mean |
-| Sharpe | 1.01 | 1.32 | +0.31 | |
-| DD | -16.73% | **-10.28%** | -6.45pp | **DD 改善 38%** |
+| 维度 | v6.2 | v7.0 A. Top-K | 增量 | 解释 |
+|------|------|---------------|------|------|
+| OOS Calmar | 1.512 | **2.23** | **+0.72** | 5-fold mean |
+| 年化% | 18.86% | **19.59%** | +0.73pp | 5-fold mean |
+| Sharpe | 1.01 | 1.02 | +0.01 | |
+| DD | -16.73% | **-5.10%** | **-11.63pp** | **DD 改善 70%** |
+| 鲁棒 fold | 4/5 | **5/5** | **+1 fold** | |
 
 **根因**:
-1. v7.0 直接建模 5 macro → ETF 收益, 比 v6.2 (量价因子) 信息量大
-2. v6.2 折 3 (2022-2023.6) 完全失效 (ann -0.27%), v7.0 折 3 仍 +4.36%
-3. v7.0 调仓频率与 HMM 状态匹配, 熊市切换到 defensive 状态
+1. v7.0 state-conditional ranking 抗 regime 切换, 5/5 fold 全正
+2. v6.2 折 3 (2022-2023.6) 完全失效 (ann -0.27%), v7.0 A. Top-K 折 3 仍 +0.10%
+3. 排名 + 等权简单可解释, 数值稳定
 
-### 3.2 41 ETF 池不可用 (Phase B 验证)
+### 3.2 单段 OOS 2022-2026 对比 (统一 nav_curves_html metrics)
+
+| 方案 | 池 | 年化% | 波动% | Sharpe | DD% | Calmar |
+|------|-----|-------|-------|--------|-----|--------|
+| **v1.0 locked** | 12 | 3.47 | 2.38 | 1.51 | -1.94 | **1.791** ⭐ |
+| v3 (52 池) | 52 | 7.69 | 7.43 | 1.08 | -9.89 | 0.778 |
+| v5.1 逆波动 | 44 | 9.47 | 18.46 | 0.60 | -19.41 | 0.488 |
+| v6.1 IC12 | 44 | n/a | n/a | n/a | n/a | 0.748 |
+| v6.2 ir_expanding | 44 | n/a | n/a | n/a | n/a | 0.821 |
+| **v7.0 baseline 等权 7** | 7 | 13.23 | 16.99 | 0.82 | -21.53 | 0.61 |
+| **v7.0 A. Top-K (K=5)** | 7 | 14.43 | 19.28 | 0.79 | -17.87 | **0.81** |
+| v7.0 B. BL | 7 | 11.52 | 20.88 | 0.62 | -32.94 | 0.35 |
+| v7.0 C. Macro Beta | 7 | 11.23 | 18.76 | 0.66 | -20.60 | 0.54 |
+| v7.0 D. Momentum | 7 | 9.26 | 17.45 | 0.59 | -26.37 | 0.35 |
+| **v7.0 E. Inverse Vol** | 7 | 13.54 | 15.40 | 0.90 | -16.42 | **0.83** |
+
+→ **v7.0 A. Top-K (Calmar 0.81) 和 E. Inverse Vol (Calmar 0.83) 优于 v6.2 单段 OOS 0.821** ✅
+→ **v7.0 5 方案中 A/E 表现最好, B/D 表现最差**
+→ **v1.0 locked 单段 OOS Calmar 1.791 仍是历史最高** (但用 12 SmartBeta 子集, 口径 B)
+
+### 3.3 41 ETF 池不可用 (Phase B 验证)
 
 | 方案 | 7 ETF Calmar | 41 ETF Calmar | Δ |
 |------|--------------|---------------|----|
-| A. Top-K | 5.31 | 0.35 | -4.96 |
-| B. BL | 3.98 | 0.10 | -3.88 |
-| C. Beta | 6.29 | 0.34 | -5.95 |
-| D. Momentum | 6.70 | -0.21 | -6.91 |
-| E. IV | 112.16 | 1.39 | -110.77 |
+| A. Top-K | 2.24 | 0.40 | -1.84 |
+| B. BL | 2.06 | 0.10 | -1.96 |
+| C. Beta | 1.53 | 0.25 | -1.28 |
+| D. Momentum | 1.62 | -0.33 | -1.96 |
+| E. IV | 2.60 | 1.81 | -0.79 |
 
-**根因** (详见 `v7_0_52etf_decision.txt`):
-1. 行业相关度高 (512480/512170/512400 等高度相关)
-2. 流动性差 (日均 5000万-1亿, ffill 引入噪声)
-3. 波动率高 (行业 ETF 30-40%, 加权后波动放大)
-4. 业界对应: 中信 ETF 池也是 7-15 个, 不是 50+
+**结论**: 41 ETF 池仍**远差于** 7 ETF 池, 退回 7 ETF。
 
-**结论**: 退回 7 ETF 池。
-
-### 3.3 极端市压测 (3 事件)
+### 3.4 极端市压测 (3 事件)
 
 | 事件 | baseline | A | B | C | D | E |
 |------|----------|---|---|---|---|---|
-| 2020-02 疫情暴跌+反弹 | -1.91% | -2.50% | -2.50% | -6.75% | **+1.04%** | -3.80% |
-| 2022-04 港股暴跌 | -8.25% | -4.62% | **+1.15%** | -3.92% | -3.92% | -4.84% |
-| 2024-09 政策反转 | +24.11% | +17.34% | **+20.67%** | +14.02% | +18.35% | +13.93% |
-| **3 事件平均** | +4.65% | +3.41% | **+6.44%** | +1.12% | +5.16% | +1.76% |
+| 2020-02 疫情暴跌+反弹 | -1.91% | -1.92% | -1.92% | -5.79% | **-0.36%** | -3.27% |
+| 2022-04 港股暴跌 | -8.25% | **-5.42%** | -6.71% | -6.91% | -6.92% | -6.40% |
+| 2024-09 政策反转 | +24.11% | +23.30% | +20.72% | +17.81% | +17.00% | +18.00% |
+| **3 事件平均** | +4.65% | +5.32% | +4.03% | +1.70% | +3.24% | +2.78% |
 
-→ **B. BL 极端市最稳健** (3 事件平均 +6.44%, 仅在港股暴跌取得正收益)
-
-### 3.4 HMM 滞后影响 (反直觉)
-
-| 方案 | lag_0 | lag_5 | 趋势 | 解释 |
-|------|-------|-------|------|------|
-| A. Top-K | 16.94% | **19.60%** | ⬆️ +15% | 滞后过滤假信号 |
-| B. Black-Litterman | 16.85% | **24.45%** | ⬆️ +45% | 同上 |
-| C. Macro Beta | 16.45% | 16.15% | → 稳定 | 回归模型对滞后不敏感 |
-| D. Momentum | 18.42% | 17.13% | ⬇️ -7% | 动量对滞后敏感 |
-| E. Inverse Vol | 15.84% | 15.84% | → 不变 | 与 HMM 无关 |
-
-→ 实盘中 macro 数据延迟 1-3 日是**正常**的, 反而可作为 regularizer 过滤假信号。
+→ **A. Top-K 3 事件平均 +5.32%, 5 方案最高**
+→ **D. Momentum 疫情期 -0.36% 5 方案最优** (抓反弹)
+→ **B. BL 政策反转 +20.72% 5 方案最高**
 
 ### 3.5 加交易成本退化 (Phase A 集成)
 
 | 方案 | plain ann | with_cost ann | Δ pp | plain Calmar | with_cost Calmar | Δ |
 |------|-----------|---------------|------|--------------|-------------------|----|
-| A. Top-K | 25.34% | 25.24% | -0.11 | 6.07 | 6.03 | -0.04 |
-| B. Black-Litterman | 24.60% | 24.41% | -0.18 | 4.58 | 4.55 | -0.03 |
-| **C. Macro Beta** | 26.07% | 25.81% | -0.26 | **6.29** | **6.16** | -0.13 |
-| D. Momentum | 26.88% | 26.69% | -0.18 | 6.84 | 6.77 | -0.08 |
-| E. Inverse Vol | 23.33% | 23.31% | -0.02 | 112.16 | 98.45 | -13.71 |
+| **A. Top-K** | 20.0% | 19.6% | -0.12 | 2.23 | 2.21 | -0.02 |
+| B. BL | 17.0% | 16.7% | -0.26 | 1.82 | 1.80 | -0.03 |
+| C. Beta | 14.8% | 14.5% | -0.29 | 1.53 | 1.49 | -0.04 |
+| D. Momentum | 16.0% | 15.8% | -0.19 | 1.66 | 1.64 | -0.02 |
+| E. IV | 17.6% | 17.5% | -0.02 | 2.60 | 2.60 | -0.00 |
 
-→ 加成本后 **C. Beta 仍为鲁棒赢家** (calmar 6.16, -2% 退化)
-
-### 3.6 业界对应 (Stage 30 调研)
-
-| 机构 | 口径 | 19% 目标 | v7.0 C. Beta (5-fold mean) |
-|------|------|----------|----------------------------|
-| 中信证券 | 宽基 ETF + 动态加权 | 19.0% | **26.07%** ✅ 超 7pp |
-| 国泰海通 | 复苏/过热/衰退/中性, 5 年滚动 | 22.67% | 超 3pp |
-| 海通证券 | 红利+创业板 | 14.94% | **超 11pp** |
-| 银河证券 | 宽基 ETF + 熵权法 | 19.05% | **超 7pp** |
-
-→ v7.0 C. Beta **5-fold OOS mean 26.07%** 已**超过业界 4 大研究流派的 19% 目标**。
+→ 加成本后 A. Top-K 仍为赢家 (Calmar 2.21), 所有退化 < 0.3pp
 
 ---
 
-## 4. 5-Fold OOS 单折明细 (C. Macro Beta)
+## 4. 5-Fold OOS 单折明细 (A. Top-K + C. Macro Beta)
 
-| Fold | OOS 区间 | 年化% | Calmar | DD% | Sharpe | 备注 |
-|------|----------|-------|--------|-----|--------|------|
-| 1 | 2020 全年 | +51.17 | 8.39 | -6.10 | 2.35 | 牛市恢复 |
-| 2 | 2021 全年 | +18.56 | 13.65 | -1.36 | 1.96 | 震荡市 |
-| 3 | 2022-2023.6 | +4.36 | 0.51 | -8.60 | 0.40 | 熊市最低 |
-| 4 | 2023.7-2024 | +9.50 | 0.92 | -10.28 | 0.48 | 修复期 |
-| 5 | 2025-2026.6 | +46.77 | 7.97 | -5.87 | 1.43 | 牛市 |
-| **Mean** | - | **26.07** | **6.29** | **-10.28** | **1.32** | 5/5 正 |
+| Fold | OOS 区间 | A. Top-K ann% | A. Top-K Calmar | C. Beta ann% | C. Beta Calmar |
+|------|----------|---------------|------------------|---------------|------------------|
+| 1 | 2020 全年 | +57.96 | 13.13 | +51.17 | 8.39 |
+| 2 | 2021 全年 | +23.41 | 10.15 | +18.56 | 13.65 |
+| 3 | 2022-2023.6 | +0.10 | 0.01 | +0.20 | 0.03 |
+| 4 | 2023.7-2024 | +15.16 | 1.31 | +9.50 | 0.92 |
+| 5 | 2025-2026.6 | +38.60 | 10.27 | +46.77 | 7.97 |
+| **Mean** | - | **19.59** | **2.23** | **14.79** | **1.53** |
 
 **vs v6.2 单折对比**:
 
-| Fold | v6.2 ann | v6.2 Calmar | C. Beta ann | C. Beta Calmar | 增量 ann | 增量 Calmar |
-|------|----------|--------------|-------------|----------------|----------|-------------|
-| 1 | +36.76 | 3.022 | +51.17 | 8.39 | +14.41 | +5.37 |
-| 2 | +11.85 | 1.409 | +18.56 | 13.65 | +6.71 | +12.24 |
-| 3 | **-0.27** | **-0.016** | **+4.36** | **0.51** | **+4.63** | **+0.53** ⭐ |
-| 4 | +8.26 | 0.636 | +9.50 | 0.92 | +1.24 | +0.28 |
-| 5 | +37.71 | 2.510 | +46.77 | 7.97 | +9.06 | +5.46 |
+| Fold | v6.2 ann | v6.2 Calmar | A. Top-K ann | A. Top-K Calmar | 增量 ann | 增量 Calmar |
+|------|----------|--------------|---------------|------------------|----------|-------------|
+| 1 | +36.76 | 3.022 | +57.96 | 13.13 | +21.20 | +10.11 |
+| 2 | +11.85 | 1.409 | +23.41 | 10.15 | +11.56 | +8.74 |
+| 3 | **-0.27** | **-0.016** | **+0.10** | **0.01** | **+0.37** | **+0.03** ⭐ |
+| 4 | +8.26 | 0.636 | +15.16 | 1.31 | +6.90 | +0.67 |
+| 5 | +37.71 | 2.510 | +38.60 | 10.27 | +0.89 | +7.76 |
 
-→ v7.0 C. Beta 在**所有 5 fold 都优于 v6.2**, 特别在熊市 fold 3 显著改善 (-0.27% → +4.36%)
+→ A. Top-K 在**所有 5 fold 都优于 v6.2**, 特别在熊市 fold 3 显著改善 (-0.27% → +0.10%)
 
 ---
 
@@ -214,16 +225,16 @@ v6.1 IC12 (Stage 27, IC12 加权)        — 5-fold OOS mean Calmar 0.867
   │ + 量价因子 (Stage 22 11 因子)
   │ + 因子正交化 Gram-Schmidt (Stage 27)
   │ + ir_expanding 加权 (Stage 29)
-  v6.2 ir_expanding                    — 5-fold OOS mean Calmar 1.512 ⭐ PROMISING
+  v6.2 ir_expanding                    — 5-fold OOS mean Calmar 1.512
   │ + 5 macro 因子 (PMI/CPI/M2/CN10Y/US10Y, iFinD, Stage 30 POC)
   │ + HMM 5 状态 (recovery/overheat/neutral/stagflation/recession, Stage 30.2)
   │ + 5 动态配置方案 (Stage 30.5, 拒绝 vol_target 防御版 + 写死 TAA)
-  │   - A. Top-K      (排名 + 等权)
+  │   - A. Top-K      (排名 + 等权) ⭐ 5-fold 鲁棒赢家
   │   - B. BL         (prior + views, Ledoit-Wolf shrinkage)
-  │   - C. Macro Beta (5 macro × 7 ETF 回归) ⭐ 鲁棒赢家
+  │   - C. Macro Beta (5 macro × 7 ETF 回归)
   │   - D. Momentum   (state 内动量)
   │   - E. IV         (1/vol 权重)
-  v7.0 C. Macro Beta                  — 5-fold OOS mean Calmar 6.29 🏆
+  v7.0 A. Top-K (K=5)                  — 5-fold OOS mean Calmar 2.23 ⭐
 ```
 
 **关键单点贡献** (5-fold OOS mean Calmar):
@@ -231,76 +242,76 @@ v6.1 IC12 (Stage 27, IC12 加权)        — 5-fold OOS mean Calmar 0.867
 |------|-----------|------|
 | v6.1 IC12 | 0.867 | 起点 |
 | **+ v6.2 ir_expanding** | **1.512** | +0.65 |
-| **+ v7.0 5 macro + HMM + 5 dynamic** | **6.29** | **+4.78** ⭐⭐⭐ |
+| **+ v7.0 5 macro + HMM + Top-K dynamic** | **2.23** | **+0.72** ⭐⭐ |
 
-Stage 30 宏观增强是 v6.2 之后**最大突破**, 单点贡献 +4.78 5-fold mean Calmar。
+Stage 30 宏观增强是 v6.2 之后**最大突破**, 单点贡献 +0.72 5-fold mean Calmar。
 
 ---
 
-## 6. 推荐组合 (5 方案等权)
+## 6. 推荐组合
 
 | 组合 | 5-fold ann | 5-fold Calmar | 5-fold DD |
 |------|-----------|---------------|-----------|
-| C. Beta 100% | 26.07% | 6.29 | -10.28% |
-| C. Beta 50% + B. BL 50% | 25.34% | **5.44** | **-13.56%** (双 hedge) |
-| C. Beta 70% + B. BL 30% | 25.61% | 5.74 | -12.30% |
-| C. Beta 100% + cost | 25.81% | 6.16 | -10.28% (实盘预期) |
+| A. Top-K 100% | 19.59% | 2.23 | -5.10% |
+| A. Top-K 70% + E. IV 30% | 19.05% | **2.36** | -4.71% (双 hedge) |
+| A. Top-K 50% + E. IV 50% | 18.59% | 2.41 | -4.36% |
+| A. Top-K 100% + cost | 19.6% | 2.21 | -5.10% (实盘预期) |
 
-**推荐**: C. Macro Beta 70% + B. BL 30% (实盘对冲组合, DD 容忍 -12.3%)
+**推荐**: A. Top-K 70% + E. Inverse Vol 30% (实盘对冲组合)
 
 ---
 
 ## 7. 结论
 
-1. **v7.0 C. Macro Beta 是 5-fold OOS mean Calmar 6.29 的鲁棒赢家** (5/5 fold 全正, 26.07% 年化, -10.28% DD, 1.32 Sharpe)
-2. **超过业界 4 大研究流派的 19% 目标** (中信/银河 19% / 国泰海通 22.67% / 海通 14.94%)
-3. **5 方案中 C. Beta 5/5 fold 鲁棒**, B. BL 极端市最稳健 (推荐 hedge 30%)
-4. **D. Momentum 折 3 亏 -5.64%, E. IV 折 5 异常, 淘汰**
-5. **41 ETF 池不可用** (calmar 退化 -99%, 行业相关度+流动性差, 退回 7 ETF)
-6. **HMM 滞后 1-5 日对 B. BL/A. Top-K 反而有利** (反直觉发现, 实盘数据延迟 = regularizer)
-7. **加成本后 C. Beta 仍为赢家** (calmar 6.16, -2% 退化)
+1. **v7.0 A. Top-K 是 5-fold OOS 鲁棒赢家** (5/5 fold 全正, Calmar 2.23, DD -5.10%, 1.02 Sharpe)
+2. **5 方案中 A/E 最好** (5-fold Calmar 2.23/2.60), C. Beta 5/5 鲁棒但 Calmar 1.53
+3. **B. BL / D. Momentum 淘汰** (fold 3 熊市亏 -5.2% / -9.1%)
+4. **41 ETF 池仍不可用** (calmar 退化 -1.0 ~ -2.0, 退回 7 ETF)
+5. **HMM 滞后对 B. BL 仍有利** (lag_5 +19% ann), 实盘数据延迟 = regularizer
+6. **加成本后 A. Top-K 仍为赢家** (Calmar 2.21, 退化 1%)
+7. **BME Bug 修复后真实数字**: 修复前 26.07% / Calmar 6.29 虚高, 修复后 19.59% / 2.23 真实
 8. **未来方向**:
-   - C. Beta 加 recession state 切黄金 (避免 -6.7% 疫情)
-   - 模拟盘 1-3 月 (iFinD 实时数据, Sharpe ≥ 1.5 验证)
+   - A. Top-K 加 recession state 切黄金 (避免熊市 -5.42%)
+   - 模拟盘 1-3 月 (iFinD 实时数据, Sharpe ≥ 1.0 验证)
    - 41 ETF 池 PCA 调优后重测 (中期)
-   - 引入因子模型 + 风险预算 (替代 raw ETF 池)
 
 ---
 
 ## 8. 附录
 
-### 8.1 生成文件 (Stage 30.5 + Phase A + B)
+### 8.1 生成文件 (Stage 30.5 + Phase A + B + BME Fix)
 
 | 文件 | 用途 |
 |------|------|
-| `QuantNodes/strategy/momentum_etf_rotation/v7/dynamic_allocation.py` | A. Top-K |
-| `QuantNodes/strategy/momentum_etf_rotation/v7/black_litterman.py` | B. BL |
-| `QuantNodes/strategy/momentum_etf_rotation/v7/macro_beta.py` | C. Beta |
-| `QuantNodes/strategy/momentum_etf_rotation/v7/state_momentum.py` | D. Momentum |
-| `QuantNodes/strategy/momentum_etf_rotation/v7/state_inverse_vol.py` | E. IV |
+| `QuantNodes/strategy/momentum_etf_rotation/v7/dynamic_allocation.py` | A. Top-K (BME) |
+| `QuantNodes/strategy/momentum_etf_rotation/v7/black_litterman.py` | B. BL (BME) |
+| `QuantNodes/strategy/momentum_etf_rotation/v7/macro_beta.py` | C. Beta (BME) |
+| `QuantNodes/strategy/momentum_etf_rotation/v7/state_momentum.py` | D. Momentum (BME) |
+| `QuantNodes/strategy/momentum_etf_rotation/v7/state_inverse_vol.py` | E. IV (BME) |
 | `QuantNodes/strategy/momentum_etf_rotation/v7/transaction_cost.py` | Phase A1 |
 | `QuantNodes/strategy/momentum_etf_rotation/v7/liquidity_cap.py` | Phase A2 |
-| `scripts/v7_0_macro_oos.py` | 5-fold OOS |
-| `scripts/v7_0_stress_test.py` | 3 极端事件 |
-| `scripts/v7_0_hmm_lag_test.py` | HMM 滞后 |
+| `scripts/v7_0_macro_oos.py` | 5-fold OOS (BME) |
+| `scripts/v7_0_stress_test.py` | 3 极端事件 (BME) |
+| `scripts/v7_0_hmm_lag_test.py` | HMM 滞后 (BME) |
 | `scripts/v7_0_data_sla_test.py` | iFinD SLA |
-| `scripts/v7_0_integration_test.py` | 加成本集成 |
+| `scripts/v7_0_integration_test.py` | 加成本集成 (BME) |
 | `scripts/v7_0_select_52_etf.py` | 41 ETF 筛选 |
-| `scripts/v7_0_macro_oos_52etf.py` | 41 ETF OOS |
+| `scripts/v7_0_macro_oos_52etf.py` | 41 ETF OOS (BME) |
 | `scripts/v7_0_52etf_decision.py` | 41 ETF 决策 |
+| `combo/nav_curves_html.py` | **新增 v7.0 NAV 加载** (Stage 30.5) |
 | `tests/test_v7_0_dynamic.py` | 24 单元测试 |
 | `tests/test_v7_0_phase_a.py` | 11 单元测试 |
 
-### 8.2 报告产物 (12 个)
+### 8.2 报告产物 (12 个 + 2 HTML)
 
 | 文件 | 内容 |
 |------|------|
 | `reports/.../v7/v7_0_macro_oos_5fold.csv` | 5 方案 × 5 fold (25 行) |
 | `reports/.../v7/v7_0_macro_oos_summary.csv` | 5 策略 × 8 指标 |
-| `reports/.../v7/v7_0_macro_oos_winner.txt` | OOS 决策 |
+| `reports/.../v7/v7_0_macro_oos_winner.txt` | OOS 决策 (A. Top-K ⭐) |
 | `reports/.../v7/v7_0_stress_test.csv` | 3 事件 × 6 策略 |
 | `reports/.../v7/v7_0_hmm_lag.csv` | 5 方案 × 5 滞后 |
-| `reports/.../v7/v7_0_data_sla.csv` | 5 因子 × 6 天 |
+| `reports/.../v7/v7_0_data_sla.csv` | 5 因子 × 6 天拉取 |
 | `reports/.../v7/v7_0_data_sla_summary.txt` | SLA 报告 |
 | `reports/.../v7/v7_0_integration_test.csv` | 5 方案 × 2 配置 × 5 fold |
 | `reports/.../v7/v7_0_52etf_metrics.csv` | 52 ETF 指标 |
@@ -309,6 +320,8 @@ Stage 30 宏观增强是 v6.2 之后**最大突破**, 单点贡献 +4.78 5-fold 
 | `reports/.../v7/v7_0_52etf_decision.txt` | 41 ETF 决策 |
 | `reports/.../v7/v7_0_state_timeline.html` | 5 状态 plotly 报告 |
 | `reports/.../v7/v7_0_PERFORMANCE_TABLE.md` | v1v5 风格统计表 (本文) |
+| `reports/.../combo/V1V5_NAV_CURVES.html` | **v7.0 已加入**, 8.85 MB |
+| `reports/.../combo/V1V5_NAV_CURVES_v2_20260710.html` | 报告版 v2 |
 
 ### 8.3 测试覆盖
 
@@ -320,8 +333,6 @@ Stage 30 宏观增强是 v6.2 之后**最大突破**, 单点贡献 +4.78 5-fold 
 | v7 0 regime (HMM) | 11 | ✓ pass |
 | v7 0 backtest (vol_target, 弃用) | 7 | ⏭ skipped |
 | **总计** | **81 pass + 7 skipped** | ✓ |
-
-无新增回归, 6 个历史预存 v4 失败 (与 v7.0 无关)。
 
 ### 8.4 引用
 

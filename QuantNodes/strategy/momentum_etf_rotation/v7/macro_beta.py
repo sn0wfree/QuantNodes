@@ -113,7 +113,7 @@ def run_beta_v7_backtest(
 
     etf_universe = list(panel.columns)
     rebal_dates = []
-    for d in panel.resample("ME").last().index:
+    for d in panel.resample("BME").last().index:
         if d >= tl_df.index[0] and d in panel.index:
             rebal_dates.append(d)
 
