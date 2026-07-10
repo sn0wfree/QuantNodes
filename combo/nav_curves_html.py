@@ -191,20 +191,31 @@ def chart_all_curves(navs):
             hovertemplate=f"<b>{col}</b><br>%{{x|%Y-%m-%d}}<br>NAV=%{{y:.3f}}<extra></extra>",
         ))
 
-    # 重点策略 (实线)
-    foreground = ["v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v0.1 +VT"]
+    # 重点策略 (实线) - 含 v7.0 5 dynamic 方案
+    foreground = [
+        "v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)",
+        "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding",
+        "v7.0 Top-K (K=5)", "v7.0 Black-Litterman", "v7.0 Macro Beta",
+        "v7.0 Momentum", "v7.0 Inverse Vol", "v7.0 baseline 等权 7 ETF",
+    ]
     for col in foreground:
         if col not in navs.columns or col == "HS300 基准":
             continue
         valid = navs[col].dropna()
         is_best = (col == "v1.0 locked")
+        is_v7_robust = (col == "v7.0 Top-K (K=5)")
         is_v51 = (col == "v5.1 量价 (逆波动)")
         is_v6 = (col == "v6 (TF 趋势过滤)")
+        is_v62 = (col == "v6.2 ir_expanding")
+        is_v7 = col.startswith("v7.0 ")
+        prefix = "⭐ " if is_best else ("🏆 " if is_v7_robust else (f"🆕 " if is_v51 or is_v6 else ""))
+        display_name = f"{prefix}{col}"
+        width = 2.4 if is_best else (2.2 if is_v7_robust else (2.0 if is_v6 or is_v62 else (1.9 if is_v51 else (1.7 if is_v7 else 1.6))))
         fig.add_trace(go.Scatter(
             x=valid.index, y=valid.values,
-            mode="lines", name=f"⭐ {col}" if is_best else (f"🆕 {col}" if is_v51 or is_v6 else col),
+            mode="lines", name=display_name,
             line=dict(color=COLORS.get(col, "#333"),
-                      width=2.2 if is_best else (2.0 if is_v6 else (1.9 if is_v51 else 1.6)),
+                      width=width,
                       shape="spline", smoothing=0.6),
             hovertemplate=f"<b>{col}</b> ({STAGE_MAP.get(col, '')})<br>"
                           "%{x|%Y-%m-%d}<br>NAV=%{y:.3f}<extra></extra>",
@@ -260,16 +271,16 @@ def chart_all_curves(navs):
 # 分组对比 (subplot grid)
 # ============================================================
 def chart_grouped_curves(navs):
-    """2x2 subplot: v1.0 演进 / 进攻型 / 风险型 / 全部对比."""
+    """2x2 subplot: v1.0 演进 / 进攻型 / 风险型 / v7.0 5 dynamic."""
     panels = [
         ("v1.0 演进 (Stage 8 → v1.0)",
          ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"]),
-        ("进攻型 (v3 / v5 / v5.1 / v1.0 / HS300)",
-         ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v1.0 locked", "HS300 基准"]),
-        ("v5 vs v5.1 升级对比",
-         ["v5 量价", "v5.1 量价 (逆波动)"]),
-        ("Top-3 策略 vs 基准",
-         ["v1.0 locked", "v3 (52 池)", "v5.1 量价 (逆波动)", "HS300 基准"]),
+        ("进攻型 (v3 / v5 / v5.1 / v6.2 / v1.0 / HS300)",
+         ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6.2 ir_expanding", "v1.0 locked", "HS300 基准"]),
+        ("v5 → v5.1 → v6.1 → v6.2 量价族演进",
+         ["v5 量价", "v5.1 量价 (逆波动)", "v6.1 IC12", "v6.2 ir_expanding"]),
+        ("v7.0 5 Macro Dynamic (Stage 30.5)",
+         ["v7.0 baseline 等权 7 ETF", "v7.0 Top-K (K=5)", "v7.0 Black-Litterman", "v7.0 Macro Beta", "v7.0 Momentum", "v7.0 Inverse Vol", "HS300 基准"]),
     ]
     fig = make_subplots(
         rows=2, cols=2,
@@ -330,7 +341,10 @@ def chart_alpha_curves(navs):
     bench = navs["HS300 基准"]
 
     fig = go.Figure()
-    for col in ["v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v0.1 +VT"]:
+    for col in [
+        "v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6.2 ir_expanding",
+        "v7.0 Top-K (K=5)", "v7.0 Macro Beta", "v7.0 Inverse Vol",
+    ]:
         if col not in navs.columns:
             continue
         s = navs[col].dropna()
