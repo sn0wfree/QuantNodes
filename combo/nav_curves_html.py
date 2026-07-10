@@ -562,9 +562,8 @@ def main():
         # TF+Cost 档
         if "v6 TF+Cost" in v6_navs.columns:
             navs_A["v6 TF+Cost"] = v6_navs["v6 TF+Cost"]
-        # 重建 oos_metrics 含 v6
+        # 重建 oos_metrics 含 v6 (后续 main() 还会再算, 这里先设保险)
         oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
-        full_metrics_v6 = {col: metrics(navs_A[col]) for col in navs_A.columns}
 
         # 构造 v6 Key Finding HTML 片段
         v6_tf_oos = oos_metrics.get('v6 (TF 趋势过滤)', {})
@@ -600,8 +599,7 @@ def main():
             v6_key_finding = ""
             v6_aggressive_row = ""
             v6_strategy_card = ""
-        oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
-        full_metrics_v6 = {col: metrics(navs_A[col]) for col in navs_A.columns}
+        # 删除冗余: oos_metrics 和 full_metrics_v6 在 main 后面重算
 
     # 加载 HS300 基准
     print("[curve] 加载 HS300 基准...")
@@ -637,8 +635,10 @@ def main():
 
     # 计算指标
     full_metrics = {col: metrics(navs_A_with_bench[col]) for col in navs_A_with_bench.columns}
-    oos_metrics = {col: metrics(oos[col]) if col in oos.columns else full_metrics[col]
-                   for col in navs_A_with_bench.columns}
+    # v6 是在 navs_A_with_bench 之后才加入的, 用 navs_A_with_bench.loc[OOS_START:] 重新切,
+    # 避免老 oos (v6 加载前) 不含 v6 导致回退到 full_metrics (即 'OOS 全期相同' bug)
+    oos_full = navs_A_with_bench.loc[OOS_START:]
+    oos_metrics = {col: metrics(oos_full[col]) for col in navs_A_with_bench.columns}
     # 排序只对策略列 (排除 HS300 基准)
     strategy_cols = [c for c in navs_A_with_bench.columns if c != "HS300 基准"]
     oos_sorted = sorted(

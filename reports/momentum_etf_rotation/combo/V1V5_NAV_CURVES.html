@@ -3940,10 +3940,10 @@ return Plotly;
 <div class="key-finding">
   <strong>核心发现 (口径 A OOS 2022-2026, 含 HS300 基准):</strong><br>
   • <b>风险调整冠军</b>: v1.0 locked — OOS Calmar <b>1.791</b>, Sharpe <b>1.51</b>, DD -1.94%<br>
-  • <b>绝对收益冠军</b>: v5.1 逆波动 — OOS 年化 <b>10.90%</b> (HS300 同期 +4.41%, α 显著)<br>
+  • <b>绝对收益冠军</b>: v5.1 逆波动 — OOS 年化 <b>10.90%</b> (HS300 同期 +2.11%, α 显著)<br>
   • <b>最均衡</b>: v3 (52 池) — OOS 年化 7.69%, Sharpe 1.08, DD -9.89%<br>
   • <b>v5.1.1 改进</b> (S1+S3+S4, S2 已回退): OOS Calmar 0.488 → <b>0.604</b> (+23.7%) ⭐<br>
-  • <b>v6 (TF 趋势过滤) Stage 26</b>: v5.1.1 选股+加权 + TF 风控 → OOS Calmar <b>0.662</b> (+9.5%), DD -<b>15.1%</b> (vs v5.1.1 -18.0%)<br>  • <b>HS300 基准</b>: OOS 年化 +4.41%, DD -44.75%, Calmar 0.099<br>
+  • <b>v6 (TF 趋势过滤) Stage 26</b>: v5.1.1 选股+加权 + TF 风控 → OOS Calmar <b>0.662</b> (+9.5%), DD -<b>15.1%</b> (vs v5.1.1 -18.0%)<br>  • <b>HS300 基准</b>: OOS 年化 +2.11%, DD -34.87%, Calmar 0.060<br>
   • <b>推荐组合</b>: v1.0 80% + <b>v5.1 20%</b> — 全期 Calmar 1.146, OOS <b>1.015</b> ⭐ (跨入 1.0 俱乐部)
 </div>
 
@@ -4070,7 +4070,7 @@ return Plotly;
     <h4>HS300 基准 📊 <span class="legend-box legend-bench">沪深 300</span></h4>
     <p><b>类型</b>: 被动指数 | <b>数据</b>: 510300 ETF, 归一化到 1.0 起点</p>
     <p><b>用途</b>: 用于 (1) 业绩曲线对比 (2) 计算策略 α 超额 (3) 风险调整基准</p>
-    <p><b>OOS</b>: +4.41% / Sharpe 0.32 / DD -44.75% / Calmar 0.099</p>
+    <p><b>OOS</b>: +2.11% / Sharpe 0.21 / DD -34.87% / Calmar 0.060</p>
   </div>
 </section>
 
@@ -4127,11 +4127,11 @@ return Plotly;
           <td>+13.43%</td>
           <td>14.64%</td>
           <td>0.748</td>
-          <td>+13.43%</td>
-          <td>14.64%</td>
-          <td>0.97</td>
-          <td>-17.95%</td>
-          <td><b>0.748</b></td>
+          <td>+10.02%</td>
+          <td>15.10%</td>
+          <td>0.74</td>
+          <td>-15.14%</td>
+          <td><b>0.662</b></td>
         </tr>
         <tr class="">
           <td>4</td>
@@ -4139,11 +4139,11 @@ return Plotly;
           <td>+13.08%</td>
           <td>14.65%</td>
           <td>0.729</td>
-          <td>+13.08%</td>
-          <td>14.65%</td>
-          <td>0.95</td>
-          <td>-17.95%</td>
-          <td><b>0.729</b></td>
+          <td>+9.65%</td>
+          <td>15.10%</td>
+          <td>0.71</td>
+          <td>-15.24%</td>
+          <td><b>0.633</b></td>
         </tr>
         <tr class="">
           <td>5</td>
@@ -4235,11 +4235,11 @@ return Plotly;
           <td>+4.41%</td>
           <td>21.83%</td>
           <td>0.099</td>
-          <td>+4.41%</td>
-          <td>21.83%</td>
-          <td>0.32</td>
-          <td>-44.75%</td>
-          <td>0.099</td>
+          <td>+2.11%</td>
+          <td>19.22%</td>
+          <td>0.21</td>
+          <td>-34.87%</td>
+          <td>0.060</td>
         </tr>
   </table>
 </section>
@@ -4317,7 +4317,7 @@ return Plotly;
     <tr><td>🛡️ 极保守</td><td>v1.0 locked</td><td>波动率目标限制 DD 至 -1.94%, 适合低风险偏好</td><td><b>1.791</b></td></tr>
     <tr><td>⚖️ 均衡</td><td>v3 (52 池)</td><td>三子策略互补, 风险与收益平衡</td><td>0.778</td></tr>
     <tr><td>🚀 进取</td><td>v5.1 逆波动 🆕</td><td>11 量价因子 + 逆波动, 年化 10.90%, 风险调整优</td><td><b>0.604</b></td></tr><tr><td>🚀 进取 (TF 风控)</td><td>v6 (TF 趋势过滤) 🆕🆕</td><td>v5.1.1 + TF 风控, DD 仅 <b>-15.1%</b> (vs v5.1.1 -18.0%)</td><td><b>0.662</b></td></tr>
-    <tr><td>📊 基准</td><td>HS300</td><td>被动指数, 无主动管理成本</td><td>0.099</td></tr>
+    <tr><td>📊 基准</td><td>HS300</td><td>被动指数, 无主动管理成本</td><td>0.060</td></tr>
   </table>
 
   <h3>2. 组合推荐 (多策略分散)</h3>
