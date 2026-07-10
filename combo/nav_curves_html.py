@@ -43,6 +43,8 @@ COLORS = {
     "v4 factor":        "#8C564B",
     "v5 量价":          "#E377C2",
     "v5.1 量价 (逆波动)": "#FF6B9D",
+    "v6 (TF 趋势过滤)": "#17BECF",  # 青色 — Stage 26 v6 单策略风控
+    "v6 TF+Cost":      "#17BECF",
 }
 
 STAGE_MAP = {
@@ -55,13 +57,15 @@ STAGE_MAP = {
     "v4 factor":        "Stage 18 (IC 因子择时)",
     "v5 量价":          "Stage 22 (11 量价因子, 等权)",
     "v5.1 量价 (逆波动)": "Stage 25.1 (v5.1 升级, S1+S3+S4 消融选中)",
+    "v6 (TF 趋势过滤)": "Stage 26 (v6 单策略: TF 风控 + v5.1.1 选股/加权)",
+    "v6 TF+Cost":       "Stage 26 (v6 单策略: TF 风控 + 调仓成本 + v5.1.1)",
 }
 
 # 分组
 GROUPS = {
     "v1.0 演进路径": ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"],
-    "进攻型":       ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v1.0 locked"],
-    "v5 vs v5.1":   ["v5 量价", "v5.1 量价 (逆波动)"],
+    "进攻型":       ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v1.0 locked"],
+    "v5 vs v5.1 vs v6":  ["v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)"],
     "风险型 (VT)":  ["v1.0 locked", "v0.1 +VT"],
     "全部 9 策略":  None,  # 全部
 }
@@ -142,18 +146,19 @@ def chart_all_curves(navs):
         ))
 
     # 重点策略 (实线)
-    foreground = ["v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v0.1 +VT"]
+    foreground = ["v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v0.1 +VT"]
     for col in foreground:
         if col not in navs.columns or col == "HS300 基准":
             continue
         valid = navs[col].dropna()
         is_best = (col == "v1.0 locked")
         is_v51 = (col == "v5.1 量价 (逆波动)")
+        is_v6 = (col == "v6 (TF 趋势过滤)")
         fig.add_trace(go.Scatter(
             x=valid.index, y=valid.values,
-            mode="lines", name=f"⭐ {col}" if is_best else (f"🆕 {col}" if is_v51 else col),
+            mode="lines", name=f"⭐ {col}" if is_best else (f"🆕 {col}" if is_v51 or is_v6 else col),
             line=dict(color=COLORS.get(col, "#333"),
-                      width=2.2 if is_best else (1.9 if is_v51 else 1.6),
+                      width=2.2 if is_best else (2.0 if is_v6 else (1.9 if is_v51 else 1.6)),
                       shape="spline", smoothing=0.6),
             hovertemplate=f"<b>{col}</b> ({STAGE_MAP.get(col, '')})<br>"
                           "%{x|%Y-%m-%d}<br>NAV=%{y:.3f}<extra></extra>",
@@ -545,6 +550,59 @@ def main():
     oos = navs_A.loc[OOS_START:]  # DataFrame (用于表格)
     oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}  # dict (用于显示)
 
+    # 加载 v6 NAV (Stage 26: v6 单策略, 推荐 TF 档)
+    v6_path = OUT_DIR / "v6_navs.parquet"
+    if v6_path.exists():
+        v6_navs = pd.read_parquet(v6_path)
+        # 推荐档: TF (OOS Calmar 0.662)
+        if "v6 只 TF" in v6_navs.columns:
+            navs_A["v6 (TF 趋势过滤)"] = v6_navs["v6 只 TF"]
+            print(f"[curve] v6 TF 已加入 (Stage 26): OOS Calmar="
+                  f"{metrics(v6_navs['v6 只 TF'].loc[OOS_START:])['calmar']:.3f}")
+        # TF+Cost 档
+        if "v6 TF+Cost" in v6_navs.columns:
+            navs_A["v6 TF+Cost"] = v6_navs["v6 TF+Cost"]
+        # 重建 oos_metrics 含 v6
+        oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
+        full_metrics_v6 = {col: metrics(navs_A[col]) for col in navs_A.columns}
+
+        # 构造 v6 Key Finding HTML 片段
+        v6_tf_oos = oos_metrics.get('v6 (TF 趋势过滤)', {})
+        v51_oos = oos_metrics.get('v5.1 量价 (逆波动)', {})
+        if v6_tf_oos:
+            v6_delta_pct = (v6_tf_oos['calmar'] - v51_oos['calmar']) / v51_oos['calmar'] * 100
+            v6_dd_v51 = abs(v51_oos['max_dd'])*100
+            v6_dd_v6 = abs(v6_tf_oos['max_dd'])*100
+            v6_key_finding = (
+                f"• <b>v6 (TF 趋势过滤) Stage 26</b>: v5.1.1 选股+加权 + TF 风控 → "
+                f"OOS Calmar <b>{v6_tf_oos['calmar']:.3f}</b> (+{v6_delta_pct:.1f}%), "
+                f"DD -<b>{v6_dd_v6:.1f}%</b> "
+                f"(vs v5.1.1 -{v6_dd_v51:.1f}%)<br>"
+            )
+            v6_aggressive_row = (
+                f"<tr><td>🚀 进取 (TF 风控)</td><td>v6 (TF 趋势过滤) 🆕🆕</td>"
+                f"<td>v5.1.1 + TF 风控, DD 仅 <b>-{v6_dd_v6:.1f}%</b> "
+                f"(vs v5.1.1 -{v6_dd_v51:.1f}%)</td>"
+                f"<td><b>{v6_tf_oos['calmar']:.3f}</b></td></tr>"
+            )
+            v6_dd_improve = v6_dd_v51 - v6_dd_v6
+            v6_strategy_card = f"""
+  <div class="strategy-card" style="background: #E0F7FA; border-color: #17BECF;">
+    <h4>v6 (TF 趋势过滤) <span class="legend-box legend-best">⭐ Stage 26 单策略</span></h4>
+    <p><b>类型</b>: v5.1.1 选股 + v5.1.1 加权 + <b>TF 风控</b> (HS300 MA200, bear=0.7)</p>
+    <p><b>核心</b>: v6 单策略版, 完全复用 v5.1.1 选股+加权, 仅加 1 层风控 (TF). TF 在 HS300 < MA200 时缩仓至 70%, 留 30% 给 511260 国债 ETF.</p>
+    <p><b>OOS</b>: {v6_tf_oos['ann_return']*100:.2f}% / Sharpe {v6_tf_oos['sharpe']:.2f} / DD {v6_dd_v6:.2f}% / <b>Calmar {v6_tf_oos['calmar']:.3f}</b> ⭐</p>
+    <p><b>v5.1.1 → v6 TF 改善</b>: OOS Calmar +{v6_delta_pct:.1f}%, DD 改善 {v6_dd_improve:.2f}pp</p>
+    <p><b>设计动机</b>: v5.1.1 无风控高 beta 收益, 单月最大回撤 -18%. 加 TF 让熊市只亏 70%, 大幅降 DD. 不开 VT 是因为 v5.1.1 信号源已经偏进攻, VT 会严重拖累收益 (消融实验证实).</p>
+  </div>
+"""
+        else:
+            v6_key_finding = ""
+            v6_aggressive_row = ""
+            v6_strategy_card = ""
+        oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
+        full_metrics_v6 = {col: metrics(navs_A[col]) for col in navs_A.columns}
+
     # 加载 HS300 基准
     print("[curve] 加载 HS300 基准...")
     nav_main = pd.read_parquet(REPO / "data/real/etf_nav_2018-01-01_2026-06-30.parquet")
@@ -724,7 +782,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   • <b>绝对收益冠军</b>: v5.1 逆波动 — OOS 年化 <b>{oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%</b> (HS300 同期 {hs300_oos['ann_return']*100:+.2f}%, α 显著)<br>
   • <b>最均衡</b>: v3 (52 池) — OOS 年化 7.69%, Sharpe 1.08, DD -9.89%<br>
   • <b>v5.1.1 改进</b> (S1+S3+S4, S2 已回退): OOS Calmar 0.488 → <b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b> (+{(oos_metrics['v5.1 量价 (逆波动)']['calmar']-oos_metrics['v5 量价']['calmar'])/oos_metrics['v5 量价']['calmar']*100:.1f}%) ⭐<br>
-  • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
+  {v6_key_finding}  • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
   • <b>推荐组合</b>: v1.0 80% + <b>v5.1 20%</b> — 全期 Calmar 1.146, OOS <b>1.015</b> ⭐ (跨入 1.0 俱乐部)
 </div>
 
@@ -836,6 +894,8 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
     <p><b>Stage 25.1 消融</b>: S1 (T+1 调仓) +S3 (60日窗口) +S4 (max_weight 0.25) 选中. S2 (winsorized rank) 拖累 OOS -12%, 已回退.</p>
   </div>
 
+  {v6_strategy_card}
+
   <div class="strategy-card" style="background: #F5F5F5; border-color: #999;">
     <h4>HS300 基准 📊 <span class="legend-box legend-bench">沪深 300</span></h4>
     <p><b>类型</b>: 被动指数 | <b>数据</b>: 510300 ETF, 归一化到 1.0 起点</p>
@@ -892,7 +952,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
     <tr><th>风险偏好</th><th>推荐策略</th><th>理由</th><th>OOS Calmar</th></tr>
     <tr><td>🛡️ 极保守</td><td>v1.0 locked</td><td>波动率目标限制 DD 至 -1.94%, 适合低风险偏好</td><td><b>1.791</b></td></tr>
     <tr><td>⚖️ 均衡</td><td>v3 (52 池)</td><td>三子策略互补, 风险与收益平衡</td><td>0.778</td></tr>
-    <tr><td>🚀 进取</td><td>v5.1 逆波动 🆕</td><td>11 量价因子 + 逆波动, 年化 {oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%, 风险调整优</td><td><b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b></td></tr>
+    <tr><td>🚀 进取</td><td>v5.1 逆波动 🆕</td><td>11 量价因子 + 逆波动, 年化 {oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%, 风险调整优</td><td><b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b></td></tr>{v6_aggressive_row}
     <tr><td>📊 基准</td><td>HS300</td><td>被动指数, 无主动管理成本</td><td>{hs300_oos['calmar']:.3f}</td></tr>
   </table>
 

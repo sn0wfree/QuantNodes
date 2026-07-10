@@ -35,6 +35,8 @@ STAGE_MAP = {
     "v4 factor":     "Stage 18 (IC 因子择时, 12 池)",
     "v5 量价":        "Stage 22 (11 量价因子, 44 OHLCV, 等权)",
     "v5.1 量价 (逆波动)": "Stage 25.1 (v5.1 升级, S1+S3+S4 消融选中)",
+    "v6 (TF 趋势过滤)":   "Stage 26 (v6 单策略: TF 风控 + v5.1.1 选股/加权)",
+    "v6 TF+Cost":         "Stage 26 (v6 单策略: TF 风控 + 调仓成本 + v5.1.1)",
 }
 
 # 调色板 (类似 build_stage_charts 风格)
@@ -48,6 +50,8 @@ COLORS = {
     "v4 factor":     "#8C564B",
     "v5 量价":        "#E377C2",
     "v5.1 量价 (逆波动)": "#FF6B9D",  # v5 粉红 + 加深 → 区分
+    "v6 (TF 趋势过滤)":   "#17BECF",  # 青色 — Stage 26 v6
+    "v6 TF+Cost":         "#17BECF",  # 同色
 }
 
 
@@ -375,6 +379,18 @@ def main():
     navs_A = pd.read_parquet(OUT_DIR / "unified_v1v5_navs_calA.parquet")
     navs_B = pd.read_parquet(OUT_DIR / "unified_v1v5_navs_calB.parquet")
 
+    # 加载 v6 NAV (Stage 26, 口径 A 含成本, 口径 B 用同 NAV 近似)
+    v6_path = OUT_DIR / "v6_navs.parquet"
+    if v6_path.exists():
+        v6_navs = pd.read_parquet(v6_path)
+        if "v6 只 TF" in v6_navs.columns:
+            navs_A["v6 (TF 趋势过滤)"] = v6_navs["v6 只 TF"]
+            navs_B["v6 (TF 趋势过滤)"] = v6_navs["v6 只 TF"]  # v6 已含 cost
+        if "v6 TF+Cost" in v6_navs.columns:
+            navs_A["v6 TF+Cost"] = v6_navs["v6 TF+Cost"]
+            navs_B["v6 TF+Cost"] = v6_navs["v6 TF+Cost"]
+
+
     # 计算指标
     metrics_A = {col: metrics(navs_A[col]) for col in navs_A.columns}
     metrics_B = {col: metrics(navs_B[col]) for col in navs_B.columns}
@@ -509,6 +525,7 @@ tr.highlight {{ background: #FFF9E6; font-weight: bold; }}
     <tr><td>Stage 18 (v4 style/factor)</td><td>风格轮动 + IC 因子择时</td><td>-0.085 ~ 0.131</td></tr>
     <tr><td>Stage 22 (v5)</td><td>11 量价因子 + <b>等权</b> (华西论文)</td><td>0.488</td></tr>
     <tr style="background: #FFF9E6;"><td>Stage 25.1 (v5.1.1)</td><td>11 量价因子 + 逆波动率 (S1 T+1 调仓 + S3 60日窗口 + S4 max_weight 0.25) (v5.1 升级版)</td><td><b>0.604</b> ⭐ (+23.8%)</td></tr>
+    {("<tr style=\"background: #E0F7FA;\"><td>Stage 26 (v6)</td><td>v5.1.1 选股+加权 + TF 风控 (HS300 MA200, bear=0.7) (单策略版)</td><td><b>" + f"{oos_metrics.get('v6 (TF 趋势过滤)', {}).get('calmar', 0):.3f}" + "</b> ⭐ (+" + f"{(oos_metrics.get('v6 (TF 趋势过滤)', {}).get('calmar', 0) - oos_A.get('v5.1 量价 (逆波动)', {}).get('calmar', 0)) / oos_A.get('v5.1 量价 (逆波动)', {}).get('calmar', 1) * 100:.1f}" + "%)</td></tr>") if 'v6 (TF 趋势过滤)' in oos_A else ""}
   </table>
 
   <h3>推荐组合 (含 v5.1)</h3>
