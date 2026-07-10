@@ -1,4 +1,4 @@
-"""combo/nav_curves_html.py 单元测试 (Stage 30.5 HTML 修复).
+"""combo/nav_curves_html.py 单元测试 (HTML 标题提取).
 
 [测试覆盖]
 - _extract_chart_title: 标题提取 (处理 <b>...</b><br><sub>...</sub> 格式)
@@ -17,11 +17,11 @@ def test_extract_chart_title_with_bold():
     """<b>title</b><br><sub>...</sub> → 'title'."""
     fig = go.Figure()
     fig.update_layout(title=dict(
-        text="<b>v0 - v7.0 业绩曲线对比</b><br><sub>实线=重点</sub>",
+        text="<b>v0 - v6.2 业绩曲线对比</b><br><sub>实线=重点</sub>",
         x=0.02,
     ))
     result = _extract_chart_title(fig)
-    assert result == "v0 - v7.0 业绩曲线对比"
+    assert result == "v0 - v6.2 业绩曲线对比"
 
 
 def test_extract_chart_title_no_bold():

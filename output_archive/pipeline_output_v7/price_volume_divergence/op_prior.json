@@ -1,8 +1,0 @@
-{
-  "weights": {},
-  "alpha": 0.7,
-  "floor": 0.1,
-  "total_updates": 0,
-  "ir_threshold": 0.01,
-  "ir_full_strength": 0.5
-}
