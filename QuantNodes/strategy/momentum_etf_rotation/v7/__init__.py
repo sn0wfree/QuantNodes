@@ -43,6 +43,15 @@ from .state_inverse_vol import (
     compute_inverse_vol_weights,
     run_iv_v7_backtest,
 )
+from .transaction_cost import (
+    compute_turnover,
+    apply_turnover_cost,
+    portfolio_drag,
+)
+from .liquidity_cap import (
+    apply_max_weight_cap,
+    apply_turnover_cap,
+)
 from .state_allocation import STATE_ALLOCATIONS, ETF_LAUNCH_DATES
 from .taa_backtest import (
     V7Config,
@@ -81,6 +90,11 @@ __all__ = [
     "compute_etf_vol",
     "compute_inverse_vol_weights",
     "run_iv_v7_backtest",
+    "compute_turnover",
+    "apply_turnover_cost",
+    "portfolio_drag",
+    "apply_max_weight_cap",
+    "apply_turnover_cap",
     "STATE_ALLOCATIONS",
     "ETF_LAUNCH_DATES",
     "V7Config",
