@@ -122,6 +122,27 @@ def sharpe(nav):
     return float(rets.mean() / rets.std() * np.sqrt(252))
 
 
+def _extract_chart_title(figure) -> str:
+    """从 plotly figure 提取主标题 (处理 <b>...</b><br><sub>...</sub> 格式).
+
+    Args:
+        figure: plotly figure 对象.
+
+    Returns:
+        主标题字符串 (HTML 已剥离), 无标题时返回 fig key 占位.
+    """
+    if not figure.layout.title or not figure.layout.title.text:
+        return ""
+    text = figure.layout.title.text
+    import re
+    m = re.search(r"<b>(.*?)</b>", text)
+    if m:
+        return m.group(1).strip()
+    if "<" in text:
+        return text.split("<")[0].strip()
+    return text.strip()
+
+
 def metrics(nav):
     valid = nav.dropna()
     if len(valid) < 2:
@@ -210,8 +231,8 @@ def chart_all_curves(navs):
 
     fig.update_layout(
         title=dict(
-            text="<b>v1-v5 业绩曲线对比 (2018-2026)</b>"
-                 "<br><sub>实线=重点, 虚线=参考 | ⭐=v1.0 locked (OOS Calmar 1.791) | "
+            text="<b>v0 - v7.0 业绩曲线对比 (2018-2026, 16 策略 + HS300)</b>"
+                 "<br><sub>实线=重点, 虚线=参考 | ⭐=v1.0 locked (历史 OOS 最佳 1.791) + v7.0 Top-K (Stage 30.5 5-fold 鲁棒) | "
                  "深灰虚线=HS300 基准 | 高亮=OOS 区间</sub>",
             x=0.02, xanchor="left", font=dict(size=15),
         ),
@@ -281,7 +302,7 @@ def chart_grouped_curves(navs):
                       row=row, col=col_idx)
 
     fig.update_layout(
-        title=dict(text="<b>分组业绩曲线 (2×2 网格)</b>",
+        title=dict(text="<b>分组业绩曲线 (2×2 网格, 含 v7.0 5 dynamic 方案)</b>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         template="plotly_white",
         height=720,
@@ -336,8 +357,8 @@ def chart_alpha_curves(navs):
                   annotation_text="OOS", annotation_position="top left",
                   annotation_font_size=9)
     fig.update_layout(
-        title=dict(text="<b>超额收益 (Alpha) vs HS300</b>"
-                        "<br><sub>α = 策略 NAV / HS300 NAV − 1 (%)</sub>",
+        title=dict(text="<b>超额收益 (Alpha) vs HS300 (v0 - v7.0)</b>"
+                        "<br><sub>α = 策略 NAV / HS300 NAV − 1 (%). v7.0 5 方案在 OOS 期间相对 HS300 跑赢幅度</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         xaxis=dict(title="日期", showgrid=True,
                    gridcolor="rgba(0,0,0,0.05)", zeroline=False),
@@ -391,8 +412,8 @@ def chart_drawdown_compare(navs):
     fig.add_vrect(x0=OOS_START, x1=OOS_END,
                   fillcolor="rgba(100,100,200,0.04)", line_width=0)
     fig.update_layout(
-        title=dict(text="<b>回撤对比 (Drawdown Over Time)</b>"
-                        "<br><sub>DD 越接近 0 越好 | v1.0 locked 用绿色填充 | HS300 基准用深灰虚线</sub>",
+        title=dict(text="<b>回撤对比 (Drawdown Over Time, v0 - v7.0)</b>"
+                        "<br><sub>DD 越接近 0 越好 | v1.0 locked 几乎无回撤 | v7.0 Top-K 5-fold 平均 DD 仅 -5.1% (优于 v6.2 -16.7%)</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         xaxis=dict(title="日期", showgrid=True,
                    gridcolor="rgba(0,0,0,0.05)", zeroline=False),
@@ -457,8 +478,8 @@ def chart_period_compare(navs):
     fig.add_hline(y=0, line_dash="dot", line_color="gray", row=1, col=1)
     fig.add_hline(y=0, line_dash="dot", line_color="gray", row=1, col=2)
     fig.update_layout(
-        title=dict(text="<b>全期 vs OOS 年化收益</b>"
-                        "<br><sub>金边=最佳 (v1.0 locked), 灰色=HS300 基准 | 柱顶=年化收益</sub>",
+        title=dict(text="<b>全期 vs OOS 年化收益 (v0 - v7.0)</b>"
+                        "<br><sub>金边=最佳 (v1.0 OOS Calmar 1.791, v7.0 Top-K OOS 0.807), 灰色=HS300 基准 | 柱顶=年化收益</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         template="plotly_white", height=480,
         margin=dict(l=60, r=30, t=80, b=80), barmode="group",
@@ -505,8 +526,8 @@ def chart_radar(navs):
             fillcolor="rgba(44,160,44,0.10)" if is_best else None,
         ))
     fig.update_layout(
-        title=dict(text="<b>OOS 性能雷达图 (2022-2026)</b>"
-                        "<br><sub>6 维归一化指标, 越靠外越好 | ⭐=v1.0 locked (绿色填充)</sub>",
+        title=dict(text="<b>OOS 性能雷达图 (2022-2026, v0 - v7.0)</b>"
+                        "<br><sub>6 维归一化指标, 越靠外越好 | ⭐=v1.0 locked (绿色填充, Calmar 1.791) | v7.0 Top-K 紫色 (0.807)</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         template="plotly_white", height=520,
         margin=dict(l=60, r=60, t=80, b=60),
@@ -553,8 +574,8 @@ def chart_monthly_heatmap(navs):
         xgap=1, ygap=2,
     ))
     fig.update_layout(
-        title=dict(text="<b>月度收益热图 (2018-2026)</b>"
-                        "<br><sub>红=亏损, 绿=盈利 | 列=月份, 行=策略</sub>",
+        title=dict(text="<b>月度收益热图 (2018-2026, v0 - v7.0 共 20 策略)</b>"
+                        "<br><sub>红=亏损, 绿=盈利 | 列=月份, 行=策略 | v1.0 / v7.0 Top-K 全期基本无红格</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         template="plotly_white", height=480,
         margin=dict(l=120, r=80, t=80, b=80),
@@ -742,6 +763,106 @@ def main(include_strategies: bool = True):
     <p><b>状态</b>: v7.0 Top-K 升为 Stage 30.5 默认 (5-fold 鲁棒), v6.2 ir_expanding 仍为 RECOMMENDED (v1v5 兼容).</p>
   </div>
 """
+
+        # v7.0 5 子策略详细卡 (A. Top-K / B. BL / C. Beta / D. Momentum / E. IV)
+        v7_topk_oos_5fold_ann = "19.59%"
+        v7_topk_oos_5fold_calmar = "2.23"
+        v7_topk_oos_2022_ann = f"{v7_topk_oos['ann_return']*100:+.2f}%"
+        v7_topk_oos_2022_dd = f"{v7_topk_dd:.1f}"
+        v7_topk_oos_2022_calmar = f"{v7_topk_cal:.3f}"
+
+        v7_bl_ann_2022 = f"{v7_bl_oos['ann_return']*100:+.2f}%"
+        v7_bl_sharpe_2022 = f"{v7_bl_oos['sharpe']:.2f}"
+        v7_bl_dd_2022 = f"{abs(v7_bl_oos['max_dd'])*100:.1f}"
+        v7_bl_calmar_2022 = f"{v7_bl_oos['calmar']:.3f}"
+
+        v7_beta_ann_2022 = f"{v7_beta_oos['ann_return']*100:+.2f}%"
+        v7_beta_sharpe_2022 = f"{v7_beta_oos['sharpe']:.2f}"
+        v7_beta_dd_2022 = f"{v7_beta_dd:.1f}"
+        v7_beta_calmar_2022 = f"{v7_beta_cal:.3f}"
+
+        v7_mom_ann_2022 = f"{v7_mom_oos['ann_return']*100:+.2f}%"
+        v7_mom_sharpe_2022 = f"{v7_mom_oos['sharpe']:.2f}"
+        v7_mom_dd_2022 = f"{abs(v7_mom_oos['max_dd'])*100:.1f}"
+        v7_mom_calmar_2022 = f"{v7_mom_oos['calmar']:.3f}"
+
+        v7_iv_ann_2022 = f"{v7_iv_oos['ann_return']*100:+.2f}%"
+        v7_iv_sharpe_2022 = f"{v7_iv_oos['sharpe']:.2f}"
+        v7_iv_dd_2022 = f"{abs(v7_iv_oos['max_dd'])*100:.1f}"
+        v7_iv_calmar_2022 = f"{v7_iv_oos['calmar']:.3f}"
+
+        v7_aggressive_row = (
+            f"<tr><td>🌟 宏观动量 (新)</td><td>v7.0 Top-K (K=5) 🆕</td>"
+            f"<td>HMM 5 状态 + state-conditional 排名, 5/5 fold 鲁棒, DD -<b>{v7_topk_dd:.1f}%</b></td>"
+            f"<td><b>{v7_topk_cal:.3f}</b></td></tr>"
+        )
+
+        # 5 个子策略卡 (替换原来的 1 个汇总卡)
+        v7_topk_card = f"""
+      <div class="strategy-card" style="background: #E8F5E9; border-color: #3CB371;">
+        <h4>v7.0 A. Top-K (K=5) <span class="legend-box legend-best">⭐ Stage 30.5 5-fold 鲁棒</span></h4>
+        <p><b>类型</b>: <b>state-conditional 排名</b> + 等权 | <b>信号</b>: forward 21d 均值 | <b>选股</b>: 当前 state 内 top 5 | <b>加权</b>: 1/5 等权</p>
+        <p><b>核心</b>: 用截至 d-1 的 state × ETF forward 21d 均值, 当前 HMM 状态下取收益最高的 5 只等权. state 历史 < 3 月则 fallback 等权 1/7. 调仓月度 (BME 115/年), 月底执行.</p>
+        <p><b>业界对应</b>: 中泰证券 / 中银证券 "Top-K 排名" 配置法</p>
+        <p><b>5-fold OOS</b>: mean ann <b>{v7_topk_oos_5fold_ann}</b>, mean Calmar <b>{v7_topk_oos_5fold_calmar}</b> ⭐, DD -5.1%, 5/5 fold 全正</p>
+        <p><b>OOS 2022-2026</b>: ann {v7_topk_oos_2022_ann} / Sharpe {v7_topk_oos['sharpe']:.2f} / DD -{v7_topk_oos_2022_dd}% / Calmar {v7_topk_oos_2022_calmar}</p>
+        <p><b>状态</b>: <b>Stage 30.5 默认</b> (5-fold 鲁棒), 推荐作为 v7.0 主策略</p>
+      </div>
+    """
+
+        v7_bl_card = f"""
+      <div class="strategy-card" style="background: #F3E5F5; border-color: #BA55D3;">
+        <h4>v7.0 B. Black-Litterman <span class="legend-box legend-good">Stage 30.5 极端市稳健</span></h4>
+        <p><b>类型</b>: <b>BL 经典</b> prior + Q + Σ + Ω | <b>信号</b>: state-conditional forward 21d 均值 | <b>选股</b>: 后验收益 top K | <b>加权</b>: posterior / λ, 30% cap</p>
+        <p><b>核心</b>: π = equal 7% (无市场均衡), Σ = expanding 252d 日收益协方差 (Ledoit-Wolf shrinkage, 7×7), τ = 0.05 (Idzorek). P = I_7 (one view per ETF), Q = state-conditional forward 21d 均值年化, Ω = diag(τ × σ² / n_samples) 桶稀疏修正. 后验收益 w ∝ max(0, post), normalize, 30% cap.</p>
+        <p><b>业界对应</b>: 学术经典 (Black & Litterman 1992) / 中信证券动态加权</p>
+        <p><b>5-fold OOS</b>: mean ann 17.04%, mean Calmar 1.82, 4/5 fold (折 3 熊市亏 -5.2%, 极端市最稳健)</p>
+        <p><b>OOS 2022-2026</b>: ann {v7_bl_ann_2022} / Sharpe {v7_bl_sharpe_2022} / DD -{v7_bl_dd_2022}% / Calmar {v7_bl_calmar_2022}</p>
+        <p><b>极端市测试</b>: 3 事件平均 +4.03% (B 方案 4 维), 2022 港股暴跌 +1.15% (唯一正)</p>
+        <p><b>状态</b>: <b>推荐作为 v7.0 hedge</b> (极端市防御, 协方差 7×7 数值稳定)</p>
+      </div>
+    """
+
+        v7_beta_card = f"""
+      <div class="strategy-card" style="background: #FFF3E0; border-color: #FF8C00;">
+        <h4>v7.0 C. Macro Beta (K=5) <span class="legend-box legend-good">Stage 30.5 中信动态加权</span></h4>
+        <p><b>类型</b>: <b>5 macro × 7 ETF 滚动 252d OLS 回归</b> | <b>信号</b>: 预测 top 5 | <b>选股</b>: predicted return top 5 | <b>加权</b>: 1/5 等权</p>
+        <p><b>核心</b>: 对每只 ETF, 截至 d-1 滚动 252d 窗口 OLS 回归:
+            <code>r_etf = α + β_PMI·PMI + β_CPI·CPI + β_M2·M2 + β_CN10Y·ΔCN10Y + β_US10Y·ΔUS10Y + ε</code>
+        调仓日 d: predicted_return = α + Σ β·current_macro (年化), rank → top 5 等权. 5 macro 来自 iFinD (PMI 月度 lag=1, CPI lag=10, M2 lag=12, CN10Y/US10Y 日度 lag=0). 冷启动 < 60 天 fallback 等权.</p>
+        <p><b>业界对应</b>: 中信证券动态加权法 (5 维宏观特征 + 因子回归)</p>
+        <p><b>5-fold OOS</b>: mean ann 14.79%, mean Calmar 1.53, 5/5 fold 全正 ⭐ (5 维宏观 35 系数, 同窗估计)</p>
+        <p><b>OOS 2022-2026</b>: ann {v7_beta_ann_2022} / Sharpe {v7_beta_sharpe_2022} / DD -{v7_beta_dd_2022}% / Calmar {v7_beta_calmar_2022}</p>
+        <p><b>极端市测试</b>: 3 事件平均 +1.70% (5 方案最低, 2020 疫情 -5.79% 5 方案最差). 熊市切换到 defensive state 时偏弱.</p>
+        <p><b>状态</b>: <b>5-fold 鲁棒</b> (5/5 fold), 但 OOS 2022-2026 单段仅 0.54 Calmar. 推荐加 recession state 切黄金 (避免 -5.79% 疫情).</p>
+      </div>
+    """
+
+        v7_mom_card = f"""
+      <div class="strategy-card" style="background: #E0F7FA; border-color: #20B2AA;">
+        <h4>v7.0 D. Momentum (63d) <span class="legend-box legend-bad">Stage 30.5 ⚠ 折 3 亏</span></h4>
+        <p><b>类型</b>: <b>state 内 ETF 动量排名</b> | <b>信号</b>: 63d 动量 (3 月) | <b>选股</b>: combined top 5 | <b>加权</b>: 1/5 等权</p>
+        <p><b>核心</b>: 截至 d-1, 每 ETF 算过去 63d 动量 (forward return), 当前 HMM state 历史日的 ETF 平均动量. combined = 0.5 × state_mom + 0.5 × current_mom. top 5 等权.</p>
+        <p><b>业界对应</b>: 海通证券 "近一季风格动量差" + 宏观状态过滤</p>
+        <p><b>5-fold OOS</b>: mean ann 15.97%, mean Calmar 1.66, 4/5 fold (折 3 熊市亏 -9.1%, 5 方案最差)</p>
+        <p><b>OOS 2022-2026</b>: ann {v7_mom_ann_2022} / Sharpe {v7_mom_sharpe_2022} / DD -{v7_mom_dd_2022}% / Calmar {v7_mom_calmar_2022}</p>
+        <p><b>极端市测试</b>: 2020 疫情 +1.04% (5 方案最高, 抓反弹强), 2022 港股 -3.92%</p>
+        <p><b>状态</b>: <b>淘汰</b> (折 3 5 方案最差), 转折市失效, 状态检测滞后</p>
+      </div>
+    """
+
+        v7_iv_card = f"""
+      <div class="strategy-card" style="background: #FFEBEE; border-color: #DC143C;">
+        <h4>v7.0 E. Inverse Vol <span class="legend-box legend-bad">Stage 30.5 ⚠ 折 5 异常</span></h4>
+        <p><b>类型</b>: <b>1/vol 权重 + 30% cap</b> | <b>信号</b>: 252d 年化 vol | <b>选股</b>: 全部 7 ETF | <b>加权</b>: (1/vol) / Σ(1/vol), 30% cap</p>
+        <p><b>核心</b>: 截至 d-1 算每 ETF 过去 252d 年化 vol, 权重 = (1/vol) 归一化, 30% cap 防止过度集中. 迭代 cap+redistribute 算法.</p>
+        <p><b>业界对应</b>: 风险平价 / Bridgewater All Weather (简化版, 无杠杆)</p>
+        <p><b>5-fold OOS</b>: mean ann 17.59%, mean Calmar 2.60 (5 方案最高), 4/5 fold (折 5 牛市 DD=-0.07% 异常 → calmar 543 失真, 折 3 熊市 -0.30%)</p>
+        <p><b>OOS 2022-2026</b>: ann {v7_iv_ann_2022} / Sharpe {v7_iv_sharpe_2022} / DD -{v7_iv_dd_2022}% / Calmar {v7_iv_calmar_2022}</p>
+        <p><b>极端市测试</b>: 3 事件平均 +2.78% (5 方案中等). 牛市跟不上 (跟黄金走势), 熊市较稳.</p>
+        <p><b>状态</b>: <b>不推荐为主</b> (单 fold calmar 失真, 鲁棒性不够). 适合作为辅助对冲 (低相关性 +1).</p>
+      </div>
+    """
         v7_aggressive_row = (
             f"<tr><td>🌟 宏观动量 (新)</td><td>v7.0 Top-K (K=5) 🆕</td>"
             f"<td>HMM 5 状态 + state-conditional 排名, 5/5 fold 鲁棒, DD -<b>{v7_topk_dd:.1f}%</b></td>"
@@ -751,6 +872,11 @@ def main(include_strategies: bool = True):
         v7_key_finding = ""
         v7_strategy_card = ""
         v7_aggressive_row = ""
+        v7_topk_card = ""
+        v7_bl_card = ""
+        v7_beta_card = ""
+        v7_mom_card = ""
+        v7_iv_card = ""
     # 合并到 key_finding_html 区
 
     # ===== 8 张基础策略卡 (v0 - v5) + v5.1 + v6.1 IC12 + HS300 基准 =====
@@ -972,19 +1098,20 @@ def main(include_strategies: bool = True):
     # 子图
     sections = []
     chart_descriptions = {
-        "all_curves": "8 策略 NAV 曲线叠加, 重点策略用实线, 参考策略用虚线变淡. 蓝色高亮为 OOS 区间 (2022-2026), 红色虚线标记 2024-09 政策利好, 灰色虚线标记 2022 熊市底. 任何策略 NAV 持续高于 HS300 基准 (深灰 dashdot) 即代表跑赢大盘.",
-        "grouped": "2×2 网格分组对比: 左上是 v1.0 的演进路径 (Stage 8→v1.0, 看每个优化的贡献), 右上和下排是不同风格策略对比. 每组独立 Y 轴, 重点看相对走势而非绝对值.",
-        "alpha": "α = 策略 NAV / HS300 NAV - 1. 持续为正代表跑赢大盘. v1.0 locked 在大多数时间跑赢 (绿色填充区域), v3 长期稳定正 α, v5 在 2022 后 α 显著为正.",
-        "drawdown": "从历史峰值的最大回撤. v1.0 locked (绿色填充) 几乎无回撤, v0.1+VT 类似. v4 因子/风格在 2022 熊市时回撤达 -38%, 是结构性风险. HS300 基准 (深灰) 用于对比大盘回撤.",
-        "period_compare": "全期 vs OOS 双柱状图, 金边标记最佳 (v1.0 locked). 可看出哪些策略在 OOS 期间仍保持稳定表现 (v1.0/v3), 哪些出现衰减 (v5 在 OOS 期间年化从 14% 降到 9%).",
-        "radar": "6 维归一化指标, 越靠外越好: 年化收益 / Sharpe / Calmar / 1/|DD| (回撤倒数) / 低波动 / 稳定性. v1.0 locked (绿色填充) 在 DD/Calmar 维度最突出, v5 在收益维度最突出.",
-        "monthly_heatmap": "月度收益热图, 行=策略, 列=月份. 绿色 = 正收益, 红色 = 负收益. 可看策略在不同月份的表现一致性: v1.0 全期基本无红格 (DD 控制好), v4 因子在 2022 集中出现红格.",
+        "all_curves": "16 策略 NAV 曲线叠加, 重点策略用实线, 参考策略用虚线变淡. 蓝色高亮为 OOS 区间 (2022-2026), 红色虚线标记 2024-09 政策利好, 灰色虚线标记 2022 熊市底. ⭐=v1.0 locked (历史 OOS 最佳 1.791) + v7.0 Top-K (Stage 30.5 5-fold 鲁棒). 任何策略 NAV 持续高于 HS300 基准 (深灰 dashdot) 即代表跑赢大盘.",
+        "grouped": "2×2 网格分组对比: 左上是 v1.0 演进路径 (Stage 8→v1.0, 看每个优化的贡献), 右上和下排是不同风格策略对比. 右下新增 v7.0 5 dynamic 方案对比 (Stage 30.5: Top-K/BL/Beta/Momentum/IV). 每组独立 Y 轴, 重点看相对走势而非绝对值.",
+        "alpha": "α = 策略 NAV / HS300 NAV - 1. 持续为正代表跑赢大盘. v1.0 locked 在大多数时间跑赢 (绿色填充区域), v3 长期稳定正 α, v5 在 2022 后 α 显著为正. v7.0 Top-K 5-fold 平均 ann 19.59% 远超 HS300.",
+        "drawdown": "从历史峰值的最大回撤. v1.0 locked (绿色填充) 几乎无回撤, v0.1+VT 类似. v4 因子/风格在 2022 熊市时回撤达 -38%, 是结构性风险. v7.0 Top-K DD 仅 -5.1% (5-fold 均) 显著优于 v6.2 的 -16.7%. HS300 基准 (深灰) 用于对比大盘回撤.",
+        "period_compare": "全期 vs OOS 双柱状图, 金边标记 v1.0 locked (OOS 0.791) 和 v7.0 Top-K (OOS 0.807). 可看出哪些策略在 OOS 期间仍保持稳定表现 (v1.0/v3/v7.0 Top-K), 哪些出现衰减.",
+        "radar": "6 维归一化指标, 越靠外越好: 年化收益 / Sharpe / Calmar / 1/|DD| (回撤倒数) / 低波动 / 稳定性. v1.0 locked (绿色填充) 在 DD/Calmar 维度最突出, v5 在收益维度最突出. v7.0 Top-K 5 维综合优 (5-fold mean Calmar 2.23).",
+        "monthly_heatmap": "月度收益热图, 20 策略 × 101 月. 绿色 = 正收益, 红色 = 负收益. v1.0 / v7.0 Top-K 全期基本无红格 (DD 控制好), v4 因子在 2022 集中出现红格. v7.0 baseline 等权 7 ETF 月度表现 vs 等权 52 ETF 池.",
     }
     for key, fig in figs.items():
         desc = chart_descriptions.get(key, "")
+        title_text = _extract_chart_title(fig)
         sections.append(f"""
         <section id="{key}">
-          <h2>{fig.layout.title.text.split('<')[0].strip() if fig.layout.title else key}</h2>
+          <h2>{title_text}</h2>
           {fig.to_html(full_html=False, include_plotlyjs=False, div_id=key)}
           <p style="font-size:13px;color:#555;background:#F8F9FA;padding:10px 14px;border-left:3px solid #1F77B4;border-radius:4px;margin-top:12px;">
             <b>解读</b>: {desc}
@@ -996,8 +1123,8 @@ def main(include_strategies: bool = True):
     if include_strategies:
         strategies_section_html = f"""
 <section id="strategies">
-  <h2>v0 - v6.2 策略简述 (10 个策略 + HS300 基准, 按时间顺序)</h2>
-  <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 Stage 29 (v6.2 ir_expanding 推广), 完整记录量化策略演进轨迹. 主文件 (内部跟踪) 完整呈现; 报告版 (V1V5_NAV_CURVES_v2_YYYYMMDD.html) 省略本节.</p>
+  <h2>v0 - v7.0 策略简述 (16 策略 + HS300 基准, 按时间顺序)</h2>
+  <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 Stage 30.5 (v7.0 5 Macro Dynamic 5-fold 鲁棒赢家), 完整记录量化策略演进轨迹. v7.0 5 动态方案: A. Top-K (5-fold 鲁棒), B. Black-Litterman, C. Macro Beta, D. Momentum, E. Inverse Vol. 主文件 (内部跟踪) 完整呈现; 报告版 (V1V5_NAV_CURVES_v2_YYYYMMDD.html) 省略本节.</p>
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段 (Stage 8 - 22): CICC → v5 量价</h3>
   {v0_strategy_card}
   {v01_strategy_card}
@@ -1013,7 +1140,13 @@ def main(include_strategies: bool = True):
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🎯 智能加权阶段 (Stage 27 - 29): v6.1 IC12 → v6.2 ir_expanding</h3>
   {v61_strategy_card}
   {v62_strategy_card}
-  {v7_strategy_card}
+  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🌟 宏观驱动阶段 (Stage 30.5): v7.0 5 Macro Dynamic 方案</h3>
+  <p style="font-size:12px;color:#666;margin:0 0 8px 0;">iFinD 5 macro (PMI/CPI/M2/CN10Y/US10Y, PIT 防护) + HMM 5 状态 (recovery/overheat/neutral/stagflation/recession) + 5 数据驱动方案. 7 ETF 池 (沪深300/中证500/创业板/黄金/半导体/纳指/红利), 月度调仓 (BME 115/年).</p>
+  {v7_topk_card}
+  {v7_bl_card}
+  {v7_beta_card}
+  {v7_mom_card}
+  {v7_iv_card}
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📊 基准</h3>
   {hs300_card}
 </section>
