@@ -390,6 +390,19 @@ def main():
             navs_A["v6 TF+Cost"] = v6_navs["v6 TF+Cost"]
             navs_B["v6 TF+Cost"] = v6_navs["v6 TF+Cost"]
 
+    # 加载 v6.1 / v6.2 combined NAV (Stage 27, 口径 A/B 共用)
+    v6_combined_path = OUT_DIR / "v6_1_v6_2_combined_navs.parquet"
+    if v6_combined_path.exists():
+        v6_combined = pd.read_parquet(v6_combined_path)
+        if "v6.1 IC12" in v6_combined.columns:
+            navs_A["v6.1 IC12"] = v6_combined["v6.1 IC12"]
+            navs_B["v6.1 IC12"] = v6_combined["v6.1 IC12"]
+            print(f"[chart] v6.1 IC12 加入 (Stage 27): OOS Calmar={metrics(v6_combined['v6.1 IC12'].loc['2022-01-01':])['calmar']:.3f}")
+        if "v6.2 (正交+IC36)" in v6_combined.columns:
+            navs_A["v6.2 (正交+IC36)"] = v6_combined["v6.2 (正交+IC36)"]
+            navs_B["v6.2 (正交+IC36)"] = v6_combined["v6.2 (正交+IC36)"]
+            print(f"[chart] v6.2 orth_IC36 加入 (Stage 27): OOS Calmar={metrics(v6_combined['v6.2 (正交+IC36)'].loc['2022-01-01':])['calmar']:.3f}")
+
 
     # 计算指标
     metrics_A = {col: metrics(navs_A[col]) for col in navs_A.columns}

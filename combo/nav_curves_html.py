@@ -45,6 +45,8 @@ COLORS = {
     "v5.1 量价 (逆波动)": "#FF6B9D",
     "v6 (TF 趋势过滤)": "#17BECF",  # 青色 — Stage 26 v6 单策略风控
     "v6 TF+Cost":      "#17BECF",
+    "v6.1 IC12":       "#D62728",  # 深红 — Stage 27 v6.1 IC 加权
+    "v6.2 (正交+IC36)": "#9467BD",  # 紫 — Stage 27 v6.2 因子正交化
 }
 
 STAGE_MAP = {
@@ -59,13 +61,15 @@ STAGE_MAP = {
     "v5.1 量价 (逆波动)": "Stage 25.1 (v5.1 升级, S1+S3+S4 消融选中)",
     "v6 (TF 趋势过滤)": "Stage 26 (v6 单策略: TF 风控 + v5.1.1 选股/加权)",
     "v6 TF+Cost":       "Stage 26 (v6 单策略: TF 风控 + 调仓成本 + v5.1.1)",
+    "v6.1 IC12":       "Stage 27 (v6.1: IC-IR 加权, IC12 expanding, 推荐)",
+    "v6.2 (正交+IC36)": "Stage 27 (v6.2: 因子正交化 + IC36, ⭐ OOS Calmar 0.901)",
 }
 
 # 分组
 GROUPS = {
     "v1.0 演进路径": ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"],
-    "进攻型":       ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v1.0 locked"],
-    "v5 vs v5.1 vs v6":  ["v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)"],
+    "进攻型":       ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 (正交+IC36)", "v1.0 locked"],
+    "量价族演进 (Stage 22→27)":  ["v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 (正交+IC36)"],
     "风险型 (VT)":  ["v1.0 locked", "v0.1 +VT"],
     "全部 9 策略":  None,  # 全部
 }
@@ -565,6 +569,20 @@ def main():
         # 重建 oos_metrics 含 v6 (后续 main() 还会再算, 这里先设保险)
         oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
 
+    # 加载 v6.1 / v6.2 combined NAV (Stage 27)
+    v6_combined_path = OUT_DIR / "v6_1_v6_2_combined_navs.parquet"
+    if v6_combined_path.exists():
+        v6_combined = pd.read_parquet(v6_combined_path)
+        if "v6.1 IC12" in v6_combined.columns:
+            navs_A["v6.1 IC12"] = v6_combined["v6.1 IC12"]
+            print(f"[curve] v6.1 IC12 已加入 (Stage 27): OOS Calmar="
+                  f"{metrics(v6_combined['v6.1 IC12'].loc[OOS_START:])['calmar']:.3f}")
+        if "v6.2 (正交+IC36)" in v6_combined.columns:
+            navs_A["v6.2 (正交+IC36)"] = v6_combined["v6.2 (正交+IC36)"]
+            print(f"[curve] v6.2 orth_IC36 已加入 (Stage 27): OOS Calmar="
+                  f"{metrics(v6_combined['v6.2 (正交+IC36)'].loc[OOS_START:])['calmar']:.3f}")
+        oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
+
         # 构造 v6 Key Finding HTML 片段
         v6_tf_oos = oos_metrics.get('v6 (TF 趋势过滤)', {})
         v51_oos = oos_metrics.get('v5.1 量价 (逆波动)', {})
@@ -600,6 +618,41 @@ def main():
             v6_aggressive_row = ""
             v6_strategy_card = ""
         # 删除冗余: oos_metrics 和 full_metrics_v6 在 main 后面重算
+
+    # v6.1 / v6.2 Key Finding + 策略卡 (Stage 27)
+    v62_oos = oos_metrics.get('v6.2 (正交+IC36)', {})
+    v61_oos = oos_metrics.get('v6.1 IC12', {})
+    if v62_oos and v61_oos:
+        v62_cal = v62_oos['calmar']
+        v61_cal = v61_oos['calmar']
+        v51_cal = oos_metrics.get('v5.1 量价 (逆波动)', {}).get('calmar', 0)
+        v62_dd_pct = abs(v62_oos['max_dd']) * 100
+        v61_dd_pct = abs(v61_oos['max_dd']) * 100
+        v62_key_finding = (
+            f"• <b>v6.2 (正交+IC36) Stage 27</b>: v5.1.1 + IC36 + 因子正交化 → "
+            f"OOS Calmar <b>{v62_cal:.3f}</b> ⭐⭐ "
+            f"(vs v5.1.1 {v51_cal:.3f}, 提升 {(v62_cal/v51_cal-1)*100:+.1f}%), "
+            f"DD -{v62_dd_pct:.1f}%<br>"
+        )
+        v62_strategy_card = f"""
+  <div class="strategy-card" style="background: #F3E5F5; border-color: #9467BD;">
+    <h4>v6.2 (正交+IC36) <span class="legend-box legend-best">⭐ Stage 27 新冠军</span></h4>
+    <p><b>类型</b>: v5.1.1 选股 + <b>因子正交化</b> + <b>IC-IR 加权 (36 月 expanding)</b></p>
+    <p><b>核心</b>: 用 OOS IC 分析找出"真正的 alpha"权重 (f8_pv_rankcov/f9_pv_corr/f3_amt_vol 主贡献), 用 Gram-Schmidt 正交化去除 f8-f9, f3-f4 冗余.</p>
+    <p><b>OOS</b>: {v62_oos['ann_return']*100:+.2f}% / Sharpe {v62_oos['sharpe']:.2f} / DD {v62_dd_pct:.2f}% / <b>Calmar {v62_cal:.3f}</b> ⭐⭐</p>
+    <p><b>意义</b>: 单策略版首次 OOS Calmar > 0.9, 已接近 v1.0 locked 的水平. 是 v1.0 + v5.1 组合之外的第三选择.</p>
+  </div>
+"""
+        v6_1_row = (
+            f"<tr><td>🎯 聪明 (IC 加权)</td><td>v6.1 IC12 🆕</td>"
+            f"<td>IC 加权, 自动剔除失效因子, DD -<b>{v61_dd_pct:.1f}%</b></td>"
+            f"<td><b>{v61_cal:.3f}</b></td></tr>"
+        )
+    else:
+        v62_key_finding = ""
+        v62_strategy_card = ""
+        v6_1_row = ""
+    # 合并到 key_finding_html 区
 
     # 加载 HS300 基准
     print("[curve] 加载 HS300 基准...")
@@ -782,7 +835,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   • <b>绝对收益冠军</b>: v5.1 逆波动 — OOS 年化 <b>{oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%</b> (HS300 同期 {hs300_oos['ann_return']*100:+.2f}%, α 显著)<br>
   • <b>最均衡</b>: v3 (52 池) — OOS 年化 7.69%, Sharpe 1.08, DD -9.89%<br>
   • <b>v5.1.1 改进</b> (S1+S3+S4, S2 已回退): OOS Calmar 0.488 → <b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b> (+{(oos_metrics['v5.1 量价 (逆波动)']['calmar']-oos_metrics['v5 量价']['calmar'])/oos_metrics['v5 量价']['calmar']*100:.1f}%) ⭐<br>
-  {v6_key_finding}  • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
+  {v6_key_finding}  {v62_key_finding}  • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
   • <b>推荐组合</b>: v1.0 80% + <b>v5.1 20%</b> — 全期 Calmar 1.146, OOS <b>1.015</b> ⭐ (跨入 1.0 俱乐部)
 </div>
 
@@ -895,6 +948,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   </div>
 
   {v6_strategy_card}
+  {v62_strategy_card}
 
   <div class="strategy-card" style="background: #F5F5F5; border-color: #999;">
     <h4>HS300 基准 📊 <span class="legend-box legend-bench">沪深 300</span></h4>
@@ -952,7 +1006,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
     <tr><th>风险偏好</th><th>推荐策略</th><th>理由</th><th>OOS Calmar</th></tr>
     <tr><td>🛡️ 极保守</td><td>v1.0 locked</td><td>波动率目标限制 DD 至 -1.94%, 适合低风险偏好</td><td><b>1.791</b></td></tr>
     <tr><td>⚖️ 均衡</td><td>v3 (52 池)</td><td>三子策略互补, 风险与收益平衡</td><td>0.778</td></tr>
-    <tr><td>🚀 进取</td><td>v5.1 逆波动 🆕</td><td>11 量价因子 + 逆波动, 年化 {oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%, 风险调整优</td><td><b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b></td></tr>{v6_aggressive_row}
+    <tr><td>🚀 进取</td><td>v5.1 逆波动 🆕</td><td>11 量价因子 + 逆波动, 年化 {oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%, 风险调整优</td><td><b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b></td></tr>{v6_aggressive_row}{v6_1_row}
     <tr><td>📊 基准</td><td>HS300</td><td>被动指数, 无主动管理成本</td><td>{hs300_oos['calmar']:.3f}</td></tr>
   </table>
 
