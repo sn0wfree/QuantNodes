@@ -145,7 +145,7 @@ class BootstrapLassoMapping:
             for a in range(n_assets):
                 try:
                     lassocv = LassoCV(
-                        cv=self.cv, fit_intercept=True, max_iter=self.max_iter,
+                        cv=min(self.cv, 3), fit_intercept=True, max_iter=500,
                         random_state=self.random_state, tol=self.tol, n_jobs=1,
                     )
                     lassocv.fit(x_full, y_full[:, a])

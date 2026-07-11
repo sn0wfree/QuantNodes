@@ -57,8 +57,8 @@ class TestFactorRiskParityConvergence:
         β, Σ_f = _make_inputs(seed=99)
         opt = FactorRiskParityOptimizer(max_iter=10, tol=1e-12)
         w = opt.optimize(β, Σ_f)
-        # sum 应 ~1
-        assert abs(w.sum() - 1.0) < 0.01
+        # sum 应 ~0.9 (sum_lower 硬约束)
+        assert abs(w.sum() - 0.9) < 0.1
 
     def test_invalid_params(self) -> None:
         with pytest.raises(ValueError):
@@ -76,18 +76,29 @@ class TestFactorRiskParityConvergence:
 # ============================================================================
 class TestFactorRiskParityProperties:
     def test_constraints_satisfied(self) -> None:
-        """output 满足: sum=1, 0 ≤ w_i ≤ max_weight."""
+        """output 满足: 0.9 ≤ sum ≤ 1.0, 0 ≤ w_i ≤ max_weight (source cell 94)."""
         β, Σ_f = _make_inputs()
         opt = FactorRiskParityOptimizer(max_weight=0.4)
         w = opt.optimize(β, Σ_f)
 
-        np.testing.assert_almost_equal(w.sum(), 1.0, decimal=6)
+        # sum 约束 (source cell 94: 0.9 ≤ sum ≤ 1.0)
+        assert 0.85 <= w.sum() <= 1.05, f"sum {w.sum():.3f} out of [0.9, 1.0]"
         assert (w >= 0).all(), f"负权重: {w[w < 0]}"
-        assert (w <= 0.4).all(), f"超 max_weight: {w[w > 0.4]}"
+        assert (w <= 0.4 + 1e-6).all(), f"超 max_weight: {w[w > 0.4]}"
+
+    def test_sum_lower_upper_default(self) -> None:
+        """默认 sum_lower=0.9, sum_upper=1.0 (source cell 94)."""
+        opt = FactorRiskParityOptimizer()
+        assert opt.sum_lower == 0.9
+        assert opt.sum_upper == 1.0
+        assert opt.use_soft_constraint is True
 
     def test_equal_input_equal_w(self) -> None:
-        """等 β + 单位 Σ_f → 等权重 (RiskParity 的最朴素边界)."""
-        n = 4
+        """等 β + 单位 Σ_f → 等权重 (RiskParity 的最朴素边界).
+
+        默认 sum_lower=0.9 → 5 等权资产各 0.18 (硬约束 sum = 0.9).
+        """
+        n = 5
         β = pd.DataFrame(
             np.ones((n, 3)) * 0.5,
             index=[f"a{i}" for i in range(n)],
@@ -100,8 +111,26 @@ class TestFactorRiskParityProperties:
         )
         opt = FactorRiskParityOptimizer()
         w = opt.optimize(β, Σ_f)
-        # 全资产相同 → 等权 (浮点误差 < 1e-3)
-        np.testing.assert_array_almost_equal(w.values, 0.25 * np.ones(4), decimal=3)
+        # Hard sum = 0.9 → 5 × 0.18 = 0.9
+        np.testing.assert_array_almost_equal(w.values, 0.18 * np.ones(5), decimal=3)
+
+    def test_equal_input_with_no_soft_constraint(self) -> None:
+        """关闭 soft_constraint 时, 等权 → sum=1 (旧版行为)."""
+        n = 5
+        β = pd.DataFrame(
+            np.ones((n, 3)) * 0.5,
+            index=[f"a{i}" for i in range(n)],
+            columns=[f"f{j}" for j in range(3)],
+        )
+        Σ_f = pd.DataFrame(
+            np.eye(3),
+            index=β.columns,
+            columns=β.columns,
+        )
+        opt = FactorRiskParityOptimizer(use_soft_constraint=False)
+        w = opt.optimize(β, Σ_f)
+        # Hard sum=1 → 等权 0.20 (5 × 0.20 = 1)
+        np.testing.assert_array_almost_equal(w.values, 0.20 * np.ones(5), decimal=3)
 
     def test_factor_cov_influence(self) -> None:
         """不同 Σ_f 给出不同 w."""
@@ -143,7 +172,8 @@ class TestFactorRiskParityProperties:
         opt = FactorRiskParityOptimizer()
         w_f = opt.optimize_factor_only(Σ_f)
         assert len(w_f) == 9
-        assert abs(w_f.sum() - 1.0) < 0.01
+        # 默认 sum=0.9
+        assert 0.85 <= w_f.sum() <= 1.05, f"sum {w_f.sum():.3f} out of [0.9, 1.0]"
         assert (w_f >= 0).all()
 
 
@@ -152,7 +182,7 @@ class TestFactorRiskParityProperties:
 # ============================================================================
 class TestFactorRiskParityStability:
     def test_zero_beta_handled(self) -> None:
-        """β 全零 → 等权兜底."""
+        """β 全零 → 等权兜底 (但 sum = 0.9 = sum_lower)."""
         β = pd.DataFrame(
             np.zeros((5, 9)),
             index=[f"a{i}" for i in range(5)],
@@ -165,8 +195,8 @@ class TestFactorRiskParityStability:
         )
         opt = FactorRiskParityOptimizer()
         w = opt.optimize(β, Σ_f)
-        # 全等权
-        np.testing.assert_array_almost_equal(w.values, np.ones(5) / 5, decimal=3)
+        # 全等权 but sum = 0.9: 5 × 0.18 = 0.9
+        np.testing.assert_array_almost_equal(w.values, 0.18 * np.ones(5), decimal=3)
 
     def test_deterministic(self) -> None:
         """Deterministic — 相同输入应同结果."""

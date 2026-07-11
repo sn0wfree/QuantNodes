@@ -1,5 +1,5 @@
 # coding=utf-8
-"""V7 子包入口 — 暴露 3 个核心类 + 1 个端到端入口.
+"""V7 子包入口 — 暴露核心 API + 端到端入口.
 
 公开 API:
     V7_3Config
@@ -11,10 +11,11 @@
 """
 from .bootstrap_lasso import BootstrapLassoMapping
 from .data_loader import (
-    ETF_POOL,
     FACTOR_COLS,
-    load_etf_panel,
+    INDEX_COLS,
     load_factor_returns,
+    load_index_panel,
+    load_index_prices,
     load_macro_factors,
 )
 from .factor_risk_parity import FactorRiskParityOptimizer
@@ -34,7 +35,8 @@ __all__ = [
     "FactorRiskParityOptimizer",
     "load_macro_factors",
     "load_factor_returns",
-    "load_etf_panel",
+    "load_index_panel",
+    "load_index_prices",
     "FACTOR_COLS",
-    "ETF_POOL",
+    "INDEX_COLS",
 ]
