@@ -189,6 +189,68 @@ def compute_factor_weights(
     return weights
 
 
+def compute_softmax_weights(
+    ir_ts: pd.DataFrame,
+    sharpness: float = 3.0,
+    min_ir_threshold: float = 0.5,
+    eps: float = 1e-6,
+) -> pd.DataFrame:
+    """[Stage 28 fix] 软权重 via z-score + softmax + |IR| 阈值 (无硬剔除).
+
+    与 compute_factor_weights 的区别:
+    - 不再"IR<0 → 权重=0"硬剔除 (抖动 + 无金融理由)
+    - 改用 z-score (行内归一化) + softmax (光滑映射) → 失效因子权重大概率很小但非 0
+    - 加 |IR| 阈值过滤极弱信号 (避免噪音因子拉权重)
+
+    仍然防 look-ahead: 输入 ir_ts 应为已用 shift(1) 的 expanding window IR.
+
+    Args:
+        ir_ts: DataFrame, index=日期, columns=因子. (假定已 shift(1) 防 look-ahead)
+        sharpness: softmax 温度, 越大越接近 argmax, 越小越接近等权
+                   推荐范围 [1, 5], 默认 3.0
+        min_ir_threshold: |IR| < 阈值的因子权重置 0 (默认 0.5 ≈ t-stat 1.96)
+        eps: 防 0 除
+
+    Returns:
+        DataFrame, 每行权重和 = 1, 列数 = ir_ts 列数
+    """
+    if ir_ts.empty:
+        return pd.DataFrame()
+
+    # 限幅到 [-3, 3] 防极端权重
+    ir_clipped = ir_ts.clip(-3.0, 3.0)
+
+    # 行内 z-score 归一化 (基于该时点所有因子 IR 的横向比较)
+    row_mean = ir_clipped.mean(axis=1)
+    row_std = ir_clipped.std(axis=1)
+    z = ir_clipped.sub(row_mean, axis=0).div(row_std + eps, axis=0)
+
+    # softmax (光滑)
+    exp_z = np.exp(z * sharpness)
+
+    # 应用 |IR| 阈值: 极弱信号的因子权重强制为 0
+    # 注意用原 ir_ts (不是 ir_clipped) 比较, 信号极弱多半是噪音
+    mask = ir_ts.abs() > min_ir_threshold
+    exp_z = exp_z.where(mask, 0.0)
+
+    # 归一化 (每行和 = 1)
+    row_sums = exp_z.sum(axis=1)
+    weights = exp_z.div(row_sums.replace(0, 1), axis=0)
+
+    # 全 0 行 (全部因子 IR 都低于阈值) 退化等权
+    zero_rows = row_sums < eps
+    if zero_rows.any():
+        n_factors = len(ir_ts.columns)
+        equal_w = pd.DataFrame(
+            np.ones((zero_rows.sum(), n_factors)) / n_factors,
+            index=weights.index[zero_rows],
+            columns=weights.columns,
+        )
+        weights.loc[zero_rows] = equal_w
+
+    return weights
+
+
 def align_weights_with_rebal_dates(
     weights: pd.DataFrame,
     rebalance_dates: Sequence[pd.Timestamp],

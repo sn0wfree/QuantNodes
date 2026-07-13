@@ -93,9 +93,11 @@ class TestApplyTrendFilter:
 
     def test_bull_market_keeps_full_exposure(self, panel) -> None:
         """多头 → 权重不变."""
-        # 创建一个明显多头场景 (价格高于均线)
+        # 创建一个明显多头场景: 只拉高最近 n_recent 天的价格
         panel_bull = panel.copy()
-        panel_bull["510300"] = panel_bull["510300"] * 1.5  # 拉高 50%
+        n_recent = 50  # 只拉高最近 50 天, MA 不变
+        recent_idx = panel_bull.index[-n_recent:]
+        panel_bull.loc[recent_idx, "510300"] = panel_bull.loc[recent_idx, "510300"] * 1.5
         cfg = RotationConfig(
             lookback=120, top_n=5, min_history=120,
             trend_filter=TrendFilter(enabled=True, ma_window=200, exposure_bear=0.5),
@@ -144,7 +146,9 @@ class TestSelectAndWeightTrendFilter:
     def test_bull_market_no_bond_allocation(self, panel) -> None:
         """多头 select_and_weight → 不加入债券."""
         panel_bull = panel.copy()
-        panel_bull["510300"] = panel_bull["510300"] * 1.5
+        n_recent = 50
+        recent_idx = panel_bull.index[-n_recent:]
+        panel_bull.loc[recent_idx, "510300"] = panel_bull.loc[recent_idx, "510300"] * 1.5
         cfg = RotationConfig(
             lookback=120, top_n=5, min_history=120,
             trend_filter=TrendFilter(enabled=True, ma_window=200, exposure_bear=0.5),

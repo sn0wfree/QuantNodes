@@ -1,17 +1,20 @@
 # coding=utf-8
-"""v6 行业量价因子行业轮动 (Stage 26) — v1.0 风控框架 + v5.1.1 选股 + v5.1.1 加权.
+"""v6 行业量价因子行业轮动 (Stage 26) — v1.0 风控框架 + v5 选股 + v5.1 逆波动加权.
 
-v6 = 选股层 (v5.1.1) + 加权层 (v5.1.1) + 风控层 (v2 框架).
+[注] v5.1.1 实际上没有自己的 select 方法 (选股继承自 v5), 只有 weight 方法改为逆波动.
+      本文件的选股层因此沿用 v5 (IndustryRotationV5SubStrategy.select), 加权层继承自 v5.1.
 
-为什么不直接组合 v1.0 + v5.1.1?
+v6 = 选股层 (v5) + 加权层 (v5.1 逆波动) + 风控层 (v2 框架).
+
+为什么不直接组合 v1.0 + v5.1?
 - v1.0 选股用纯价格动量 (144d lookback) → 选股信号源不同
-- v5.1.1 选股用 11 量价因子 → 选股信号源不同
-- 直接组合 (v1.0 80% + v5.1.1 20%) 是"叠加", 不是"单策略风控"
+- v5 选股用 11 量价因子 → 选股信号源不同
+- 直接组合 (v1.0 80% + v5.1 20%) 是"叠加", 不是"单策略风控"
 
 v6 思路:
-- 选股层用 v5.1.1 (复合因子信号更强)
-- 加权层用 v5.1.1 (逆波动 + T+1)
-- 风控层用 v2 (VT + TF + Cost) → 解决 v5.1.1 没有风控的根本问题
+- 选股层用 v5 (复合因子信号更强)
+- 加权层用 v5.1 (逆波动 + T+1)
+- 风控层用 v2 (VT + TF + Cost) → 解决 v5.1 没有风控的根本问题
 
 回测结果 (Stage 26 完成):
 待运行 fill in by scripts/v6_backtest.py
@@ -35,18 +38,18 @@ from ..v5_1.industry_rotation_v5_1 import inverse_vol_weights_v5_1
 
 @dataclass
 class V6Config(SubStrategyConfig):
-    """v6 配置: v5.1.1 选股 + v5.1.1 加权 + v2 风控.
+    """v6 配置: v5 选股 (无自身新选股逻辑) + v5.1 逆波动加权 + v2 风控.
 
-    与 v5.1.1 的区别:
-    - 默认 top_n=5 保留 (与 v5.1.1 一致)
-    - 加风控层开关 (v6 启用全部, v5.1.1 关闭)
+    与 v5.1 的区别:
+    - 默认 top_n=5 保留 (与 v5.1 一致)
+    - 加风控层开关 (v6 启用全部, v5.1 关闭)
     """
     name: str = "industry_rotation_v6"
 
-    # 因子引擎配置 (与 v5.1.1 共享)
+    # 因子引擎配置 (与 v5.1 共享)
     factor_cfg: FactorEngineConfig = field(default_factory=FactorEngineConfig)
 
-    # 选股层 (来自 v5.1.1)
+    # 选股层 (来自 v5)
     top_n: int = 5
 
     # 复合因子权重 (None = 等权, 与 v5/v5.1 一致)
@@ -153,7 +156,7 @@ def run_v6_backtest(
     apply_trend_filter: bool = True,
     apply_cost_model: bool = True,
 ) -> pd.Series:
-    """v6 回测: v5.1.1 选股 + v5.1.1 加权 + 可选 VT/TF/Cost.
+    """v6 回测: v5 选股 + v5.1 逆波动加权 + 可选 VT/TF/Cost.
 
     简化逻辑 (Stage 26 调试清晰):
     - 每个调仓日: 选股 → 加权 → 风控 → 调仓成本 → NAV 按前一日 NA × (1-成本) × (1+日收益)

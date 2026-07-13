@@ -1,12 +1,15 @@
 # coding=utf-8
-"""v6.1 + v6.2 整合脚本 (Stage 27):
+"""v6.1 + v6.2 整合脚本 (Stage 27 + Stage 29 更新):
 
 跑 2 个消融 (v6.1 七组 + v6.2 六组), 合并成单一 NAV parquet,
 便于集成到 combo/ HTML 图表中.
 
+[Stage 29 升级] v6.2 默认从 "warmup_ir 12m + IC36" 改为 "ir_expanding + IC12"
+  (5-fold walk-forward 验证 4/5 胜 v6.1, OOS 0.821 vs v6.1 0.748)
+
 新增 2 列:
-- v6.1 IC12 (Stage 27 推荐 v6.1)
-- v6.2 orth_IC36 (Stage 27 推荐 v6.2, OOS Calmar 0.901 新冠军)
+- v6.1 IC12 (Stage 27 推荐 v6.1, OOS Calmar 0.748)
+- v6.2 ir_expanding (Stage 29 升级, OOS Calmar 0.821, 5-fold 4/5 胜 v6.1)
 """
 from __future__ import annotations
 
@@ -48,7 +51,7 @@ def main() -> None:
 
     out = pd.DataFrame(index=panel_close.index)
 
-    # v6.1 IC12 (推荐配置)
+    # v6.1 IC12 (推荐配置, RECOMMENDED)
     print("\n[v6.1 IC12]")
     cfg = V6_1Config(ic_min_months=12)
     nav = run_v6_1_backtest(panel_close, panel_ohlcv, cfg)
@@ -56,11 +59,15 @@ def main() -> None:
     om = metrics(nav.loc[OOS_START:OOS_END])
     print(f"  OOS Calmar {om['calmar']:.3f}, DD {om['dd']:.2%}, ann {om['ann']:+.2%}")
 
-    # v6.2 orth_IC36 (推荐配置)
-    print("\n[v6.2 orth_IC36]")
-    cfg = V6_2Config(ic_min_months=36, use_orthogonal=True)
+    # v6.2 ir_expanding (Stage 29 PROMISING, 5-fold 4/5 胜 v6.1)
+    print("\n[v6.2 ir_expanding (Stage 29 PROMISING)]")
+    cfg = V6_2Config(
+        ic_min_months=12,
+        sort_method="ir_expanding",
+        ir_order_min_periods_lookback=36,
+    )
     nav = run_v6_2_backtest(panel_close, panel_ohlcv, cfg)
-    out["v6.2 (正交+IC36)"] = nav
+    out["v6.2 ir_expanding"] = nav
     om = metrics(nav.loc[OOS_START:OOS_END])
     print(f"  OOS Calmar {om['calmar']:.3f}, DD {om['dd']:.2%}, ann {om['ann']:+.2%}")
 
@@ -74,3 +81,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

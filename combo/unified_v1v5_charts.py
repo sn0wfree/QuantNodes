@@ -35,8 +35,10 @@ STAGE_MAP = {
     "v4 factor":     "Stage 18 (IC 因子择时, 12 池)",
     "v5 量价":        "Stage 22 (11 量价因子, 44 OHLCV, 等权)",
     "v5.1 量价 (逆波动)": "Stage 25.1 (v5.1 升级, S1+S3+S4 消融选中)",
-    "v6 (TF 趋势过滤)":   "Stage 26 (v6 单策略: TF 风控 + v5.1.1 选股/加权)",
+    "v6 (TF 趋势过滤)":   "Stage 26 (v6 单策略: TF 风控 + v5 因子排序 + v5.1 逆波动加权)",
     "v6 TF+Cost":         "Stage 26 (v6 单策略: TF 风控 + 调仓成本 + v5.1.1)",
+    "v6.1 IC12":          "Stage 27 (v6.1: IC-IR 加权, IC12 expanding, RECOMMENDED)",
+    "v6.2 ir_expanding":  "Stage 29 (v6.2: 因子正交化 + ir_expanding, ⭐ OOS 0.821, 5-fold 4/5 胜 v6.1, PROMISING)",
 }
 
 # 调色板 (类似 build_stage_charts 风格)
@@ -52,6 +54,8 @@ COLORS = {
     "v5.1 量价 (逆波动)": "#FF6B9D",  # v5 粉红 + 加深 → 区分
     "v6 (TF 趋势过滤)":   "#17BECF",  # 青色 — Stage 26 v6
     "v6 TF+Cost":         "#17BECF",  # 同色
+    "v6.1 IC12":          "#D62728",  # 深红 — Stage 27 v6.1 IC 加权
+    "v6.2 ir_expanding":  "#9467BD",  # 紫 — Stage 29 v6.2 因子正交化
 }
 
 
@@ -390,18 +394,23 @@ def main():
             navs_A["v6 TF+Cost"] = v6_navs["v6 TF+Cost"]
             navs_B["v6 TF+Cost"] = v6_navs["v6 TF+Cost"]
 
-    # 加载 v6.1 / v6.2 combined NAV (Stage 27, 口径 A/B 共用)
+    # 加载 v6.1 / v6.2 combined NAV (Stage 27 + Stage 29, 口径 A/B 共用)
     v6_combined_path = OUT_DIR / "v6_1_v6_2_combined_navs.parquet"
     if v6_combined_path.exists():
         v6_combined = pd.read_parquet(v6_combined_path)
         if "v6.1 IC12" in v6_combined.columns:
             navs_A["v6.1 IC12"] = v6_combined["v6.1 IC12"]
             navs_B["v6.1 IC12"] = v6_combined["v6.1 IC12"]
-            print(f"[chart] v6.1 IC12 加入 (Stage 27): OOS Calmar={metrics(v6_combined['v6.1 IC12'].loc['2022-01-01':])['calmar']:.3f}")
-        if "v6.2 (正交+IC36)" in v6_combined.columns:
-            navs_A["v6.2 (正交+IC36)"] = v6_combined["v6.2 (正交+IC36)"]
-            navs_B["v6.2 (正交+IC36)"] = v6_combined["v6.2 (正交+IC36)"]
-            print(f"[chart] v6.2 orth_IC36 加入 (Stage 27): OOS Calmar={metrics(v6_combined['v6.2 (正交+IC36)'].loc['2022-01-01':])['calmar']:.3f}")
+            print(f"[chart] v6.1 IC12 加入 (Stage 27 RECOMMENDED): OOS Calmar={metrics(v6_combined['v6.1 IC12'].loc['2022-01-01':])['calmar']:.3f}")
+        if "v6.2 ir_expanding" in v6_combined.columns:
+            navs_A["v6.2 ir_expanding"] = v6_combined["v6.2 ir_expanding"]
+            navs_B["v6.2 ir_expanding"] = v6_combined["v6.2 ir_expanding"]
+            print(f"[chart] v6.2 ir_expanding 加入 (Stage 29 PROMISING): OOS Calmar={metrics(v6_combined['v6.2 ir_expanding'].loc['2022-01-01':])['calmar']:.3f}")
+        elif "v6.2 (正交+IC36)" in v6_combined.columns:
+            # 兼容旧列名
+            navs_A["v6.2 ir_expanding"] = v6_combined["v6.2 (正交+IC36)"]
+            navs_B["v6.2 ir_expanding"] = v6_combined["v6.2 (正交+IC36)"]
+            print(f"[chart] v6.2 (旧列名兼容) 加入: OOS Calmar={metrics(v6_combined['v6.2 (正交+IC36)'].loc['2022-01-01':])['calmar']:.3f}")
 
 
     # 计算指标
@@ -538,7 +547,7 @@ tr.highlight {{ background: #FFF9E6; font-weight: bold; }}
     <tr><td>Stage 18 (v4 style/factor)</td><td>风格轮动 + IC 因子择时</td><td>-0.085 ~ 0.131</td></tr>
     <tr><td>Stage 22 (v5)</td><td>11 量价因子 + <b>等权</b> (华西论文)</td><td>0.488</td></tr>
     <tr style="background: #FFF9E6;"><td>Stage 25.1 (v5.1.1)</td><td>11 量价因子 + 逆波动率 (S1 T+1 调仓 + S3 60日窗口 + S4 max_weight 0.25) (v5.1 升级版)</td><td><b>0.604</b> ⭐ (+23.8%)</td></tr>
-    {("<tr style=\"background: #E0F7FA;\"><td>Stage 26 (v6)</td><td>v5.1.1 选股+加权 + TF 风控 (HS300 MA200, bear=0.7) (单策略版)</td><td><b>" + f"{oos_metrics.get('v6 (TF 趋势过滤)', {}).get('calmar', 0):.3f}" + "</b> ⭐ (+" + f"{(oos_metrics.get('v6 (TF 趋势过滤)', {}).get('calmar', 0) - oos_A.get('v5.1 量价 (逆波动)', {}).get('calmar', 0)) / oos_A.get('v5.1 量价 (逆波动)', {}).get('calmar', 1) * 100:.1f}" + "%)</td></tr>") if 'v6 (TF 趋势过滤)' in oos_A else ""}
+    {("<tr style=\"background: #E0F7FA;\"><td>Stage 26 (v6)</td><td>v5 因子排序 + v5.1 逆波动加权 + TF 风控 (HS300 MA200, bear=0.7) (单策略版)</td><td><b>" + f"{oos_metrics.get('v6 (TF 趋势过滤)', {}).get('calmar', 0):.3f}" + "</b> ⭐ (+" + f"{(oos_metrics.get('v6 (TF 趋势过滤)', {}).get('calmar', 0) - oos_A.get('v5.1 量价 (逆波动)', {}).get('calmar', 0)) / oos_A.get('v5.1 量价 (逆波动)', {}).get('calmar', 1) * 100:.1f}" + "%)</td></tr>") if 'v6 (TF 趋势过滤)' in oos_A else ""}
   </table>
 
   <h3>推荐组合 (含 v5.1)</h3>

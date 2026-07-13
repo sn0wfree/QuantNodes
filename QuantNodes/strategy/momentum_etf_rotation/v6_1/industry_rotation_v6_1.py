@@ -45,7 +45,7 @@ from .factor_weighting import (
 
 @dataclass
 class V6_1Config(SubStrategyConfig):
-    """v6.1 配置: v5.1.1 选股 + IC 加权 + v5.1.1 加权.
+    """v6.1 配置: v5 选股 (无自身 select) + IC 加权 + v5.1 逆波动加权.
 
     关键字段:
     - factor_weights: None = 等权 (baseline), 或 dict = 静态权重
