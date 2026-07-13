@@ -55,7 +55,6 @@ class TestV2TFConfig:
         assert cfg.trend_filter_ma == 200
         assert cfg.trend_filter_bear == 0.5
         assert cfg.trend_filter_benchmark == "沪深300指数"
-        assert cfg.trend_filter_defensive == "中债10年期国债指数"
 
     def test_v1_baseline_unchanged(self) -> None:
         """v1 baseline TF 必须保持 False (锁定不变)."""
@@ -89,19 +88,30 @@ class TestApplyTrendFilter:
         w_out = apply_trend_filter(w_uniform.copy(), benchmark, pd.Timestamp("2019-06-30"), cfg)
         np.testing.assert_array_almost_equal(w_out.values, w_uniform.values)
 
-    def test_bear_scale_and_defensive(self, benchmark, w_uniform) -> None:
-        """熊市 (沪深300 < MA200): 缩放 + 配防御资产."""
+    def test_bear_equity_only(self, benchmark, w_uniform) -> None:
+        """熊市: 只减权益, 债券按比例增加, 商品不变."""
         cfg = V7_3Config(trend_filter_enabled=True)
         # 2018-12-31 是 BEAR (ratio=0.860)
         w_out = apply_trend_filter(w_uniform.copy(), benchmark, pd.Timestamp("2018-12-31"), cfg)
-        # 各资产 × 0.5
+
+        equity_idx = ['沪深300指数', '中证500指数', '中证1000', '恒生指数']
+        bond_idx = ['中债10年期国债指数', '中债3-5年期国债指数', '中债1-3年国债财富指数',
+                     '中债国开行债券总指数', '中债企业债总指数']
+        commodity_idx = ['南华工业品指数', '南华农产品指数', '期货结算价(连续):布伦特原油', '收盘价:沪金指数']
+
+        # 权益 × 0.5
         np.testing.assert_array_almost_equal(
-            w_out.drop(cfg.trend_filter_defensive).values,
-            (w_uniform.drop(cfg.trend_filter_defensive) * 0.5).values,
+            w_out[equity_idx].values,
+            (w_uniform[equity_idx] * 0.5).values,
         )
-        # 中债10年 = 0.5 * (1/13) + 0.5 ≈ 0.5385
-        assert abs(w_out[cfg.trend_filter_defensive] - 0.5 * (1/13) - 0.5) < 1e-6
-        # sum 应 ≈ 0.5 (各资产 0.5) + 0.5 (中债10年加) = 1.0
+        # 债券按比例增加 (freed weight = 4 * (1/13) * 0.5 = 2/13)
+        freed = 4 * (1.0 / 13) * 0.5
+        bond_original = w_uniform[bond_idx].values
+        bond_new_expected = bond_original + freed * (bond_original / bond_original.sum())
+        np.testing.assert_array_almost_equal(w_out[bond_idx].values, bond_new_expected)
+        # 商品不变
+        np.testing.assert_array_almost_equal(w_out[commodity_idx].values, w_uniform[commodity_idx].values)
+        # sum ≈ 1.0
         assert abs(w_out.sum() - 1.0) < 1e-6
 
     def test_disabled_unchanged(self, benchmark, w_uniform) -> None:
@@ -116,6 +126,34 @@ class TestApplyTrendFilter:
         # 用一个早期日期, 数据 < 200
         w_out = apply_trend_filter(w_uniform.copy(), benchmark, pd.Timestamp("2002-06-30"), cfg)
         np.testing.assert_array_almost_equal(w_out.values, w_uniform.values)
+
+    def test_empty_equity_indices(self, benchmark, w_uniform) -> None:
+        """equity_indices 为空: 不减仓, 返回原权重."""
+        cfg = V7_3Config(trend_filter_enabled=True, equity_indices=[])
+        w_out = apply_trend_filter(w_uniform.copy(), benchmark, pd.Timestamp("2018-12-31"), cfg)
+        np.testing.assert_array_almost_equal(w_out.values, w_uniform.values)
+
+    def test_no_bonds_in_pool(self, benchmark) -> None:
+        """池中无债券: freed weight 不分配 (总仓位 < 100%)."""
+        equity_only = pd.Series(
+            [0.25, 0.25, 0.25, 0.25],
+            index=['沪深300指数', '中证500指数', '中证1000', '恒生指数'],
+        )
+        cfg = V7_3Config(trend_filter_enabled=True)
+        w_out = apply_trend_filter(equity_only.copy(), benchmark, pd.Timestamp("2018-12-31"), cfg)
+        # 权益 × 0.5, 无债券可分配 → 总仓位 = 0.5
+        assert abs(w_out.sum() - 0.5) < 1e-6
+        np.testing.assert_array_almost_equal(w_out.values, equity_only.values * 0.5)
+
+    def test_equity_zero_weight(self, benchmark) -> None:
+        """equity 权重全 0: freed=0, 不变."""
+        no_equity = pd.Series(
+            [0.0, 0.0, 0.0, 0.0, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.0],
+            index=INDEX_COLS,
+        )
+        cfg = V7_3Config(trend_filter_enabled=True)
+        w_out = apply_trend_filter(no_equity.copy(), benchmark, pd.Timestamp("2018-12-31"), cfg)
+        np.testing.assert_array_almost_equal(w_out.values, no_equity.values)
 
 
 # ============================================================================

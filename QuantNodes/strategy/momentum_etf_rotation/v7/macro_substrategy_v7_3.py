@@ -32,6 +32,13 @@ from .bootstrap_lasso import BootstrapLassoMapping
 from .data_loader import INDEX_COLS
 from .factor_risk_parity import FactorRiskParityOptimizer
 
+# [Stage 6 TF 权益专属化] 债券指数常量 (与 INDEX_COLS 同级)
+# 熊市时 freed weight 按比例分配到这些债券指数
+BOND_INDICES = [
+    '中债10年期国债指数', '中债3-5年期国债指数', '中债1-3年国债财富指数',
+    '中债国开行债券总指数', '中债企业债总指数',
+]
+
 
 @dataclass
 class V7_3Config:
@@ -71,14 +78,18 @@ class V7_3Config:
     slippage_bp: float = 5.0
 
     # [Stage 4 v2 新增 2026-07-13] 趋势过滤 (Trend Filter)
-    # 当 benchmark 跌破 ma_window 日均线时, 缩放权重到 exposure_bear
-    # 剩余仓位配到 defensive_asset (默认中债10年期国债指数, 池内最稳)
+    # 当 benchmark 跌破 ma_window 日均线时, 缩放权益仓位到 exposure_bear
+    # 释放权重按比例分配给债券 (flight to safety)
     # v7_macro_baseline 默认 False (不启用); v7_macro_baseline_v2_tf 启用
     trend_filter_enabled: bool = False
     trend_filter_benchmark: str = "沪深300指数"
     trend_filter_ma: int = 200
     trend_filter_bear: float = 0.5
-    trend_filter_defensive: str = "中债10年期国债指数"
+
+    # [Stage 6 TF 权益专属化] 权益指数列表 (可自由添加)
+    equity_indices: list = field(default_factory=lambda: [
+        '沪深300指数', '中证500指数', '中证1000', '恒生指数',
+    ])
 
 
 def symmetry_full_window(
@@ -108,11 +119,11 @@ def apply_trend_filter(
     as_of: pd.Timestamp,
     cfg: V7_3Config,
 ) -> pd.Series:
-    """[Stage 4 v2 新增] 应用趋势过滤 (TF).
+    """[Stage 6 TF 权益专属化] 应用趋势过滤 (equity→bonds).
 
-    熊市 (benchmark < ma_window 日均线): 缩放现有权重到 cfg.trend_filter_bear
-                                         剩余 (1 - bear) 配到 defensive_asset
-    多头: 返回 w 不变
+    熊市 (benchmark < ma_window 日均线): 只减权益仓位 × bear,
+                                         释放权重按比例分配给债券 (flight to safety).
+    多头: 返回 w 不变.
 
     Args:
         w: 当前 FRP 算出的权重 (index = INDEX_COLS)
@@ -131,17 +142,23 @@ def apply_trend_filter(
     ma = s.iloc[-cfg.trend_filter_ma:].mean()
     if s.iloc[-1] >= ma:
         return w  # 多头
-    # 熊市: 缩放 + 配防御资产
+
+    # 熊市: 只减权益, freed weight → 债券按比例分配
     bear = cfg.trend_filter_bear
-    w_new = w * bear
-    defensive = cfg.trend_filter_defensive
-    if defensive in w_new.index:
-        w_new[defensive] = w_new.get(defensive, 0.0) + (1.0 - bear)
-    else:
-        # defensive 不在池子中, 用 w 中的债券指数代替
-        bond_fallback = "中债10年期国债指数"
-        if bond_fallback in w_new.index:
-            w_new[bond_fallback] = w_new.get(bond_fallback, 0.0) + (1.0 - bear)
+    equity_mask = w.index.isin(cfg.equity_indices)
+    bond_mask = w.index.isin(BOND_INDICES)
+
+    # 计算释放的权益权重
+    freed_weight = float((w[equity_mask] * (1.0 - bear)).sum())
+
+    w_new = w.copy()
+    w_new[equity_mask] = w_new[equity_mask] * bear  # 权益减仓
+
+    # 释放权重按比例分配给债券
+    bond_sum = float(w_new[bond_mask].sum())
+    if bond_sum > 0:
+        w_new[bond_mask] = w_new[bond_mask] + freed_weight * (w_new[bond_mask] / bond_sum)
+
     return w_new
 
 
@@ -234,7 +251,8 @@ def run_v7_3_backtest(
     factor_panel: pd.DataFrame,
     cfg: V7_3Config | None = None,
     benchmark_price: pd.Series | None = None,
-) -> pd.Series:
+    return_weights: bool = False,
+):
     """v7.3 v2 端到端回测 (忠实于 source).
 
     Args:
@@ -244,9 +262,13 @@ def run_v7_3_backtest(
         benchmark_price: [Stage 4 v2 新增] benchmark 日价格 (用于 TF).
                           默认 None 表示不加载; 当 cfg.trend_filter_enabled=True 时
                           必须传入 (推荐用 load_benchmark_price()).
+        return_weights: [Stage 6 业绩对比新增] 是否同时返回调仓权重 DataFrame.
+                        默认 False (向后兼容, 现有测试零影响).
 
     Returns:
-        pd.Series 索引=业务日, 值=NAV (起点=1).
+        if return_weights=False: pd.Series 索引=业务日, 值=NAV (起点=1).
+        if return_weights=True:  (nav: pd.Series, weights: pd.DataFrame)
+                                  weights index=调仓日, columns=cfg.index_pool
     """
     if cfg is None:
         cfg = V7_3Config()
@@ -318,7 +340,16 @@ def run_v7_3_backtest(
 
     all_ret_series = pd.concat(all_ret)
     nav = (1 + all_ret_series).cumprod()
-    return nav / nav.iloc[0]
+    nav = nav / nav.iloc[0]
+
+    if return_weights:
+        weights_df = pd.DataFrame(
+            {d: w.reindex(cfg.index_pool) for d, w in weights_history.items()},
+        ).T
+        weights_df.index.name = "rebalance_date"
+        return nav, weights_df
+
+    return nav
 
 
 __all__ = ["V7_3Config", "V7_3SubStrategy", "run_v7_3_backtest", "symmetry_full_window"]

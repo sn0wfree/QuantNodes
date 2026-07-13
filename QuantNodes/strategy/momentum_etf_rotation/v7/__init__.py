@@ -111,5 +111,4 @@ def v7_macro_baseline_v2_tf() -> V7_3Config:
     cfg.trend_filter_benchmark = "沪深300指数"
     cfg.trend_filter_ma = 200
     cfg.trend_filter_bear = 0.5
-    cfg.trend_filter_defensive = "中债10年期国债指数"
     return cfg

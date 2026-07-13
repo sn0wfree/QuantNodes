@@ -79,32 +79,48 @@ v7_macro_baseline (无 TF) OOS 2018-至今 Calmar 0.387, 跑不赢 v1.0 locked (
 | `trend_filter_enabled` | True | 新增 |
 | `trend_filter_ma` | 200 日 | v1.0 默认 (沪深300 200 日 MA) |
 | `trend_filter_bear` | 0.5 | v1.0 默认 (熊市半仓) |
-| 防御资产 | `中债10年期国债指数` (池内最稳) | 新增 |
+| `equity_indices` | ['沪深300指数', '中证500指数', '中证1000', '恒生指数'] | 权益专属 TF |
 | 基准 | 沪深300 (与 v1.0 一致) | 复用 |
 
-### TF 信号逻辑 (v2 新增)
+### TF 信号逻辑 (v2 equity→bonds, 2026-07-13 优化)
 
-```python
+```
 if 沪深300 价格 < 200 日 MA:
-    # 熊市
-    w = w * 0.5
-    w['中债10年期国债指数'] += 0.5
+    # 熊市: 只减权益 × 0.5, 释放权重按比例分配给债券
+    freed = sum(w[equity] × 0.5)
+    w[equity] *= 0.5
+    w[bonds] += freed × (w[bonds] / sum(w[bonds]))
 else:
-    # 多头
-    w 保持不变
+    # 多头: w 不变
 ```
 
-### Migration Note (2026-07-13)
+**设计理由**: v7 是宏观配置模型, 涉及权益/债券/商品三大类. TF 针对权益设计 (沪深300 vs MA200), 对债券减仓反直觉 (熊市债券是 flight to safety 资产). equity→bonds 方案:
+- 降低换手 63% (38%→14%), 减少交易成本
+- 保持 DD 改善 (equity 减仓效果不变)
+- Alpha 微升 (+0.04-0.15pp), 因为债券在熊市涨
 
+### Migration Notes
+
+**2026-07-13: TF 权益专属化 (equity→bonds)**
+- 旧行为: 所有 13 指数 × 0.5 → 换手 38%/年
+- 新行为: 只减 4 权益指数 × 0.5, freed weight → 5 债券按比例分配 → 换手 14%/年
+- 影响: Ann +0.04-0.15pp, Sharpe -3%, Calmar +0.9-3.4%, 换手 -62-63%
+- 改动文件: `macro_substrategy_v7_3.py` (BOND_INDICES 常量 + equity_indices 配置 + apply_trend_filter 重写)
+- 测试: 11 个 TF 单元测试 (4 改 + 3 新边界), 全部通过
+
+**2026-07-13: 初始 v2 发布**
 - **`v7_macro_baseline` (无 TF) 保持锁定**: OOS 2023-至今 Calmar 0.620, 零修改
 - **`v7_macro_baseline_v2_tf` (有 TF) 新增**: OOS 2023-至今 Calmar 预估 0.7-0.9
 - **用户 2 选 1**: production 部署可任选
 - **未来 v7.x 改动**: 任何 baseline 改动需先跑对照 (见 v7_macro_baseline 锁定规则)
 
-### 锁定测试 (待补)
+### 锁定测试
 
-- `tests/strategy/momentum_etf_rotation/v7/test_v7_macro_baseline_v2_tf.py` (新增)
-  - 6 个测试: 配置冻结, 2018 DD 修复, 2022 DD 修复, 可复现, 牛市无影响, OOS 2023 Calmar 提升
+- `tests/strategy/momentum_etf_rotation/v7/test_v7_macro_baseline_v2_tf.py` (14 个)
+  - 4 个配置冻结
+  - 7 个 apply_trend_filter 单元测试 (含 3 个边界: 空 equity, 无 bonds, equity 零权重)
+  - 5 个端到端 backtest (slow)
+  - 1 个跨 seed 稳定性
 
 ---
 
