@@ -103,6 +103,14 @@ from .v3 import (
     SubStrategyResult as SubStrategyResult_v3,
 )
 
+# ─── v7 (Stage 30.4 宏观子策略 — baseline 锁定 2026-07-13) ────
+from .v7 import (
+    V7_3Config,
+    V7_3SubStrategy,
+    run_v7_3_backtest,
+    v7_macro_baseline,
+)
+
 __all__ = [
     "ETFPool", "ETFCategorizer", "DEFAULT_POOL",
     "rank_by_momentum", "rank_pctl", "distance_to_52w_high",
@@ -137,4 +145,6 @@ __all__ = [
     "VERSIONS", "LATEST", "get_version",
     # v3 (Stage 16A)
     "SubStrategy_v3", "SubStrategyConfig_v3", "SubStrategyResult_v3",
+    # v7 (Stage 30.4 宏观子策略, baseline 锁定 2026-07-13)
+    "V7_3Config", "V7_3SubStrategy", "run_v7_3_backtest", "v7_macro_baseline",
 ]
