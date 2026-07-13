@@ -57,6 +57,7 @@ __all__ = [
     "v7_macro_baseline_v4_expanded",
     "v7_macro_baseline_v5_stop_loss",
     "v7_macro_baseline_v5_tf_score",
+    "v7_macro_baseline_v5_rolling",
     "RollingSymmetry",
     "BootstrapLassoMapping",
     "FactorRiskParityOptimizer",
@@ -287,5 +288,60 @@ def v7_macro_baseline_v5_tf_score(**overrides) -> V7_5Config:
         # [v5.1 连续 TF Score]
         tf_score_enabled=True,
         # 继承 expanded pool 设置
+        **overrides,
+    )
+
+
+def v7_macro_baseline_v5_rolling(**overrides) -> V7_5Config:
+    """v7 宏观子策略 v5.2: 时变 LASSO + 二值 TF (默认 TF, 2026-07-13).
+
+    相对 v7+v2 TF (二值) 改动:
+    - 二值 TF 保留 (与 v2 相同)
+    - lasso_rolling_window: 156 (3 年周) 替代默认 expanding 窗口
+    - 期望: beta 系数随时间变化, 捕捉宏观-资产关系的时变特征
+
+    设计动机 (用户深度讨论 2026-07-13):
+    "静态映射无法捕捉宏观-资产关系变化"
+    — 长期以来 expanding window 让 beta 系数"被历史淹没", 无法响应结构性变化
+    — 滚动窗口让最近 N 年的关系主导配置, 更敏感
+
+    权衡:
+    - 优点: 捕捉时变关系 (如 2020 疫情后, 通胀/利率因子与资产关系剧变)
+    - 代价: 估计稳定性降低 (样本量减少), 可能放大短期噪声
+
+    注意:
+    - 此 v5.2 默认使用 v2 的二值 TF + 滚动 LASSO (而非 Step 2 的连续 TF Score)
+    - 连续 TF Score 在实测中劣于二值 (见 §10.6.2)
+    - 滚动的样本空间必须 >= quarter_window × 13 (周) 才能开始
+
+    用途: 探索时变 LASSO 对 v7 框架的改善.
+    """
+    base = v7_macro_baseline_v2_tf()
+    return V7_5Config(
+        asset_pool="index",
+        index_pool=base.index_pool,  # 13 indices
+        equity_indices=base.equity_indices,
+        # 继承 v2 二值 TF
+        trend_filter_enabled=base.trend_filter_enabled,
+        trend_filter_benchmark=base.trend_filter_benchmark,
+        trend_filter_ma=base.trend_filter_ma,
+        trend_filter_bear=base.trend_filter_bear,
+        # 继承 baseline 设置
+        bootstrap_times=base.bootstrap_times,
+        bootstrap_resample_min=base.bootstrap_resample_min,
+        bootstrap_resample_max=base.bootstrap_resample_max,
+        bootstrap_random_state=base.bootstrap_random_state,
+        bootstrap_cache_alpha=base.bootstrap_cache_alpha,
+        quarter_window=base.quarter_window,
+        max_weight=base.max_weight,
+        sum_lower=base.sum_lower,
+        sum_upper=base.sum_upper,
+        commission_bp=base.commission_bp,
+        slippage_bp=base.slippage_bp,
+        # [v5 硬止损] 默认关闭 (用户可单独开启)
+        stop_loss_enabled=False,
+        # [v5.2 关键] 时变 LASSO: 滚动 156 周 (3 年)
+        lasso_rolling_window=156,
+        tf_score_enabled=False,  # 不使用连续 TF Score
         **overrides,
     )

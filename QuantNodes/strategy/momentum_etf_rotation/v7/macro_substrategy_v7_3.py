@@ -412,6 +412,13 @@ class V7_3SubStrategy:
         if len(rolling) < 52 * 2 - 26:
             return None
 
+        # [Stage 7 v5 Step 3] 时变 LASSO: 滚动窗口 vs expanding
+        # 默认 (None) 用 expanding, 与原版 bit-exact
+        # 设置 lasso_rolling_window (e.g. 156=3 年周) 时, 取最近 N 周
+        rolling_window = getattr(cfg, "lasso_rolling_window", None)
+        if rolling_window is not None and len(rolling) > rolling_window:
+            rolling = rolling.iloc[-rolling_window:]
+
         # Symmetry 应用到 rolling 窗口 (source cell 102)
         sym_factors = symmetry_full_window(rolling, cfg.factor_cols)
         if sym_factors is None or len(sym_factors) < 26:

@@ -31,11 +31,13 @@ from QuantNodes.strategy.momentum_etf_rotation.v7 import (
     v7_macro_baseline_v4_expanded,
     v7_macro_baseline_v5_stop_loss,
     v7_macro_baseline_v5_tf_score,
+    v7_macro_baseline_v5_rolling,
     apply_trend_filter,
     apply_trend_score_filter,
     compute_trend_score,
     run_v7_3_backtest,
     load_factor_returns,
+    load_index_panel,
     load_expanded_panel,
     load_benchmark_price,
     EXPANDED_COLS,
@@ -397,3 +399,107 @@ class TestV5TFScoreBacktest:
         print("\n=== v2 (二值 MA200, 13 idx) vs v5.1 (连续 TF Score, 56 assets) OOS 2022-2026 ===")
         print(f"v2:    Ann={a2:.2%}, Vol={v2:.2%}, DD={d2:.2%}, Calmar={c2:.3f}")
         print(f"v5.1:  Ann={a5:.2%}, Vol={v5:.2%}, DD={d5:.2%}, Calmar={c5:.3f}")
+
+
+# ============================================================================
+# Step 3 - 时变 LASSO (Rolling Window)
+# ============================================================================
+class TestV5RollingConfig:
+    """Rolling LASSO 配置冻结测试."""
+
+    def test_v5_config_rolling_field(self) -> None:
+        """V7_5Config 默认 lasso_rolling_window=None (兼容 expanding)."""
+        cfg = V7_5Config()
+        assert cfg.lasso_rolling_window is None
+
+    def test_v5_rolling_factory(self) -> None:
+        """v7_macro_baseline_v5_rolling() 工厂配置正确."""
+        cfg = v7_macro_baseline_v5_rolling()
+        assert cfg.lasso_rolling_window == 156  # 3 年周
+        assert cfg.tf_score_enabled is False  # 默认用二值 TF
+        assert cfg.trend_filter_enabled is True  # 继承 v2 二值
+        assert cfg.trend_filter_bear == 0.5
+        assert cfg.asset_pool == "index"  # 默认 13 indices
+        assert len(cfg.index_pool) == 13
+
+    def test_v5_rolling_inherits_v2(self) -> None:
+        """v5.rolling 应继承 v2 baseline 设置."""
+        v2 = v7_macro_baseline_v2_tf()
+        v5 = v7_macro_baseline_v5_rolling()
+        assert v5.bootstrap_times == v2.bootstrap_times
+        assert v5.bootstrap_random_state == v2.bootstrap_random_state
+        assert v5.quarter_window == v2.quarter_window
+        assert v5.max_weight == v2.max_weight
+
+    def test_v5_returns_new_instance(self) -> None:
+        """每次调用返回新实例."""
+        cfg1 = v7_macro_baseline_v5_rolling()
+        cfg2 = v7_macro_baseline_v5_rolling()
+        assert cfg1 is not cfg2
+
+
+@pytest.mark.slow
+class TestV5RollingBacktest:
+    """时变 LASSO 端到端回测."""
+
+    @pytest.fixture(scope="class")
+    def nav_v2(self) -> pd.Series:
+        """v2 二值 TF + expanding LASSO (对照组, 13 indices)."""
+        factor_ret = load_factor_returns()
+        idx_ret = load_index_panel()
+        benchmark = load_benchmark_price()
+        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v2_tf(), benchmark)
+
+    @pytest.fixture(scope="class")
+    def nav_v5_rolling(self) -> pd.Series:
+        """v5.2 二值 TF + rolling LASSO 156 周 (3 年)."""
+        factor_ret = load_factor_returns()
+        idx_ret = load_index_panel()
+        benchmark = load_benchmark_price()
+        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_rolling(), benchmark)
+
+    def test_v5_rolling_deterministic(self, nav_v5_rolling) -> None:
+        """同参数 → 同 NAV."""
+        factor_ret = load_factor_returns()
+        idx_ret = load_index_panel()
+        benchmark = load_benchmark_price()
+        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_rolling(), benchmark)
+        np.testing.assert_array_almost_equal(nav_v5_rolling.values, nav_again.values, decimal=8)
+
+    def test_v5_rolling_has_nav(self, nav_v5_rolling) -> None:
+        """v5 rolling 应产生有效 NAV."""
+        assert len(nav_v5_rolling) > 0
+        assert nav_v5_rolling.iloc[0] == 1.0
+        assert nav_v5_rolling.iloc[-1] > 0
+
+    def test_v5_rolling_different_from_v2(self, nav_v2, nav_v5_rolling) -> None:
+        """rolling LASSO 应与 expanding LASSO 产生不同 NAV.
+
+        至少前 N 个值应该有差异 (rolling 起点)
+        """
+        # 滚动窗口起点出现后, 两个策略的权重应开始分歧
+        # 我们看两者是否相同 (完全相同 → rolling 未生效)
+        nav_v2_arr = nav_v2.values
+        nav_v5_arr = nav_v5_rolling.values
+        # 至少在后半段有差异
+        n = len(nav_v2_arr)
+        mid = n // 2
+        diff = np.abs(nav_v2_arr[mid:] - nav_v5_arr[mid:]).max()
+        assert diff > 0.001, f"rolling LASSO 与 expanding LASSO 几乎相同 (max diff={diff}), 滚动窗口可能未生效"
+
+    def test_v5_rolling_summary(self, nav_v2, nav_v5_rolling) -> None:
+        """打印 v2 (expanding) vs v5 (rolling) 性能对比."""
+        def metrics(nav, start='2022-01-01'):
+            n = nav.loc[start:]
+            n_years = (n.index[-1] - n.index[0]).days / 365.25
+            ann = (n.iloc[-1] / n.iloc[0]) ** (1 / n_years) - 1
+            vol = n.pct_change().std() * np.sqrt(252)
+            dd = (n / n.cummax() - 1).min()
+            calmar = ann / abs(dd) if abs(dd) > 0.001 else 0
+            return ann, vol, dd, calmar
+
+        a2, v2, d2, c2 = metrics(nav_v2)
+        a5, v5, d5, c5 = metrics(nav_v5_rolling)
+        print("\n=== v2 (binary TF + expanding) vs v5.2 (binary TF + rolling 156w) OOS 2022-2026 ===")
+        print(f"v2 (expanding):  Ann={a2:.2%}, Vol={v2:.2%}, DD={d2:.2%}, Calmar={c2:.3f}")
+        print(f"v5.2 (rolling):  Ann={a5:.2%}, Vol={v5:.2%}, DD={d5:.2%}, Calmar={c5:.3f}")
