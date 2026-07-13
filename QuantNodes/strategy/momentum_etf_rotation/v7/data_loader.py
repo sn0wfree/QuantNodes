@@ -41,8 +41,10 @@ FACTOR_COLS = [
 ]
 
 # 13 INDICES (一比一复刻 source cell 99/102/104)
-# 注意: 源 cell 99 用 '南华农产品指数', cell 102 用 '南华工业品指数',
-# 我们用 v2 笔记本的两者并集 (与最新版 Excel 一致)
+# 关键 (Stage 3 优化 a 2026-07-13): 替换 '南华综合指数' -> '中债1-3年国债财富指数'
+# 源 cell 99 main_idx_cols 含 '中债1_3年期国债财富指数', 源 cell 73 写法:
+#   main_idx['1-3 年国债财富指数'] = idx1['1-3 年国债财富指数']
+# 我们从 sheet='指数' 列 11 加载该列.
 INDEX_COLS = [
     "沪深300指数",
     "中证500指数",
@@ -50,12 +52,11 @@ INDEX_COLS = [
     "恒生指数",
     "中债10年期国债指数",
     "中债3-5年期国债指数",
-    # v1 notebook 有 '中债1-3年期国债财富指数' (109); v2 没有, 我们用既有 6 个
+    "中债1-3年国债财富指数",     # <-- 新增 (源 cell 99)
     "中债国开行债券总指数",
     "中债企业债总指数",
-    "南华综合指数",
-    "南华工业品指数",       # source cell 102
-    "南华农产品指数",       # source cell 99
+    "南华工业品指数",            # source cell 102
+    "南华农产品指数",            # source cell 99
     "期货结算价(连续):布伦特原油",
     "收盘价:沪金指数",
 ]
@@ -121,7 +122,33 @@ def load_index_panel(start: str = "2008-01-01") -> pd.DataFrame:
     df = df.set_index("指标名称").sort_index()
     df.index.name = "dt"
 
-    sub = df[INDEX_COLS].apply(pd.to_numeric, errors="coerce")
+    # 主要指数 sheet 拿 12 个指数 (除 中债1-3年国债财富指数)
+    main_cols = [c for c in INDEX_COLS if c in df.columns]
+    sub = df[main_cols].apply(pd.to_numeric, errors="coerce")
+
+    # 从 sheet='指数' 列 11 拿 中债1-3年国债财富指数 (源 cell 73)
+    if "中债1-3年国债财富指数" in INDEX_COLS and "中债1-3年国债财富指数" not in df.columns:
+        ws_idx = wb["指数"]
+        idx_rows = list(ws_idx.iter_rows(values_only=True))
+        idx_header = idx_rows[0]
+        # 找列名
+        col_name = "1-3 年国债财富指数"
+        if col_name in idx_header:
+            idx_data = idx_rows[1:]
+            idx_df = pd.DataFrame(idx_data, columns=[str(c) if c else f"col_{i}"
+                                                       for i, c in enumerate(idx_header)])
+            idx_df = idx_df[["dt", col_name]].copy()
+            idx_df["dt"] = pd.to_datetime(idx_df["dt"], errors="coerce")
+            idx_df = idx_df.dropna(subset=["dt"])
+            # 去重 (指数 sheet 在 2029-12 月有 3-5 个重复, 取 first)
+            idx_df = idx_df[~idx_df["dt"].duplicated(keep="first")]
+            idx_df = idx_df.set_index("dt").sort_index()
+            idx_df.index.name = "dt"
+            idx_series = idx_df[col_name].apply(pd.to_numeric, errors="coerce")
+            # 对齐到 sub 的日期
+            idx_series = idx_series.reindex(sub.index)
+            sub["中债1-3年国债财富指数"] = idx_series
+
     # 关键修复: 业务日重采样 + bfill, 解决跨假日的 NaN 缺口
     bday_idx = pd.bdate_range(start=sub.dropna().index[0], end=sub.index[-1])
     sub = sub.reindex(bday_idx).bfill()

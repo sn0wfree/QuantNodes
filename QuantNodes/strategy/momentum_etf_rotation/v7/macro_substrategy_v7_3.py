@@ -108,8 +108,6 @@ class V7_3SubStrategy:
             max_weight=cfg.max_weight,
             sum_lower=cfg.sum_lower,
             sum_upper=cfg.sum_upper,
-            tol=cfg.rp_tol,
-            max_iter=cfg.rp_max_iter,
         )
 
     def select(
