@@ -1,5 +1,5 @@
 # coding=utf-8
-"""v7.3 v2 数据加载: 9 宏观因子 + 13 INDICES (faithful to source).
+"""v7 数据加载: 9 宏观因子 + 13 INDICES / 56 EXPANDED (ETF+bond).
 
 [关键 v2 决策]
 v7.3 v1 用了 5 个 ETF (510300/510500/159915/510900/511260), 但与 source 实现不一致.
@@ -28,6 +28,7 @@ import pandas as pd
 REPO = Path(__file__).resolve().parents[4]
 HF_DIR = REPO / "data" / "high_freq_macro"
 HF_DIR.mkdir(parents=True, exist_ok=True)
+REAL_DIR = REPO / "data" / "real"
 
 SRC_DIR = Path.home() / "Public" / "高频宏观因子"
 FACTOR_FILE = SRC_DIR / "高频宏观因子跟踪_output_2026-06-01.xlsx"
@@ -227,6 +228,116 @@ def load_benchmark_price(benchmark: str = "沪深300指数") -> pd.Series:
     return s
 
 
+# ── EXPANDED POOL: 51 ETFs + 5 bond indices = 56 assets ──────────────────
+
+# 51 ETF codes (DEFAULT_POOL 44 - 511260 bond + SmartBeta 8 unique)
+# SmartBeta unique: 510880, 512890, 512260, 515900, 512040, 159786, 515080, 515100
+EXPANDED_ETF_COLS: list[str] = [
+    # A_BROAD (6)
+    "510300", "510500", "510050", "159915", "588000", "159901",
+    # A_SECTOR (20)
+    "512760", "512480", "515030", "515790", "512690", "512170", "512010",
+    "515050", "159928", "512880", "512000", "512800", "515220", "512200",
+    "512400", "512660", "512980", "515880", "159996", "512120",
+    # HK (5)
+    "510900", "159920", "513010", "513050", "159740",
+    # COMMODITY (6)
+    "518880", "518800", "159985", "161226", "159981", "159766",
+    # OVERSEAS (6)
+    "513100", "513300", "513500", "513520", "513880", "159941",
+    # SmartBeta (8 unique, not in DEFAULT_POOL)
+    "510880", "512890", "512260", "515900", "512040", "159786", "515080", "515100",
+]
+
+# 5 bond indices (from v7 INDEX_COLS)
+EXPANDED_BOND_INDICES: list[str] = [
+    "中债10年期国债指数",
+    "中债3-5年期国债指数",
+    "中债1-3年国债财富指数",
+    "中债国开行债券总指数",
+    "中债企业债总指数",
+]
+
+# Combined
+EXPANDED_COLS: list[str] = EXPANDED_ETF_COLS + EXPANDED_BOND_INDICES
+
+# TF classification
+EQUITY_ETF_COLS: list[str] = [
+    # A_BROAD (6)
+    "510300", "510500", "510050", "159915", "588000", "159901",
+    # A_SECTOR (20)
+    "512760", "512480", "515030", "515790", "512690", "512170", "512010",
+    "515050", "159928", "512880", "512000", "512800", "515220", "512200",
+    "512400", "512660", "512980", "515880", "159996", "512120",
+    # HK (5)
+    "510900", "159920", "513010", "513050", "159740",
+    # OVERSEAS (6)
+    "513100", "513300", "513500", "513520", "513880", "159941",
+    # SmartBeta (8)
+    "510880", "512890", "512260", "515900", "512040", "159786", "515080", "515100",
+]
+
+COMMODITY_ETF_COLS: list[str] = [
+    "518880", "518800", "159985", "161226", "159981", "159766",
+]
+
+
+def load_expanded_panel(start: str = "2018-01-01") -> pd.DataFrame:
+    """加载 56 assets 日对数收益 (51 ETFs + 5 bond indices).
+
+    ETFs: data/real/etf_nav_*.parquet (价格水平) → 日对数收益
+    Bond: data/high_freq_macro/v9_indices_daily.parquet → 日对数收益
+
+    Returns:
+        DataFrame (T, 56) 含 EXPANDED_COLS 56 个资产日对数收益.
+    """
+    cache = HF_DIR / "v56_expanded_daily.parquet"
+    if cache.exists():
+        df = pd.read_parquet(cache)
+        return df.loc[start:]
+
+    # ── ETF NAV → daily log returns ──
+    main_nav = pd.read_parquet(REAL_DIR / "etf_nav_2018-01-01_2026-06-30.parquet")
+    smartbeta_nav = pd.read_parquet(REAL_DIR / "etf_nav_smartbeta_2018-01-01_2026-06-30.parquet")
+
+    # Merge (dedup shared columns: 510300, 510500, 159915, 588000)
+    shared = [c for c in smartbeta_nav.columns if c in main_nav.columns]
+    smartbeta_unique = [c for c in smartbeta_nav.columns if c not in main_nav.columns]
+    etf_nav = pd.concat([main_nav, smartbeta_nav[smartbeta_unique]], axis=1)
+
+    # Daily log returns
+    etf_rets = np.log(etf_nav / etf_nav.shift(1)).dropna(how="all")
+
+    # ── Bond indices (already daily log returns) ──
+    index_daily = pd.read_parquet(HF_DIR / "v9_indices_daily.parquet")
+    bond_rets = index_daily[EXPANDED_BOND_INDICES]
+
+    # ── Align dates (business day) ──
+    common_start = max(etf_rets.dropna(how="all").index[0],
+                       bond_rets.dropna(how="all").index[0])
+    common_end = min(etf_rets.index[-1], bond_rets.index[-1])
+    bday_idx = pd.bdate_range(start=common_start, end=common_end)
+
+    etf_rets = etf_rets.reindex(bday_idx)
+    bond_rets = bond_rets.reindex(bday_idx)
+
+    # Forward-fill bond indices (skip weekends/holidays, not price gaps)
+    bond_rets = bond_rets.ffill()
+
+    # Combine
+    expanded = pd.concat([etf_rets, bond_rets], axis=1)
+    expanded.index.name = "dt"
+
+    # Select only desired columns (drop 511260 bond ETF, keep bond indices)
+    want = [c for c in EXPANDED_COLS if c in expanded.columns]
+    expanded = expanded[want]
+
+    # Cache
+    expanded.to_parquet(cache)
+
+    return expanded.loc[start:]
+
+
 # 兼容 v7.3 v1 接口, 标记 deprecation
 def load_etf_panel(*args, **kwargs):
     raise NotImplementedError(
@@ -237,9 +348,15 @@ def load_etf_panel(*args, **kwargs):
 __all__ = [
     "FACTOR_COLS",
     "INDEX_COLS",
+    "EXPANDED_COLS",
+    "EXPANDED_ETF_COLS",
+    "EXPANDED_BOND_INDICES",
+    "EQUITY_ETF_COLS",
+    "COMMODITY_ETF_COLS",
     "load_macro_factors",
     "load_factor_returns",
     "load_index_panel",
     "load_index_prices",
+    "load_expanded_panel",
     "HF_DIR",
 ]

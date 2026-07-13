@@ -29,7 +29,7 @@ import numpy as np
 import pandas as pd
 
 from .bootstrap_lasso import BootstrapLassoMapping
-from .data_loader import INDEX_COLS
+from .data_loader import INDEX_COLS, EXPANDED_COLS, EQUITY_ETF_COLS, COMMODITY_ETF_COLS, EXPANDED_BOND_INDICES
 from .factor_risk_parity import FactorRiskParityOptimizer
 
 # [Stage 6 TF 权益专属化] 债券指数常量 (与 INDEX_COLS 同级)
@@ -92,6 +92,18 @@ class V7_3Config:
     ])
 
 
+@dataclass
+class V7_4Config(V7_3Config):
+    """v7.4 扩大资产池配置 (51 ETFs + 5 bond indices = 56 assets)."""
+    asset_pool: str = "expanded"  # "index" | "expanded"
+
+    # 资产分类 (expanded pool)
+    index_pool: tuple[str, ...] = tuple(EXPANDED_COLS)  # 56 assets
+    equity_cols: tuple[str, ...] = tuple(EQUITY_ETF_COLS)      # 45 equity ETFs
+    commodity_cols: tuple[str, ...] = tuple(COMMODITY_ETF_COLS) # 6 commodity ETFs
+    bond_cols: tuple[str, ...] = tuple(EXPANDED_BOND_INDICES)   # 5 bond indices
+
+
 def symmetry_full_window(
     sample: pd.DataFrame,
     factor_cols: Sequence[str],
@@ -145,8 +157,17 @@ def apply_trend_filter(
 
     # 熊市: 只减权益, freed weight → 债券按比例分配
     bear = cfg.trend_filter_bear
-    equity_mask = w.index.isin(cfg.equity_indices)
-    bond_mask = w.index.isin(BOND_INDICES)
+
+    # 支持 expanded pool (V7_4Config) 和 index pool (V7_3Config)
+    if isinstance(cfg, V7_4Config):
+        eq_cols = list(cfg.equity_cols)
+        bd_cols = list(cfg.bond_cols)
+    else:
+        eq_cols = list(cfg.equity_indices)
+        bd_cols = BOND_INDICES
+
+    equity_mask = w.index.isin(eq_cols)
+    bond_mask = w.index.isin(bd_cols)
 
     # 计算释放的权益权重
     freed_weight = float((w[equity_mask] * (1.0 - bear)).sum())
@@ -323,7 +344,8 @@ def run_v7_3_backtest(
             continue
         idx_ret_window = index_panel.loc[mask, list(cfg.index_pool)]
         # 收益率 (np.dot, source cell 93)
-        ret_data = idx_ret_window.values @ weights_history[s].reindex(cfg.index_pool).fillna(0).values
+        # Fill NaN with 0 for expanded pool (structural NaN from pre-listing ETFs)
+        ret_data = idx_ret_window.fillna(0).values @ weights_history[s].reindex(cfg.index_pool).fillna(0).values
         ret_series = pd.Series(ret_data, index=idx_ret_window.index)
 
         # 调仓日成本

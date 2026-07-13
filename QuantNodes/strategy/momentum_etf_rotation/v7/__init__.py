@@ -2,10 +2,13 @@
 """V7 子包入口 — 暴露核心 API + 端到端入口.
 
 公开 API:
-    V7_3Config
+    V7_3Config, V7_4Config
     V7_3SubStrategy
     run_v7_3_backtest (端到端)
     v7_macro_baseline (锁定 baseline, 2026-07-13)
+    v7_macro_baseline_v2_tf (趋势过滤)
+    v7_macro_baseline_v3_momentum (动量叠加)
+    v7_macro_baseline_v4_expanded (扩大资产池)
     RollingSymmetry
     BootstrapLassoMapping
     FactorRiskParityOptimizer
@@ -14,15 +17,21 @@ from .bootstrap_lasso import BootstrapLassoMapping
 from .data_loader import (
     FACTOR_COLS,
     INDEX_COLS,
+    EXPANDED_COLS,
+    EQUITY_ETF_COLS,
+    COMMODITY_ETF_COLS,
+    EXPANDED_BOND_INDICES,
     load_benchmark_price,
     load_factor_returns,
     load_index_panel,
     load_index_prices,
+    load_expanded_panel,
     load_macro_factors,
 )
 from .factor_risk_parity import FactorRiskParityOptimizer
 from .macro_substrategy_v7_3 import (
     V7_3Config,
+    V7_4Config,
     V7_3SubStrategy,
     run_v7_3_backtest,
     apply_trend_filter,
@@ -31,11 +40,14 @@ from .symmetry import RollingSymmetry
 
 __all__ = [
     "V7_3Config",
+    "V7_4Config",
     "V7_3SubStrategy",
     "run_v7_3_backtest",
     "apply_trend_filter",
     "v7_macro_baseline",
     "v7_macro_baseline_v2_tf",
+    "v7_macro_baseline_v3_momentum",
+    "v7_macro_baseline_v4_expanded",
     "RollingSymmetry",
     "BootstrapLassoMapping",
     "FactorRiskParityOptimizer",
@@ -43,9 +55,14 @@ __all__ = [
     "load_factor_returns",
     "load_index_panel",
     "load_index_prices",
+    "load_expanded_panel",
     "load_benchmark_price",
     "FACTOR_COLS",
     "INDEX_COLS",
+    "EXPANDED_COLS",
+    "EQUITY_ETF_COLS",
+    "COMMODITY_ETF_COLS",
+    "EXPANDED_BOND_INDICES",
 ]
 
 
@@ -112,3 +129,46 @@ def v7_macro_baseline_v2_tf() -> V7_3Config:
     cfg.trend_filter_ma = 200
     cfg.trend_filter_bear = 0.5
     return cfg
+
+
+def v7_macro_baseline_v4_expanded(**overrides) -> V7_4Config:
+    """v7 宏观子策略 v4: 扩大资产池 (51 ETFs + 5 bond indices = 56 assets).
+
+    相对 v7+v2 TF 改动:
+    - asset_pool: "expanded" (56 assets vs 13 indices)
+    - 51 ETFs: A股宽基6 + 行业20 + 港股5 + 商品6 + 海外6 + SmartBeta8
+    - 5 bond indices: 中债10年/3-5年/1-3年/国开/企业债
+    - TF: equity ETFs → bond indices (flight to safety)
+
+    预期优势:
+    - 更多资产 = 更好分散化 + 更多轮动机会
+    - ETF 可直接交易 (vs 指数不可交易)
+    - 商品 ETF 提供通胀对冲
+
+    用途: 探索扩大资产池对 v7 框架的影响.
+    """
+    base = v7_macro_baseline_v2_tf()
+    return V7_4Config(
+        asset_pool="expanded",
+        equity_cols=EQUITY_ETF_COLS,
+        commodity_cols=COMMODITY_ETF_COLS,
+        bond_cols=EXPANDED_BOND_INDICES,
+        # 继承 v7+v2 TF 设置
+        trend_filter_enabled=base.trend_filter_enabled,
+        trend_filter_benchmark=base.trend_filter_benchmark,
+        trend_filter_ma=base.trend_filter_ma,
+        trend_filter_bear=base.trend_filter_bear,
+        # 继承 baseline 设置
+        bootstrap_times=base.bootstrap_times,
+        bootstrap_resample_min=base.bootstrap_resample_min,
+        bootstrap_resample_max=base.bootstrap_resample_max,
+        bootstrap_random_state=base.bootstrap_random_state,
+        bootstrap_cache_alpha=base.bootstrap_cache_alpha,
+        quarter_window=base.quarter_window,
+        max_weight=base.max_weight,
+        sum_lower=base.sum_lower,
+        sum_upper=base.sum_upper,
+        commission_bp=base.commission_bp,
+        slippage_bp=base.slippage_bp,
+        **overrides,
+    )

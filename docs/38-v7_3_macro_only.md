@@ -459,5 +459,101 @@ data/high_freq_macro/
 ├── v9_indices_daily_prices.parquet (13 指数日价格)
 ├── v9_factors_weekly.parquet      (9 因子净值)
 ├── v9_factors_weekly_returns.parquet (周对数收益)
-└── v9_benchmark_沪深300.parquet   (沪深300 价格)
+├── v9_benchmark_沪深300.parquet   (沪深300 价格)
+└── v56_expanded_daily.parquet     (56 assets 日对数收益) [v4 新增]
+```
+
+---
+
+## 九、v7_macro_baseline_v4_expanded — 扩大资产池 (2026-07-13)
+
+### 设计动机
+
+v7+v2 TF (13 indices) 的 Calmar 0.952 优于 v1 baseline (0.364), 但受限于:
+1. **13 indices 不可直接交易** — 指数是虚拟资产, 实际需通过 ETF 执行
+2. **资产数量有限** — 分散化不够, 轮动机会少
+3. **商品指数不够** — 南华指数流动性差, 期货数据噪声大
+
+v4 扩大到 **56 assets** (51 ETFs + 5 bond indices), 解决上述问题.
+
+### 资产池
+
+| 类别 | 数量 | 来源 | 说明 |
+|------|------|------|------|
+| A_BROAD ETFs | 6 | DEFAULT_POOL | 沪深300/500/上证50/创业板/科创50/深证100 |
+| A_SECTOR ETFs | 20 | DEFAULT_POOL | 半导体/新能源/酒/医药/军工等 |
+| HK ETFs | 5 | DEFAULT_POOL | 恒生/恒生科技/中概互联 |
+| COMMODITY ETFs | 6 | DEFAULT_POOL | 黄金/白银/豆粕/能源化工/有色 |
+| OVERSEAS ETFs | 6 | DEFAULT_POOL | 纳斯达克/标普/日经 |
+| SmartBeta ETFs | 8 | SMARTBETA_8 | 红利低波/质量/价值/现金流 |
+| Bond indices | 5 | v7 INDEX_COLS | 中债10年/3-5年/1-3年/国开/企业债 |
+| **总计** | **56** | | |
+
+### TF 分类
+
+| 类别 | 资产 | 数量 |
+|------|------|------|
+| Equity (bear时减半) | A_BROAD + A_SECTOR + HK + OVERSEAS + SmartBeta | 45 |
+| Commodity (不动) | COMMODITY ETFs | 6 |
+| Bond (bear时加仓) | 5 bond indices | 5 |
+
+### 配置
+
+```python
+V7_4Config(
+    asset_pool="expanded",
+    index_pool=EXPANDED_COLS,  # 56 assets
+    equity_cols=EQUITY_ETF_COLS,  # 45 equity ETFs
+    commodity_cols=COMMODITY_ETF_COLS,  # 6 commodity ETFs
+    bond_cols=EXPANDED_BOND_INDICES,  # 5 bond indices
+    trend_filter_enabled=True,  # 继承 v2 TF
+    trend_filter_bear=0.5,
+)
+```
+
+### 数据管道
+
+```
+ETF NAV (价格水平) → log returns → ┐
+                                    ├→ pd.concat → v56_expanded_daily.parquet
+Bond indices (日收益率)            ──┘
+```
+
+- ETF 数据: `data/real/etf_nav_2018-01-01_2026-06-30.parquet` (44 ETFs) + SmartBeta (8 unique)
+- Bond 数据: `data/high_freq_macro/v9_indices_daily.parquet` (5 bond indices)
+- 重叠期: 2018-2026, 2193 交易日
+- **关键修复**: `idx_ret_window.fillna(0)` 解决 ETF 结构性 NaN (上市前数据)
+
+### 回测结果 (OOS 2023-10-02 ~ 2026-03-30)
+
+| 版本 | Ann | Vol | DD | Calmar | Sharpe |
+|------|----:|----:|---:|-------:|-------:|
+| v1 baseline (13 indices) | 6.55% | 7.26% | -6.85% | 0.956 | 0.910 |
+| v2 TF (13 indices, equity→bonds) | 7.32% | 6.57% | -4.98% | **1.468** | **1.108** |
+| v4 expanded (56 assets, no TF) | **10.62%** | 14.12% | -12.11% | 0.877 | 0.786 |
+| v4 expanded + TF (56 assets, equity→bonds) | **10.64%** | 12.71% | -12.11% | 0.879 | 0.860 |
+
+### 分析
+
+1. **Expanded pool 大幅提升收益**: Ann 从 6.55% 提升到 10.62% (+62%)
+2. **TF 改善风险调整**: Vol 从 14.12% 降到 12.71% (-10%), Sharpe 从 0.786 提升到 0.860 (+9%)
+3. **Calmar 略低于 v2 TF**: 因 DD 更大 (-12.11% vs -4.98%), 但 Ann 更高
+4. **TF 触发率**: 11 次调仓中 5 次触发 (2023Q3-2024Q2 + 2026Q1)
+
+### 结论
+
+- Expanded pool 适合**追求高收益**的投资者 (Ann 10.64%)
+- v2 TF 适合**追求低波动**的投资者 (Vol 6.57%, Calmar 1.468)
+- 两者可组合: 扩大资产池 + 趋势过滤
+
+### 文件结构 (v4 新增/修改)
+
+```
+QuantNodes/strategy/momentum_etf_rotation/v7/
+├── data_loader.py                [修改] +EXPANDED_COLS + load_expanded_panel()
+├── macro_substrategy_v7_3.py     [修改] +V7_4Config + TF 适配
+└── __init__.py                   [修改] +v7_macro_baseline_v4_expanded
+
+tests/.../v7/
+└── test_v7_macro_baseline_v4_expanded.py  [新建] 13 tests
 ```
