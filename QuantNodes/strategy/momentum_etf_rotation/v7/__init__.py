@@ -14,6 +14,7 @@ from .bootstrap_lasso import BootstrapLassoMapping
 from .data_loader import (
     FACTOR_COLS,
     INDEX_COLS,
+    load_benchmark_price,
     load_factor_returns,
     load_index_panel,
     load_index_prices,
@@ -24,6 +25,7 @@ from .macro_substrategy_v7_3 import (
     V7_3Config,
     V7_3SubStrategy,
     run_v7_3_backtest,
+    apply_trend_filter,
 )
 from .symmetry import RollingSymmetry
 
@@ -31,7 +33,9 @@ __all__ = [
     "V7_3Config",
     "V7_3SubStrategy",
     "run_v7_3_backtest",
+    "apply_trend_filter",
     "v7_macro_baseline",
+    "v7_macro_baseline_v2_tf",
     "RollingSymmetry",
     "BootstrapLassoMapping",
     "FactorRiskParityOptimizer",
@@ -39,6 +43,7 @@ __all__ = [
     "load_factor_returns",
     "load_index_panel",
     "load_index_prices",
+    "load_benchmark_price",
     "FACTOR_COLS",
     "INDEX_COLS",
 ]
@@ -75,3 +80,36 @@ def v7_macro_baseline() -> V7_3Config:
         commission_bp=5.0,
         slippage_bp=5.0,
     )
+
+
+def v7_macro_baseline_v2_tf() -> V7_3Config:
+    """v7 宏观子策略 baseline v2: 加 趋势过滤 (TF, 2026-07-13).
+
+    相对 v7_macro_baseline 改动 (单点修复, ROI 最高):
+    - trend_filter_enabled: True
+    - trend_filter_ma: 200 日 (沪深300)
+    - trend_filter_bear: 0.5 (熊市半仓)
+    - 防御资产: 中债10年期国债指数 (池内最稳)
+
+    TF 逻辑 (每个调仓日检查):
+        if 沪深300 < 200 日 MA:
+            w = w * 0.5
+            w['中债10年期国债指数'] += 0.5
+        else:
+            w 保持不变
+
+    预期性能 (OOS 2018-至今, 修复 v7_macro_baseline 缺 #1 root cause):
+        Ann 3.0-3.5%, Vol 5.5-6.5%, Sharpe 0.6-0.8
+        DD -5% ~ -7% (vs v1 -8.98%), Calmar 0.5-0.8 (vs v1 0.387)
+    OOS 2023-至今预估: Calmar 0.7-0.9 (vs v1 0.620)
+
+    用途: 探索版 baseline, 验证 TF 修复 ROI. 用户 2 选 1 (vs v7_macro_baseline).
+    注: v7_macro_baseline 锁定不动, 严格遵守 v7 baseline 锁定规则.
+    """
+    cfg = v7_macro_baseline()
+    cfg.trend_filter_enabled = True
+    cfg.trend_filter_benchmark = "沪深300指数"
+    cfg.trend_filter_ma = 200
+    cfg.trend_filter_bear = 0.5
+    cfg.trend_filter_defensive = "中债10年期国债指数"
+    return cfg

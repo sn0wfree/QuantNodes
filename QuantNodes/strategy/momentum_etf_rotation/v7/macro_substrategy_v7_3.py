@@ -70,6 +70,16 @@ class V7_3Config:
     commission_bp: float = 5.0
     slippage_bp: float = 5.0
 
+    # [Stage 4 v2 新增 2026-07-13] 趋势过滤 (Trend Filter)
+    # 当 benchmark 跌破 ma_window 日均线时, 缩放权重到 exposure_bear
+    # 剩余仓位配到 defensive_asset (默认中债10年期国债指数, 池内最稳)
+    # v7_macro_baseline 默认 False (不启用); v7_macro_baseline_v2_tf 启用
+    trend_filter_enabled: bool = False
+    trend_filter_benchmark: str = "沪深300指数"
+    trend_filter_ma: int = 200
+    trend_filter_bear: float = 0.5
+    trend_filter_defensive: str = "中债10年期国债指数"
+
 
 def symmetry_full_window(
     sample: pd.DataFrame,
@@ -90,6 +100,49 @@ def symmetry_full_window(
     S = U @ np.diag(D ** -0.5) @ U.T
     out = F.values @ S
     return pd.DataFrame(out, index=F.index, columns=F.columns)
+
+
+def apply_trend_filter(
+    w: pd.Series,
+    benchmark_price: pd.Series,
+    as_of: pd.Timestamp,
+    cfg: V7_3Config,
+) -> pd.Series:
+    """[Stage 4 v2 新增] 应用趋势过滤 (TF).
+
+    熊市 (benchmark < ma_window 日均线): 缩放现有权重到 cfg.trend_filter_bear
+                                         剩余 (1 - bear) 配到 defensive_asset
+    多头: 返回 w 不变
+
+    Args:
+        w: 当前 FRP 算出的权重 (index = INDEX_COLS)
+        benchmark_price: benchmark 日价格 (pd.Series)
+        as_of: 当前调仓日
+        cfg: V7_3Config 配置 (含 trend_filter_* 字段)
+
+    Returns:
+        应用 TF 后的新权重 Series.
+    """
+    if not cfg.trend_filter_enabled:
+        return w
+    s = benchmark_price.loc[:as_of].dropna()
+    if len(s) < cfg.trend_filter_ma:
+        return w  # 数据不足, 默认多头
+    ma = s.iloc[-cfg.trend_filter_ma:].mean()
+    if s.iloc[-1] >= ma:
+        return w  # 多头
+    # 熊市: 缩放 + 配防御资产
+    bear = cfg.trend_filter_bear
+    w_new = w * bear
+    defensive = cfg.trend_filter_defensive
+    if defensive in w_new.index:
+        w_new[defensive] = w_new.get(defensive, 0.0) + (1.0 - bear)
+    else:
+        # defensive 不在池子中, 用 w 中的债券指数代替
+        bond_fallback = "中债10年期国债指数"
+        if bond_fallback in w_new.index:
+            w_new[bond_fallback] = w_new.get(bond_fallback, 0.0) + (1.0 - bear)
+    return w_new
 
 
 class V7_3SubStrategy:
@@ -180,10 +233,28 @@ def run_v7_3_backtest(
     index_panel: pd.DataFrame,
     factor_panel: pd.DataFrame,
     cfg: V7_3Config | None = None,
+    benchmark_price: pd.Series | None = None,
 ) -> pd.Series:
-    """v7.3 v2 端到端回测 (忠实于 source)."""
+    """v7.3 v2 端到端回测 (忠实于 source).
+
+    Args:
+        index_panel: 13 指数日对数收益
+        factor_panel: 9 宏观因子周对数收益
+        cfg: V7_3Config 配置 (含 trend_filter_* 字段)
+        benchmark_price: [Stage 4 v2 新增] benchmark 日价格 (用于 TF).
+                          默认 None 表示不加载; 当 cfg.trend_filter_enabled=True 时
+                          必须传入 (推荐用 load_benchmark_price()).
+
+    Returns:
+        pd.Series 索引=业务日, 值=NAV (起点=1).
+    """
     if cfg is None:
         cfg = V7_3Config()
+
+    # [Stage 4 v2 新增] 加载 benchmark 价格 (TF 需要)
+    if cfg.trend_filter_enabled and benchmark_price is None:
+        from .data_loader import load_benchmark_price
+        benchmark_price = load_benchmark_price(cfg.trend_filter_benchmark)
 
     # Concat sample (source cell 61)
     idx_weekly = index_panel[list(cfg.index_pool)].resample("W").last().pct_change()
@@ -210,7 +281,11 @@ def run_v7_3_backtest(
     for d_i in rebal_dates:
         w = sub.select(sample, d_i)
         if w is not None:
-            weights_history[d_i] = pd.Series(w)
+            w_series = pd.Series(w)
+            # [Stage 4 v2 新增] 应用 TF
+            if cfg.trend_filter_enabled and benchmark_price is not None:
+                w_series = apply_trend_filter(w_series, benchmark_price, d_i, cfg)
+            weights_history[d_i] = w_series
 
     if not weights_history:
         raise ValueError("No valid weights generated")

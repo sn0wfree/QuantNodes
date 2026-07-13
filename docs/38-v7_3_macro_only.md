@@ -57,6 +57,57 @@
 
 ---
 
+## v7_macro_baseline_v2_tf (趋势过滤增强版, 2026-07-13)
+
+### 背景
+
+v7_macro_baseline (无 TF) OOS 2018-至今 Calmar 0.387, 跑不赢 v1.0 locked (0.913).
+根因分析 (5 个 root cause, 详见 §四):
+- #1 **无趋势过滤 (TF)**: v1.0 通过 TF 在 2018/2022 熊市减仓, 大幅降 DD
+- #2 无选股层
+- #3 调仓频率慢 3x
+- #4 因子频率不对等
+- #5 因子层 RP 设计目标非 alpha 最大化
+
+**最高 ROI 修复: 加趋势过滤 (TF) 单点改动**, 预期 DD -3-5pp, Calmar +30-100%.
+
+### 新配置
+
+| 参数 | 值 | 来源 |
+|------|---:|------|
+| 基础配置 | 同 v7_macro_baseline | 继承 (不修改原 baseline) |
+| `trend_filter_enabled` | True | 新增 |
+| `trend_filter_ma` | 200 日 | v1.0 默认 (沪深300 200 日 MA) |
+| `trend_filter_bear` | 0.5 | v1.0 默认 (熊市半仓) |
+| 防御资产 | `中债10年期国债指数` (池内最稳) | 新增 |
+| 基准 | 沪深300 (与 v1.0 一致) | 复用 |
+
+### TF 信号逻辑 (v2 新增)
+
+```python
+if 沪深300 价格 < 200 日 MA:
+    # 熊市
+    w = w * 0.5
+    w['中债10年期国债指数'] += 0.5
+else:
+    # 多头
+    w 保持不变
+```
+
+### Migration Note (2026-07-13)
+
+- **`v7_macro_baseline` (无 TF) 保持锁定**: OOS 2023-至今 Calmar 0.620, 零修改
+- **`v7_macro_baseline_v2_tf` (有 TF) 新增**: OOS 2023-至今 Calmar 预估 0.7-0.9
+- **用户 2 选 1**: production 部署可任选
+- **未来 v7.x 改动**: 任何 baseline 改动需先跑对照 (见 v7_macro_baseline 锁定规则)
+
+### 锁定测试 (待补)
+
+- `tests/strategy/momentum_etf_rotation/v7/test_v7_macro_baseline_v2_tf.py` (新增)
+  - 6 个测试: 配置冻结, 2018 DD 修复, 2022 DD 修复, 可复现, 牛市无影响, OOS 2023 Calmar 提升
+
+---
+
 ---
 
 ## 一、决策与版本对照

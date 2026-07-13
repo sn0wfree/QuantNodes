@@ -189,6 +189,44 @@ def load_index_prices(start: str = "2008-01-01") -> pd.DataFrame:
     return sub
 
 
+def load_benchmark_price(benchmark: str = "沪深300指数") -> pd.Series:
+    """加载 benchmark 指数日价格 (用于 v7 trend filter 信号, 默认沪深300).
+
+    [Stage 4 v2 新增 2026-07-13]
+    v7_macro_baseline_v2_tf 在每个调仓日检查 benchmark 价格 < 200 日 MA,
+    触发则减仓到 50% + 50% 中债10年.
+
+    Returns:
+        pd.Series 索引=业务日, 值=benchmark 日价格.
+    """
+    cache = HF_DIR / f"v9_benchmark_{benchmark.replace('指数','')}.parquet"
+    if cache.exists():
+        return pd.read_parquet(cache).squeeze("columns")
+
+    if not INDEX_FILE.exists():
+        raise FileNotFoundError(f"Index file not found: {INDEX_FILE}")
+    wb = openpyxl.load_workbook(INDEX_FILE, data_only=True, read_only=True)
+    ws = wb["主要指数"]
+    rows = list(ws.iter_rows(values_only=True))
+    header = rows[1]
+    data = rows[8:]
+    df = pd.DataFrame(data, columns=[str(c) if c else f"col_{i}"
+                                      for i, c in enumerate(header)])
+    df["指标名称"] = pd.to_datetime(df["指标名称"], errors="coerce")
+    df = df.set_index("指标名称").sort_index()
+    df.index.name = "dt"
+
+    if benchmark not in df.columns:
+        raise ValueError(f"benchmark {benchmark!r} not in 主要指数 sheet")
+
+    s = df[benchmark].apply(pd.to_numeric, errors="coerce")
+    bday_idx = pd.bdate_range(start=s.dropna().index[0], end=s.index[-1])
+    s = s.reindex(bday_idx).bfill()
+    s.name = benchmark
+    s.to_frame().to_parquet(cache)
+    return s
+
+
 # 兼容 v7.3 v1 接口, 标记 deprecation
 def load_etf_panel(*args, **kwargs):
     raise NotImplementedError(
