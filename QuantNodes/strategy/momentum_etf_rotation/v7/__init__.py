@@ -9,6 +9,7 @@
     v7_macro_baseline_v2_tf (趋势过滤)
     v7_macro_baseline_v3_momentum (动量叠加)
     v7_macro_baseline_v4_expanded (扩大资产池)
+    v7_macro_baseline_v5_stop_loss (硬止损)
     RollingSymmetry
     BootstrapLassoMapping
     FactorRiskParityOptimizer
@@ -48,6 +49,7 @@ __all__ = [
     "v7_macro_baseline_v2_tf",
     "v7_macro_baseline_v3_momentum",
     "v7_macro_baseline_v4_expanded",
+    "v7_macro_baseline_v5_stop_loss",
     "RollingSymmetry",
     "BootstrapLassoMapping",
     "FactorRiskParityOptimizer",
@@ -172,3 +174,60 @@ def v7_macro_baseline_v4_expanded(**overrides) -> V7_4Config:
         slippage_bp=base.slippage_bp,
         **overrides,
     )
+
+
+def v7_macro_baseline_v5_stop_loss(**overrides) -> V7_4Config:
+    """v7 宏观子策略 v5.0: 硬止损 (Stop Loss, 2026-07-13).
+
+    相对 v7+v4 expanded 改动 (单点修复, 风控基础):
+    - stop_loss_enabled: True
+    - stop_loss_threshold: -0.10 (10% DD 触发)
+    - stop_loss_bond_alloc: 1.0 (止损后 100% 债券)
+    - 触发后: equity 仓位清零, 释放权重分配给债券 (flight to safety)
+
+    设计动机 (用户深度讨论 2026-07-13):
+    "金融预测存在极限, 这条止损线是所有逻辑假设失效时的最后实盘生存保障"
+    — 简单有效, 不依赖任何宏观/市场信号, 防止系统性风险
+
+    与传统风控区别:
+    - 不基于 VaR / ES (不依赖分布假设)
+    - 不基于宏观象限 (不依赖预测)
+    - 纯粹 NAV-based 硬线, 触发后 100% 债券
+
+    预期效果 (OOS 2022-2026):
+    - DD: -11.6% → ~-12% (止损会限制部分反弹, 但截断大幅下跌)
+    - Calmar: 0.499 → ~0.55+ (改善风险调整)
+    - 适用场景: 系统性大跌 (如 2022/2024 熊市)
+
+    用途: 在 v4 expanded 基础上增加硬止损, 防止极端行情.
+    """
+    base = v7_macro_baseline_v4_expanded()
+    cfg = V7_4Config(
+        asset_pool=base.asset_pool,
+        equity_cols=base.equity_cols,
+        commodity_cols=base.commodity_cols,
+        bond_cols=base.bond_cols,
+        # 继承 v4 expanded TF
+        trend_filter_enabled=base.trend_filter_enabled,
+        trend_filter_benchmark=base.trend_filter_benchmark,
+        trend_filter_ma=base.trend_filter_ma,
+        trend_filter_bear=base.trend_filter_bear,
+        # 继承 baseline 设置
+        bootstrap_times=base.bootstrap_times,
+        bootstrap_resample_min=base.bootstrap_resample_min,
+        bootstrap_resample_max=base.bootstrap_resample_max,
+        bootstrap_random_state=base.bootstrap_random_state,
+        bootstrap_cache_alpha=base.bootstrap_cache_alpha,
+        quarter_window=base.quarter_window,
+        max_weight=base.max_weight,
+        sum_lower=base.sum_lower,
+        sum_upper=base.sum_upper,
+        commission_bp=base.commission_bp,
+        slippage_bp=base.slippage_bp,
+        # [v5 硬止损] 开启止损
+        stop_loss_enabled=True,
+        stop_loss_threshold=-0.10,
+        stop_loss_bond_alloc=1.0,
+        **overrides,
+    )
+    return cfg

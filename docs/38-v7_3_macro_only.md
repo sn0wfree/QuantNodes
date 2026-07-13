@@ -557,3 +557,168 @@ QuantNodes/strategy/momentum_etf_rotation/v7/
 tests/.../v7/
 └── test_v7_macro_baseline_v4_expanded.py  [新建] 13 tests
 ```
+
+---
+
+## 十、v7_macro_baseline_v5 — 硬止损 + 连续TF + 时变LASSO (2026-07-13)
+
+### 10.1 设计动机 (用户深度讨论 2026-07-13)
+
+v4+TF 已达到 OOS Ann 10.64% / Calmar 0.879, 但用户指出根本性缺陷:
+
+> "宏观象限→资产映射" 范式有结构性缺陷:
+> 1. 忽视非宏观因素 (估值/动量/拥挤度)
+> 2. 月末/季度调仓存在信息滞后
+> 3. 依赖回测而非预测
+> 4. 静态映射无法捕捉宏观-资产关系变化
+> 5. 二值信号 (MA200 bull/bear) 损失信息
+
+用户提出 **5+1 改进建议**, 经讨论后我们聚焦以下 3 个可立即落地的高 ROI 改动:
+
+| # | 建议 | 落地 | 优先级 |
+|---|------|------|--------|
+| 1 | 硬止损 (8-12% DD) | ✅ Step 1 | P0 |
+| 2 | 连续TF替代二值MA200 | ✅ Step 2 | P1 |
+| 3 | 时变LASSO (滚动窗口) | ✅ Step 3 | P2 |
+| 4 | 微观因子 (估值/动量/vol) | ⏳ 用动量/vol作为proxy | P3 |
+| 5 | 在线预测误差监控 | ⏳ 暂缓 (复杂度高) | P3 |
+| 6 | 事件驱动调仓 | ⏳ 暂缓 (回测时间×10) | P3 |
+| 7 | 分层贝叶斯 | ⏳ 暂缓 (过度设计) | P4 |
+
+### 10.2 Step 1: 硬止损 (Stop Loss)
+
+**设计**: 在每个调仓日, 检查当前 NAV 相对历史峰值的回撤. 若回撤 ≥ 10%, 强制将权益类资产仓位清零, 全仓债券 (flight to safety).
+
+**新增配置** (V7_3Config):
+```python
+stop_loss_enabled: bool = False
+stop_loss_threshold: float = -0.10   # 10% DD 触发
+stop_loss_bond_alloc: float = 1.0    # 止损后 100% 债券
+```
+
+**核心逻辑** (`run_v7_3_backtest`):
+```python
+if cfg.stop_loss_enabled and nav_history:
+    peak = max(nav_history)
+    dd = current_nav / peak - 1
+    if dd < cfg.stop_loss_threshold:
+        # 强制 100% 债券 (按原 bond 权重比例分配)
+        w = {col: bond_alloc if col in bond_cols else 0.0
+             for col in cfg.index_pool}
+```
+
+**为何 10% 而非 8%?**
+- 8% 太紧, 易被短期波动触发, 增加无效调仓
+- 10-12% 是行业经验阈值, 既能截断系统性下跌, 又避免噪声触发
+- 用户讨论确认: "可以更宽松"
+
+**预期效果**:
+- 在 OOS 2022 (沪深300 DD -22%) 等大跌年份, 止损可将组合 DD 截断到 ~12-13%
+- Calmar 改善: 0.879 → ~1.0+
+
+### 10.3 Step 2: 连续 TF Score (替代二值 MA200)
+
+**问题**: 当前 `apply_trend_filter` 仅有两种状态:
+- 多头: MA200 之上 → 原权重不变
+- 熊市: MA200 之下 → equity × 0.5, 释放给债券
+
+这种**二值**信号存在两大缺陷:
+1. 信息损失: 距 MA200 5% 和 距 MA200 20% 都触发同样减仓
+2. 滞后: MA200 是 200 日均线, 信号反应慢
+
+**改进**: 构造连续 trend score ∈ [-1, +1]:
+
+```
+trend_score = 0.5 × MA200距离_score
+            + 0.3 × 60日动量_score
+            + 0.2 × 波动率比率_score
+```
+
+| 因子 | 计算 | 归一化 |
+|------|------|--------|
+| MA200 距离 | (price - MA200) / MA200 | × 5, clip [-1, 1] |
+| 60日动量 | price/price[60] - 1 | × 5, clip [-1, 1] |
+| 波动率比率 | -1 × (vol_20d / vol_60d - 1) | × 2, clip [-1, 1] |
+
+**仓位调整**:
+```python
+if score < -0.3: equity_scale = 0.3   # 强熊市
+elif score > 0.3: equity_scale = 1.2  # 强牛市
+else: 线性插值 0.3 → 1.2
+```
+
+**关键改进点**:
+1. **连续信号** 保留全部信息, 不再二值化
+2. **多因子合成** 解决 "只靠 MA200 反应慢" 问题
+3. **线性插值** 介于 bear/bull 之间时平滑过渡
+4. **可超配** (1.2) 牛市时加大权益敞口
+
+### 10.4 Step 3: 时变 LASSO (滚动窗口)
+
+**问题**: 当前 LASSO 用 expanding window (从回测起点到当前), 系数 β 实际是**全样本平均**, 缺乏时变性. 若宏观-资产关系发生结构性变化 (如 2020 疫情后), β 无法及时响应.
+
+**改进**: 用滚动窗口 (156 周 = 3 年) 替代 expanding window. β 仅反映最近 3 年的关系.
+
+**新增配置** (V7_5Config):
+```python
+lasso_rolling_window: int | None = None  # None=expanding (兼容), 156=3年滚动
+```
+
+**权衡**:
+- 优点: 捕捉时变关系, 避免静态映射
+- 代价: 估计稳定性降低 (样本量减少), 可能放大噪声
+- 风险: 需验证 OOS 是否稳定优于 expanding
+
+### 10.5 实施计划 (分步验证)
+
+| Step | 内容 | 验证 | 预期 ROI |
+|------|------|------|---------|
+| 1 | 硬止损 | 单测 + e2e | ⭐⭐⭐⭐⭐ |
+| 2 | 连续TF | 单测 + e2e | ⭐⭐⭐⭐ |
+| 3 | 时变LASSO | 单测 + e2e | ⭐⭐⭐ |
+
+每步完成立即跑测试 + git commit, 不累积.
+
+### 10.6 回测结果 (待实施后填入)
+
+| 版本 | Ann | Vol | DD | Calmar | Sharpe | vs v4+TF |
+|------|----:|----:|---:|-------:|-------:|---------:|
+| v4+TF (baseline) | 10.64% | 12.71% | -12.11% | 0.879 | 0.860 | — |
+| v5 + stop loss (Step 1) | TBD | TBD | TBD | TBD | TBD | TBD |
+| v5 + continuous TF (Step 2) | TBD | TBD | TBD | TBD | TBD | TBD |
+| v5 + rolling LASSO (Step 3) | TBD | TBD | TBD | TBD | TBD | TBD |
+| v5 全开 (Step 1+2+3) | TBD | TBD | TBD | TBD | TBD | TBD |
+
+#### 10.6.1 Step 1 实测结果 (硬止损 10%)
+
+**OOS 2022-2026 (用户原话"22年到现在", 2022年是下跌市)**:
+
+| 版本 | Ann | Vol | DD | Calmar | 改善 |
+|------|----:|----:|---:|-------:|-----:|
+| v4+TF (56 assets) | 5.79% | 11.00% | -11.60% | 0.499 | — |
+| v5+stop_loss (56) | **6.92%** | 10.32% | -11.60% | **0.597** | ⬆️ +20% |
+
+**结论**: 在 2022~2026 的下跌/震荡市中, 硬止损改善了 **Ann (+1.13%)** 和 **Calmar (+0.098)**, DD 维持不变.
+
+**OOS 2018-2026 (全期, 包含 2018 急跌)**:
+
+| 版本 | Ann | Vol | DD | Calmar |
+|------|----:|----:|---:|-------:|
+| v4+TF (56 assets) | 6.41% | 10.85% | -13.47% | 0.476 |
+| v5+stop_loss (56) | 4.12% | 9.27% | -15.84% | 0.260 |
+
+**结论**: 全期数据上止损**反拖累了** Ann (-2.29%) 和 Calmar (-0.216). 原因: 2018 急跌时止损触发, 但 2019 反弹时权益仓位被压制, 错过 main 反弹. 这是硬止损的典型 trade-off.
+
+**决策**: 保留硬止损作为**可选项** (`stop_loss_enabled`), 让用户根据风险偏好选择. 在下跌/震荡市 (OOS 2022+) 显著改善, 在 V 型反转市 (2018→2019) 有机会成本.
+
+### 10.7 文件结构 (v5 新增/修改)
+
+```
+QuantNodes/strategy/momentum_etf_rotation/v7/
+├── macro_substrategy_v7_3.py     [修改] +stop_loss_* + V7_5Config + compute_trend_score
+├── bootstrap_lasso.py            [修改] 支持 rolling window
+└── __init__.py                   [修改] +v7_macro_baseline_v5_stop_loss +v7_macro_baseline_v5_tf_score +v7_macro_baseline_v5_rolling
+
+tests/.../v7/
+└── test_v7_macro_baseline_v5_regime.py  [新建] ~20 tests
+```

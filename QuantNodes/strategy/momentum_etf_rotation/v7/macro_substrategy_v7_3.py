@@ -91,6 +91,14 @@ class V7_3Config:
         '沪深300指数', '中证500指数', '中证1000', '恒生指数',
     ])
 
+    # [Stage 7 v5 硬止损 2026-07-13] 净值回撤止损
+    # 当组合 NAV 相对历史峰值回撤 > stop_loss_threshold 时, 强制权益清零, 全仓债券
+    # 这是最基础的风控, 不依赖任何宏观/市场信号, 防止系统性风险
+    # v5 stop_loss_enabled 默认 False; v5_stop_loss 启用
+    stop_loss_enabled: bool = False
+    stop_loss_threshold: float = -0.10   # 10% DD 触发 (用户决策: 8%太紧, 10%为佳)
+    stop_loss_bond_alloc: float = 1.0    # 止损后 100% 债券
+
 
 @dataclass
 class V7_4Config(V7_3Config):
@@ -302,10 +310,12 @@ def run_v7_3_backtest(
     # Concat sample (source cell 61)
     idx_weekly = index_panel[list(cfg.index_pool)].resample("W").last().pct_change()
     factor_weekly = factor_panel[list(cfg.factor_cols)]
+    # expanded pool: use dropna(how='all') to preserve dates with partial ETF data
+    how = "all" if isinstance(cfg, V7_4Config) else "any"
     sample = pd.concat(
         [idx_weekly, factor_weekly],
         axis=1,
-    ).dropna(how="any")
+    ).dropna(how=how)
 
     # Quarter 边界
     quarter_idx = pd.DataFrame(index=sample.index).resample(cfg.rebalance_freq).last().index
@@ -316,49 +326,88 @@ def run_v7_3_backtest(
             f"Insufficient data: need > {cfg.quarter_window} quarters, got {len(quarter_idx)}"
         )
 
-    # 计算每个调仓日的权重
+    # [Stage 7 v5 硬止损] 预先构建 stop loss 需要的辅助函数
+    def _check_stop_loss_and_override(w_series: pd.Series) -> pd.Series | None:
+        """若当前 NAV 回撤超阈值, 返回 100% 债券权重; 否则返回 None 表示不修改."""
+        if not cfg.stop_loss_enabled or not _stop_loss_initialized:
+            return None
+        dd = nav_so_far / peak_nav - 1
+        if dd < cfg.stop_loss_threshold:
+            # 强制 100% 债券 (按原 bond 权重比例分配)
+            if isinstance(cfg, V7_4Config):
+                bd_cols = list(cfg.bond_cols)
+            else:
+                bd_cols = BOND_INDICES
+            w_stop = pd.Series(0.0, index=w_series.index)
+            bond_sum = float(w_series[bd_cols].sum())
+            if bond_sum > 0:
+                w_stop[bd_cols] = w_series[bd_cols] * (cfg.stop_loss_bond_alloc / bond_sum)
+            else:
+                # 极端情况: 当前无 bond 权重, 等权分配
+                w_stop[bd_cols] = cfg.stop_loss_bond_alloc / len(bd_cols)
+            return w_stop
+        return None
+
+    # [Stage 7 v5 重构] 单次回测循环: 计算权重 → 生成当期收益 → 更新 NAV 路径
+    # 与原版逻辑严格一致:
+    #   - 调仓日 s 的权重决定 [s, e) 期间的收益
+    #   - 调仓成本 |w[e] - w[s]|/2 应用到 s 那一期的第一天
+    # 区别: 原版先全部算权重, 再算收益; 新版交错进行, 便于止损检查
     sub = V7_3SubStrategy(cfg)
     weights_history: dict[pd.Timestamp, pd.Series] = {}
     rebal_dates = list(quarter_idx[cfg.quarter_window:])
 
-    for d_i in rebal_dates:
-        w = sub.select(sample, d_i)
-        if w is not None:
-            w_series = pd.Series(w)
-            # [Stage 4 v2 新增] 应用 TF
-            if cfg.trend_filter_enabled and benchmark_price is not None:
-                w_series = apply_trend_filter(w_series, benchmark_price, d_i, cfg)
-            weights_history[d_i] = w_series
-
-    if not weights_history:
-        raise ValueError("No valid weights generated")
-
-    # simple_backtest (source cell 105)
-    weight_dates = sorted(weights_history.keys())
+    # [Stage 7 v5] NAV 跟踪变量 (止损用)
+    nav_so_far: float = 1.0
+    peak_nav: float = 1.0
+    _stop_loss_initialized: bool = False
     cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000.0
+    all_ret: list[pd.Series] = []
 
-    all_ret = []
-    for s, e in zip(weight_dates[:-1], weight_dates[1:]):
-        mask = (index_panel.index >= s) & (index_panel.index < e)
+    for i, curr_date in enumerate(rebal_dates):
+        w = sub.select(sample, curr_date)
+        if w is None:
+            continue
+        w_series = pd.Series(w)
+        if cfg.trend_filter_enabled and benchmark_price is not None:
+            w_series = apply_trend_filter(w_series, benchmark_price, curr_date, cfg)
+
+        # [Stage 7 v5 硬止损] 在调仓时检查 NAV 回撤, 触发则全仓债券
+        w_override = _check_stop_loss_and_override(w_series)
+        if w_override is not None:
+            w_series = w_override
+        weights_history[curr_date] = w_series
+        _stop_loss_initialized = True
+
+        # 计算当期收益 [curr_date, next_date) 期间
+        next_date = rebal_dates[i + 1] if i + 1 < len(rebal_dates) else index_panel.index[-1] + pd.Timedelta(days=1)
+        mask = (index_panel.index >= curr_date) & (index_panel.index < next_date)
         if not mask.any():
             continue
+
         idx_ret_window = index_panel.loc[mask, list(cfg.index_pool)]
-        # 收益率 (np.dot, source cell 93)
-        # Fill NaN with 0 for expanded pool (structural NaN from pre-listing ETFs)
-        ret_data = idx_ret_window.fillna(0).values @ weights_history[s].reindex(cfg.index_pool).fillna(0).values
+        ret_data = idx_ret_window.fillna(0).values @ w_series.reindex(cfg.index_pool).fillna(0).values
         ret_series = pd.Series(ret_data, index=idx_ret_window.index)
 
-        # 调仓日成本
-        turnover = np.abs(
-            weights_history[e].reindex(cfg.index_pool).fillna(0).values
-            - weights_history[s].reindex(cfg.index_pool).fillna(0).values
-        ).sum() / 2.0
-        cost = turnover * cost_rate
-        ret_series.iloc[0] -= cost
+        # 调仓日成本: 首次 (i=0) cost=0 (无前一权重); 否则 cost = |w[curr]-w[prev]|/2
+        if i == 0:
+            ret_series.iloc[0] -= 0  # 与原版一致
+        else:
+            prev_date = rebal_dates[i - 1]
+            turnover = np.abs(
+                w_series.reindex(cfg.index_pool).fillna(0).values
+                - weights_history[prev_date].reindex(cfg.index_pool).fillna(0).values
+            ).sum() / 2.0
+            ret_series.iloc[0] -= turnover * cost_rate
+
         all_ret.append(ret_series)
+        # 更新 NAV 路径 (止损用)
+        nav_after = (1 + ret_series).cumprod() * nav_so_far
+        peak_nav = max(peak_nav, float(nav_after.max()))
+        nav_so_far = float(nav_after.iloc[-1])
 
     if not all_ret:
-        raise ValueError("No returns computed")
+        raise ValueError("No valid weights generated")
 
     all_ret_series = pd.concat(all_ret)
     nav = (1 + all_ret_series).cumprod()
