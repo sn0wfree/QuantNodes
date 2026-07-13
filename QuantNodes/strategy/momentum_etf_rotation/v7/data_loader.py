@@ -95,6 +95,11 @@ def load_factor_returns() -> pd.DataFrame:
 def load_index_panel(start: str = "2008-01-01") -> pd.DataFrame:
     """加载 13 INDICES 日对数收益, 索引=日日期.
 
+    [关键修复 2026-07-11]
+    原始 Excel 数据有 142 个 NaN 缺口 (跨节假日 / 周末), 直接 dropna 会丢掉
+    跨缺口的真实价格变化, 导致 (1+r).cumprod() 与 log(end/start) 不一致.
+    修复: 先 resample 业务日 + bfill, 让 log returns 跨缺口的累积正确.
+
     Returns:
         DataFrame (T, 13) 含 INDEX_COLS 13 个指数日对数收益.
     """
@@ -117,6 +122,9 @@ def load_index_panel(start: str = "2008-01-01") -> pd.DataFrame:
     df.index.name = "dt"
 
     sub = df[INDEX_COLS].apply(pd.to_numeric, errors="coerce")
+    # 关键修复: 业务日重采样 + bfill, 解决跨假日的 NaN 缺口
+    bday_idx = pd.bdate_range(start=sub.dropna().index[0], end=sub.index[-1])
+    sub = sub.reindex(bday_idx).bfill()
     # 对数收益
     rets = np.log(sub / sub.shift(1)).dropna(how="all")
     rets = rets.loc[start:]
