@@ -112,6 +112,52 @@ class V7_4Config(V7_3Config):
     bond_cols: tuple[str, ...] = tuple(EXPANDED_BOND_INDICES)   # 5 bond indices
 
 
+@dataclass
+class V7_5Config(V7_4Config):
+    """v7.5 连续 TF Score + 时变 LASSO 配置 (2026-07-13).
+
+    相对 v7.4 改动:
+    - 连续 TF Score: 替代二值 MA200 (trend_filter_*), 用 trend_score_* 系列参数
+    - 时变 LASSO: 滚动窗口替代 expanding 窗口 (lasso_rolling_window)
+
+    [TF Score 设计] (用户深度讨论 2026-07-13)
+    二值 MA200 缺陷:
+    - 信息损失: 距 MA200 5% 和 20% 触发同样减仓
+    - 滞后: 200 日均线反应慢
+    - 忽视非宏观信号: 没有动量/vol 维度
+
+    连续 Score 公式:
+        score = w_ma × MA200距离_score
+              + w_mom × 60日动量_score
+              + w_vol × 波动率比率_score
+
+    仓位调整 (线性插值):
+        if score < bear_threshold: equity_scale = bear_equity_alloc (0.3)
+        elif score > bull_threshold: equity_scale = bull_equity_alloc (1.2)
+        else: 线性插值 bear_equity_alloc → bull_equity_alloc
+    """
+    # TF Score 开关 (与 trend_filter_enabled 互斥)
+    tf_score_enabled: bool = False
+
+    # TF Score 权重 (用户决策: ma200:0.5, momentum:0.3, vol:0.2)
+    tf_score_weights: dict = field(default_factory=lambda: {
+        "ma200": 0.5,
+        "momentum_60d": 0.3,
+        "vol_ratio": 0.2,
+    })
+
+    # TF Score 阈值
+    tf_score_bear_threshold: float = -0.3   # 低于此 → 强熊市
+    tf_score_bull_threshold: float = 0.3    # 高于此 → 强牛市
+
+    # 仓位缩放因子
+    tf_score_bear_equity_alloc: float = 0.3  # 强熊市: 30% 权益
+    tf_score_bull_equity_alloc: float = 1.2  # 强牛市: 120% 权益 (杠杆效果, 受 max_weight 约束)
+
+    # [Stage 7 v5 Step 3] 时变 LASSO: 滚动窗口 (None=expanding 兼容, 156=3年滚动)
+    lasso_rolling_window: int | None = None
+
+
 def symmetry_full_window(
     sample: pd.DataFrame,
     factor_cols: Sequence[str],
@@ -187,6 +233,130 @@ def apply_trend_filter(
     bond_sum = float(w_new[bond_mask].sum())
     if bond_sum > 0:
         w_new[bond_mask] = w_new[bond_mask] + freed_weight * (w_new[bond_mask] / bond_sum)
+
+    return w_new
+
+
+def compute_trend_score(
+    benchmark_price: pd.Series,
+    as_of: pd.Timestamp,
+    cfg: V7_5Config,
+) -> float:
+    """[Stage 7 v5 连续 TF] 计算连续 trend score ∈ [-1, +1].
+
+    组成:
+    1. MA200 距离: (price - MA200) / MA200, × 5, clip [-1, 1]
+    2. 60日动量: price/price[60] - 1, × 5, clip [-1, 1]
+    3. 波动率比率: -1 × (vol_20d / vol_60d - 1), × 2, clip [-1, 1] (高 vol = 恐慌 → -1)
+
+    加权合成:
+        score = w_ma × ma200_score + w_mom × mom_score + w_vol × vol_score
+        score = clip(score, -1, 1)
+
+    Returns:
+        float in [-1, +1], 正=牛市, 负=熊市, 0=中性.
+    """
+    s = benchmark_price.loc[:as_of].dropna()
+    if len(s) < 200:
+        return 0.0  # 数据不足, 中性
+
+    # 1. MA200 距离
+    ma200 = s.iloc[-200:].mean()
+    ma200_dist = (s.iloc[-1] - ma200) / ma200
+    ma200_score = float(np.clip(ma200_dist * 5, -1, 1))
+
+    # 2. 60日动量
+    if len(s) >= 60:
+        mom_60 = (s.iloc[-1] / s.iloc[-60]) - 1
+        mom_score = float(np.clip(mom_60 * 5, -1, 1))
+    else:
+        mom_score = 0.0
+
+    # 3. 波动率比率
+    rets = np.log(s / s.shift(1)).dropna()
+    if len(rets) >= 60:
+        vol_current = rets.iloc[-20:].std()
+        vol_history = rets.iloc[-60:].std()
+        vol_ratio = float(vol_current / vol_history) if vol_history > 0 else 1.0
+        vol_score = float(np.clip(-(vol_ratio - 1) * 2, -1, 1))
+    else:
+        vol_score = 0.0
+
+    # 加权合成
+    w = cfg.tf_score_weights
+    score = (
+        w.get("ma200", 0.5) * ma200_score
+        + w.get("momentum_60d", 0.3) * mom_score
+        + w.get("vol_ratio", 0.2) * vol_score
+    )
+    return float(np.clip(score, -1, 1))
+
+
+def apply_trend_score_filter(
+    w: pd.Series,
+    benchmark_price: pd.Series,
+    as_of: pd.Timestamp,
+    cfg: V7_5Config,
+) -> pd.Series:
+    """[Stage 7 v5] 应用连续 trend score 调整权重.
+
+    仓位调整逻辑 (线性插值):
+        if score < bear_threshold: equity_scale = bear_equity_alloc
+        elif score > bull_threshold: equity_scale = bull_equity_alloc
+        else: 线性插值 [bear_threshold, bear_alloc] → [bull_threshold, bull_alloc]
+
+    equity 减仓释放的权重按比例分配给债券 (flight to safety).
+    equity 加仓超过 1.0 的部分 (杠杆) 需要 max_weight 约束 (FRP 已经处理).
+    """
+    if not cfg.tf_score_enabled:
+        return w
+
+    score = compute_trend_score(benchmark_price, as_of, cfg)
+
+    # 确定权益缩放因子
+    if score < cfg.tf_score_bear_threshold:
+        equity_scale = cfg.tf_score_bear_equity_alloc
+    elif score > cfg.tf_score_bull_threshold:
+        equity_scale = cfg.tf_score_bull_equity_alloc
+    else:
+        # 线性插值
+        t = (score - cfg.tf_score_bear_threshold) / (
+            cfg.tf_score_bull_threshold - cfg.tf_score_bear_threshold
+        )
+        equity_scale = (
+            cfg.tf_score_bear_equity_alloc
+            + t * (cfg.tf_score_bull_equity_alloc - cfg.tf_score_bear_equity_alloc)
+        )
+
+    # 支持 expanded pool (V7_5Config/V7_4Config) 和 index pool (V7_3Config)
+    if isinstance(cfg, V7_4Config):
+        eq_cols = list(cfg.equity_cols)
+        bd_cols = list(cfg.bond_cols)
+    else:
+        eq_cols = list(cfg.equity_indices)
+        bd_cols = BOND_INDICES
+
+    equity_mask = w.index.isin(eq_cols)
+    bond_mask = w.index.isin(bd_cols)
+
+    w_new = w.copy()
+
+    if equity_scale <= 1.0:
+        # 减仓: 释放的权益权重 → 债券按比例
+        freed = float((w[equity_mask] * (1.0 - equity_scale)).sum())
+        w_new[equity_mask] = w_new[equity_mask] * equity_scale
+        bond_sum = float(w_new[bond_mask].sum())
+        if bond_sum > 0:
+            w_new[bond_mask] = w_new[bond_mask] + freed * (w_new[bond_mask] / bond_sum)
+    else:
+        # 加仓: 从债券/商品调权重到权益 (按比例)
+        added = float((w[equity_mask] * (equity_scale - 1.0)).sum())
+        w_new[equity_mask] = w_new[equity_mask] * equity_scale
+        # 释放其他资产 (优先债券)
+        non_eq_mask = ~equity_mask
+        non_eq_sum = float(w_new[non_eq_mask].sum())
+        if non_eq_sum > 0:
+            w_new[non_eq_mask] = w_new[non_eq_mask] - added * (w_new[non_eq_mask] / non_eq_sum)
 
     return w_new
 
@@ -371,6 +541,9 @@ def run_v7_3_backtest(
         w_series = pd.Series(w)
         if cfg.trend_filter_enabled and benchmark_price is not None:
             w_series = apply_trend_filter(w_series, benchmark_price, curr_date, cfg)
+        # [Stage 7 v5 Step 2] 连续 TF Score (与二值 MA200 互斥)
+        elif getattr(cfg, "tf_score_enabled", False) and benchmark_price is not None:
+            w_series = apply_trend_score_filter(w_series, benchmark_price, curr_date, cfg)
 
         # [Stage 7 v5 硬止损] 在调仓时检查 NAV 回撤, 触发则全仓债券
         w_override = _check_stop_loss_and_override(w_series)
@@ -423,4 +596,14 @@ def run_v7_3_backtest(
     return nav
 
 
-__all__ = ["V7_3Config", "V7_3SubStrategy", "run_v7_3_backtest", "symmetry_full_window"]
+__all__ = [
+    "V7_3Config",
+    "V7_4Config",
+    "V7_5Config",
+    "V7_3SubStrategy",
+    "run_v7_3_backtest",
+    "apply_trend_filter",
+    "apply_trend_score_filter",
+    "compute_trend_score",
+    "symmetry_full_window",
+]

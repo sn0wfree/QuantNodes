@@ -25,11 +25,15 @@ import pytest
 from QuantNodes.strategy.momentum_etf_rotation.v7 import (
     V7_3Config,
     V7_4Config,
+    V7_5Config,
     v7_macro_baseline,
     v7_macro_baseline_v2_tf,
     v7_macro_baseline_v4_expanded,
     v7_macro_baseline_v5_stop_loss,
+    v7_macro_baseline_v5_tf_score,
     apply_trend_filter,
+    apply_trend_score_filter,
+    compute_trend_score,
     run_v7_3_backtest,
     load_factor_returns,
     load_expanded_panel,
@@ -193,3 +197,203 @@ class TestV5StopLossBacktest:
         print("\n=== v4 vs v5 OOS 2022-2026 ===")
         print(f"v4: Ann={m4['Ann']:.2%}, Vol={m4['Vol']:.2%}, DD={m4['DD']:.2%}, Calmar={m4['Calmar']:.3f}")
         print(f"v5: Ann={m5['Ann']:.2%}, Vol={m5['Vol']:.2%}, DD={m5['DD']:.2%}, Calmar={m5['Calmar']:.3f}")
+
+
+# ============================================================================
+# Step 2 - 连续 TF Score
+# ============================================================================
+class TestV5TFScoreConfig:
+    """TF Score 配置冻结测试."""
+
+    def test_v5_config_default(self) -> None:
+        """V7_5Config 默认 tf_score 字段存在且合理."""
+        cfg = V7_5Config()
+        assert cfg.tf_score_enabled is False
+        assert cfg.tf_score_weights == {"ma200": 0.5, "momentum_60d": 0.3, "vol_ratio": 0.2}
+        assert cfg.tf_score_bear_threshold == -0.3
+        assert cfg.tf_score_bull_threshold == 0.3
+        assert cfg.tf_score_bear_equity_alloc == 0.3
+        assert cfg.tf_score_bull_equity_alloc == 1.2
+        # 继承 v4 expanded
+        assert cfg.asset_pool == "expanded"
+        assert len(cfg.index_pool) == 56
+
+    def test_v5_tf_score_factory(self) -> None:
+        """v7_macro_baseline_v5_tf_score() 工厂配置正确."""
+        cfg = v7_macro_baseline_v5_tf_score()
+        assert cfg.tf_score_enabled is True
+        assert cfg.trend_filter_enabled is False  # 关闭二值
+        assert cfg.asset_pool == "expanded"
+        assert len(cfg.index_pool) == 56
+
+    def test_v5_tf_score_inherits_v4(self) -> None:
+        """v5.tf_score 应继承 v4 expanded 非 TF 设置."""
+        v4 = v7_macro_baseline_v4_expanded()
+        v5 = v7_macro_baseline_v5_tf_score()
+        assert v5.bootstrap_times == v4.bootstrap_times
+        assert v5.bootstrap_random_state == v4.bootstrap_random_state
+        assert v5.quarter_window == v4.quarter_window
+        assert v5.max_weight == v4.max_weight
+
+    def test_v5_returns_new_instance(self) -> None:
+        """每次调用返回新实例."""
+        cfg1 = v7_macro_baseline_v5_tf_score()
+        cfg2 = v7_macro_baseline_v5_tf_score()
+        assert cfg1 is not cfg2
+
+
+class TestV5ComputeTrendScore:
+    """compute_trend_score 单元测试."""
+
+    @pytest.fixture
+    def benchmark(self) -> pd.Series:
+        return load_benchmark_price()
+
+    def test_score_bull_market(self, benchmark) -> None:
+        """牛市 score 应 > 0 (沪深300 在 2019-06 牛市顶部附近)."""
+        cfg = v7_macro_baseline_v5_tf_score()
+        # 2019-06 接近牛市
+        score = compute_trend_score(benchmark, pd.Timestamp("2019-06-30"), cfg)
+        assert score > 0, f"牛市 score 应 > 0, got {score:.3f}"
+
+    def test_score_bear_market(self, benchmark) -> None:
+        """熊市 score 应 < 0 (2018-12 接近熊市底部)."""
+        cfg = v7_macro_baseline_v5_tf_score()
+        score = compute_trend_score(benchmark, pd.Timestamp("2018-12-31"), cfg)
+        assert score < 0, f"熊市 score 应 < 0, got {score:.3f}"
+
+    def test_score_neutral_market(self, benchmark) -> None:
+        """中性市 score 应接近 0 (2023-06 震荡市)."""
+        cfg = v7_macro_baseline_v5_tf_score()
+        score = compute_trend_score(benchmark, pd.Timestamp("2023-06-30"), cfg)
+        # 不强求精确, 应该在 [-0.5, 0.5]
+        assert -0.5 <= score <= 0.5, f"中性市 score 应在中性, got {score:.3f}"
+
+    def test_score_bounded(self, benchmark) -> None:
+        """score 必须 clip 到 [-1, 1]."""
+        cfg = v7_macro_baseline_v5_tf_score()
+        for date in ["2018-12-31", "2019-06-30", "2020-03-31", "2021-12-31", "2024-09-30"]:
+            score = compute_trend_score(benchmark, pd.Timestamp(date), cfg)
+            assert -1.0 <= score <= 1.0, f"{date} score {score:.3f} out of bounds"
+
+    def test_score_insufficient_data(self, benchmark) -> None:
+        """数据不足 200 天时返回 0 (中性)."""
+        cfg = v7_macro_baseline_v5_tf_score()
+        # 选取一个 < 200 天的日期
+        early_date = benchmark.index[100]
+        score = compute_trend_score(benchmark, early_date, cfg)
+        assert score == 0.0, f"数据不足时 score 应为 0, got {score:.3f}"
+
+
+class TestV5ApplyTrendScoreFilter:
+    """apply_trend_score_filter 单元测试."""
+
+    @pytest.fixture
+    def benchmark(self) -> pd.Series:
+        return load_benchmark_price()
+
+    @pytest.fixture
+    def cfg(self) -> V7_5Config:
+        return v7_macro_baseline_v5_tf_score()
+
+    @pytest.fixture
+    def w_uniform_expanded(self) -> pd.Series:
+        """56 资产等权 (45 equity + 6 commodity + 5 bond)."""
+        return pd.Series([1.0 / 56] * 56, index=EXPANDED_COLS)
+
+    def test_disabled_unchanged(self, benchmark, cfg, w_uniform_expanded) -> None:
+        """tf_score_enabled=False 时权重不变."""
+        cfg.tf_score_enabled = False
+        w_out = apply_trend_score_filter(w_uniform_expanded.copy(), benchmark, pd.Timestamp("2019-06-30"), cfg)
+        np.testing.assert_array_almost_equal(w_out.values, w_uniform_expanded.values)
+
+    def test_bear_reduces_equity(self, benchmark, cfg, w_uniform_expanded) -> None:
+        """熊市 score < -0.3: equity 减到 30%."""
+        # 2018-12 熊市
+        w_out = apply_trend_score_filter(w_uniform_expanded.copy(), benchmark, pd.Timestamp("2018-12-31"), cfg)
+
+        equity_mask = w_out.index.isin(EQUITY_ETF_COLS)
+        # 期望: equity × 0.3
+        expected_eq = w_uniform_expanded[equity_mask] * cfg.tf_score_bear_equity_alloc
+        np.testing.assert_array_almost_equal(w_out[equity_mask].values, expected_eq.values, decimal=4)
+        # sum 应 ≈ 1.0
+        assert abs(w_out.sum() - 1.0) < 1e-3
+
+    def test_bull_increases_equity(self, benchmark, cfg, w_uniform_expanded) -> None:
+        """牛市 score 较高: equity 加仓 (具体值由 score 决定)."""
+        # 2019-06 牛市
+        score = compute_trend_score(benchmark, pd.Timestamp("2019-06-30"), cfg)
+        w_out = apply_trend_score_filter(w_uniform_expanded.copy(), benchmark, pd.Timestamp("2019-06-30"), cfg)
+
+        equity_mask = w_out.index.isin(EQUITY_ETF_COLS)
+        # 计算期望 scale
+        if score > cfg.tf_score_bull_threshold:
+            expected_scale = cfg.tf_score_bull_equity_alloc
+        elif score < cfg.tf_score_bear_threshold:
+            expected_scale = cfg.tf_score_bear_equity_alloc
+        else:
+            t = (score - cfg.tf_score_bear_threshold) / (cfg.tf_score_bull_threshold - cfg.tf_score_bear_threshold)
+            expected_scale = (
+                cfg.tf_score_bear_equity_alloc
+                + t * (cfg.tf_score_bull_equity_alloc - cfg.tf_score_bear_equity_alloc)
+            )
+        # 期望: equity × expected_scale
+        expected_eq = w_uniform_expanded[equity_mask] * expected_scale
+        np.testing.assert_array_almost_equal(w_out[equity_mask].values, expected_eq.values, decimal=4)
+        # sum 应 ≈ 1.0
+        assert abs(w_out.sum() - 1.0) < 1e-3
+
+
+@pytest.mark.slow
+class TestV5TFScoreBacktest:
+    """连续 TF Score 端到端回测 (慢测试)."""
+
+    @pytest.fixture(scope="class")
+    def nav_v2(self) -> pd.Series:
+        """v2 二值 TF (对照组, 13 indices)."""
+        factor_ret = load_factor_returns()
+        idx_ret = load_expanded_panel()  # 用 56 资产但 v2 配置用 13
+        # 修正: v2 应该用 13 indices
+        from QuantNodes.strategy.momentum_etf_rotation.v7 import load_index_panel
+        idx_ret_13 = load_index_panel()
+        benchmark = load_benchmark_price()
+        return run_v7_3_backtest(idx_ret_13, factor_ret, v7_macro_baseline_v2_tf(), benchmark)
+
+    @pytest.fixture(scope="class")
+    def nav_v5_score(self) -> pd.Series:
+        """v5 连续 TF Score (56 assets)."""
+        factor_ret = load_factor_returns()
+        idx_ret = load_expanded_panel()
+        benchmark = load_benchmark_price()
+        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_tf_score(), benchmark)
+
+    def test_v5_score_deterministic(self, nav_v5_score) -> None:
+        """同参数 → 同 NAV."""
+        factor_ret = load_factor_returns()
+        idx_ret = load_expanded_panel()
+        benchmark = load_benchmark_price()
+        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_tf_score(), benchmark)
+        np.testing.assert_array_almost_equal(nav_v5_score.values, nav_again.values, decimal=8)
+
+    def test_v5_score_has_nav(self, nav_v5_score) -> None:
+        """v5 score 应产生有效 NAV."""
+        assert len(nav_v5_score) > 0
+        assert nav_v5_score.iloc[0] == 1.0
+        assert nav_v5_score.iloc[-1] > 0
+
+    def test_v5_score_summary(self, nav_v2, nav_v5_score) -> None:
+        """打印 v2 (二值) vs v5 (连续) 性能对比."""
+        def metrics(nav, start='2022-01-01'):
+            n = nav.loc[start:]
+            n_years = (n.index[-1] - n.index[0]).days / 365.25
+            ann = (n.iloc[-1] / n.iloc[0]) ** (1 / n_years) - 1
+            vol = n.pct_change().std() * np.sqrt(252)
+            dd = (n / n.cummax() - 1).min()
+            calmar = ann / abs(dd) if abs(dd) > 0.001 else 0
+            return ann, vol, dd, calmar
+
+        a2, v2, d2, c2 = metrics(nav_v2)
+        a5, v5, d5, c5 = metrics(nav_v5_score)
+        print("\n=== v2 (二值 MA200, 13 idx) vs v5.1 (连续 TF Score, 56 assets) OOS 2022-2026 ===")
+        print(f"v2:    Ann={a2:.2%}, Vol={v2:.2%}, DD={d2:.2%}, Calmar={c2:.3f}")
+        print(f"v5.1:  Ann={a5:.2%}, Vol={v5:.2%}, DD={d5:.2%}, Calmar={c5:.3f}")

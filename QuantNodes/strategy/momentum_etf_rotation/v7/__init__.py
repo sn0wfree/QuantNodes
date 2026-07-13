@@ -33,23 +33,30 @@ from .factor_risk_parity import FactorRiskParityOptimizer
 from .macro_substrategy_v7_3 import (
     V7_3Config,
     V7_4Config,
+    V7_5Config,
     V7_3SubStrategy,
     run_v7_3_backtest,
     apply_trend_filter,
+    apply_trend_score_filter,
+    compute_trend_score,
 )
 from .symmetry import RollingSymmetry
 
 __all__ = [
     "V7_3Config",
     "V7_4Config",
+    "V7_5Config",
     "V7_3SubStrategy",
     "run_v7_3_backtest",
     "apply_trend_filter",
+    "apply_trend_score_filter",
+    "compute_trend_score",
     "v7_macro_baseline",
     "v7_macro_baseline_v2_tf",
     "v7_macro_baseline_v3_momentum",
     "v7_macro_baseline_v4_expanded",
     "v7_macro_baseline_v5_stop_loss",
+    "v7_macro_baseline_v5_tf_score",
     "RollingSymmetry",
     "BootstrapLassoMapping",
     "FactorRiskParityOptimizer",
@@ -231,3 +238,54 @@ def v7_macro_baseline_v5_stop_loss(**overrides) -> V7_4Config:
         **overrides,
     )
     return cfg
+
+
+def v7_macro_baseline_v5_tf_score(**overrides) -> V7_5Config:
+    """v7 宏观子策略 v5.1: 连续 TF Score (替代二值 MA200, 2026-07-13).
+
+    相对 v7+v2 TF (二值) 改动:
+    - trend_filter_enabled: False (关闭二值)
+    - tf_score_enabled: True (开启连续 score)
+    - score = 0.5 × MA200距离 + 0.3 × 60日动量 + 0.2 × 波动率比率
+    - 仓位: 强熊 (-0.3) → 30%, 强牛 (+0.3) → 120%, 中间线性插值
+
+    关键改进 (相对 v2 二值 MA200):
+    1. **信息保留**: 距 MA200 5% 和 20% 触发不同减仓, 不再二值化
+    2. **多因子**: MA200 + 60日动量 + 波动率, 解决 "只靠 MA200 反应慢"
+    3. **平滑过渡**: 介于 bear/bull 之间线性插值, 避免信号突变
+    4. **可超配**: 牛市时权益 > 100% (杠杆效果, 受 max_weight 约束)
+
+    权重设计 (用户决策):
+    - MA200 距离 0.5 (主信号, 反映长期趋势)
+    - 60 日动量 0.3 (中期确认, 避免 MA200 滞后)
+    - 波动率比率 0.2 (反向, 高 vol = 恐慌 → 减仓)
+
+    用途: 替代 v2 二值 TF, 提供更平滑/及时的趋势信号.
+    """
+    base = v7_macro_baseline_v4_expanded()
+    return V7_5Config(
+        asset_pool=base.asset_pool,
+        equity_cols=base.equity_cols,
+        commodity_cols=base.commodity_cols,
+        bond_cols=base.bond_cols,
+        # [v5.1 关键] 关闭二值 TF, 开启连续 TF Score
+        trend_filter_enabled=False,  # 关闭二值 MA200
+        # 继承 baseline 设置
+        bootstrap_times=base.bootstrap_times,
+        bootstrap_resample_min=base.bootstrap_resample_min,
+        bootstrap_resample_max=base.bootstrap_resample_max,
+        bootstrap_random_state=base.bootstrap_random_state,
+        bootstrap_cache_alpha=base.bootstrap_cache_alpha,
+        quarter_window=base.quarter_window,
+        max_weight=base.max_weight,
+        sum_lower=base.sum_lower,
+        sum_upper=base.sum_upper,
+        commission_bp=base.commission_bp,
+        slippage_bp=base.slippage_bp,
+        # [v5 硬止损] 默认关闭 (用户可单独开启)
+        stop_loss_enabled=False,
+        # [v5.1 连续 TF Score]
+        tf_score_enabled=True,
+        # 继承 expanded pool 设置
+        **overrides,
+    )
