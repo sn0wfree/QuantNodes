@@ -304,3 +304,160 @@ python3.11 scripts/v7_3_full_backtest.py --bootstrap 200       # 快速
 python3.11 scripts/v7_3_full_backtest.py --bootstrap 500       # 标准
 python3.11 scripts/v7_3_full_backtest.py --bootstrap 2000      # 极致
 ```
+
+---
+
+## 八、v7 演化总结与完整对比 (2026-07-13)
+
+### 8.1 v7 三代版本对照
+
+| 版本 | 入口函数 | 核心改动 | OOS 2022 Calmar |
+|------|---------|---------|----------------|
+| `v7_macro_baseline` (v1) | `v7_macro_baseline()` | Bootstrap-Lasso + FRP, 13 indices, 季频 | 0.364 |
+| `v7_macro_baseline_v2_tf` (v2) | `v7_macro_baseline_v2_tf()` | +趋势过滤 (equity→bonds) | **0.952** ⭐ |
+| `v7_macro_baseline_v3_momentum` (v3) | `v3_momentum_config()` | +动量叠加 (slope_r2, α=0.05) | 0.891 |
+
+### 8.2 v7 三代性能对比 (OOS 2022-01-01 ~ 2026-05-29, seed=42)
+
+| 指标 | v1 (baseline) | v2 (TF only) | v3 (TF+mom) |
+|------|------:|------:|------:|
+| 年化收益 | 3.27% | 4.74% | **5.18%** |
+| 年化波动 | 7.02% | **5.76%** | 6.49% |
+| 最大回撤 | -8.98% | **-4.98%** | -5.82% |
+| Sharpe | 0.466 | 0.823 | **0.891** |
+| Calmar | 0.364 | **0.952** | 0.891 |
+| 年化换手 | 5.96% | 11.85% | 12.10% |
+| Alpha vs HS300 | 3.41% | 4.63% | **4.89%** |
+| 月度胜率 | 54.00% | 58.00% | **60.00%** |
+
+### 8.3 v7 三代性能对比 (OOS 2018-01-01 ~ 2026-05-29, seed=42)
+
+| 指标 | v1 (baseline) | v2 (TF only) | v3 (TF+mom) |
+|------|------:|------:|------:|
+| 年化收益 | 3.48% | 4.28% | **4.62%** |
+| 年化波动 | 6.77% | **5.76%** | 6.24% |
+| 最大回撤 | -8.98% | **-7.30%** | -7.52% |
+| Sharpe | 0.513 | 0.743 | **0.798** |
+| Calmar | 0.387 | **0.586** | 0.574 |
+
+### 8.4 动量叠加网格搜索结果
+
+**参数空间**: 2 option × 3 type × 3 lookback × 5 α × 3 scenario = 270 组合
+**实际测试**: ~20 组合 (分阶段筛选)
+
+#### Stage 0: 场景筛选 (hybrid, 90d, α=0.3, Option A)
+
+| 场景 | Ann | Vol | DD | Calmar |
+|------|-----|-----|-----|--------|
+| v7 baseline | 3.27% | 7.02% | -8.98% | 0.364 |
+| **v7+TF only** | **4.74%** | **5.76%** | **-4.98%** | **0.952** |
+| v7+mom only | 3.64% | 9.01% | -13.39% | 0.272 |
+| v7+TF+mom both | 4.67% | 8.31% | -9.90% | 0.472 |
+
+#### Stage 1: α 筛选 (with TF, hybrid, 90d, Option A)
+
+| α | Ann | Vol | DD | Calmar |
+|---|-----|-----|-----|--------|
+| 0.05 | 5.06% | 6.51% | -5.69% | 0.890 |
+| 0.10 | 4.98% | 6.82% | -6.41% | 0.778 |
+| 0.15 | 4.91% | 7.17% | -7.37% | 0.666 |
+| 0.20 | 4.83% | 7.54% | -8.26% | 0.584 |
+| 0.30 | 4.67% | 8.31% | -9.90% | 0.472 |
+
+#### Stage 2: 动量类型 (with TF, α=0.05, 90d, Option A)
+
+| type | Ann | Vol | DD | Calmar |
+|------|-----|-----|-----|--------|
+| price | 5.02% | 6.55% | -5.68% | 0.883 |
+| **slope_r2** | **5.18%** | **6.49%** | **-5.82%** | **0.891** |
+| hybrid | 5.06% | 6.51% | -5.69% | 0.890 |
+
+#### Stage 3: Lookback (with TF, α=0.05, hybrid, Option A)
+
+| lookback | Ann | Vol | DD | Calmar |
+|----------|-----|-----|-----|--------|
+| 60d | 5.12% | 6.65% | -5.83% | 0.878 |
+| 90d | 5.06% | 6.51% | -5.69% | 0.890 |
+| **144d** | **5.06%** | **6.44%** | **-5.64%** | **0.898** |
+
+#### Stage 4: Option B (第10因子)
+
+Option B 把 market_momentum 作为 LASSO 第10因子, 结果与 TF only 完全一致 (Calmar 0.952). 原因: LASSO 已包含足够宏观信息, 动量因子无新增信息.
+
+### 8.5 跨版本完整对比 (OOS 2022-2026)
+
+| 策略 | 数据池 | 年化收益 | 年化波动 | Sharpe | DD | Calmar |
+|------|--------|---------|---------|--------|-----|--------|
+| **v1.0 locked** | 52 ETFs | 3.47% | 2.38% | **1.510** | **-1.94%** | **1.791** ⭐ |
+| v3 multi | 52 ETFs | 7.69% | 7.43% | 1.080 | -9.89% | 0.778 |
+| v6.2 ir_exp | 52 ETFs | 13.14% | — | 0.810 | -16.73% | 0.786 |
+| v7 baseline (v1) | 13 idx | 3.27% | 7.02% | 0.466 | -8.98% | 0.364 |
+| **v7+v2 TF only** | 13 idx | 4.74% | 5.76% | 0.823 | -4.98% | **0.952** |
+| v7+v3 TF+mom | 13 idx | 5.18% | 6.49% | 0.891 | -5.82% | 0.891 |
+
+### 8.6 跨版本完整对比 (全期 2018-2026)
+
+| 策略 | 数据池 | 年化收益 | 年化波动 | Sharpe | DD | Calmar |
+|------|--------|---------|---------|--------|-----|--------|
+| **v1.0 locked** | 52 ETFs | 4.96% | 4.42% | **1.160** | **-5.81%** | **0.853** |
+| v3 multi | 52 ETFs | 6.01% | 7.76% | 0.830 | -13.56% | 0.443 |
+| v6.2 ir_exp | 52 ETFs | 15.72% | — | 1.020 | -21.59% | 0.728 |
+| v7 baseline (v1) | 13 idx | 3.48% | 6.77% | 0.513 | -8.98% | 0.387 |
+| v7+v2 TF only | 13 idx | 4.28% | 5.76% | 0.743 | -7.30% | 0.586 |
+| v7+v3 TF+mom | 13 idx | 4.62% | 6.24% | 0.798 | -7.52% | 0.637 |
+
+### 8.7 关键发现
+
+1. **v1.0 locked (52 ETFs) Calmar 1.791 仍然是 OOS 最佳** — 低波动 (2.38%) + 低 DD (-1.94%), 风险调整后最优
+2. **v7+v2 (13 idx) OOS Calmar 0.952 > v6.2 (52 ETFs) 0.786** — 宏观配置胜出权益选股
+3. **TF 是 ROI 最高单点修复** — Calmar 0.364→0.952 (+161%), DD -8.98%→-4.98% (-44%)
+4. **动量叠加可提高收益但降低 Calmar** — Ann +9.3%, Vol +12.7%, DD +16.9%, Calmar -6.4%
+5. **动量类型 slope_r2 最优** — slope×R² 比纯价格动量更稳健 ( penalizes 噪声趋势)
+6. **lookback 144d 最优** — 长周期动量更稳定 (Calmar 0.898 vs 90d 0.890)
+7. **α=0.05 最优** — 低混合系数保留 FRP 宏观配置逻辑, 动量只做微调
+8. **Option B (第10因子) 无增量** — 与 TF only 完全一致, LASSO 已包含足够信息
+9. **数据池差异**: v1.0/v3/v6 用 52 ETFs (行业/风格/商品), v7 用 13 indices (宏观配置), 定位不同不可直接比
+10. **v7+v2 DD -4.98% 优于 v3 (-9.89%) 和 v6.2 (-16.73%)** — 宏观配置风控更好
+
+### 8.8 动量因子结论
+
+**动量因子可以加到宏观配置上, 但不提升 Calmar.**
+
+- 动量叠加 **提高收益** (4.74%→5.18%, +9.3%)
+- 但 **增加波动** (5.76%→6.49%, +12.7%) 和 **放大 DD** (-4.98%→-5.82%, +16.9%)
+- Calmar **下降** (0.952→0.891, -6.4%)
+
+**原因**: v7 的 13 indices 已经跨权益/债券/商品三大类, 动量信号在资产间轮动的效果有限, 反而增加了噪声.
+
+**建议**: 保持 v7+v2 TF only 作为 production baseline (Calmar 0.952), 动量作为可选增强 (追求更高收益时启用).
+
+### 8.9 文件清单
+
+```
+QuantNodes/strategy/momentum_etf_rotation/v7/
+├── macro_substrategy_v7_3.py     (V7_3Config + SubStrategy + run_v7_3_backtest)
+├── momentum_overlay.py           (动量计算 + Option A/B 整合) [v3 新增]
+├── v3_momentum_backtest.py       (v3 回测入口) [v3 新增]
+├── data_loader.py                (load_factor_returns + load_index_panel + load_benchmark_price)
+├── bootstrap_lasso.py            (BootstrapLassoMapping)
+├── factor_risk_parity.py         (FactorRiskParityOptimizer, 包装 QuantOPT)
+├── symmetry.py                   (RollingSymmetry, Klein 2013)
+├── _quantopt_model.py            (源 QuantOPT_model.py copy)
+└── __init__.py                   (v7_macro_baseline + v7_macro_baseline_v2_tf + v3_momentum_config)
+
+tests/strategy/momentum_etf_rotation/v7/
+├── test_v7_3_strategy.py                 (5 tests)
+├── test_symmetry.py                      (10 tests)
+├── test_bootstrap_lasso.py               (10 tests)
+├── test_factor_risk_parity.py            (9 tests)
+├── test_v7_macro_baseline.py             (9 tests, v1 锁定)
+├── test_v7_macro_baseline_v2_tf.py       (14 tests, v2 TF)
+└── test_v7_macro_baseline_v3_momentum.py (15 tests, v3 动量) [v3 新增]
+
+data/high_freq_macro/
+├── v9_indices_daily.parquet       (13 指数日对数收益)
+├── v9_indices_daily_prices.parquet (13 指数日价格)
+├── v9_factors_weekly.parquet      (9 因子净值)
+├── v9_factors_weekly_returns.parquet (周对数收益)
+└── v9_benchmark_沪深300.parquet   (沪深300 价格)
+```
