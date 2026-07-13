@@ -787,13 +787,15 @@ lasso_rolling_window: int | None = None  # None=expanding (兼容), 156=3年滚�
 
 #### 10.6.5 改进 v7 框架 (Step 1 + 2/3 组合)
 
-下表比较 v4+TF+stop_loss (Step 1) vs 完整 v5:
+下表比较 v4+TF+stop_loss (Step 1) vs 完整 v5 (Step 1+3 组合, 56 assets):
 
 | 配置 | Ann | Vol | DD | Calmar | 备注 |
 |------|----:|----:|---:|-------:|------|
 | v4+TF (no stop loss) | 5.79% | 11.00% | -11.60% | 0.499 | current |
 | v5 + stop_loss (Step 1 only) | **6.92%** | 10.32% | -11.60% | **0.597** | ⭐ best |
-| v5 + stop_loss + rolling (Step 1+3) | TBD | TBD | TBD | TBD | 待验证 |
+| v5 + stop_loss + rolling (Step 1+3) | 6.92% | 10.32% | -11.60% | 0.597 | 与 Step 1 单用相同 |
+
+**结论**: 在 56 assets expanded pool 上, 滚动 LASSO 不带来额外改善 (与 Step 1 单独使用结果相同). 原因: 56 assets 已提供充分分散化, 时变 β 的边际效益被池子分散化掩盖.
 
 ### 10.7 文件结构 (v5 新增/修改)
 
