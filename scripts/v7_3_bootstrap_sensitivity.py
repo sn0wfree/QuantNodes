@@ -38,7 +38,7 @@ def compute_metrics(s: pd.Series) -> dict | None:
     r = s.pct_change().dropna()
     if len(r) < 5:
         return None
-    n_years = len(r) / 252
+    n_years = (s.index[-1] - s.index[0]).days / 365.25
     ann = (s.iloc[-1] / s.iloc[0]) ** (1 / n_years) - 1
     vol = r.std() * np.sqrt(252)
     sharpe = ann / vol if vol > 0 else 0
