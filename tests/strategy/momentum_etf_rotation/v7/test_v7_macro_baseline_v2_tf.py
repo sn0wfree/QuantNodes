@@ -223,8 +223,7 @@ class TestV2TFBacktest:
 
     @staticmethod
     def _calmar(s: pd.Series) -> float:
-        r = s.pct_change().dropna()
-        n_years = len(r) / 252
+        n_years = (s.index[-1] - s.index[0]).days / 365.25
         ann = (s.iloc[-1] / s.iloc[0]) ** (1 / n_years) - 1
         dd = (s / s.cummax() - 1).min()
         return ann / abs(dd) if abs(dd) > 0.001 else 0
@@ -257,8 +256,7 @@ class TestV2TFStability:
         anns = []
         for seed, nav in navs_by_seed.items():
             sub = nav.loc['2023-01-01':]
-            r = sub.pct_change().dropna()
-            n_years = len(r) / 252
+            n_years = (sub.index[-1] - sub.index[0]).days / 365.25
             ann = (sub.iloc[-1] / sub.iloc[0]) ** (1 / n_years) - 1
             anns.append(ann * 100)
         anns = np.array(anns)

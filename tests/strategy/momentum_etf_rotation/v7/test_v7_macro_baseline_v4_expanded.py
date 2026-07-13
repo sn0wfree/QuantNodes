@@ -185,8 +185,7 @@ class TestV4Backtest:
 
     @staticmethod
     def _calmar(s: pd.Series) -> float:
-        r = s.pct_change().dropna()
-        n_years = len(r) / 252
+        n_years = (s.index[-1] - s.index[0]).days / 365.25
         ann = (s.iloc[-1] / s.iloc[0]) ** (1 / n_years) - 1
         dd = (s / s.cummax() - 1).min()
         return ann / abs(dd) if abs(dd) > 0.001 else 0

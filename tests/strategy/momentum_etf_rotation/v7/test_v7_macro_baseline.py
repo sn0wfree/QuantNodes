@@ -100,8 +100,7 @@ class TestV7MacroBaselineReproducibility:
     def test_baseline_oos_2023_ann(self, nav: pd.Series) -> None:
         """OOS 2023-至今 Ann ≈ 5.24% (容差 ±5%, 即 4.98-5.50)."""
         sub = nav.loc['2023-01-01':]
-        r = sub.pct_change().dropna()
-        n_years = len(r) / 252
+        n_years = (sub.index[-1] - sub.index[0]).days / 365.25
         ann = (sub.iloc[-1] / sub.iloc[0]) ** (1 / n_years) - 1
         assert abs(ann - 0.0524) < 0.005, (
             f"ann={ann*100:.3f}%, 期望 5.24%±0.5pp, 退化 > 5%"
@@ -110,8 +109,7 @@ class TestV7MacroBaselineReproducibility:
     def test_baseline_oos_2023_calmar(self, nav: pd.Series) -> None:
         """OOS 2023-至今 Calmar ≈ 0.620 (容差 ±10%)."""
         sub = nav.loc['2023-01-01':]
-        r = sub.pct_change().dropna()
-        n_years = len(r) / 252
+        n_years = (sub.index[-1] - sub.index[0]).days / 365.25
         ann = (sub.iloc[-1] / sub.iloc[0]) ** (1 / n_years) - 1
         dd = (sub / sub.cummax() - 1).min()
         calmar = ann / abs(dd)
@@ -147,8 +145,7 @@ class TestV7MacroBaselineStability:
         anns = []
         for seed, nav in navs_by_seed.items():
             sub = nav.loc['2023-01-01':]
-            r = sub.pct_change().dropna()
-            n_years = len(r) / 252
+            n_years = (sub.index[-1] - sub.index[0]).days / 365.25
             ann = (sub.iloc[-1] / sub.iloc[0]) ** (1 / n_years) - 1
             anns.append(ann * 100)
         anns = np.array(anns)

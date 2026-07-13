@@ -153,8 +153,10 @@ class TestV3MomentumBacktest:
         nav_mom = run_v3_momentum_backtest(ir, fr, cfg_mom, bp)
         # Calmar 应 > baseline
         def calmar(nav):
-            n = nav.loc["2022-01-01":]; r = n.pct_change().dropna(); y = len(r) / 252
-            ann = (n.iloc[-1] / n.iloc[0]) ** (1/y) - 1; dd = (n / n.cummax() - 1).min()
+            n = nav.loc["2022-01-01":]
+            y = (n.index[-1] - n.index[0]).days / 365.25
+            ann = (n.iloc[-1] / n.iloc[0]) ** (1/y) - 1
+            dd = (n / n.cummax() - 1).min()
             return ann / abs(dd) if dd != 0 else 0
         assert calmar(nav_mom) > calmar(nav_base), "v3+mom should beat v7 baseline"
 
