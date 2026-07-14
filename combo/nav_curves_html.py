@@ -10,7 +10,7 @@
 - 全期 + OOS 指标表
 - 10 个策略简述 + HS300 基准 (v0-v6.2 演进轨迹, 主文件含, 报告版省略)
 - 内联 plotly.js (脱机可用)
-- 双输出: V1V5_NAV_CURVES.html (主文件, 内部跟踪) + V1V5_NAV_CURVES_v2_YYYYMMDD.html (报告版, 对外汇报)
+- 双输出: STRATEGY_ITERATION_RECORD.html (主文件, 内部跟踪) + STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html (报告版, 对外汇报)
 """
 from __future__ import annotations
 
@@ -590,7 +590,7 @@ def chart_monthly_heatmap(navs):
 # Main: 生成完整 HTML
 # ============================================================
 def main(include_strategies: bool = True):
-    """生成 V1V5_NAV_CURVES.html 主文件 (内部跟踪, 完整版) 和 V1V5_NAV_CURVES_v2_YYYYMMDD.html 报告版.
+    """生成 STRATEGY_ITERATION_RECORD.html 主文件 (内部跟踪, 完整版) 和 STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html 报告版.
 
     Args:
         include_strategies: True = 完整版 (含策略简述, 内部跟踪用)
@@ -957,13 +957,13 @@ def main(include_strategies: bool = True):
           </p>
         </section>""")
 
-    # 策略简述 (只在完整版显示, V1V5_NAV_CURVES.html; v2 简化版不显示)
+    # 策略简述 (只在完整版显示, STRATEGY_ITERATION_RECORD.html; v2 简化版不显示)
     strategies_section_html = ""
     if include_strategies:
         strategies_section_html = f"""
 <section id="strategies">
   <h2>v0 - v6.2 策略简述 (10 策略 + HS300 基准, 按时间顺序)</h2>
-  <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 v7.6 (TV-PR, Cui 2025), 完整记录量化策略演进轨迹. 主文件 (内部跟踪) 完整呈现; 报告版 (V1V5_NAV_CURVES_v2_YYYYMMDD.html) 省略本节.</p>
+  <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 v7.6 (TV-PR, Cui 2025), 完整记录量化策略演进轨迹. 主文件 (内部跟踪) 完整呈现; 报告版 (STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html) 省略本节.</p>
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段 (Stage 8 - 22): CICC → v5 量价</h3>
   {v0_strategy_card}
   {v01_strategy_card}
@@ -1181,7 +1181,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 
 <footer style="margin-top: 40px; padding: 20px; background: #F0F4F8; border-radius: 8px; font-size: 12px; color: #666;">
   <b>📊 数据来源</b>: <code>combo/unified_v1v5_compare.py</code> 生成 NAV, <code>combo/nav_curves_html.py</code> 生成此 HTML<br>
-  {'<b>📁 主文件 (内部跟踪)</b>: <code>V1V5_NAV_CURVES.html</code> (完整版, 含策略简述, 每次跑都覆盖)<br>' if include_strategies else '<b>📤 报告版 (对外汇报)</b>: <code>V1V5_NAV_CURVES_v2_YYYYMMDD.html</code> (简化版, 无策略简述, 带日期)<br>'}
+  {'<b>📁 主文件 (内部跟踪)</b>: <code>STRATEGY_ITERATION_RECORD.html</code> (完整版, 含策略简述, 每次跑都覆盖)<br>' if include_strategies else '<b>📤 报告版 (对外汇报)</b>: <code>STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html</code> (简化版, 无策略简述, 带日期)<br>'}
   <b>🔗 相关文件</b>: <code>UNIFIED_V1V5_EVOLUTION.html</code> (v1-v5 演进专题) | <code>UNIFIED_V1V5_REPORT.md</code> (完整 markdown 报告)<br>
   <b>⚙️ 统一口径</b>: 52 ETF 池 | 2018-2026 | 5bp 单边成本 | A 股 cap=3 (CICC 规则) | v4 用 12 SmartBeta 子集
 </footer>
@@ -1198,16 +1198,16 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 
 def main_dispatcher():
     """生成两个版本:
-    1. V1V5_NAV_CURVES.html — 主文件, 完整版 (含策略简述), 内部跟踪用
-    2. V1V5_NAV_CURVES_v2_YYYYMMDD.html — 报告版, 简化版 (无策略简述), 对外汇报用
+    1. STRATEGY_ITERATION_RECORD.html — 主文件, 完整版 (含策略简述), 内部跟踪用
+    2. STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html — 报告版, 简化版 (无策略简述), 对外汇报用
     """
     from datetime import datetime
     today_str = datetime.now().strftime("%Y%m%d")
 
     # 1. 主文件 (完整版)
-    print("\n[1/2] 生成主文件 V1V5_NAV_CURVES.html (完整版, 内部跟踪) ...")
+    print("\n[1/2] 生成主文件 STRATEGY_ITERATION_RECORD.html (完整版, 内部跟踪) ...")
     html_full = main(include_strategies=True)
-    out_main = OUT_DIR / "V1V5_NAV_CURVES.html"
+    out_main = OUT_DIR / "STRATEGY_ITERATION_RECORD.html"
     out_main.write_text(html_full, encoding="utf-8")
     size_mb = out_main.stat().st_size / 1024 / 1024
     print(f"[save] {out_main} ({size_mb:.2f} MB)")
@@ -1215,9 +1215,9 @@ def main_dispatcher():
     print(f"      指标表 (含 HS300 基准行) + 10 个策略简述 (v0-v6.2) + HS300 基准 + 关键事件时间线")
 
     # 2. 报告版 (简化版, 带日期)
-    print(f"\n[2/2] 生成报告版 V1V5_NAV_CURVES_v2_{today_str}.html (简化版, 对外汇报) ...")
+    print(f"\n[2/2] 生成报告版 STRATEGY_ITERATION_RECORD_v2_{today_str}.html (简化版, 对外汇报) ...")
     html_simp = main(include_strategies=False)
-    out_report = OUT_DIR / f"V1V5_NAV_CURVES_v2_{today_str}.html"
+    out_report = OUT_DIR / f"STRATEGY_ITERATION_RECORD_v2_{today_str}.html"
     out_report.write_text(html_simp, encoding="utf-8")
     size_mb = out_report.stat().st_size / 1024 / 1024
     print(f"[save] {out_report} ({size_mb:.2f} MB)")
