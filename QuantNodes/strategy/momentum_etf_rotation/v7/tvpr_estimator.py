@@ -57,6 +57,7 @@ def tvpr_admm(
     rho: float = 1.0,
     max_iter: int = 200,
     tol: float = 1e-5,
+    beta_init: np.ndarray | None = None,
 ) -> np.ndarray:
     """ADMM 求解 TV-PR.
 
@@ -78,14 +79,18 @@ def tvpr_admm(
         rho: ADMM 惩罚参数
         max_iter: 最大迭代次数
         tol: 收敛阈值
+        beta_init: (T, K) 初始 β (warm-start), None 则用 zeros
 
     Returns:
         beta: (T, K) 时变 β_t
     """
     T, N, K = X.shape
 
-    # 初始化
-    beta = np.zeros((T, K))
+    # 初始化 (用 beta_init 而不是 zeros)
+    if beta_init is not None:
+        beta = beta_init.copy()
+    else:
+        beta = np.zeros((T, K))
     z = np.zeros((T - 1, K))
     u = np.zeros((T - 1, K))
 
@@ -149,13 +154,15 @@ def rolling_tvpr(
     lambda_tv: float,
     lambda_l1: float,
     min_history: int = 52,
+    window_size: int = 52,
     rho: float = 1.0,
     max_iter: int = 200,
     tol: float = 1e-5,
 ) -> pd.DataFrame:
-    """滚动估计 β_t.
+    """Walk-Forward 滚动估计 β_t (滚动窗口 + warm-start).
 
-    对每个时间点 t (t ≥ min_history), 用 [0, t] 数据估计 β_t.
+    对每个时间点 t (t ≥ min_history), 用 [t-window_size, t] 数据估计 β_t.
+    用上一期的 β 作为 warm-start 初始值.
 
     Parameters:
         Y: (T, N) 周频资产收益
@@ -163,6 +170,7 @@ def rolling_tvpr(
         lambda_tv: TV 罚项系数
         lambda_l1: L1 罚项系数
         min_history: 最少历史期数 (周)
+        window_size: 滚动窗口大小 (周)
         rho: ADMM 惩罚参数
         max_iter: 最大迭代次数
         tol: 收敛阈值
@@ -174,22 +182,34 @@ def rolling_tvpr(
 
     # 初始化
     beta_path = np.zeros((T, K))
+    beta_prev = None  # 用于 warm-start
 
-    # 滚动估计
+    # Walk-Forward 滚动估计
     for t in range(min_history, T):
-        # 训练集: [0, t]
-        Y_train = Y.iloc[:t + 1].values
-        X_train = X_panel[:t + 1]
+        # 滚动窗口: [t-window_size, t]
+        start = max(0, t - window_size)
+        Y_train = Y.iloc[start:t + 1].values
+        X_train = X_panel[start:t + 1]
+
+        # warm-start: 用上一期的 β 作为初始值
+        if beta_prev is not None:
+            # 将 beta_prev 扩展到当前窗口大小
+            window_len = t - start + 1
+            beta_init = np.tile(beta_prev, (window_len, 1))
+        else:
+            beta_init = None
 
         # ADMM 求解
         beta_full = tvpr_admm(
             Y_train, X_train,
             lambda_tv, lambda_l1,
             rho=rho, max_iter=max_iter, tol=tol,
+            beta_init=beta_init,
         )
 
         # 取最后一个时间点的 β_t
         beta_path[t] = beta_full[-1]
+        beta_prev = beta_full[-1]  # 保存当前 β 用于下一次 warm-start
 
     return pd.DataFrame(beta_path, index=Y.index, columns=[f"factor_{i}" for i in range(K)])
 
@@ -204,6 +224,7 @@ def tvpr_estimator(
     lambda_l1: float,
     method: Literal["admm"] = "admm",
     min_history: int = 52,
+    window_size: int = 52,
     max_iter: int = 200,
     tol: float = 1e-5,
 ) -> pd.DataFrame:
@@ -216,6 +237,7 @@ def tvpr_estimator(
         lambda_l1: L1 罚项系数, 控制因子稀疏性
         method: 求解方法 (目前只支持 "admm")
         min_history: 最少历史期数 (周)
+        window_size: 滚动窗口大小 (周)
         max_iter: 最大迭代次数
         tol: 收敛阈值
 
@@ -226,6 +248,7 @@ def tvpr_estimator(
         return rolling_tvpr(
             Y, X_panel, lambda_tv, lambda_l1,
             min_history=min_history,
+            window_size=window_size,
             max_iter=max_iter, tol=tol,
         )
     else:

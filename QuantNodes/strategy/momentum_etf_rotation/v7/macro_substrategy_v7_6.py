@@ -51,11 +51,11 @@ class V7_6Config:
     commodity_cols: tuple[str, ...] = tuple(COMMODITY_ETF_COLS)
     bond_cols: tuple[str, ...] = tuple(EXPANDED_BOND_INDICES)
 
-    # 因子池 (9 macro + 11 量价 = 20 维)
+    # 因子池 (8 macro + 11 量价 = 19 维)
     macro_cols: tuple[str, ...] = (
         "宏观增长因子", "宏观通胀因子_生活端", "宏观通胀因子_生产端",
         "无风险收益率", "信用利差因子", "期限利差因子_债",
-        "期限利差因子_股", "期限利差因子_加权", "宏观汇率因子",
+        "期限利差因子_股", "宏观汇率因子",
     )
     pv_factors: tuple[str, ...] = (
         "f1_second_mom", "f2_mom_term",
@@ -75,6 +75,7 @@ class V7_6Config:
     # 调仓 (周频)
     rebalance_freq: str = "W"
     min_history: int = 52  # 周频 52 周 = 1 年
+    window_size: int = 52  # 滚动窗口 52 周 = 1 年
 
     # 成本
     commission_bp: float = 5.0
@@ -123,6 +124,7 @@ def run_v7_6_backtest(
         lambda_l1=cfg.lambda_l1,
         method=cfg.method,
         min_history=cfg.min_history,
+        window_size=cfg.window_size,
         max_iter=cfg.max_iter,
         tol=cfg.tol,
     )
