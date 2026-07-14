@@ -1,7 +1,7 @@
 # coding=utf-8
-"""v1-v6.2 业绩曲线对比 HTML (纯 NAV 曲线, 轻量级).
+"""v1-v7.6 业绩曲线对比 HTML (纯 NAV 曲线, 轻量级).
 
-聚焦: 11 个策略 + HS300 基准的 NAV 曲线对比 (v0.0 → v6.2 ir_expanding)
+聚焦: 12 个策略 + HS300 基准的 NAV 曲线对比 (v0.0 → v7.6 TV-PR)
 特点:
 - 单一图表多策略叠加 (主曲线)
 - 拆分面板: v1.0 演进路径 / 进攻型 v3+v5 / 风险型 v0.x
@@ -49,6 +49,7 @@ COLORS = {
     "v6 TF+Cost":      "#17BECF",
     "v6.1 IC12":       "#D62728",  # 深红 — Stage 27 v6.1 IC 加权 (RECOMMENDED)
     "v6.2 ir_expanding": "#9467BD",  # 紫 — Stage 29 v6.2 因子正交化 (PROMISING)
+    "v7.6 TV-PR":      "#FF4500",  # 橙红 — v7.6 TV-PR (Cui 2025, 时变 β_t)
 }
 
 STAGE_MAP = {
@@ -65,15 +66,17 @@ STAGE_MAP = {
     "v6 TF+Cost":       "Stage 26 (v6 单策略: TF 风控 + 调仓成本 + v5.1.1)",
     "v6.1 IC12":       "Stage 27 (v6.1: IC-IR 加权, IC12 expanding, RECOMMENDED)",
     "v6.2 ir_expanding": "Stage 29 (v6.2: 因子正交化 + ir_expanding + IC12, ⭐ OOS Calmar 0.821, 5-fold 4/5 胜 v6.1)",
+    "v7.6 TV-PR":       "v7.6 (TV-PR: 9 macro + 11 量价, 时变 β_t, ⭐ OOS Calmar 1.685)",
 }
 
 # 分组
 GROUPS = {
     "v1.0 演进路径": ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"],
-    "进攻型":       ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding", "v1.0 locked"],
+    "进攻型":       ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding", "v7.6 TV-PR", "v1.0 locked"],
     "量价族演进 (Stage 22→29)":  ["v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding"],
+    "v7.6 TV-PR 对比":  ["v1.0 locked", "v6.2 ir_expanding", "v7.6 TV-PR"],
     "风险型 (VT)":  ["v1.0 locked", "v0.1 +VT"],
-    "全部 11 策略":  None,  # 全部
+    "全部 12 策略":  None,  # 全部
 }
 
 
@@ -180,7 +183,7 @@ def chart_all_curves(navs):
     # 重点策略 (实线)
     foreground = [
         "v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)",
-        "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding",
+        "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding", "v7.6 TV-PR",
     ]
     for col in foreground:
         if col not in navs.columns or col == "HS300 基准":
@@ -190,9 +193,10 @@ def chart_all_curves(navs):
         is_v51 = (col == "v5.1 量价 (逆波动)")
         is_v6 = (col == "v6 (TF 趋势过滤)")
         is_v62 = (col == "v6.2 ir_expanding")
-        prefix = "⭐ " if is_best else (f"🆕 " if is_v51 or is_v6 else "")
+        is_v76 = (col == "v7.6 TV-PR")
+        prefix = "⭐ " if is_best else ("🆕 " if is_v51 or is_v6 else ("🚀 " if is_v76 else ""))
         display_name = f"{prefix}{col}"
-        width = 2.4 if is_best else (2.0 if is_v6 or is_v62 else (1.9 if is_v51 else 1.7))
+        width = 2.6 if is_v76 else (2.4 if is_best else (2.0 if is_v6 or is_v62 else (1.9 if is_v51 else 1.7)))
         fig.add_trace(go.Scatter(
             x=valid.index, y=valid.values,
             mode="lines", name=display_name,
@@ -224,9 +228,9 @@ def chart_all_curves(navs):
 
     fig.update_layout(
         title=dict(
-            text="<b>v0 - v6.2 业绩曲线对比 (2018-2026, 11 策略 + HS300)</b>"
+            text="<b>v0 - v7.6 业绩曲线对比 (2018-2026, 12 策略 + HS300)</b>"
                  "<br><sub>实线=重点, 虚线=参考 | ⭐=v1.0 locked (历史 OOS 最佳 1.791) | "
-                 "深灰虚线=HS300 基准 | 高亮=OOS 区间</sub>",
+                 "🚀=v7.6 TV-PR (新) | 深灰虚线=HS300 基准 | 高亮=OOS 区间</sub>",
             x=0.02, xanchor="left", font=dict(size=15),
         ),
         xaxis=dict(
@@ -258,11 +262,11 @@ def chart_grouped_curves(navs):
         ("v1.0 演进 (Stage 8 → v1.0)",
          ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"]),
         ("进攻型 (v3 / v5 / v5.1 / v6.2 / v1.0 / HS300)",
-         ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6.2 ir_expanding", "v1.0 locked", "HS300 基准"]),
+         ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6.2 ir_expanding", "v7.6 TV-PR", "v1.0 locked", "HS300 基准"]),
         ("v5 → v5.1 → v6.1 → v6.2 量价族演进",
          ["v5 量价", "v5.1 量价 (逆波动)", "v6.1 IC12", "v6.2 ir_expanding"]),
         ("v5.1 vs v6 vs v6.1 vs v6.2 加权演进 (Stage 23→29)",
-         ["v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding", "HS300 基准"]),
+         ["v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding", "v7.6 TV-PR", "HS300 基准"]),
     ]
     fig = make_subplots(
         rows=2, cols=2,
@@ -324,7 +328,7 @@ def chart_alpha_curves(navs):
 
     fig = go.Figure()
     for col in [
-        "v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6.2 ir_expanding",
+        "v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6.2 ir_expanding", "v7.6 TV-PR",
     ]:
         if col not in navs.columns:
             continue
@@ -408,7 +412,7 @@ def chart_drawdown_compare(navs):
                   fillcolor="rgba(100,100,200,0.04)", line_width=0)
     fig.update_layout(
         title=dict(text="<b>回撤对比 (Drawdown Over Time, v0 - v6.2)</b>"
-                        "<br><sub>DD 越接近 0 越好 | v1.0 locked 几乎无回撤 | v6.2 ir_expanding DD -16.7% (Stage 29 表现)</sub>",
+                        "<br><sub>DD 越接近 0 越好 | v1.0 locked 几乎无回撤 | v6.2 ir_expanding DD -16.7% | v7.6 TV-PR DD -15.4%</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         xaxis=dict(title="日期", showgrid=True,
                    gridcolor="rgba(0,0,0,0.05)", zeroline=False),
@@ -522,7 +526,7 @@ def chart_radar(navs):
         ))
     fig.update_layout(
         title=dict(text="<b>OOS 性能雷达图 (2022-2026, v0 - v6.2)</b>"
-                        "<br><sub>6 维归一化指标, 越靠外越好 | ⭐=v1.0 locked (绿色填充, Calmar 1.791) | v6.2 ir_expanding 紫色 (0.821)</sub>",
+                        "<br><sub>6 维归一化指标, 越靠外越好 | ⭐=v1.0 locked (绿色填充, Calmar 1.791) | v6.2 ir_expanding 紫色 (0.821) | 🚀 v7.6 TV-PR 橙红 (1.685)</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         template="plotly_white", height=520,
         margin=dict(l=60, r=60, t=80, b=60),
@@ -669,6 +673,7 @@ def main(include_strategies: bool = True):
 
     # v6.1 / v6.2 Key Finding + 策略卡 (Stage 27 + Stage 29)
     v62_oos = oos_metrics.get('v6.2 ir_expanding', oos_metrics.get('v6.2 (正交+IC36)', {}))
+    v76_oos = oos_metrics.get('v7.6 TV-PR', {})
     v61_oos = oos_metrics.get('v6.1 IC12', {})
     if v62_oos and v61_oos:
         v62_cal = v62_oos['calmar']
@@ -678,12 +683,24 @@ def main(include_strategies: bool = True):
         v61_dd_pct = abs(v61_oos['max_dd']) * 100
         v62_key_finding = (
             f"• <b>v6.2 ir_expanding Stage 29 ⭐ PROMISING</b>: v5 因子排序 + IC 加权 + 因子正交化 (Gram-Schmidt, expanding IR 排序) → "
+            f"OOS Calmar <b>{v62_oos.get('calmar', 0):.3f}</b> "
+            f"<br>• <b>v7.6 TV-PR 🚀 NEW</b>: 9 macro + 11 量价, 时变 β_t (Cui 2025), Walk-Forward + 滚动窗口 + warm-start → "
+            f"OOS Calmar <b>{v76_oos.get('calmar', 0):.3f}</b> "
+            f"<br>• <b>v7.6 vs v6.2</b>: v7.6 OOS Calmar {v76_oos.get('calmar', 0):.3f} vs v6.2 {v62_oos.get('calmar', 0):.3f} "
+            f"({'✅ 优于' if v76_oos.get('calmar', 0) > v62_oos.get('calmar', 0) else '⚠️ 待优化'})"
             f"OOS Calmar <b>{v62_cal:.3f}</b> (vs v6.1 IC12 {v61_cal:.3f}, +{(v62_cal/v61_cal-1)*100:+.1f}%) "
             f"5-fold walk-forward <b>4/5 胜 v6.1</b>, DD -{v62_dd_pct:.1f}%<br>"
         )
         v62_strategy_card = f"""
   <div class="strategy-card" style="background: #F3E5F5; border-color: #9467BD;">
     <h4>v6.2 ir_expanding <span class="legend-box legend-best">⭐ Stage 29 PROMISING</span></h4>
+    <p><b>类型</b>: 11 量价因子 + IC 加权 + 因子正交化 + 逆波动率加权</p>
+    <p><b>核心</b>: Gram-Schmidt 残差化, expanding IR 排序, 最大化因子纯度</p>
+    <p><b>OOS</b>: {v62_oos.get('ann_return', 0)*100:.2f}% / Sharpe {v62_oos.get('sharpe', 0):.2f} / DD {abs(v62_oos.get('max_dd', 0))*100:.2f}% / <b>Calmar {v62_oos.get('calmar', 0):.3f}</b></p>
+    <h4>v7.6 TV-PR <span class="legend-box legend-best">🚀 NEW</span></h4>
+    <p><b>类型</b>: 9 macro + 11 量价因子, 时变 β_t (TV-PR, Cui 2025)</p>
+    <p><b>核心</b>: Walk-Forward + 滚动窗口 (52周) + warm-start, 逆波动率加权</p>
+    <p><b>OOS</b>: {v76_oos.get('ann_return', 0)*100:.2f}% / Sharpe {v76_oos.get('sharpe', 0):.2f} / DD {abs(v76_oos.get('max_dd', 0))*100:.2f}% / <b>Calmar {v76_oos.get('calmar', 0):.3f}</b></p>
     <p><b>类型</b>: <b>v5 因子排序</b> + <b>IC 加权 (12 月 expanding)</b> + <b>Gram-Schmidt 因子正交化</b> (按 expanding IR 排序) + v5.1 逆波动加权</p>
     <p><b>核心</b>: 用截至 d<sub>i-1</sub> 的 expanding IR 给 11 因子排序, Gram-Schmidt 残差化去除 f8-f9, f3-f4 冗余. 5-fold 验证 4/5 胜 v6.1 IC12, 真实提升非运气.</p>
     <p><b>OOS</b>: {v62_oos['ann_return']*100:+.2f}% / Sharpe {v62_oos['sharpe']:.2f} / DD {v62_dd_pct:.2f}% / <b>Calmar {v62_cal:.3f}</b> ⭐</p>
@@ -923,7 +940,7 @@ def main(include_strategies: bool = True):
         "all_curves": "11 策略 NAV 曲线叠加, 重点策略用实线, 参考策略用虚线变淡. 蓝色高亮为 OOS 区间 (2022-2026), 红色虚线标记 2024-09 政策利好, 灰色虚线标记 2022 熊市底. ⭐=v1.0 locked (历史 OOS 最佳 1.791). 任何策略 NAV 持续高于 HS300 基准 (深灰 dashdot) 即代表跑赢大盘.",
         "grouped": "2×2 网格分组对比: 左上是 v1.0 演进路径 (Stage 8→v1.0, 看每个优化的贡献), 右上和下排是不同风格策略对比. 每组独立 Y 轴, 重点看相对走势而非绝对值.",
         "alpha": "α = 策略 NAV / HS300 NAV - 1. 持续为正代表跑赢大盘. v1.0 locked 在大多数时间跑赢 (绿色填充区域), v3 长期稳定正 α, v5 在 2022 后 α 显著为正.",
-        "drawdown": "从历史峰值的最大回撤. v1.0 locked (绿色填充) 几乎无回撤, v0.1+VT 类似. v4 因子/风格在 2022 熊市时回撤达 -38%, 是结构性风险. v6.2 ir_expanding DD -16.7% 仍可接受. HS300 基准 (深灰) 用于对比大盘回撤.",
+        "drawdown": "从历史峰值的最大回撤. v1.0 locked (绿色填充) 几乎无回撤, v0.1+VT 类似. v4 因子/风格在 2022 熊市时回撤达 -38%, 是结构性风险. v6.2 ir_expanding DD -16.7% 仍可接受. v7.6 TV-PR DD -15.4% 较优. HS300 基准 (深灰) 用于对比大盘回撤.",
         "period_compare": "全期 vs OOS 双柱状图, 金边标记 v1.0 locked (OOS 0.791). 可看出哪些策略在 OOS 期间仍保持稳定表现 (v1.0/v3/v6.2), 哪些出现衰减.",
         "radar": "6 维归一化指标, 越靠外越好: 年化收益 / Sharpe / Calmar / 1/|DD| (回撤倒数) / 低波动 / 稳定性. v1.0 locked (绿色填充) 在 DD/Calmar 维度最突出, v5 在收益维度最突出.",
         "monthly_heatmap": "月度收益热图, 11 策略 × 101 月. 绿色 = 正收益, 红色 = 负收益. v1.0 全期基本无红格 (DD 控制好), v4 因子在 2022 集中出现红格.",
@@ -946,7 +963,7 @@ def main(include_strategies: bool = True):
         strategies_section_html = f"""
 <section id="strategies">
   <h2>v0 - v6.2 策略简述 (10 策略 + HS300 基准, 按时间顺序)</h2>
-  <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 Stage 29 (v6.2 ir_expanding PROMISING), 完整记录量化策略演进轨迹. 主文件 (内部跟踪) 完整呈现; 报告版 (V1V5_NAV_CURVES_v2_YYYYMMDD.html) 省略本节.</p>
+  <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 v7.6 (TV-PR, Cui 2025), 完整记录量化策略演进轨迹. 主文件 (内部跟踪) 完整呈现; 报告版 (V1V5_NAV_CURVES_v2_YYYYMMDD.html) 省略本节.</p>
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段 (Stage 8 - 22): CICC → v5 量价</h3>
   {v0_strategy_card}
   {v01_strategy_card}
@@ -959,7 +976,7 @@ def main(include_strategies: bool = True):
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🚀 加权与风控阶段 (Stage 23+ - 26): v5.1 → v6 TF</h3>
   {v51_strategy_card}
   {v6_strategy_card}
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🎯 智能加权阶段 (Stage 27 - 29): v6.1 IC12 → v6.2 ir_expanding</h3>
+  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🎯 智能加权阶段 (Stage 27 - 29): v6.1 IC12 → v6.2 ir_expanding → v7.6 TV-PR</h3>
   {v61_strategy_card}
   {v62_strategy_card}
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📊 基准</h3>
