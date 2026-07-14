@@ -320,6 +320,7 @@ def calculate_daily_nav(
     # 计算日频 NAV
     daily_nav = pd.Series(1.0, index=all_dates, dtype=float)
     current_weights = {}
+    cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000 if cfg.cost_enabled else 0.0
 
     for i in range(1, len(all_dates)):
         date = all_dates[i]
@@ -328,12 +329,23 @@ def calculate_daily_nav(
         rebal_date = date_to_rebal.get(date)
         if rebal_date is not None:
             new_weights_df = weights_df[weights_df["date"] == rebal_date]
-            current_weights = {
+            new_weights = {
                 str(k): v
                 for k, v in new_weights_df.set_index("code")["weight"]
                 .to_dict()
                 .items()
             }
+
+            # 计算换手率 (调仓日扣减交易成本)
+            if cfg.cost_enabled:
+                turnover = 0.0
+                all_codes = set(list(current_weights.keys()) + list(new_weights.keys()))
+                for code in all_codes:
+                    w_old = current_weights.get(code, 0.0)
+                    w_new = new_weights.get(code, 0.0)
+                    turnover += abs(w_new - w_old)
+
+            current_weights = new_weights
 
         # 计算日频组合收益
         daily_ret = 0.0
@@ -342,6 +354,10 @@ def calculate_daily_nav(
                 ret = daily_returns.loc[date, code]
                 if pd.notna(ret):
                     daily_ret += weight * ret
+
+        # 调仓日扣减交易成本 (在收益计算之后, NAV 更新之前)
+        if rebal_date is not None and cfg.cost_enabled:
+            daily_ret -= turnover * cost_rate
 
         # 累积 NAV
         daily_nav.iloc[i] = daily_nav.iloc[i - 1] * (1 + daily_ret)
