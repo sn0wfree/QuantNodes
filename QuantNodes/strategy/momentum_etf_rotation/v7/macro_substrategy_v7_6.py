@@ -192,14 +192,21 @@ def construct_portfolio(
             # 这里用 Y 的截面均值作为近似
             scores = Y.iloc[t - 1]  # (N,) 截面收益
 
+            # 过滤 NaN
+            scores = scores.dropna()
+
             # 选 top_n
-            chosen = scores.nlargest(cfg.top_n).index.tolist()
+            if len(scores) >= cfg.top_n:
+                chosen = scores.nlargest(cfg.top_n).index.tolist()
+            else:
+                chosen = scores.index.tolist()
 
             # 3. 逆波动率加权
             if len(chosen) > 0 and t >= cfg.vol_window:
                 # 计算波动率
                 vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
                 vols = vol_window[chosen].std()
+                vols = vols.fillna(cfg.vol_floor)  # NaN 用默认波动率填充
                 vols = vols.clip(lower=cfg.vol_floor)
 
                 # 逆波动率权重
@@ -217,7 +224,9 @@ def construct_portfolio(
             daily_ret = 0.0
             for code in chosen:
                 if code in Y.columns:
-                    daily_ret += weights.get(code, 0.0) * Y[code].iloc[t]
+                    ret = Y[code].iloc[t]
+                    if pd.notna(ret):
+                        daily_ret += weights.get(code, 0.0) * ret
 
             # 5. 交易成本
             if cfg.cost_enabled:
