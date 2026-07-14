@@ -242,10 +242,39 @@ def load_v7_6_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
     return X_panel, Y, valid_codes
 
 
+# ============================================================
+# 4. 日频 ETF 收益 (用于日频 NAV 计算)
+# ============================================================
+def load_daily_etf_returns() -> pd.DataFrame:
+    """加载日频 ETF 收益 (用于日频 NAV 计算).
+
+    Returns:
+        DataFrame (T_daily, N_etf) 日频 ETF 收益.
+    """
+    cache = HF_DIR / "v7_6_daily_etf_returns.parquet"
+    if cache.exists():
+        return pd.read_parquet(cache)
+
+    # 加载 ETF NAV
+    nav_path = REAL_DIR / "etf_nav_2018-01-01_2026-06-30.parquet"
+    if not nav_path.exists():
+        raise FileNotFoundError(f"NAV file not found: {nav_path}")
+
+    nav = pd.read_parquet(nav_path)
+
+    # 计算日频收益
+    daily_returns = nav.pct_change()
+
+    # 保存缓存
+    daily_returns.to_parquet(cache)
+    return daily_returns
+
+
 __all__ = [
     "load_weekly_macro_factors",
     "load_weekly_pv_factors",
     "load_weekly_asset_returns",
+    "load_daily_etf_returns",
     "build_mixed_factor_panel",
     "load_v7_6_data",
 ]
