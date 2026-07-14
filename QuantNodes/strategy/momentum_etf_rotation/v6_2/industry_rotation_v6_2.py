@@ -8,6 +8,8 @@ v6.2 = v5 选股 + IC 加权 + 因子正交化 (残差化) + v5.1.1 加权.
 - 正交化方法: Gram-Schmidt 残差法 或 QR 分解对称正交
 
 无风控层 (与 v6.1 一致).
+
+[Stage 30] 交易成本: 默认启用 (5bp 佣金 + 10bp 滑点), 与 v1.0 对齐.
 """
 from __future__ import annotations
 
@@ -102,6 +104,11 @@ class V6_2Config(SubStrategyConfig):
     vol_window: int = 60
     vol_floor: float = 0.01
     rebal_lag: int = 1
+
+    # [Stage 30] 交易成本 (与 v1.0 对齐)
+    cost_enabled: bool = True
+    commission_bp: float = 5.0       # 佣金 (基点, 万 5)
+    slippage_bp: float = 10.0       # 滑点 (基点)
 
 
 class V6_2SubStrategy(V6_1SubStrategy):
@@ -369,15 +376,28 @@ def run_v6_2_backtest(
             except Exception:
                 chosen = []
 
-            weights = {}
+            new_weights = {}
             if chosen:
                 try:
-                    weights = sub.weight(panel_close, chosen, date)
+                    new_weights = sub.weight(panel_close, chosen, date)
                 except Exception:
-                    weights = {}
-            prev_weights = weights
+                    new_weights = {}
 
-        if prev_weights:
+            # [Stage 30] 交易成本扣减 (仅调仓日, 用新旧权重差)
+            if cfg.cost_enabled:
+                turnover = 0.0
+                for code in set(list(prev_weights.keys()) + list(new_weights.keys())):
+                    w_old = prev_weights.get(code, 0.0)
+                    w_new = new_weights.get(code, 0.0)
+                    turnover += abs(w_new - w_old)
+                cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
+                # 成本在调仓日扣减
+                nav.iloc[i] = nav.iloc[i - 1] * (1 - turnover * cost_rate)
+            else:
+                nav.iloc[i] = nav.iloc[i - 1]
+
+            prev_weights = new_weights
+        elif prev_weights:
             daily_ret = 0.0
             for code, w in prev_weights.items():
                 if code in panel_close.columns:
