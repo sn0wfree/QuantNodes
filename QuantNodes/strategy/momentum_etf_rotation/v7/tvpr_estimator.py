@@ -94,15 +94,22 @@ def tvpr_admm(
     z = np.zeros((T - 1, K))
     u = np.zeros((T - 1, K))
 
-    # 预计算 X'X 和 X'Y (每个时间点)
+    # 预计算 X'X 和 X'Y (每个时间点, 处理 NaN)
     # X[t] is (N, K), Y[t] is (N,)
     # X'X = X[t].T @ X[t] is (K, K)
     # X'Y = X[t].T @ Y[t] is (K,)
     XtX = np.zeros((T, K, K))
     XtY = np.zeros((T, K))
     for t in range(T):
-        XtX[t] = X[t].T @ X[t]  # (K, K)
-        XtY[t] = X[t].T @ Y[t]  # (K,)
+        # 过滤 NaN
+        valid_mask = ~np.isnan(Y[t]) & ~np.any(np.isnan(X[t]), axis=1)
+        if np.sum(valid_mask) < K:
+            # 样本不足，跳过
+            continue
+        X_valid = X[t][valid_mask]
+        Y_valid = Y[t][valid_mask]
+        XtX[t] = X_valid.T @ X_valid  # (K, K)
+        XtY[t] = X_valid.T @ Y_valid  # (K,)
 
     # ADMM 迭代
     for iteration in range(max_iter):
@@ -137,8 +144,12 @@ def tvpr_admm(
         # 3. u-update: 对偶变量更新
         u = u + diff_beta - z
 
-        # 4. 收敛检查
-        primal_res = np.max(np.abs(beta - beta_old))
+        # 4. 收敛检查 (处理 NaN)
+        diff = np.abs(beta - beta_old)
+        diff = diff[~np.isnan(diff)]
+        if len(diff) == 0:
+            break
+        primal_res = np.max(diff)
         if primal_res < tol:
             break
 
