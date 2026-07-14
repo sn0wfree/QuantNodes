@@ -195,6 +195,13 @@ def main() -> int:
             logging.info("  OOS Calmar=%.4f, CV%%=%.1f%%, %.1fs",
                          r["oos_calmar"], r["start_cv"] * 100, r["seconds"])
 
+            # 增量保存 (防止超时丢数据)
+            try:
+                incremental_path = OUTPUT_DIR / "v7_6_sensitivity_single_incremental.csv"
+                pd.DataFrame(rows).to_csv(incremental_path, index=False)
+            except Exception as e:
+                logging.warning("  增量保存失败: %s", e)
+
     # 保存
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(rows)
