@@ -1,0 +1,10 @@
+metric,value,note
+|Δβ| mean,0.0013,β 相邻周绝对差均值
+|Δβ| std,0.0051,β 相邻周绝对差标准差
+|Δβ| max,0.1218,最大 β 单步变化
+n_breakpoints,14.0,断点频率 (|Δβ|>0.05)
+bp_freq,0.0326,断点频率比
+beta_std_per_dim_mean,0.0041,β 各维度 std 均值
+beta_cv_per_dim_max,21.5225,β 各维 CV 最大值 (>1 即不稳定)
+beta_cv_per_dim_mean,9.9104,β 各维 CV 均值
+beta_acf_lag1_mean,0.3075,β lag-1 自相关 (>0.7 即稳定)
