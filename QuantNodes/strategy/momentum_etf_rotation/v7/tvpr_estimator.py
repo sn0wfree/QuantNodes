@@ -236,6 +236,7 @@ def tvpr_estimator(
     method: Literal["admm"] = "admm",
     min_history: int = 52,
     window_size: int = 52,
+    rho: float = 1.0,
     max_iter: int = 200,
     tol: float = 1e-5,
 ) -> pd.DataFrame:
@@ -249,6 +250,7 @@ def tvpr_estimator(
         method: 求解方法 (目前只支持 "admm")
         min_history: 最少历史期数 (周)
         window_size: 滚动窗口大小 (周)
+        rho: ADMM 惩罚参数
         max_iter: 最大迭代次数
         tol: 收敛阈值
 
@@ -260,6 +262,7 @@ def tvpr_estimator(
             Y, X_panel, lambda_tv, lambda_l1,
             min_history=min_history,
             window_size=window_size,
+            rho=rho,
             max_iter=max_iter, tol=tol,
         )
     else:

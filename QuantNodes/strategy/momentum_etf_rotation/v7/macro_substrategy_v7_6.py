@@ -70,6 +70,7 @@ class V7_6Config:
     lambda_tv: float = 0.05
     lambda_l1: float = 0.01
     method: str = "admm"
+    rho: float = 1.0
     max_iter: int = 200
     tol: float = 1e-5
 
@@ -132,6 +133,7 @@ def run_v7_6_backtest(
         method=cfg.method,
         min_history=cfg.min_history,
         window_size=cfg.window_size,
+        rho=cfg.rho,
         max_iter=cfg.max_iter,
         tol=cfg.tol,
     )
