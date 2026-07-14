@@ -56,8 +56,8 @@ __all__ = [
     "v7_macro_baseline_v3_momentum",
     "v7_macro_baseline_v4_expanded",
     "v7_macro_baseline_v5_stop_loss",
-    "v7_macro_baseline_v5_tf_score",
-    "v7_macro_baseline_v5_rolling",
+    "v7_macro_baseline_v6_tf_score",
+    "v7_macro_baseline_v7_rolling",
     "RollingSymmetry",
     "BootstrapLassoMapping",
     "FactorRiskParityOptimizer",
@@ -185,7 +185,7 @@ def v7_macro_baseline_v4_expanded(**overrides) -> V7_4Config:
 
 
 def v7_macro_baseline_v5_stop_loss(**overrides) -> V7_4Config:
-    """v7 宏观子策略 v5.0: 硬止损 (Stop Loss, 2026-07-13).
+    """v7 宏观子策略 v5: 硬止损 (Stop Loss, 2026-07-13).
 
     相对 v7+v4 expanded 改动 (单点修复, 风控基础):
     - stop_loss_enabled: True
@@ -202,10 +202,12 @@ def v7_macro_baseline_v5_stop_loss(**overrides) -> V7_4Config:
     - 不基于宏观象限 (不依赖预测)
     - 纯粹 NAV-based 硬线, 触发后 100% 债券
 
-    预期效果 (OOS 2022-2026):
-    - DD: -11.6% → ~-12% (止损会限制部分反弹, 但截断大幅下跌)
-    - Calmar: 0.499 → ~0.55+ (改善风险调整)
+    ✅ [实测正面结果 OOS 2022-2026]
+    - Ann: 5.79% → 6.92% (+1.13%)
+    - Calmar: 0.499 → 0.597 (+20%)
     - 适用场景: 系统性大跌 (如 2022/2024 熊市)
+
+    注意: 全期 2018-2026 反拖累 (2018→2019 V 型反转错过 main 反弹).
 
     用途: 在 v4 expanded 基础上增加硬止损, 防止极端行情.
     """
@@ -241,8 +243,8 @@ def v7_macro_baseline_v5_stop_loss(**overrides) -> V7_4Config:
     return cfg
 
 
-def v7_macro_baseline_v5_tf_score(**overrides) -> V7_5Config:
-    """v7 宏观子策略 v5.1: 连续 TF Score (替代二值 MA200, 2026-07-13).
+def v7_macro_baseline_v6_tf_score(**overrides) -> V7_5Config:
+    """v7 宏观子策略 v6: 连续 TF Score (替代二值 MA200, 2026-07-13).
 
     相对 v7+v2 TF (二值) 改动:
     - trend_filter_enabled: False (关闭二值)
@@ -261,7 +263,12 @@ def v7_macro_baseline_v5_tf_score(**overrides) -> V7_5Config:
     - 60 日动量 0.3 (中期确认, 避免 MA200 滞后)
     - 波动率比率 0.2 (反向, 高 vol = 恐慌 → 减仓)
 
-    用途: 替代 v2 二值 TF, 提供更平滑/及时的趋势信号.
+    ⚠️ [实测负面结果 OOS 2022-2026]
+    Calmar 0.317 vs v2 二值 0.981 (-68%). 详见 docs/38 §10.6.2.
+    连续 TF Score 的理论优势在该数据集上未转化为实际提升.
+    二值 MA200 + 50% bear equity 仍是 sweet spot.
+
+    用途: 探索性替代 v2 二值 TF. 保留为可选, 但不推荐.
     """
     base = v7_macro_baseline_v4_expanded()
     return V7_5Config(
@@ -269,7 +276,7 @@ def v7_macro_baseline_v5_tf_score(**overrides) -> V7_5Config:
         equity_cols=base.equity_cols,
         commodity_cols=base.commodity_cols,
         bond_cols=base.bond_cols,
-        # [v5.1 关键] 关闭二值 TF, 开启连续 TF Score
+        # [v6 关键] 关闭二值 TF, 开启连续 TF Score
         trend_filter_enabled=False,  # 关闭二值 MA200
         # 继承 baseline 设置
         bootstrap_times=base.bootstrap_times,
@@ -285,15 +292,15 @@ def v7_macro_baseline_v5_tf_score(**overrides) -> V7_5Config:
         slippage_bp=base.slippage_bp,
         # [v5 硬止损] 默认关闭 (用户可单独开启)
         stop_loss_enabled=False,
-        # [v5.1 连续 TF Score]
+        # [v6 连续 TF Score]
         tf_score_enabled=True,
         # 继承 expanded pool 设置
         **overrides,
     )
 
 
-def v7_macro_baseline_v5_rolling(**overrides) -> V7_5Config:
-    """v7 宏观子策略 v5.2: 时变 LASSO + 二值 TF (默认 TF, 2026-07-13).
+def v7_macro_baseline_v7_rolling(**overrides) -> V7_5Config:
+    """v7 宏观子策略 v7: 时变 LASSO + 二值 TF (默认 TF, 2026-07-13).
 
     相对 v7+v2 TF (二值) 改动:
     - 二值 TF 保留 (与 v2 相同)
@@ -309,12 +316,12 @@ def v7_macro_baseline_v5_rolling(**overrides) -> V7_5Config:
     - 优点: 捕捉时变关系 (如 2020 疫情后, 通胀/利率因子与资产关系剧变)
     - 代价: 估计稳定性降低 (样本量减少), 可能放大短期噪声
 
-    注意:
-    - 此 v5.2 默认使用 v2 的二值 TF + 滚动 LASSO (而非 Step 2 的连续 TF Score)
-    - 连续 TF Score 在实测中劣于二值 (见 §10.6.2)
-    - 滚动的样本空间必须 >= quarter_window × 13 (周) 才能开始
+    ⚠️ [实测负面结果 OOS 2022-2026]
+    Calmar 0.333 vs v2 expanding 0.981 (-66%). 详见 docs/38 §10.6.3.
+    该数据集宏观-资产关系相对稳定, expanding 反而更稳健.
+    滚动窗口估计稳定性大幅降低, 噪声放大.
 
-    用途: 探索时变 LASSO 对 v7 框架的改善.
+    用途: 探索性替代 v2 expanding LASSO. 保留为可选, 但不推荐.
     """
     base = v7_macro_baseline_v2_tf()
     return V7_5Config(
@@ -340,7 +347,7 @@ def v7_macro_baseline_v5_rolling(**overrides) -> V7_5Config:
         slippage_bp=base.slippage_bp,
         # [v5 硬止损] 默认关闭 (用户可单独开启)
         stop_loss_enabled=False,
-        # [v5.2 关键] 时变 LASSO: 滚动 156 周 (3 年)
+        # [v7 关键] 时变 LASSO: 滚动 156 周 (3 年)
         lasso_rolling_window=156,
         tf_score_enabled=False,  # 不使用连续 TF Score
         **overrides,

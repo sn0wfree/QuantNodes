@@ -560,7 +560,19 @@ tests/.../v7/
 
 ---
 
-## 十、v7_macro_baseline_v5 — 硬止损 + 连续TF + 时变LASSO (2026-07-13)
+## 十、v7_macro_baseline_v5/v6/v7 — 硬止损 + 连续TF + 时变LASSO (2026-07-13)
+
+### 10.0 版本命名约定
+
+v7 自 v4 expanded 之后, 用户深度讨论指出 v7 范式需要改进, 实施 3 个独立改进:
+
+| 版本 | 改进 | 工厂函数 | 状态 |
+|------|------|---------|------|
+| **v5** | 硬止损 (Stop Loss 10% DD) | `v7_macro_baseline_v5_stop_loss()` | ✅ 推荐 (可选项) |
+| **v6** | 连续 TF Score (替代二值 MA200) | `v7_macro_baseline_v6_tf_score()` | ⚠️ 负面结果, 保留可选不推荐 |
+| **v7** | 时变 LASSO (Rolling 156w) | `v7_macro_baseline_v7_rolling()` | ⚠️ 严重退化, 保留可选不推荐 |
+
+[历史说明] 早期实现将三个改进都归类为 "v7.5" 子版本 (v5.0/v5.1/v5.2), 后升级为独立的 v5/v6/v7 (每个改进一个版本号), 与 v2/v3/v4 命名保持一致.
 
 ### 10.1 设计动机 (用户深度讨论 2026-07-13)
 
@@ -577,15 +589,15 @@ v4+TF 已达到 OOS Ann 10.64% / Calmar 0.879, 但用户指出根本性缺陷:
 
 | # | 建议 | 落地 | 优先级 |
 |---|------|------|--------|
-| 1 | 硬止损 (8-12% DD) | ✅ Step 1 | P0 |
-| 2 | 连续TF替代二值MA200 | ✅ Step 2 | P1 |
-| 3 | 时变LASSO (滚动窗口) | ✅ Step 3 | P2 |
+| 1 | 硬止损 (8-12% DD) | ✅ **v5** | P0 |
+| 2 | 连续TF替代二值MA200 | ✅ **v6** (但负面) | P1 |
+| 3 | 时变LASSO (滚动窗口) | ✅ **v7** (但负面) | P2 |
 | 4 | 微观因子 (估值/动量/vol) | ⏳ 用动量/vol作为proxy | P3 |
 | 5 | 在线预测误差监控 | ⏳ 暂缓 (复杂度高) | P3 |
 | 6 | 事件驱动调仓 | ⏳ 暂缓 (回测时间×10) | P3 |
 | 7 | 分层贝叶斯 | ⏳ 暂缓 (过度设计) | P4 |
 
-### 10.2 Step 1: 硬止损 (Stop Loss)
+### 10.2 **v5** - 硬止损 (Stop Loss)
 
 **设计**: 在每个调仓日, 检查当前 NAV 相对历史峰值的回撤. 若回撤 ≥ 10%, 强制将权益类资产仓位清零, 全仓债券 (flight to safety).
 
@@ -603,8 +615,8 @@ if cfg.stop_loss_enabled and nav_history:
     dd = current_nav / peak - 1
     if dd < cfg.stop_loss_threshold:
         # 强制 100% 债券 (按原 bond 权重比例分配)
-        w = {col: bond_alloc if col in bond_cols else 0.0
-             for col in cfg.index_pool}
+        w_stop = {col: bond_alloc if col in bond_cols else 0.0
+                  for col in cfg.index_pool}
 ```
 
 **为何 10% 而非 8%?**
@@ -612,11 +624,9 @@ if cfg.stop_loss_enabled and nav_history:
 - 10-12% 是行业经验阈值, 既能截断系统性下跌, 又避免噪声触发
 - 用户讨论确认: "可以更宽松"
 
-**预期效果**:
-- 在 OOS 2022 (沪深300 DD -22%) 等大跌年份, 止损可将组合 DD 截断到 ~12-13%
-- Calmar 改善: 0.879 → ~1.0+
+**回测结果** (后续 §10.6.1):
 
-### 10.3 Step 2: 连续 TF Score (替代二值 MA200)
+### 10.3 **v6** - 连续 TF Score (替代二值 MA200)
 
 **问题**: 当前 `apply_trend_filter` 仅有两种状态:
 - 多头: MA200 之上 → 原权重不变
@@ -647,13 +657,9 @@ elif score > 0.3: equity_scale = 1.2  # 强牛市
 else: 线性插值 0.3 → 1.2
 ```
 
-**关键改进点**:
-1. **连续信号** 保留全部信息, 不再二值化
-2. **多因子合成** 解决 "只靠 MA200 反应慢" 问题
-3. **线性插值** 介于 bear/bull 之间时平滑过渡
-4. **可超配** (1.2) 牛市时加大权益敞口
+**回测结果** (后续 §10.6.2):
 
-### 10.4 Step 3: 时变 LASSO (滚动窗口)
+### 10.4 **v7** - 时变 LASSO (滚动窗口)
 
 **问题**: 当前 LASSO 用 expanding window (从回测起点到当前), 系数 β 实际是**全样本平均**, 缺乏时变性. 若宏观-资产关系发生结构性变化 (如 2020 疫情后), β 无法及时响应.
 
@@ -669,34 +675,37 @@ lasso_rolling_window: int | None = None  # None=expanding (兼容), 156=3年滚�
 - 代价: 估计稳定性降低 (样本量减少), 可能放大噪声
 - 风险: 需验证 OOS 是否稳定优于 expanding
 
+**回测结果** (后续 §10.6.3):
+
 ### 10.5 实施计划 (分步验证)
 
-| Step | 内容 | 验证 | 预期 ROI |
+| 步骤 | 内容 | 验证 | 预期 ROI |
 |------|------|------|---------|
-| 1 | 硬止损 | 单测 + e2e | ⭐⭐⭐⭐⭐ |
-| 2 | 连续TF | 单测 + e2e | ⭐⭐⭐⭐ |
-| 3 | 时变LASSO | 单测 + e2e | ⭐⭐⭐ |
+| v5 | 硬止损 | 单测 + e2e | ⭐⭐⭐⭐⭐ |
+| v6 | 连续TF | 单测 + e2e | ⭐⭐⭐⭐ |
+| v7 | 时变LASSO | 单测 + e2e | ⭐⭐⭐ |
 
 每步完成立即跑测试 + git commit, 不累积.
 
-### 10.6 回测结果 (待实施后填入)
+### 10.6 回测结果对比
 
 | 版本 | Ann | Vol | DD | Calmar | Sharpe | vs v4+TF |
 |------|----:|----:|---:|-------:|-------:|---------:|
-| v4+TF (baseline) | 10.64% | 12.71% | -12.11% | 0.879 | 0.860 | — |
-| v5 + stop loss (Step 1) | TBD | TBD | TBD | TBD | TBD | TBD |
-| v5 + continuous TF (Step 2) | TBD | TBD | TBD | TBD | TBD | TBD |
-| v5 + rolling LASSO (Step 3) | TBD | TBD | TBD | TBD | TBD | TBD |
-| v5 全开 (Step 1+2+3) | TBD | TBD | TBD | TBD | TBD | TBD |
+| v4+TF (baseline) | 5.79% | 11.00% | -11.60% | 0.499 | — | — |
+| **v5 + stop loss** | **6.92%** | 10.32% | -11.60% | **0.597** | +0.10 | ✅ 推荐 |
+| v6 continuous TF (bull=1.2) | 4.05% | 12.33% | -12.76% | 0.317 | -0.18 | ❌ 不推荐 |
+| v7 rolling LASSO 156w | 3.37% | 7.33% | -10.13% | 0.333 | -0.17 | ❌ 不推荐 |
 
-#### 10.6.1 Step 1 实测结果 (硬止损 10%)
+(全部 OOS 2022-2026)
+
+#### 10.6.1 **v5** 实测结果 (硬止损 10%)
 
 **OOS 2022-2026 (用户原话"22年到现在", 2022年是下跌市)**:
 
 | 版本 | Ann | Vol | DD | Calmar | 改善 |
 |------|----:|----:|---:|-------:|-----:|
 | v4+TF (56 assets) | 5.79% | 11.00% | -11.60% | 0.499 | — |
-| v5+stop_loss (56) | **6.92%** | 10.32% | -11.60% | **0.597** | ⬆️ +20% |
+| v5 + stop_loss (56) | **6.92%** | 10.32% | -11.60% | **0.597** | ⬆️ +20% |
 
 **结论**: 在 2022~2026 的下跌/震荡市中, 硬止损改善了 **Ann (+1.13%)** 和 **Calmar (+0.098)**, DD 维持不变.
 
@@ -705,13 +714,13 @@ lasso_rolling_window: int | None = None  # None=expanding (兼容), 156=3年滚�
 | 版本 | Ann | Vol | DD | Calmar |
 |------|----:|----:|---:|-------:|
 | v4+TF (56 assets) | 6.41% | 10.85% | -13.47% | 0.476 |
-| v5+stop_loss (56) | 4.12% | 9.27% | -15.84% | 0.260 |
+| v5 + stop_loss (56) | 4.12% | 9.27% | -15.84% | 0.260 |
 
 **结论**: 全期数据上止损**反拖累了** Ann (-2.29%) 和 Calmar (-0.216). 原因: 2018 急跌时止损触发, 但 2019 反弹时权益仓位被压制, 错过 main 反弹. 这是硬止损的典型 trade-off.
 
 **决策**: 保留硬止损作为**可选项** (`stop_loss_enabled`), 让用户根据风险偏好选择. 在下跌/震荡市 (OOS 2022+) 显著改善, 在 V 型反转市 (2018→2019) 有机会成本.
 
-#### 10.6.2 Step 2 实测结果 (连续 TF Score) - ⚠️ **负面结果**
+#### 10.6.2 **v6** 实测结果 (连续 TF Score) - ⚠️ **负面结果**
 
 **OOS 2022-2026 对比**:
 
@@ -719,9 +728,9 @@ lasso_rolling_window: int | None = None  # None=expanding (兼容), 156=3年滚�
 |------|----:|----:|---:|-------:|------|
 | v2 二值 MA200 (13 idx) | **4.89%** | 5.69% | -4.98% | **0.981** | 二值基准 |
 | v4+TF 二值 MA200 (56) | **5.79%** | 11.00% | -11.60% | 0.499 | 二值 + 56 assets |
-| v5.1 连续 TF Score (56) | 4.05% | 12.33% | -12.76% | 0.317 | 连续 (bull=1.2) |
-| v5.1 conservative (56) | 4.47% | 11.60% | -12.86% | 0.348 | bull=1.0, bear=0.5 |
-| v5.1 no_vol (56) | 4.65% | 11.39% | -12.98% | 0.358 | 无 vol_ratio 因子 |
+| v6 连续 TF Score (56) | 4.05% | 12.33% | -12.76% | 0.317 | 连续 (bull=1.2) |
+| v6 conservative (56) | 4.47% | 11.60% | -12.86% | 0.348 | bull=1.0, bear=0.5 |
+| v6 no_vol (56) | 4.65% | 11.39% | -12.98% | 0.358 | 无 vol_ratio 因子 |
 
 **分析**: **连续 TF Score 在所有变体下都劣于二值 MA200** (Calmar -0.13 ~ -0.18).
 
@@ -736,18 +745,18 @@ lasso_rolling_window: int | None = None  # None=expanding (兼容), 156=3年滚�
 - 用户的 5+1 建议之一 (连续替代二值) 在实测中**未通过验证**
 
 **决策**:
-- ✅ v7_macro_baseline_v5_tf_score() 工厂**保留** (作为可选项 + 教学示例)
+- ✅ v7_macro_baseline_v6_tf_score() 工厂**保留** (作为可选项 + 教学示例)
 - ⚠️ v2 二值 TF **不应被替换**, 保留为推荐默认
-- 📝 此负结果已记录, 用户可据此判断: 改进 TF 信号空间有限, ROI 集中在止损 (Step 1) 和 LASSO 改进 (Step 3)
+- 📝 此负结果已记录, 用户可据此判断: 改进 TF 信号空间有限, ROI 集中在止损 (v5) 和 LASSO 改进 (v7)
 
-#### 10.6.3 Step 3 实测结果 (时变 LASSO 156 周) - ⚠️ **负面结果**
+#### 10.6.3 **v7** 实测结果 (时变 LASSO 156 周) - ⚠️ **负面结果**
 
 **OOS 2022-2026 对比**:
 
 | 版本 | Ann | Vol | DD | Calmar | 备注 |
 |------|----:|----:|---:|-------:|------|
 | v2 expanding (13 idx, baseline) | **4.89%** | 5.69% | -4.98% | **0.981** | expanding 窗口 |
-| v5.2 rolling 156w (13 idx) | 3.37% | 7.33% | -10.13% | 0.333 | 滚动 3 年 |
+| v7 rolling 156w (13 idx) | 3.37% | 7.33% | -10.13% | 0.333 | 滚动 3 年 |
 
 **分析**: **滚动 LASSO 显著劣于 expanding** (Calmar -0.65, **-66%**).
 
@@ -762,17 +771,17 @@ lasso_rolling_window: int | None = None  # None=expanding (兼容), 156=3年滚�
 - 用户的 "静态映射" 批评在中长期数据上**未转化为实际改进**
 
 **决策**:
-- ✅ v7_macro_baseline_v5_rolling() 工厂**保留** (作为可选项 + 教学示例)
+- ✅ v7_macro_baseline_v7_rolling() 工厂**保留** (作为可选项 + 教学示例)
 - ⚠️ 用户决策 (2026-07-13) "方案 B (时变 LASSO) 可以接受回测时间增加" **不再推荐**
 - 📝 v7 当前架构 (LASSO + FRP + TF) 已达可用 sweet spot, 改进空间有限
 
-#### 10.6.4 综合结论 (Stage 7 v5 三步走)
+#### 10.6.4 综合结论 (Stage 7 v5/v6/v7 三版本)
 
 | 改进 | 预期 ROI | 实测 | 决策 |
 |------|---------|------|------|
-| Step 1: 硬止损 | ⭐⭐⭐⭐⭐ | ✅ OOS 2022+ Calmar +0.10, 保留 | 推荐 (可选项) |
-| Step 2: 连续 TF | ⭐⭐⭐⭐ | ❌ 所有变体均劣于二值 | 保留为可选, 但不推荐 |
-| Step 3: 时变 LASSO | ⭐⭐⭐ | ❌ 严重退化 Calmar -66% | 保留为可选, 但不推荐 |
+| **v5** 硬止损 | ⭐⭐⭐⭐⭐ | ✅ OOS 2022+ Calmar +0.10, 保留 | 推荐 (可选项) |
+| **v6** 连续 TF | ⭐⭐⭐⭐ | ❌ 所有变体均劣于二值 | 保留为可选, 但不推荐 |
+| **v7** 时变 LASSO | ⭐⭐⭐ | ❌ 严重退化 Calmar -66% | 保留为可选, 但不推荐 |
 
 **v7 现状 (2026-07-13)**:
 - v4 expanded + 二值 TF + 扩展止损**是 sweet spot**
@@ -785,26 +794,26 @@ lasso_rolling_window: int | None = None  # None=expanding (兼容), 156=3年滚�
 - 多区间回测 (不同周期窗口验证稳健性)
 - 实盘对接 (止损机制可通过 nanobot Dream 监控)
 
-#### 10.6.5 改进 v7 框架 (Step 1 + 2/3 组合)
+#### 10.6.5 改进 v7 框架 (v5 + v7 组合)
 
-下表比较 v4+TF+stop_loss (Step 1) vs 完整 v5 (Step 1+3 组合, 56 assets):
+下表比较 v4+TF+stop_loss (v5) vs 完整 (v5 + v7 组合, 56 assets):
 
 | 配置 | Ann | Vol | DD | Calmar | 备注 |
 |------|----:|----:|---:|-------:|------|
 | v4+TF (no stop loss) | 5.79% | 11.00% | -11.60% | 0.499 | current |
-| v5 + stop_loss (Step 1 only) | **6.92%** | 10.32% | -11.60% | **0.597** | ⭐ best |
-| v5 + stop_loss + rolling (Step 1+3) | 6.92% | 10.32% | -11.60% | 0.597 | 与 Step 1 单用相同 |
+| v5 + stop_loss (alone) | **6.92%** | 10.32% | -11.60% | **0.597** | ⭐ best |
+| v5 + stop_loss + v7 rolling | 6.92% | 10.32% | -11.60% | 0.597 | 与 v5 单用相同 |
 
-**结论**: 在 56 assets expanded pool 上, 滚动 LASSO 不带来额外改善 (与 Step 1 单独使用结果相同). 原因: 56 assets 已提供充分分散化, 时变 β 的边际效益被池子分散化掩盖.
+**结论**: 在 56 assets expanded pool 上, 滚动 LASSO (v7) 不带来额外改善 (与 v5 单独使用结果相同). 原因: 56 assets 已提供充分分散化, 时变 β 的边际效益被池子分散化掩盖.
 
-### 10.7 文件结构 (v5 新增/修改)
+### 10.7 文件结构 (v5/v6/v7 新增/修改)
 
 ```
 QuantNodes/strategy/momentum_etf_rotation/v7/
 ├── macro_substrategy_v7_3.py     [修改] +stop_loss_* + V7_5Config + compute_trend_score
 ├── bootstrap_lasso.py            [修改] 支持 rolling window
-└── __init__.py                   [修改] +v7_macro_baseline_v5_stop_loss +v7_macro_baseline_v5_tf_score +v7_macro_baseline_v5_rolling
+└── __init__.py                   [修改] +v7_macro_baseline_v5_stop_loss +v7_macro_baseline_v6_tf_score +v7_macro_baseline_v7_rolling
 
 tests/.../v7/
-└── test_v7_macro_baseline_v5_regime.py  [新建] ~20 tests
+└── test_v7_macro_baseline_v5_regime.py  [新建] 23 fast + 11 slow tests
 ```

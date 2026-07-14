@@ -1,20 +1,24 @@
 # coding=utf-8
-"""v7_macro_baseline_v5_regime (硬止损 + 连续TF + 时变LASSO) 测试 (2026-07-13).
+"""v7_macro_baseline_v5/v6/v7 (硬止损 + 连续TF + 时变LASSO) 测试 (2026-07-13).
 
-[Stage 7 v5 三步走 验证]
-Step 1: 硬止损 (Stop Loss)
-Step 2: 连续 TF Score (替代二值 MA200)
-Step 3: 时变 LASSO (滚动窗口)
+[Stage 7 v5/v6/v7 三版本 验证]
+v5: 硬止损 (Stop Loss)
+v6: 连续 TF Score (替代二值 MA200)
+v7: 时变 LASSO (滚动窗口)
 
 测试覆盖:
-  Step 1 - 硬止损:
-    1. 配置冻结 (3 个)
-    2. _check_stop_loss_and_override 内部函数 (3 个, 用 mock 验证)
-    3. 端到端 backtest (3 个 slow): 触发 / 触发后 / 关闭
-  Step 2 - 连续 TF Score (后续 PR):
-    ...
-  Step 3 - 时变 LASSO (后续 PR):
-    ...
+  v5 - 硬止损:
+    1. 配置冻结 (4 个)
+    2. 单元测试 (3 个)
+    3. 端到端 backtest (4 个 slow)
+  v6 - 连续 TF Score:
+    1. 配置冻结 (4 个)
+    2. compute_trend_score (5 个)
+    3. apply_trend_score_filter (3 个)
+    4. 端到端 backtest (3 个 slow)
+  v7 - 时变 LASSO (Rolling Window):
+    1. 配置冻结 (4 个)
+    2. 端到端 backtest (4 个 slow)
 """
 from __future__ import annotations
 
@@ -30,8 +34,8 @@ from QuantNodes.strategy.momentum_etf_rotation.v7 import (
     v7_macro_baseline_v2_tf,
     v7_macro_baseline_v4_expanded,
     v7_macro_baseline_v5_stop_loss,
-    v7_macro_baseline_v5_tf_score,
-    v7_macro_baseline_v5_rolling,
+    v7_macro_baseline_v6_tf_score,
+    v7_macro_baseline_v7_rolling,
     apply_trend_filter,
     apply_trend_score_filter,
     compute_trend_score,
@@ -160,7 +164,7 @@ class TestV5StopLossBacktest:
         return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_stop_loss(), benchmark)
 
     def test_v5_deterministic(self, nav_v5) -> None:
-        """同参数 → 同 NAV."""
+        """v5 (stop loss) 同参数 → 同 NAV."""
         factor_ret = load_factor_returns()
         idx_ret = load_expanded_panel()
         benchmark = load_benchmark_price()
@@ -196,7 +200,7 @@ class TestV5StopLossBacktest:
         """打印 v4 vs v5 性能对比 (供 Stage 7 报告用)."""
         m4 = self._metrics(nav_v4.loc["2022-01-01":])
         m5 = self._metrics(nav_v5.loc["2022-01-01":])
-        print("\n=== v4 vs v5 OOS 2022-2026 ===")
+        print("\n=== v4 vs v5 (stop_loss) OOS 2022-2026 ===")
         print(f"v4: Ann={m4['Ann']:.2%}, Vol={m4['Vol']:.2%}, DD={m4['DD']:.2%}, Calmar={m4['Calmar']:.3f}")
         print(f"v5: Ann={m5['Ann']:.2%}, Vol={m5['Vol']:.2%}, DD={m5['DD']:.2%}, Calmar={m5['Calmar']:.3f}")
 
@@ -204,7 +208,7 @@ class TestV5StopLossBacktest:
 # ============================================================================
 # Step 2 - 连续 TF Score
 # ============================================================================
-class TestV5TFScoreConfig:
+class TestV6TFScoreConfig:
     """TF Score 配置冻结测试."""
 
     def test_v5_config_default(self) -> None:
@@ -220,31 +224,31 @@ class TestV5TFScoreConfig:
         assert cfg.asset_pool == "expanded"
         assert len(cfg.index_pool) == 56
 
-    def test_v5_tf_score_factory(self) -> None:
-        """v7_macro_baseline_v5_tf_score() 工厂配置正确."""
-        cfg = v7_macro_baseline_v5_tf_score()
+    def test_v6_tf_score_factory(self) -> None:
+        """v7_macro_baseline_v6_tf_score() 工厂配置正确."""
+        cfg = v7_macro_baseline_v6_tf_score()
         assert cfg.tf_score_enabled is True
         assert cfg.trend_filter_enabled is False  # 关闭二值
         assert cfg.asset_pool == "expanded"
         assert len(cfg.index_pool) == 56
 
-    def test_v5_tf_score_inherits_v4(self) -> None:
-        """v5.tf_score 应继承 v4 expanded 非 TF 设置."""
+    def test_v6_tf_score_inherits_v4(self) -> None:
+        """v6.tf_score 应继承 v4 expanded 非 TF 设置."""
         v4 = v7_macro_baseline_v4_expanded()
-        v5 = v7_macro_baseline_v5_tf_score()
-        assert v5.bootstrap_times == v4.bootstrap_times
-        assert v5.bootstrap_random_state == v4.bootstrap_random_state
-        assert v5.quarter_window == v4.quarter_window
-        assert v5.max_weight == v4.max_weight
+        v6 = v7_macro_baseline_v6_tf_score()
+        assert v6.bootstrap_times == v4.bootstrap_times
+        assert v6.bootstrap_random_state == v4.bootstrap_random_state
+        assert v6.quarter_window == v4.quarter_window
+        assert v6.max_weight == v4.max_weight
 
-    def test_v5_returns_new_instance(self) -> None:
+    def test_v6_returns_new_instance(self) -> None:
         """每次调用返回新实例."""
-        cfg1 = v7_macro_baseline_v5_tf_score()
-        cfg2 = v7_macro_baseline_v5_tf_score()
+        cfg1 = v7_macro_baseline_v6_tf_score()
+        cfg2 = v7_macro_baseline_v6_tf_score()
         assert cfg1 is not cfg2
 
 
-class TestV5ComputeTrendScore:
+class TestV6ComputeTrendScore:
     """compute_trend_score 单元测试."""
 
     @pytest.fixture
@@ -253,41 +257,41 @@ class TestV5ComputeTrendScore:
 
     def test_score_bull_market(self, benchmark) -> None:
         """牛市 score 应 > 0 (沪深300 在 2019-06 牛市顶部附近)."""
-        cfg = v7_macro_baseline_v5_tf_score()
+        cfg = v7_macro_baseline_v6_tf_score()
         # 2019-06 接近牛市
         score = compute_trend_score(benchmark, pd.Timestamp("2019-06-30"), cfg)
         assert score > 0, f"牛市 score 应 > 0, got {score:.3f}"
 
     def test_score_bear_market(self, benchmark) -> None:
         """熊市 score 应 < 0 (2018-12 接近熊市底部)."""
-        cfg = v7_macro_baseline_v5_tf_score()
+        cfg = v7_macro_baseline_v6_tf_score()
         score = compute_trend_score(benchmark, pd.Timestamp("2018-12-31"), cfg)
         assert score < 0, f"熊市 score 应 < 0, got {score:.3f}"
 
     def test_score_neutral_market(self, benchmark) -> None:
         """中性市 score 应接近 0 (2023-06 震荡市)."""
-        cfg = v7_macro_baseline_v5_tf_score()
+        cfg = v7_macro_baseline_v6_tf_score()
         score = compute_trend_score(benchmark, pd.Timestamp("2023-06-30"), cfg)
         # 不强求精确, 应该在 [-0.5, 0.5]
         assert -0.5 <= score <= 0.5, f"中性市 score 应在中性, got {score:.3f}"
 
     def test_score_bounded(self, benchmark) -> None:
         """score 必须 clip 到 [-1, 1]."""
-        cfg = v7_macro_baseline_v5_tf_score()
+        cfg = v7_macro_baseline_v6_tf_score()
         for date in ["2018-12-31", "2019-06-30", "2020-03-31", "2021-12-31", "2024-09-30"]:
             score = compute_trend_score(benchmark, pd.Timestamp(date), cfg)
             assert -1.0 <= score <= 1.0, f"{date} score {score:.3f} out of bounds"
 
     def test_score_insufficient_data(self, benchmark) -> None:
         """数据不足 200 天时返回 0 (中性)."""
-        cfg = v7_macro_baseline_v5_tf_score()
+        cfg = v7_macro_baseline_v6_tf_score()
         # 选取一个 < 200 天的日期
         early_date = benchmark.index[100]
         score = compute_trend_score(benchmark, early_date, cfg)
         assert score == 0.0, f"数据不足时 score 应为 0, got {score:.3f}"
 
 
-class TestV5ApplyTrendScoreFilter:
+class TestV6ApplyTrendScoreFilter:
     """apply_trend_score_filter 单元测试."""
 
     @pytest.fixture
@@ -296,7 +300,7 @@ class TestV5ApplyTrendScoreFilter:
 
     @pytest.fixture
     def cfg(self) -> V7_5Config:
-        return v7_macro_baseline_v5_tf_score()
+        return v7_macro_baseline_v6_tf_score()
 
     @pytest.fixture
     def w_uniform_expanded(self) -> pd.Series:
@@ -347,7 +351,7 @@ class TestV5ApplyTrendScoreFilter:
 
 
 @pytest.mark.slow
-class TestV5TFScoreBacktest:
+class TestV6TFScoreBacktest:
     """连续 TF Score 端到端回测 (慢测试)."""
 
     @pytest.fixture(scope="class")
@@ -362,29 +366,29 @@ class TestV5TFScoreBacktest:
         return run_v7_3_backtest(idx_ret_13, factor_ret, v7_macro_baseline_v2_tf(), benchmark)
 
     @pytest.fixture(scope="class")
-    def nav_v5_score(self) -> pd.Series:
-        """v5 连续 TF Score (56 assets)."""
+    def nav_v6_score(self) -> pd.Series:
+        """v6 连续 TF Score (56 assets)."""
         factor_ret = load_factor_returns()
         idx_ret = load_expanded_panel()
         benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_tf_score(), benchmark)
+        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v6_tf_score(), benchmark)
 
-    def test_v5_score_deterministic(self, nav_v5_score) -> None:
-        """同参数 → 同 NAV."""
+    def test_v6_score_deterministic(self, nav_v6_score) -> None:
+        """v6 同参数 → 同 NAV."""
         factor_ret = load_factor_returns()
         idx_ret = load_expanded_panel()
         benchmark = load_benchmark_price()
-        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_tf_score(), benchmark)
-        np.testing.assert_array_almost_equal(nav_v5_score.values, nav_again.values, decimal=8)
+        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v6_tf_score(), benchmark)
+        np.testing.assert_array_almost_equal(nav_v6_score.values, nav_again.values, decimal=8)
 
-    def test_v5_score_has_nav(self, nav_v5_score) -> None:
-        """v5 score 应产生有效 NAV."""
-        assert len(nav_v5_score) > 0
-        assert nav_v5_score.iloc[0] == 1.0
-        assert nav_v5_score.iloc[-1] > 0
+    def test_v6_score_has_nav(self, nav_v6_score) -> None:
+        """v6 score 应产生有效 NAV."""
+        assert len(nav_v6_score) > 0
+        assert nav_v6_score.iloc[0] == 1.0
+        assert nav_v6_score.iloc[-1] > 0
 
-    def test_v5_score_summary(self, nav_v2, nav_v5_score) -> None:
-        """打印 v2 (二值) vs v5 (连续) 性能对比."""
+    def test_v6_score_summary(self, nav_v2, nav_v6_score) -> None:
+        """打印 v2 (二值) vs v6 (连续) 性能对比."""
         def metrics(nav, start='2022-01-01'):
             n = nav.loc[start:]
             n_years = (n.index[-1] - n.index[0]).days / 365.25
@@ -395,26 +399,26 @@ class TestV5TFScoreBacktest:
             return ann, vol, dd, calmar
 
         a2, v2, d2, c2 = metrics(nav_v2)
-        a5, v5, d5, c5 = metrics(nav_v5_score)
-        print("\n=== v2 (二值 MA200, 13 idx) vs v5.1 (连续 TF Score, 56 assets) OOS 2022-2026 ===")
-        print(f"v2:    Ann={a2:.2%}, Vol={v2:.2%}, DD={d2:.2%}, Calmar={c2:.3f}")
-        print(f"v5.1:  Ann={a5:.2%}, Vol={v5:.2%}, DD={d5:.2%}, Calmar={c5:.3f}")
+        a6, v6, d6, c6 = metrics(nav_v6_score)
+        print("\n=== v2 (二值 MA200, 13 idx) vs v6 (连续 TF Score, 56 assets) OOS 2022-2026 ===")
+        print(f"v2:  Ann={a2:.2%}, Vol={v2:.2%}, DD={d2:.2%}, Calmar={c2:.3f}")
+        print(f"v6:  Ann={a6:.2%}, Vol={v6:.2%}, DD={d6:.2%}, Calmar={c6:.3f}")
 
 
 # ============================================================================
 # Step 3 - 时变 LASSO (Rolling Window)
 # ============================================================================
-class TestV5RollingConfig:
+class TestV7RollingConfig:
     """Rolling LASSO 配置冻结测试."""
 
-    def test_v5_config_rolling_field(self) -> None:
+    def test_v7_config_rolling_field(self) -> None:
         """V7_5Config 默认 lasso_rolling_window=None (兼容 expanding)."""
         cfg = V7_5Config()
         assert cfg.lasso_rolling_window is None
 
-    def test_v5_rolling_factory(self) -> None:
-        """v7_macro_baseline_v5_rolling() 工厂配置正确."""
-        cfg = v7_macro_baseline_v5_rolling()
+    def test_v7_rolling_factory(self) -> None:
+        """v7_macro_baseline_v7_rolling() 工厂配置正确."""
+        cfg = v7_macro_baseline_v7_rolling()
         assert cfg.lasso_rolling_window == 156  # 3 年周
         assert cfg.tf_score_enabled is False  # 默认用二值 TF
         assert cfg.trend_filter_enabled is True  # 继承 v2 二值
@@ -422,24 +426,24 @@ class TestV5RollingConfig:
         assert cfg.asset_pool == "index"  # 默认 13 indices
         assert len(cfg.index_pool) == 13
 
-    def test_v5_rolling_inherits_v2(self) -> None:
-        """v5.rolling 应继承 v2 baseline 设置."""
+    def test_v7_rolling_inherits_v2(self) -> None:
+        """v7.rolling 应继承 v2 baseline 设置."""
         v2 = v7_macro_baseline_v2_tf()
-        v5 = v7_macro_baseline_v5_rolling()
-        assert v5.bootstrap_times == v2.bootstrap_times
-        assert v5.bootstrap_random_state == v2.bootstrap_random_state
-        assert v5.quarter_window == v2.quarter_window
-        assert v5.max_weight == v2.max_weight
+        v7 = v7_macro_baseline_v7_rolling()
+        assert v7.bootstrap_times == v2.bootstrap_times
+        assert v7.bootstrap_random_state == v2.bootstrap_random_state
+        assert v7.quarter_window == v2.quarter_window
+        assert v7.max_weight == v2.max_weight
 
-    def test_v5_returns_new_instance(self) -> None:
+    def test_v7_returns_new_instance(self) -> None:
         """每次调用返回新实例."""
-        cfg1 = v7_macro_baseline_v5_rolling()
-        cfg2 = v7_macro_baseline_v5_rolling()
+        cfg1 = v7_macro_baseline_v7_rolling()
+        cfg2 = v7_macro_baseline_v7_rolling()
         assert cfg1 is not cfg2
 
 
 @pytest.mark.slow
-class TestV5RollingBacktest:
+class TestV7RollingBacktest:
     """时变 LASSO 端到端回测."""
 
     @pytest.fixture(scope="class")
@@ -451,28 +455,28 @@ class TestV5RollingBacktest:
         return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v2_tf(), benchmark)
 
     @pytest.fixture(scope="class")
-    def nav_v5_rolling(self) -> pd.Series:
-        """v5.2 二值 TF + rolling LASSO 156 周 (3 年)."""
+    def nav_v7_rolling(self) -> pd.Series:
+        """v7 二值 TF + rolling LASSO 156 周 (3 年)."""
         factor_ret = load_factor_returns()
         idx_ret = load_index_panel()
         benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_rolling(), benchmark)
+        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v7_rolling(), benchmark)
 
-    def test_v5_rolling_deterministic(self, nav_v5_rolling) -> None:
+    def test_v7_rolling_deterministic(self, nav_v7_rolling) -> None:
         """同参数 → 同 NAV."""
         factor_ret = load_factor_returns()
         idx_ret = load_index_panel()
         benchmark = load_benchmark_price()
-        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_rolling(), benchmark)
-        np.testing.assert_array_almost_equal(nav_v5_rolling.values, nav_again.values, decimal=8)
+        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v7_rolling(), benchmark)
+        np.testing.assert_array_almost_equal(nav_v7_rolling.values, nav_again.values, decimal=8)
 
-    def test_v5_rolling_has_nav(self, nav_v5_rolling) -> None:
-        """v5 rolling 应产生有效 NAV."""
-        assert len(nav_v5_rolling) > 0
-        assert nav_v5_rolling.iloc[0] == 1.0
-        assert nav_v5_rolling.iloc[-1] > 0
+    def test_v7_rolling_has_nav(self, nav_v7_rolling) -> None:
+        """v7 rolling 应产生有效 NAV."""
+        assert len(nav_v7_rolling) > 0
+        assert nav_v7_rolling.iloc[0] == 1.0
+        assert nav_v7_rolling.iloc[-1] > 0
 
-    def test_v5_rolling_different_from_v2(self, nav_v2, nav_v5_rolling) -> None:
+    def test_v7_rolling_different_from_v2(self, nav_v2, nav_v7_rolling) -> None:
         """rolling LASSO 应与 expanding LASSO 产生不同 NAV.
 
         至少前 N 个值应该有差异 (rolling 起点)
@@ -480,15 +484,15 @@ class TestV5RollingBacktest:
         # 滚动窗口起点出现后, 两个策略的权重应开始分歧
         # 我们看两者是否相同 (完全相同 → rolling 未生效)
         nav_v2_arr = nav_v2.values
-        nav_v5_arr = nav_v5_rolling.values
+        nav_v7_arr = nav_v7_rolling.values
         # 至少在后半段有差异
         n = len(nav_v2_arr)
         mid = n // 2
-        diff = np.abs(nav_v2_arr[mid:] - nav_v5_arr[mid:]).max()
+        diff = np.abs(nav_v2_arr[mid:] - nav_v7_arr[mid:]).max()
         assert diff > 0.001, f"rolling LASSO 与 expanding LASSO 几乎相同 (max diff={diff}), 滚动窗口可能未生效"
 
-    def test_v5_rolling_summary(self, nav_v2, nav_v5_rolling) -> None:
-        """打印 v2 (expanding) vs v5 (rolling) 性能对比."""
+    def test_v7_rolling_summary(self, nav_v2, nav_v7_rolling) -> None:
+        """打印 v2 (expanding) vs v7 (rolling) 性能对比."""
         def metrics(nav, start='2022-01-01'):
             n = nav.loc[start:]
             n_years = (n.index[-1] - n.index[0]).days / 365.25
@@ -499,7 +503,7 @@ class TestV5RollingBacktest:
             return ann, vol, dd, calmar
 
         a2, v2, d2, c2 = metrics(nav_v2)
-        a5, v5, d5, c5 = metrics(nav_v5_rolling)
-        print("\n=== v2 (binary TF + expanding) vs v5.2 (binary TF + rolling 156w) OOS 2022-2026 ===")
+        a7, v7, d7, c7 = metrics(nav_v7_rolling)
+        print("\n=== v2 (binary TF + expanding) vs v7 (binary TF + rolling 156w) OOS 2022-2026 ===")
         print(f"v2 (expanding):  Ann={a2:.2%}, Vol={v2:.2%}, DD={d2:.2%}, Calmar={c2:.3f}")
-        print(f"v5.2 (rolling):  Ann={a5:.2%}, Vol={v5:.2%}, DD={d5:.2%}, Calmar={c5:.3f}")
+        print(f"v7 (rolling):    Ann={a7:.2%}, Vol={v7:.2%}, DD={d7:.2%}, Calmar={c7:.3f}")
