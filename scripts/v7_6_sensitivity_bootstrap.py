@@ -46,7 +46,7 @@ logging.basicConfig(
 DAYS_PER_YEAR = 252
 
 # Bootstrap 参数
-N_BOOTSTRAP = 30  # 用 30 次 (避免太慢)
+N_BOOTSTRAP = 15  # 用 15 次 (避免太慢)
 BLOCK_SIZE = 13   # 块大小 (1 季度)
 SEEDS = list(range(42, 42 + N_BOOTSTRAP))
 
@@ -188,13 +188,18 @@ def main() -> int:
         if oos_mask.sum() == 0:
             oos_nav = nav_daily.iloc[-252 * 2:]  # 退回到最后 2 年
         else:
-            first_oos_rebal = pd.Timestamp(rebal_dates[oos_mask.values.argmax()])
-            # 找到 daily_returns 中 ≥ first_oos_rebal 的最后
-            valid_dates = daily_returns_df.index[daily_returns_df.index >= first_oos_rebal]
-            if len(valid_dates) == 0:
-                continue
-            oos_start_date = valid_dates[0]
-            oos_nav = nav_daily.loc[oos_start_date:]
+            oos_indices = np.where(np.asarray(oos_mask))[0]
+            if len(oos_indices) == 0:
+                oos_nav = nav_daily.iloc[-252 * 2:]
+            else:
+                first_oos_idx = oos_indices[0]
+                first_oos_rebal = pd.Timestamp(rebal_dates[first_oos_idx])
+                # 找到 daily_returns 中 ≥ first_oos_rebal 的最后
+                valid_dates = daily_returns_df.index[daily_returns_df.index >= first_oos_rebal]
+                if len(valid_dates) == 0:
+                    continue
+                oos_start_date = valid_dates[0]
+                oos_nav = nav_daily.loc[oos_start_date:]
 
         m = compute_metrics(oos_nav)
         m["seed"] = seed
