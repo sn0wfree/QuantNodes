@@ -1,12 +1,12 @@
 # coding=utf-8
-"""v7.6 宏观子策略: TV-PR (9 macro + 11 量价, 月频).
+"""v7.6 宏观子策略: TV-PR (9 macro + 11 量价, 周频).
 
 Cui et al. (2025) "Breaks and trends in factor premia."
 
 v7.6 = v7.3 (9 macro) + v5 (11 量价) + TV-PR 时变 β_t
 
 回测流程:
-  1. 加载数据: 9 macro + 11 量价 → 月频
+  1. 加载数据: 9 macro + 11 量价 → 周频
   2. 滚动估计: 用 TV-PR 估计 β_t
   3. 构造组合: 按 β_t 预测收益排序, 逆波动率加权
   4. 扣除成本: 5bp 佣金 + 5bp 滑点
@@ -20,9 +20,9 @@ import numpy as np
 import pandas as pd
 
 from .data_loader_v7_6 import (
-    load_monthly_macro_factors,
-    load_monthly_pv_factors,
-    load_monthly_asset_returns,
+    load_weekly_macro_factors,
+    load_weekly_pv_factors,
+    load_weekly_asset_returns,
     build_mixed_factor_panel,
     load_v7_6_data,
 )
@@ -41,7 +41,7 @@ from ..v5.industry_factors import FactorEngineConfig
 # ============================================================
 @dataclass
 class V7_6Config:
-    """v7.6 TV-PR 配置 (9 macro + 11 量价, 月频)."""
+    """v7.6 TV-PR 配置 (9 macro + 11 量价, 周频)."""
     name: str = "v7_6_tvpr"
 
     # 资产池
@@ -51,11 +51,11 @@ class V7_6Config:
     commodity_cols: tuple[str, ...] = tuple(COMMODITY_ETF_COLS)
     bond_cols: tuple[str, ...] = tuple(EXPANDED_BOND_INDICES)
 
-    # 因子池
+    # 因子池 (9 macro + 11 量价 = 20 维)
     macro_cols: tuple[str, ...] = (
         "宏观增长因子", "宏观通胀因子_生活端", "宏观通胀因子_生产端",
         "无风险收益率", "信用利差因子", "期限利差因子_债",
-        "期限利差因子_股", "宏观汇率因子",
+        "期限利差因子_股", "期限利差因子_加权", "宏观汇率因子",
     )
     pv_factors: tuple[str, ...] = (
         "f1_second_mom", "f2_mom_term",
@@ -72,9 +72,9 @@ class V7_6Config:
     max_iter: int = 200
     tol: float = 1e-5
 
-    # 调仓
-    rebalance_freq: str = "M"
-    min_history: int = 12
+    # 调仓 (周频)
+    rebalance_freq: str = "W"
+    min_history: int = 52  # 周频 52 周 = 1 年
 
     # 成本
     commission_bp: float = 5.0
@@ -84,7 +84,7 @@ class V7_6Config:
     # 选股
     top_n: int = 10
     max_weight: float = 0.25
-    vol_window: int = 6
+    vol_window: int = 26  # 周频 26 周 ≈ 半年
     vol_floor: float = 0.01
 
 
@@ -100,41 +100,23 @@ def run_v7_6_backtest(
     """v7.6 TV-PR 端到端回测.
 
     Args:
-        X_panel: (T, N, K) 月频因子值面板 (None = 自动加载)
-        Y: (T, N) 月频资产收益 (None = 自动加载)
+        X_panel: (T, N, K) 周频因子值面板 (None = 自动加载)
+        Y: (T, N) 周频资产收益 (None = 自动加载)
         valid_codes: 有效资产代码列表
         cfg: v7.6 配置
 
     Returns:
-        nav: pd.Series, 月频 NAV
+        nav: pd.Series, 周频 NAV
     """
     cfg = cfg or V7_6Config()
 
     # 1. 加载数据
     if X_panel is None or Y is None:
-        from .data_loader_v7_6 import (
-            load_monthly_macro_factors,
-            load_monthly_pv_factors,
-            load_monthly_asset_returns,
-        )
+        X_panel, Y, valid_codes = load_v7_6_data()
 
-        X_macro = load_monthly_macro_factors()
-        X_pv = load_monthly_pv_factors()
-        Y = load_monthly_asset_returns()
+    T, N, K = X_panel.shape
 
-        # 构造面板
-        asset_codes = list(Y.columns)
-        X_panel, valid_codes = build_mixed_factor_panel(X_macro, X_pv, asset_codes)
-
-    # 2. 对齐时间
-    common_idx = X_macro.index.intersection(Y.index)
-    X_macro = X_macro.loc[common_idx]
-    Y = Y.loc[common_idx]
-
-    T, N = Y.shape
-    K = X_panel.shape[2]
-
-    # 3. 滚动估计 β_t
+    # 2. 滚动估计 β_t
     beta_path = tvpr_estimator(
         Y, X_panel,
         lambda_tv=cfg.lambda_tv,
@@ -145,32 +127,34 @@ def run_v7_6_backtest(
         tol=cfg.tol,
     )
 
-    # 4. 构造组合
-    nav = construct_portfolio(Y, beta_path, cfg)
+    # 3. 构造组合 (使用 β_t 预测收益)
+    nav = construct_portfolio(Y, X_panel, beta_path, cfg)
 
     return nav
 
 
 def construct_portfolio(
     Y: pd.DataFrame,
+    X_panel: np.ndarray,
     beta_path: pd.DataFrame,
     cfg: V7_6Config,
 ) -> pd.Series:
     """根据 β_t 构造组合.
 
     逻辑:
-      1. 计算预测收益: r_hat = X @ β_t
+      1. 计算预测收益: r_hat = X[t] @ beta_path[t-1]
       2. 按 r_hat 排序, 选 top_n ETF
       3. 逆波动率加权
       4. 扣除成本
 
     Args:
-        Y: (T, N) 月频资产收益
+        Y: (T, N) 周频资产收益
+        X_panel: (T, N, K) 周频因子值面板
         beta_path: (T, K) 时变 β_t
         cfg: 配置
 
     Returns:
-        nav: pd.Series, 月频 NAV
+        nav: pd.Series, 周频 NAV
     """
     T, N = Y.shape
     nav = pd.Series(1.0, index=Y.index, dtype=float)
@@ -178,70 +162,59 @@ def construct_portfolio(
     prev_weights = {}
 
     for t in range(1, T):
-        # 1. 计算预测收益 (用 β_{t-1} 预测 r_t)
-        if t > 0:
-            # 简化: 用 β_{t-1} 的均值作为预测
-            # 实际应该用 X[t] @ beta_path[t-1], 但 X 是因子, 不是资产收益
-            # 这里用 beta_path 的截面排序作为选股信号
-            beta_t = beta_path.iloc[t - 1]
+        # 1. 用 TV-PR 预测收益 (避免未来函数: 用 beta_path[t-1])
+        beta_prev = beta_path.iloc[t - 1].values  # (K,) 上期估计的 β
+        scores = X_panel[t] @ beta_prev  # (N,) 预测收益
 
-            # 2. 按 beta_t 截面排序, 选 top_n
-            # beta_t 是 20 维, 需要转换为 N 维资产分数
-            # 简化: 用 beta_t 的均值作为资产分数
-            # 实际应该用 X[t] @ beta_t, 但需要 X 是资产×因子格式
-            # 这里用 Y 的截面均值作为近似
-            scores = Y.iloc[t - 1]  # (N,) 截面收益
+        # 转为 Series 并过滤 NaN
+        scores = pd.Series(scores, index=Y.columns)
+        scores = scores.dropna()
 
-            # 过滤 NaN
-            scores = scores.dropna()
-
-            # 选 top_n
-            if len(scores) >= cfg.top_n:
-                chosen = scores.nlargest(cfg.top_n).index.tolist()
-            else:
-                chosen = scores.index.tolist()
-
-            # 3. 逆波动率加权
-            if len(chosen) > 0 and t >= cfg.vol_window:
-                # 计算波动率
-                vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
-                vols = vol_window[chosen].std()
-                vols = vols.fillna(cfg.vol_floor)  # NaN 用默认波动率填充
-                vols = vols.clip(lower=cfg.vol_floor)
-
-                # 逆波动率权重
-                inv_vol = 1.0 / vols
-                weights = inv_vol / inv_vol.sum()
-
-                # 限制最大权重
-                weights = weights.clip(upper=cfg.max_weight)
-                weights = weights / weights.sum()
-            else:
-                # 等权
-                weights = pd.Series(1.0 / len(chosen), index=chosen)
-
-            # 4. 计算收益
-            daily_ret = 0.0
-            for code in chosen:
-                if code in Y.columns:
-                    ret = Y[code].iloc[t]
-                    if pd.notna(ret):
-                        daily_ret += weights.get(code, 0.0) * ret
-
-            # 5. 交易成本
-            if cfg.cost_enabled:
-                turnover = 0.0
-                for code in set(list(prev_weights.keys()) + list(weights.keys())):
-                    w_old = prev_weights.get(code, 0.0)
-                    w_new = weights.get(code, 0.0) if code in weights else 0.0
-                    turnover += abs(w_new - w_old)
-                cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
-                daily_ret -= turnover * cost_rate
-
-            nav.iloc[t] = nav.iloc[t - 1] * (1 + daily_ret)
-            prev_weights = weights.to_dict()
+        # 2. 选 top_n
+        if len(scores) >= cfg.top_n:
+            chosen = scores.nlargest(cfg.top_n).index.tolist()
         else:
-            nav.iloc[t] = nav.iloc[t - 1]
+            chosen = scores.index.tolist()
+
+        # 3. 逆波动率加权
+        if len(chosen) > 0 and t >= cfg.vol_window:
+            # 计算波动率
+            vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
+            vols = vol_window[chosen].std()
+            vols = vols.fillna(cfg.vol_floor)  # NaN 用默认波动率填充
+            vols = vols.clip(lower=cfg.vol_floor)
+
+            # 逆波动率权重
+            inv_vol = 1.0 / vols
+            weights = inv_vol / inv_vol.sum()
+
+            # 限制最大权重
+            weights = weights.clip(upper=cfg.max_weight)
+            weights = weights / weights.sum()
+        else:
+            # 等权
+            weights = pd.Series(1.0 / len(chosen), index=chosen)
+
+        # 4. 计算收益
+        daily_ret = 0.0
+        for code in chosen:
+            if code in Y.columns:
+                ret = Y[code].iloc[t]
+                if pd.notna(ret):
+                    daily_ret += weights.get(code, 0.0) * ret
+
+        # 5. 交易成本
+        if cfg.cost_enabled:
+            turnover = 0.0
+            for code in set(list(prev_weights.keys()) + list(weights.keys())):
+                w_old = prev_weights.get(code, 0.0)
+                w_new = weights.get(code, 0.0) if code in weights else 0.0
+                turnover += abs(w_new - w_old)
+            cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
+            daily_ret -= turnover * cost_rate
+
+        nav.iloc[t] = nav.iloc[t - 1] * (1 + daily_ret)
+        prev_weights = weights.to_dict()
 
     return nav
 
@@ -250,7 +223,7 @@ def construct_portfolio(
 # 工厂函数
 # ============================================================
 def v7_6_baseline(**overrides) -> V7_6Config:
-    """v7.6 baseline: TV-PR (9 macro + 11 量价, 月频).
+    """v7.6 baseline: TV-PR (9 macro + 11 量价, 周频).
 
     预期性能:
       - OOS Calmar: 0.5-0.7 (估)

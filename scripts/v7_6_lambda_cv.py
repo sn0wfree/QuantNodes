@@ -35,17 +35,21 @@ LAMBDA_L1_RANGE = [0.001, 0.01, 0.05, 0.1]
 
 # Time Series CV 参数
 N_SPLITS = 5
-MIN_HISTORY = 12  # 最少 12 个月训练期
+MIN_HISTORY = 52  # 周频 52 周 = 1 年
+
+# 频率
+FREQ = "W"  # 周频
+FREQ_PER_YEAR = 52  # 每年 52 周
 
 
 def compute_calmar(nav: pd.Series) -> float:
-    """计算 Calmar."""
+    """计算 Calmar (周频)."""
     if nav.empty or len(nav) < 2:
         return 0.0
     rets = nav.pct_change().dropna()
     if rets.empty:
         return 0.0
-    n_years = len(rets) / 12  # 月频
+    n_years = len(rets) / FREQ_PER_YEAR
     total_ret = nav.iloc[-1] / nav.iloc[0] - 1
     ann_ret = float((1 + total_ret) ** (1 / max(n_years, 1e-9)) - 1)
     cummax = nav.cummax()
@@ -65,8 +69,8 @@ def time_series_cv_fold(
     """单折 Time Series CV.
 
     Args:
-        Y: (T, N) 月频资产收益
-        X_panel: (T, N, K) 月频因子值面板
+        Y: (T, N) 周频资产收益
+        X_panel: (T, N, K) 周频因子值面板
         lambda_tv: TV 罚项系数
         lambda_l1: L1 罚项系数
         train_end: 训练集结束索引
@@ -109,12 +113,20 @@ def time_series_cv_fold(
     nav_val = pd.Series(1.0, index=Y_val.index, dtype=float)
     for t in range(1, len(Y_val)):
         scores = X_val[t] @ beta_last  # (N,)
+        scores = pd.Series(scores, index=Y_val.columns)
+        scores = scores.dropna()  # 过滤 NaN
+
+        if len(scores) == 0:
+            nav_val.iloc[t] = nav_val.iloc[t - 1]
+            continue
+
         top_n = min(10, len(scores))
-        chosen_idx = np.argsort(scores)[-top_n:]
-        chosen = Y_val.columns[chosen_idx]
+        chosen = scores.nlargest(top_n).index.tolist()
 
         # 等权
         ret = Y_val[chosen].iloc[t].mean()
+        if pd.isna(ret):
+            ret = 0.0
         nav_val.iloc[t] = nav_val.iloc[t - 1] * (1 + ret)
 
     return compute_calmar(nav_val)
@@ -130,8 +142,8 @@ def time_series_cv(
     """Time Series CV 评估.
 
     Args:
-        Y: (T, N) 月频资产收益
-        X_panel: (T, N, K) 月频因子值面板
+        Y: (T, N) 周频资产收益
+        X_panel: (T, N, K) 周频因子值面板
         lambda_tv: TV 罚项系数
         lambda_l1: L1 罚项系数
         n_splits: 折数
@@ -158,31 +170,13 @@ def time_series_cv(
 
 def main() -> int:
     logging.info("=" * 60)
-    logging.info("v7.6 λ 校验: Time Series CV")
+    logging.info("v7.6 λ 校验: Time Series CV (周频)")
     logging.info("=" * 60)
 
     # 1. 加载数据
     logging.info("加载数据...")
     t0 = time.time()
-
-    from QuantNodes.strategy.momentum_etf_rotation.v7.data_loader_v7_6 import (
-        load_monthly_macro_factors,
-        load_monthly_pv_factors,
-        load_monthly_asset_returns,
-        build_mixed_factor_panel,
-    )
-
-    X_macro = load_monthly_macro_factors()
-    X_pv = load_monthly_pv_factors()
-    Y = load_monthly_asset_returns()
-
-    # 构造面板
-    asset_codes = list(Y.columns)
-    X_panel, valid_codes = build_mixed_factor_panel(X_macro, X_pv, asset_codes)
-
-    # 过滤有效资产
-    Y = Y[valid_codes]
-
+    X_panel, Y, valid_codes = load_v7_6_data()
     t1 = time.time()
     logging.info("  X_panel: %s, Y: %s, 耗时: %.1fs", X_panel.shape, Y.shape, t1 - t0)
 

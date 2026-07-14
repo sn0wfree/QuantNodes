@@ -66,6 +66,10 @@ def tvpr_admm(
           + λ_2 ||β||_1
           + (ρ/2) ||Δβ - z + u||_2^2
 
+    β-update 公式 (避免未来函数):
+      (X'X + c*ρI)β[t] = X'Y + ρ(β[t-1] + z[t-1] - u[t-1])
+      其中 c = 1 (端点) 或 c = 2 (内部)
+
     Parameters:
         Y: (T, N) 资产收益
         X: (T, N, K) 因子值面板 (每个资产有自己的因子值)
@@ -100,29 +104,26 @@ def tvpr_admm(
         beta_old = beta.copy()
 
         # 1. β-update: 固定 z, u, 解 Lasso
+        # 正确公式: (X'X + c*ρI)β = X'Y + ρ(β[t-1] + z[t-1] - u[t-1])
+        # 注意: 不使用 β[t+1]，避免未来函数
         for t in range(T):
             # 计算右端项
             rhs = XtY[t].copy()
             if t > 0:
-                rhs += rho * (z[t - 1] - u[t - 1])
-            if t < T - 1:
-                rhs += rho * (z[t] - u[t])
+                rhs += rho * (beta[t - 1] + z[t - 1] - u[t - 1])
 
-            # 计算左端矩阵
-            LHS = XtX[t] + rho * np.eye(K)
+            # 计算左端矩阵 (端点 +ρI, 内部 +2ρI)
+            LHS = XtX[t].copy()
             if t > 0:
                 LHS += rho * np.eye(K)
             if t < T - 1:
                 LHS += rho * np.eye(K)
 
-            # 解线性系统 + soft-thresholding
+            # 解线性系统
             try:
-                raw = np.linalg.solve(LHS, rhs)
+                beta[t] = np.linalg.solve(LHS, rhs)
             except np.linalg.LinAlgError:
-                raw = np.zeros(K)
-
-            # L1 惩罚
-            beta[t] = soft_thresholding(raw, lambda_l1 / rho)
+                beta[t] = np.zeros(K)
 
         # 2. z-update: 固定 β, u, 解 soft-thresholding
         diff_beta = np.diff(beta, axis=0)  # (T-1, K)
@@ -147,7 +148,7 @@ def rolling_tvpr(
     X_panel: np.ndarray,
     lambda_tv: float,
     lambda_l1: float,
-    min_history: int = 12,
+    min_history: int = 52,
     rho: float = 1.0,
     max_iter: int = 200,
     tol: float = 1e-5,
@@ -157,11 +158,11 @@ def rolling_tvpr(
     对每个时间点 t (t ≥ min_history), 用 [0, t] 数据估计 β_t.
 
     Parameters:
-        Y: (T, N) 月频资产收益
-        X_panel: (T, N, K) 月频因子值面板
+        Y: (T, N) 周频资产收益
+        X_panel: (T, N, K) 周频因子值面板
         lambda_tv: TV 罚项系数
         lambda_l1: L1 罚项系数
-        min_history: 最少历史期数
+        min_history: 最少历史期数 (周)
         rho: ADMM 惩罚参数
         max_iter: 最大迭代次数
         tol: 收敛阈值
@@ -202,19 +203,19 @@ def tvpr_estimator(
     lambda_tv: float,
     lambda_l1: float,
     method: Literal["admm"] = "admm",
-    min_history: int = 12,
+    min_history: int = 52,
     max_iter: int = 200,
     tol: float = 1e-5,
 ) -> pd.DataFrame:
     """TV-PR estimator: 识别因子溢价的结构性变化.
 
     Parameters:
-        Y: (T, N) 月频资产收益
-        X_panel: (T, N, K) 月频因子值面板
+        Y: (T, N) 周频资产收益
+        X_panel: (T, N, K) 周频因子值面板
         lambda_tv: TV 罚项系数, 控制 break 数量
         lambda_l1: L1 罚项系数, 控制因子稀疏性
         method: 求解方法 (目前只支持 "admm")
-        min_history: 最少历史期数
+        min_history: 最少历史期数 (周)
         max_iter: 最大迭代次数
         tol: 收敛阈值
 

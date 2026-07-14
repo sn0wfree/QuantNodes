@@ -1,12 +1,12 @@
 # coding=utf-8
-"""v7.6 数据加载: 9 macro + 11 量价, 月频.
+"""v7.6 数据加载: 9 macro + 11 量价, 周频.
 
-v7.6 = v7.3 (9 macro) + v5 (11 量价), 月频对齐.
+v7.6 = v7.3 (9 macro) + v5 (11 量价), 周频对齐.
 
 数据流:
-  1. 9 macro factors: 周频 → 月频 (resample('M').last())
-  2. 11 量价 factors: 日频 → 月频 (resample('M').last())
-  3. Y (asset returns): 日频 → 月频 (resample('M').last())
+  1. 9 macro factors: 周频 (保持不变)
+  2. 11 量价 factors: 日频 → 周频 (resample('W').last())
+  3. Y (asset returns): 日频 → 周频 (resample('W').last())
 
 输入:
   - ~/Public/高频宏观因子/高频宏观因子跟踪_output_2026-06-01.xlsx (9 macro)
@@ -14,9 +14,9 @@ v7.6 = v7.3 (9 macro) + v5 (11 量价), 月频对齐.
   - data/real/etf_nav_2018-01-01_2026-06-30.parquet (ETF NAV)
 
 输出:
-  - data/high_freq_macro/v7_6_X_macro_monthly.parquet (T_monthly, 9)
-  - data/high_freq_macro/v7_6_X_pv_monthly.parquet (T_monthly, 56×11)
-  - data/high_freq_macro/v7_6_Y_monthly.parquet (T_monthly, 56)
+  - data/high_freq_macro/v7_6_X_macro_weekly.parquet (T_weekly, 9)
+  - data/high_freq_macro/v7_6_X_pv_weekly.parquet (T_weekly, 56×11)
+  - data/high_freq_macro/v7_6_Y_weekly.parquet (T_weekly, 56)
 """
 from __future__ import annotations
 
@@ -48,44 +48,41 @@ from ..v5.industry_factors import (
 
 
 # ============================================================
-# 1. 9 macro factors: 周频 → 月频
+# 1. 9 macro factors: 周频 (保持不变)
 # ============================================================
-def load_monthly_macro_factors() -> pd.DataFrame:
-    """加载 9 宏观因子, 周频 → 月频.
+def load_weekly_macro_factors() -> pd.DataFrame:
+    """加载 9 宏观因子, 周频 (保持不变).
 
     Returns:
-        DataFrame (T_monthly, 9) 月频宏观因子.
+        DataFrame (T_weekly, 9) 周频宏观因子.
     """
-    cache = HF_DIR / "v7_6_X_macro_monthly.parquet"
+    cache = HF_DIR / "v7_6_X_macro_weekly.parquet"
     if cache.exists():
         return pd.read_parquet(cache)
 
     # 加载周频
     weekly = load_macro_factors()
 
-    # 周频 → 月频 (月末)
-    monthly = weekly.resample("ME").last()
-
     # 保存缓存
-    monthly.to_parquet(cache)
-    return monthly
+    weekly.to_parquet(cache)
+    return weekly
 
 
 # ============================================================
-# 2. 11 量价 factors: 日频 → 月频
+# 2. 11 量价 factors: 日频 → 周频
 # ============================================================
-def load_monthly_pv_factors(
+def load_weekly_pv_factors(
     factor_cfg: FactorEngineConfig | None = None,
 ) -> dict[str, pd.DataFrame]:
-    """计算 11 量价因子, 日频 → 月频.
+    """计算 11 量价因子, 日频 → 周频.
 
     Args:
         factor_cfg: 因子引擎配置 (None = 默认)
 
     Returns:
-        dict, code → DataFrame (T_monthly, 11) 月频量价因子.
+        dict, code → DataFrame (T_weekly, 11) 周频量价因子.
     """
-    cache_dir = HF_DIR / "v7_6_pv_monthly"
+    cache_dir = HF_DIR / "v7_6_pv_weekly"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     factor_cfg = factor_cfg or FactorEngineConfig()
@@ -117,12 +114,12 @@ def load_monthly_pv_factors(
             from ..v5.industry_factors import compute_all_factors
             daily_factors = compute_all_factors(sub, factor_cfg)
 
-            # 日频 → 月频 (月末)
-            monthly_factors = daily_factors.resample("ME").last()
+            # 日频 → 周频 (周末)
+            weekly_factors = daily_factors.resample("W").last()
 
             # 保存缓存
-            monthly_factors.to_parquet(cache_path)
-            result[code] = monthly_factors
+            weekly_factors.to_parquet(cache_path)
+            result[code] = weekly_factors
         except Exception as e:
             print(f"  [{code}] 量价因子计算失败: {e}")
             continue
@@ -131,15 +128,15 @@ def load_monthly_pv_factors(
 
 
 # ============================================================
-# 3. Y (asset returns): 日频 → 月频
+# 3. Y (asset returns): 日频 → 周频
 # ============================================================
-def load_monthly_asset_returns() -> pd.DataFrame:
-    """计算资产收益, 日频 → 月频.
+def load_weekly_asset_returns() -> pd.DataFrame:
+    """计算资产收益, 日频 → 周频.
 
     Returns:
-        DataFrame (T_monthly, 56) 月频资产收益.
+        DataFrame (T_weekly, 56) 周频资产收益.
     """
-    cache = HF_DIR / "v7_6_Y_monthly.parquet"
+    cache = HF_DIR / "v7_6_Y_weekly.parquet"
     if cache.exists():
         return pd.read_parquet(cache)
 
@@ -150,19 +147,17 @@ def load_monthly_asset_returns() -> pd.DataFrame:
 
     nav = pd.read_parquet(nav_path)
 
-    # 计算日频收益
-    daily_returns = nav.pct_change()
-
-    # 日频 → 月频 (月末)
-    monthly_returns = daily_returns.resample("ME").last()
+    # 先采样净值再算收益 (正确方法)
+    weekly_nav = nav.resample("W").last()
+    weekly_returns = weekly_nav.pct_change()
 
     # 选择 expanded 池
-    want = [c for c in EXPANDED_COLS if c in monthly_returns.columns]
-    monthly_returns = monthly_returns[want]
+    want = [c for c in EXPANDED_COLS if c in weekly_returns.columns]
+    weekly_returns = weekly_returns[want]
 
     # 保存缓存
-    monthly_returns.to_parquet(cache)
-    return monthly_returns
+    weekly_returns.to_parquet(cache)
+    return weekly_returns
 
 
 # ============================================================
@@ -172,19 +167,19 @@ def build_mixed_factor_panel(
     X_macro: pd.DataFrame,
     X_pv: dict[str, pd.DataFrame],
     asset_codes: list[str],
-) -> tuple[pd.DataFrame, list[str]]:
+) -> tuple[np.ndarray, list[str]]:
     """合并 9 macro + 11 量价 → 面板格式.
 
     对于每个资产 i, 构造 x_{i,t} = [macro_t, pv_{i,t}]
     其中 macro_t 是全局因子 (所有资产相同), pv_{i,t} 是资产特异因子.
 
     Args:
-        X_macro: (T_monthly, 9) 月频宏观因子
-        X_pv: dict, code → (T_monthly, 11) 月频量价因子
+        X_macro: (T_weekly, 9) 周频宏观因子
+        X_pv: dict, code → (T_weekly, 11) 周频量价因子
         asset_codes: 资产代码列表
 
     Returns:
-        X_panel: (T_monthly, N_assets, 20) 月频混合因子面板
+        X_panel: (T_weekly, N_assets, 20) 周频混合因子面板
         valid_codes: 有效资产代码列表
     """
     common_idx = X_macro.index
@@ -215,37 +210,42 @@ def build_mixed_factor_panel(
 # ============================================================
 # 5. 端到端加载
 # ============================================================
-def load_v7_6_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_v7_6_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
     """加载 v7.6 全部数据.
 
     Returns:
-        X: (T_monthly, 20) 月频混合因子
-        Y: (T_monthly, 56) 月频资产收益
+        X_panel: (T_weekly, N_assets, 20) 周频混合因子面板
+        Y: (T_weekly, N_assets) 周频资产收益
+        valid_codes: 有效资产代码列表
     """
-    # 1. 加载 9 macro (月频)
-    X_macro = load_monthly_macro_factors()
+    # 1. 加载 9 macro (周频)
+    X_macro = load_weekly_macro_factors()
 
-    # 2. 加载 11 量价 (月频)
-    X_pv = load_monthly_pv_factors()
+    # 2. 加载 11 量价 (周频)
+    X_pv = load_weekly_pv_factors()
 
-    # 3. 合并因子
-    X = build_mixed_factor_panel(X_macro, X_pv)
+    # 3. 加载 Y (周频)
+    Y = load_weekly_asset_returns()
 
-    # 4. 加载 Y (月频)
-    Y = load_monthly_asset_returns()
-
-    # 5. 对齐时间
-    common_idx = X.index.intersection(Y.index)
-    X = X.loc[common_idx]
+    # 4. 对齐时间 (以 Y 的时间为准)
+    common_idx = X_macro.index.intersection(Y.index)
+    X_macro = X_macro.loc[common_idx]
     Y = Y.loc[common_idx]
 
-    return X, Y
+    # 5. 合并因子
+    asset_codes = list(Y.columns)
+    X_panel, valid_codes = build_mixed_factor_panel(X_macro, X_pv, asset_codes)
+
+    # 6. 过滤有效资产
+    Y = Y[valid_codes]
+
+    return X_panel, Y, valid_codes
 
 
 __all__ = [
-    "load_monthly_macro_factors",
-    "load_monthly_pv_factors",
-    "load_monthly_asset_returns",
+    "load_weekly_macro_factors",
+    "load_weekly_pv_factors",
+    "load_weekly_asset_returns",
     "build_mixed_factor_panel",
     "load_v7_6_data",
 ]
