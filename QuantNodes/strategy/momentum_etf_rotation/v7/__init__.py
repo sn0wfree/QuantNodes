@@ -2,7 +2,7 @@
 """V7 子包入口 — 暴露核心 API + 端到端入口.
 
 公开 API:
-    V7_3Config, V7_4Config
+    V7_3Config, V7_4Config, V7_5Config, V7_6Config
     V7_3SubStrategy
     run_v7_3_backtest (端到端)
     v7_macro_baseline (锁定 baseline, 2026-07-13)
@@ -10,6 +10,8 @@
     v7_macro_baseline_v3_momentum (动量叠加)
     v7_macro_baseline_v4_expanded (扩大资产池)
     v7_macro_baseline_v5_stop_loss (硬止损)
+    v7_6_baseline, v7_6_no_pv, v7_6_with_stop_loss
+    run_v7_6_backtest (TV-PR 端到端)
     RollingSymmetry
     BootstrapLassoMapping
     FactorRiskParityOptimizer
@@ -41,6 +43,13 @@ from .macro_substrategy_v7_3 import (
     compute_trend_score,
 )
 from .symmetry import RollingSymmetry
+from .macro_substrategy_v7_6 import (
+    V7_6Config,
+    run_v7_6_backtest,
+    v7_6_baseline,
+    v7_6_no_pv,
+    v7_6_with_stop_loss,
+)
 
 __all__ = [
     "V7_3Config",
@@ -58,6 +67,12 @@ __all__ = [
     "v7_macro_baseline_v5_stop_loss",
     "v7_macro_baseline_v6_tf_score",
     "v7_macro_baseline_v7_rolling",
+    # v7.6 TV-PR
+    "V7_6Config",
+    "run_v7_6_backtest",
+    "v7_6_baseline",
+    "v7_6_no_pv",
+    "v7_6_with_stop_loss",
     "RollingSymmetry",
     "BootstrapLassoMapping",
     "FactorRiskParityOptimizer",
