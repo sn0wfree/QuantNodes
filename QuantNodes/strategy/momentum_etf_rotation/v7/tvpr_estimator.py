@@ -68,7 +68,7 @@ def tvpr_admm(
 
     Parameters:
         Y: (T, N) 资产收益
-        X: (T, K) 因子值
+        X: (T, N, K) 因子值面板 (每个资产有自己的因子值)
         lambda_tv: TV 罚项系数
         lambda_l1: L1 罚项系数
         rho: ADMM 惩罚参数
@@ -78,8 +78,7 @@ def tvpr_admm(
     Returns:
         beta: (T, K) 时变 β_t
     """
-    T, N = Y.shape
-    K = X.shape[1]
+    T, N, K = X.shape
 
     # 初始化
     beta = np.zeros((T, K))
@@ -87,6 +86,9 @@ def tvpr_admm(
     u = np.zeros((T - 1, K))
 
     # 预计算 X'X 和 X'Y (每个时间点)
+    # X[t] is (N, K), Y[t] is (N,)
+    # X'X = X[t].T @ X[t] is (K, K)
+    # X'Y = X[t].T @ Y[t] is (K,)
     XtX = np.zeros((T, K, K))
     XtY = np.zeros((T, K))
     for t in range(T):
@@ -98,11 +100,6 @@ def tvpr_admm(
         beta_old = beta.copy()
 
         # 1. β-update: 固定 z, u, 解 Lasso
-        # 对每个时间点 t, 解:
-        #   min (1/2) β_t' (X'X + ρI) β_t - β_t' (X'Y + ρ(Δ'z - Δ'u))
-        #   + λ_2 ||β_t||_1
-        # 
-        # 简化: 用 coordinate descent 求解
         for t in range(T):
             # 计算右端项
             rhs = XtY[t].copy()
@@ -147,7 +144,7 @@ def tvpr_admm(
 # ============================================================
 def rolling_tvpr(
     Y: pd.DataFrame,
-    X: pd.DataFrame,
+    X_panel: np.ndarray,
     lambda_tv: float,
     lambda_l1: float,
     min_history: int = 12,
@@ -161,7 +158,7 @@ def rolling_tvpr(
 
     Parameters:
         Y: (T, N) 月频资产收益
-        X: (T, K) 月频因子值
+        X_panel: (T, N, K) 月频因子值面板
         lambda_tv: TV 罚项系数
         lambda_l1: L1 罚项系数
         min_history: 最少历史期数
@@ -172,8 +169,7 @@ def rolling_tvpr(
     Returns:
         beta_path: (T, K) 时变 β_t
     """
-    T = len(Y)
-    K = X.shape[1]
+    T, N, K = X_panel.shape
 
     # 初始化
     beta_path = np.zeros((T, K))
@@ -182,7 +178,7 @@ def rolling_tvpr(
     for t in range(min_history, T):
         # 训练集: [0, t]
         Y_train = Y.iloc[:t + 1].values
-        X_train = X.iloc[:t + 1].values
+        X_train = X_panel[:t + 1]
 
         # ADMM 求解
         beta_full = tvpr_admm(
@@ -194,7 +190,7 @@ def rolling_tvpr(
         # 取最后一个时间点的 β_t
         beta_path[t] = beta_full[-1]
 
-    return pd.DataFrame(beta_path, index=Y.index, columns=X.columns)
+    return pd.DataFrame(beta_path, index=Y.index, columns=[f"factor_{i}" for i in range(K)])
 
 
 # ============================================================
@@ -202,7 +198,7 @@ def rolling_tvpr(
 # ============================================================
 def tvpr_estimator(
     Y: pd.DataFrame,
-    X: pd.DataFrame,
+    X_panel: np.ndarray,
     lambda_tv: float,
     lambda_l1: float,
     method: Literal["admm"] = "admm",
@@ -214,7 +210,7 @@ def tvpr_estimator(
 
     Parameters:
         Y: (T, N) 月频资产收益
-        X: (T, K) 月频因子值
+        X_panel: (T, N, K) 月频因子值面板
         lambda_tv: TV 罚项系数, 控制 break 数量
         lambda_l1: L1 罚项系数, 控制因子稀疏性
         method: 求解方法 (目前只支持 "admm")
@@ -227,7 +223,7 @@ def tvpr_estimator(
     """
     if method == "admm":
         return rolling_tvpr(
-            Y, X, lambda_tv, lambda_l1,
+            Y, X_panel, lambda_tv, lambda_l1,
             min_history=min_history,
             max_iter=max_iter, tol=tol,
         )

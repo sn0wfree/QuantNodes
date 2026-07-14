@@ -92,15 +92,17 @@ class V7_6Config:
 # 回测主函数
 # ============================================================
 def run_v7_6_backtest(
-    X: pd.DataFrame | None = None,
+    X_panel: np.ndarray | None = None,
     Y: pd.DataFrame | None = None,
+    valid_codes: list[str] | None = None,
     cfg: V7_6Config | None = None,
 ) -> pd.Series:
     """v7.6 TV-PR 端到端回测.
 
     Args:
-        X: (T, K) 月频因子值 (None = 自动加载)
+        X_panel: (T, N, K) 月频因子值面板 (None = 自动加载)
         Y: (T, N) 月频资产收益 (None = 自动加载)
+        valid_codes: 有效资产代码列表
         cfg: v7.6 配置
 
     Returns:
@@ -109,20 +111,32 @@ def run_v7_6_backtest(
     cfg = cfg or V7_6Config()
 
     # 1. 加载数据
-    if X is None or Y is None:
-        X, Y = load_v7_6_data()
+    if X_panel is None or Y is None:
+        from .data_loader_v7_6 import (
+            load_monthly_macro_factors,
+            load_monthly_pv_factors,
+            load_monthly_asset_returns,
+        )
+
+        X_macro = load_monthly_macro_factors()
+        X_pv = load_monthly_pv_factors()
+        Y = load_monthly_asset_returns()
+
+        # 构造面板
+        asset_codes = list(Y.columns)
+        X_panel, valid_codes = build_mixed_factor_panel(X_macro, X_pv, asset_codes)
 
     # 2. 对齐时间
-    common_idx = X.index.intersection(Y.index)
-    X = X.loc[common_idx]
+    common_idx = X_macro.index.intersection(Y.index)
+    X_macro = X_macro.loc[common_idx]
     Y = Y.loc[common_idx]
 
     T, N = Y.shape
-    K = X.shape[1]
+    K = X_panel.shape[2]
 
     # 3. 滚动估计 β_t
     beta_path = tvpr_estimator(
-        Y, X,
+        Y, X_panel,
         lambda_tv=cfg.lambda_tv,
         lambda_l1=cfg.lambda_l1,
         method=cfg.method,

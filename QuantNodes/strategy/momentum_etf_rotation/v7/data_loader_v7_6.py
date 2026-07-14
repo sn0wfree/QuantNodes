@@ -64,7 +64,7 @@ def load_monthly_macro_factors() -> pd.DataFrame:
     weekly = load_macro_factors()
 
     # 周频 → 月频 (月末)
-    monthly = weekly.resample("M").last()
+    monthly = weekly.resample("ME").last()
 
     # 保存缓存
     monthly.to_parquet(cache)
@@ -118,7 +118,7 @@ def load_monthly_pv_factors(
             daily_factors = compute_all_factors(sub, factor_cfg)
 
             # 日频 → 月频 (月末)
-            monthly_factors = daily_factors.resample("M").last()
+            monthly_factors = daily_factors.resample("ME").last()
 
             # 保存缓存
             monthly_factors.to_parquet(cache_path)
@@ -154,7 +154,7 @@ def load_monthly_asset_returns() -> pd.DataFrame:
     daily_returns = nav.pct_change()
 
     # 日频 → 月频 (月末)
-    monthly_returns = daily_returns.resample("M").last()
+    monthly_returns = daily_returns.resample("ME").last()
 
     # 选择 expanded 池
     want = [c for c in EXPANDED_COLS if c in monthly_returns.columns]
@@ -171,41 +171,45 @@ def load_monthly_asset_returns() -> pd.DataFrame:
 def build_mixed_factor_panel(
     X_macro: pd.DataFrame,
     X_pv: dict[str, pd.DataFrame],
-) -> pd.DataFrame:
-    """合并 9 macro + 11 量价 → 20 维因子.
+    asset_codes: list[str],
+) -> tuple[pd.DataFrame, list[str]]:
+    """合并 9 macro + 11 量价 → 面板格式.
 
-    对于每个时间点, 量价因子取所有 ETF 的均值 (截面平均).
+    对于每个资产 i, 构造 x_{i,t} = [macro_t, pv_{i,t}]
+    其中 macro_t 是全局因子 (所有资产相同), pv_{i,t} 是资产特异因子.
 
     Args:
         X_macro: (T_monthly, 9) 月频宏观因子
         X_pv: dict, code → (T_monthly, 11) 月频量价因子
+        asset_codes: 资产代码列表
 
     Returns:
-        DataFrame (T_monthly, 20) 月频混合因子.
+        X_panel: (T_monthly, N_assets, 20) 月频混合因子面板
+        valid_codes: 有效资产代码列表
     """
-    # 截面平均量价因子
-    if X_pv:
-        # 对齐时间索引
-        common_idx = X_macro.index
-        pv_dfs = []
-        for code, df in X_pv.items():
+    common_idx = X_macro.index
+    N = len(asset_codes)
+    K_macro = X_macro.shape[1]
+    K_pv = 11
+    K = K_macro + K_pv
+
+    # 初始化面板
+    X_panel = np.full((len(common_idx), N, K), np.nan)
+
+    # 填充宏观因子 (所有资产相同)
+    for i in range(N):
+        X_panel[:, i, :K_macro] = X_macro.values
+
+    # 填充量价因子 (资产特异)
+    valid_codes = []
+    for j, code in enumerate(asset_codes):
+        if code in X_pv:
+            df = X_pv[code]
             aligned = df.reindex(common_idx)
-            pv_dfs.append(aligned)
+            X_panel[:, j, K_macro:] = aligned.values
+            valid_codes.append(code)
 
-        # 截面平均
-        pv_stack = np.stack([df.values for df in pv_dfs], axis=0)  # (N_codes, T, 11)
-        pv_mean = np.nanmean(pv_stack, axis=0)  # (T, 11)
-
-        # 转为 DataFrame
-        pv_cols = list(pv_dfs[0].columns)
-        X_pv_mean = pd.DataFrame(pv_mean, index=common_idx, columns=pv_cols)
-    else:
-        X_pv_mean = pd.DataFrame(index=X_macro.index, columns=["pv_dummy"] * 11)
-
-    # 合并
-    X_mixed = pd.concat([X_macro, X_pv_mean], axis=1)
-
-    return X_mixed
+    return X_panel, valid_codes
 
 
 # ============================================================
