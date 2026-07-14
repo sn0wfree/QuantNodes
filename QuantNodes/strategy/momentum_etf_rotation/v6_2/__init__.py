@@ -1,7 +1,12 @@
 # coding=utf-8
-"""v6.2 模块 (Stage 27 v6.2 + Stage 29 PROMISING) — v5.1.1 量价族 + IC 加权 + 因子正交化.
+"""v6.2 模块 (Stage 27 v6.2 + Stage 29 PROMISING + Stage 30 过拟合修复).
 
-[Stage 29 状态] ⭐ PROMISING (新默认, 5-fold 验证 4/5 胜 v6.1)
+[Stage 30 状态] ⚠️ 研究版本 (扣成本后 Calmar 0.3310, 起点 CV% 56.9%)
+  - v6.2 扣成本 (5bp+10bp) 后 Calmar: 0.3310 (-25.6% vs 不扣成本)
+  - v6.2 起点依赖: CV% 56.9% (阈值 25%, FAIL)
+  - v6.2 定位降级: 从 PROMISING → 研究版本
+
+[Stage 29 状态] ⭐ PROMISING (历史记录)
   - v6.2 ir_expanding 5-fold OOS Calmar: mean=1.512, min=-0.016
   - v6.1 IC12 5-fold  OOS Calmar: mean=0.867, min=-0.604
   - v6.2 跨 fold 全部 ≥ v6.1 (除 fold 4)
@@ -26,14 +31,16 @@ v6.2 = v5 选股 + IC 加权 + 因子正交化 (去除冗余) + v5.1.1 加权.
 - 残差化 (Gram-Schmidt), 顺序按 expanding IR 降序 (Stage 29 默认)
 - 保留金融意义 (每个正交化因子仍叫原名)
 
-回测目标 (2018-2026, 无风控):
-- OOS Calmar ≥ v6.1 (0.748) → 已达成 0.821 ⭐
-- 5-fold walk-forward 验证: 已达成 4/5 胜 ⭐
+回测目标 (2018-2026, 含成本):
+- OOS Calmar ≥ v6.1 (0.748) → 扣成本后仅 0.3310, 未达成
+- 5-fold walk-forward 验证: 已达成 4/5 胜 (历史, 未扣成本)
+- 起点依赖: CV% 56.9% > 25%, 未达成
 
 参考:
 - v6.1: industry_rotation_v6_1.py
 - 正交化: factor_orthogonal.py
 - 5-fold 验证: reports/momentum_etf_rotation/combo/v6_2_ir_expanding_5fold.csv
+- 过拟合修复: scripts/eval_v6_2_overfitting.py
 """
 from .industry_rotation_v6_2 import (
     V6_2Config,

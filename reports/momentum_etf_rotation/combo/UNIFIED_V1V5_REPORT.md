@@ -3,6 +3,7 @@
 > **统一口径**: 52 只 ETF (44 主池 + 8 SmartBeta) | 2018-01-01 ~ 2026-06-30 | 5bp 单边成本
 > **运行脚本**: `combo/unified_v1v5_compare.py` (生成 navs) + `combo/unified_v1v5_charts.py` (生成 HTML)
 > **可视化**: `reports/momentum_etf_rotation/combo/UNIFIED_V1V5_EVOLUTION.html`
+> **最后更新**: 2026-07-14 (添加 v6.2 + v7.3 combo 评估)
 
 ---
 
@@ -194,3 +195,31 @@ v0.0 baseline (Stage 8) — Calmar 0.484
 2. **v5 池大小**: 44 OHLCV, 8 SmartBeta 缺 OHLCV 数据
 3. **A 股 cap**: v3/v4/v5 不一定应用 CICC 规则 (v1/v2/v1.0 严格应用 cap=3)
 4. **数据前复权**: v5 用前复权, v1/v2/v1.0/v3/v4 暂用原始 close (统一池的 close 来自 OHLCV, 实际也是前复权)
+
+---
+
+## 8. Stage 30 — v6.2 + v7.3 combo 评估 (2026-07-14)
+
+### 8.1 combo 50/50 (v6.2 + v7.3) 历史表现
+
+| 指标 | 值 |
+|------|---|
+| OOS Calmar (2023+) | **1.210** |
+| 状态 | ⭐ **current best** |
+
+### 8.2 v6.2 扣成本后问题
+
+| 问题 | 影响 |
+|------|------|
+| 交易成本 -25.6% | v6.2 Calmar 从 0.4449 降至 0.3310 |
+| 起点 CV% 56.9% | 远超 25% 阈值, 严重过拟合 |
+| Fold 4 退化 | 2023.7-2024 期间 v6.2 弱于 v6.1 3 倍 |
+
+### 8.3 combo 稳定性评估
+
+**问题**: combo 50/50 依赖 v6.2 扣成本后 Calmar 0.3310, 需重新评估.
+
+**建议**:
+1. **短期**: 保持 combo 50/50, 但标注 v6.2 为研究版本
+2. **中期**: ensemble v6.2 + v6.1, 可能降低 CV%
+3. **长期**: 考虑 v8 TV-PR 绕过 v6.2 问题
