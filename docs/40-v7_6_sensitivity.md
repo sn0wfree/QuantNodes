@@ -235,6 +235,96 @@ git commit -m "test: v7.6 sensitivity - Phase N - <描述>"
 
 ---
 
-**生成时间**: 2026-07-14
+## 九、后续实验: top_n=5 验证 + TF/Regime 加固
+
+### 9.1 top_n=5 验证 (Phase 5 结论的二次确认)
+
+**目标**: 验证 Phase 5 发现的 top_n=5 是否能改进起点 CV% (50% → ≤25%)
+
+**结果**: ❌ 未达 ≤25% 阈值, 但 OOS Calmar 大幅提升
+
+| 组合 | top_n | λ_tv | ws | rho | OOS Calmar | 起点 CV% |
+|------|-------|------|-----|-----|-----------|---------|
+| baseline | 10 | 0.05 | 52 | 1.0 | 1.89 | 48.7% |
+| topn5_only | 5 | 0.05 | 52 | 1.0 | 4.71 | 48.9% |
+| best_combo | 5 | 0.07 | 78 | 2.0 | 4.93 | 47.9% |
+| topn5_tw | 5 | 0.05 | 78 | 1.0 | 4.82 | 47.2% |
+| **topn5_rho2** | **5** | **0.05** | **52** | **2.0** | **5.06** | **46.7%** |
+
+**结论**:
+- top_n=5 提升 OOS Calmar 167% (1.89 → 5.06)
+- 起点 CV% 几乎不变 (47-49%) → 是构造层结构问题
+- 2022 起点 Calmar 0.71 是 CV% 高的根因
+
+### 9.2 TF + Regime 加固测试
+
+**目标**: 验证两种构造层加固对起点 CV% 的改进
+- **TF (Trend Filter)**: 沪深300 < MA → 权重 × 0.5 + 50% → 511260 (国债)
+- **Regime 检测**: 60 日波动率/趋势强度 → 防御组合
+
+**结果**: ✅ CV% 从 46.7% → 33.1% (-13.5pp), 接近 25% 阈值
+
+| 组合 | OOS Calmar | OOS Sharpe | OOS DD | 起点 CV% | 2022 Calmar |
+|------|-----------|------------|--------|----------|-------------|
+| baseline (top_n=5) | 5.06 | 2.94 | -12.19% | 46.7% | 0.71 |
+| **tf_ma200** ⭐ | 4.71 | **3.44** | -12.19% | **33.1%** | **1.46** |
+| tf_ma120 | 5.04 | **3.62** | -12.19% | 34.9% | 1.54 |
+| tf_ma200_bear30 | 4.85 | 3.26 | -12.19% | 39.8% | 1.03 |
+| regime_vol | 4.45 | 2.84 | -12.19% | 57.7% ❌ | 0.81 |
+| **regime_trend** ⭐ | 4.65 | 3.27 | -12.19% | **33.1%** | 1.39 |
+| regime_combo | 5.06 | 2.94 | -12.19% | 46.7% | 0.71 |
+| tf_regime_combo | 4.71 | 3.44 | -12.19% | 33.1% | 1.46 |
+
+**关键发现**:
+1. **TF MA200 + 50% bear** 显著提升 OOS Sharpe (2.94 → 3.44)
+2. **2022 起点 Calmar 翻倍** (0.71 → 1.46) — 熊市防御生效
+3. **Regime vol 反而退化** — 波动率信号常 false alarm
+4. **Regime trend 与 TF MA200 几乎同效** — 60 日动量 < 0 作防御信号
+5. **TF + Regime 联合未更优** — TF 已经覆盖 Regime 信号
+
+### 9.3 推荐锁定配置
+
+```python
+# v7.6 + TF MA200 锁定 (推荐)
+cfg = V7_6Config(
+    lambda_tv=0.05, lambda_l1=0.001,
+    window_size=52, rho=2.0,
+    top_n=5, max_weight=0.25,
+)
+# + TF: HS300 < MA200 → weights × 0.5 + 50% → 511260
+
+# 预期: OOS Calmar 4.71, OOS Sharpe 3.44, 起点 CV% 33.1%
+```
+
+### 9.4 未达 ≤25% 阈值的根因
+
+| 起点 | baseline | tf_ma200 | 改进 |
+|---|---|---|---|
+| 2018 | 1.32 | 2.92 | ✅ |
+| 2019 | 3.06 | 3.07 | — |
+| 2020 | 2.31 | 3.12 | ✅ |
+| 2021 | 1.43 | 1.38 | — |
+| 2022 | 0.71 | 1.46 | ✅ |
+
+**仍不充分**: 2021 起点 Calmar 1.38 仍偏低, 2022 即使加 TF 也只到 1.46 (远低于 2019/2020 的 3.0+)
+
+CV% 33.1% 受限于:
+- 2021-2022 区间本身表现较差 (结构性原因)
+- TF 已最大化对熊市的防御, 但 2021 是震荡市, TF 几乎不触发
+- 进一步降低 CV% 需要更精细的 regime 模型
+
+### 9.5 文件
+
+```
+scripts/v7_6_topn5_validation.py     # top_n=5 验证
+scripts/v7_6_tf_regime_test.py       # TF + Regime 加固
+reports/momentum_etf_rotation/v7_6_topn5_validation.csv
+reports/momentum_etf_rotation/v7_6_tf_regime_test.csv
+reports/momentum_etf_rotation/v7_6_tf_regime_test.md
+```
+
+---
+
+**生成时间**: 2026-07-15
 **责任人**: QuantNodes Agent
 **关联**: docs/39-v7_6_tvpr.md, reports/momentum_etf_rotation/v7_6_validation.md
