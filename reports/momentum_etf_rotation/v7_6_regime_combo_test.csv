@@ -1,0 +1,10 @@
+label,note,oos_calmar,oos_sharpe,oos_dd,oos_ann,full_calmar,full_sharpe,start_mean,start_std,start_cv,seconds
+baseline_no_defense,无防御 (基线),5.0573,2.9436,-0.1219,0.6167,1.3242,2.0981,1.7662,0.8246,0.4669,114.8
+regime_combo_20_50,regime_combo: vol>20% AND ret<0 → 50% bear,4.9157,2.9905,-0.1219,0.5994,1.4435,2.2216,2.0212,0.954,0.472,114.9
+regime_combo_15_50,regime_combo: vol>15% AND ret<0 → 50% bear (更敏感),4.322,2.7854,-0.1219,0.527,1.639,2.2196,1.9098,0.8314,0.4354,114.8
+regime_combo_25_50,regime_combo: vol>25% AND ret<0 → 50% bear (更宽松),4.8945,2.8958,-0.1219,0.5968,1.3194,2.1272,1.9661,1.0197,0.5187,115.8
+regime_combo_20_30,regime_combo: vol>20% AND ret<0 → 30% bear (防御更强),4.9742,2.9825,-0.1219,0.6065,1.4083,2.1809,1.9327,0.9268,0.4795,115.9
+regime_combo_20_70,regime_combo: vol>20% AND ret<0 → 70% bear (防御更强),4.8549,2.9828,-0.1219,0.592,1.4443,2.2484,2.1059,1.0048,0.4771,115.1
+tf_regime_or_50,TF OR regime_combo → 50% bear,4.6879,3.4386,-0.1219,0.5716,2.8918,2.6007,2.3718,0.7811,0.3293,115.4
+tf_regime_and_50,TF AND regime_combo → 50% bear (更严格),4.6879,3.4386,-0.1219,0.5716,2.8918,2.6007,2.3718,0.7811,0.3293,115.7
+tf_regime_combo_70,TF + regime_combo OR → 70% bear (强防御),4.6281,3.4437,-0.1219,0.5643,2.9311,2.6444,2.4493,0.7055,0.288,115.9
