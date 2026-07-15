@@ -97,14 +97,14 @@ COMBOS = [
         "label": "regime_combo",
         "note": "Regime: 波动率 + 趋势双指标",
         "tf_enabled": False,
-        "regime_enabled": True, "regime_method": "combo", "regime_threshold": 0.5,
+        "regime_enabled": True, "regime_method": "combo", "regime_threshold": 0.20,
         "regime_defense": "bond",
     },
     {
         "label": "tf_regime_combo",
         "note": "TF + Regime 联合",
         "tf_enabled": True, "tf_ma": 200, "tf_bear": 0.5, "tf_bond": "511260",
-        "regime_enabled": True, "regime_method": "combo", "regime_threshold": 0.5,
+        "regime_enabled": True, "regime_method": "combo", "regime_threshold": 0.20,
         "regime_defense": "bond",
     },
 ]
@@ -255,6 +255,7 @@ def construct_portfolio_with_overrides(
         tf_signal = get_trend_filter_signal(
             weekly_dates, daily_returns, ma=combo.get("tf_ma", 200)
         )
+        tf_signal = tf_signal.shift(1).fillna(False)  # 延迟1周, 避免未来函数
         bear_count = int(tf_signal.sum())
         logging.info("  TF 信号: %d/%d 周为熊市 (%.1f%%)",
                      bear_count, len(tf_signal), bear_count / len(tf_signal) * 100)
@@ -265,6 +266,7 @@ def construct_portfolio_with_overrides(
             method=combo.get("regime_method", "vol"),
             threshold=combo.get("regime_threshold", 0.20),
         )
+        regime_signal = regime_signal.shift(1).fillna(False)  # 延迟1周, 避免未来函数
         bear_count = int(regime_signal.sum())
         logging.info("  Regime 信号: %d/%d 周为熊市 (%.1f%%)",
                      bear_count, len(regime_signal), bear_count / len(regime_signal) * 100)
@@ -276,7 +278,7 @@ def construct_portfolio_with_overrides(
     for t in range(1, T):
         # 1. 预测
         beta_prev = beta_path.iloc[t - 1].values
-        scores = X_panel[t] @ beta_prev
+        scores = X_panel[t - 1] @ beta_prev  # 用上期因子, 避免未来函数
         scores = pd.Series(scores, index=Y.columns).dropna()
 
         # 2. top_n
@@ -358,7 +360,7 @@ def calculate_daily_nav(weights_df, daily_returns, cfg):
         week_end = prev_dates[-1]
         if idx > 0:
             prev_rebal = rebal_dates[idx - 1]
-            next_day_idx = all_dates.searchsorted(prev_rebal)
+            next_day_idx = all_dates.searchsorted(prev_rebal, side='right')
             if next_day_idx < len(all_dates):
                 week_start = all_dates[next_day_idx]
             else:

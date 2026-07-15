@@ -207,6 +207,7 @@ def construct_portfolio_defense(
 
     if combo.get("tf_enabled"):
         tf_signal = get_trend_filter_signal(weekly_dates, daily_returns, ma=combo.get("tf_ma", 200))
+        tf_signal = tf_signal.shift(1).fillna(False)  # 延迟1周, 避免未来函数
         bear_count = int(tf_signal.sum())
         logging.info("  TF 信号: %d/%d 周为熊市 (%.1f%%)",
                      bear_count, len(tf_signal), bear_count / len(tf_signal) * 100)
@@ -216,6 +217,7 @@ def construct_portfolio_defense(
             weekly_dates, daily_returns,
             vol_thr=combo.get("regime_vol_thr", 0.20),
         )
+        regime_signal = regime_signal.shift(1).fillna(False)  # 延迟1周, 避免未来函数
         bear_count = int(regime_signal.sum())
         logging.info("  Regime 信号: %d/%d 周为熊市 (%.1f%%)",
                      bear_count, len(regime_signal), bear_count / len(regime_signal) * 100)
@@ -226,7 +228,7 @@ def construct_portfolio_defense(
     for t in range(1, T):
         # 1. 预测
         beta_prev = beta_path.iloc[t - 1].values
-        scores = X_panel[t] @ beta_prev
+        scores = X_panel[t - 1] @ beta_prev  # 用上期因子, 避免未来函数
         scores = pd.Series(scores, index=Y.columns).dropna()
 
         # 2. top_n
@@ -262,17 +264,17 @@ def construct_portfolio_defense(
                     date in regime_signal.index and regime_signal.loc[date])
 
         bear_pct = 0.0
-        if tf_bear and not reg_bear:
-            bear_pct = combo.get("tf_bear", 0.5)
-        elif reg_bear and not tf_bear:
-            bear_pct = combo.get("regime_bear", 0.5)
-        elif tf_bear and reg_bear:
-            if combo_logic == "and":
-                # 都触发才防御
+        if combo_logic == "and":
+            # AND: 两者都触发才防御
+            if tf_bear and reg_bear:
                 bear_pct = max(combo.get("tf_bear", 0.5), combo.get("regime_bear", 0.5))
-            elif combo_logic == "max":
+        elif combo_logic == "max":
+            # MAX: 任一触发即防御, 取最大防御比例
+            if tf_bear or reg_bear:
                 bear_pct = max(combo.get("tf_bear", 0.5), combo.get("regime_bear", 0.5))
-            else:  # "or"
+        else:  # "or"
+            # OR: 任一触发即防御
+            if tf_bear or reg_bear:
                 bear_pct = max(combo.get("tf_bear", 0.5), combo.get("regime_bear", 0.5))
 
         if bear_pct > 0:
@@ -322,7 +324,7 @@ def calculate_daily_nav(weights_df, daily_returns, cfg):
         week_end = prev_dates[-1]
         if idx > 0:
             prev_rebal = rebal_dates[idx - 1]
-            next_day_idx = all_dates.searchsorted(prev_rebal)
+            next_day_idx = all_dates.searchsorted(prev_rebal, side='right')
             if next_day_idx < len(all_dates):
                 week_start = all_dates[next_day_idx]
             else:

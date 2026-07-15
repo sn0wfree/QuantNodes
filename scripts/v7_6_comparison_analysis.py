@@ -135,7 +135,7 @@ def construct_portfolio_with_defense(
 
     for t in range(1, T):
         beta_prev = beta_path.iloc[t - 1].values
-        scores = X_panel[t] @ beta_prev
+        scores = X_panel[t - 1] @ beta_prev  # 用上期因子, 避免未来函数
         scores = pd.Series(scores, index=Y.columns).dropna()
 
         if len(scores) >= cfg.top_n:
@@ -213,7 +213,7 @@ def calculate_daily_nav(weights_df, daily_returns, cfg):
         week_end = prev_dates[-1]
         if idx > 0:
             prev_rebal = rebal_dates[idx - 1]
-            next_day_idx = all_dates.searchsorted(prev_rebal)
+            next_day_idx = all_dates.searchsorted(prev_rebal, side='right')
             if next_day_idx < len(all_dates):
                 week_start = all_dates[next_day_idx]
             else:
@@ -283,8 +283,10 @@ def run_v7_6_strategy(X_panel, Y, valid_codes, daily_returns,
     regime_signal = None
     if tf_bear > 0:
         tf_signal = get_trend_filter_signal(weekly_dates, daily_returns, ma=200)
+        tf_signal = tf_signal.shift(1).fillna(False)  # 延迟1周, 避免未来函数
     if regime_bear > 0:
         regime_signal = get_regime_combo_signal(weekly_dates, daily_returns, vol_thr=0.20)
+        regime_signal = regime_signal.shift(1).fillna(False)  # 延迟1周, 避免未来函数
 
     t0 = time.time()
     beta_path = tvpr_estimator(

@@ -186,9 +186,11 @@ def construct_portfolio(
     prev_weights = {}
 
     for t in range(1, T):
-        # 1. 用 TV-PR 预测收益 (避免未来函数: 用 beta_path[t-1])
+        # 1. 用 TV-PR 预测收益
+        #   beta_path[t-1]: 用数据 up to t-1 估计的 β
+        #   X_panel[t-1]:   t-1 周末因子值 (t 周初已知, 避免未来函数)
         beta_prev = beta_path.iloc[t - 1].values  # (K,) 上期估计的 β
-        scores = X_panel[t] @ beta_prev  # (N,) 预测收益
+        scores = X_panel[t - 1] @ beta_prev  # (N,) 预测 Y[t]
 
         # 转为 Series 并过滤 NaN
         scores = pd.Series(scores, index=Y.columns)
@@ -302,7 +304,7 @@ def calculate_daily_nav(
         # 找到该周的开始日 (上一个调仓日之后的第一个交易日)
         if idx > 0:
             prev_rebal = rebal_dates[idx - 1]
-            next_day_idx = all_dates.searchsorted(prev_rebal)
+            next_day_idx = all_dates.searchsorted(prev_rebal, side='right')
             if next_day_idx < len(all_dates):
                 week_start = all_dates[next_day_idx]
             else:
