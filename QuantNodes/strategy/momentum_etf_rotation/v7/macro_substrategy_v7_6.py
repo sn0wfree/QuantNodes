@@ -67,8 +67,8 @@ class V7_6Config:
     )
 
     # TV-PR 参数
-    lambda_tv: float = 0.05
-    lambda_l1: float = 0.01
+    lambda_tv: float = 0.15
+    lambda_l1: float = 0.05
     method: str = "admm"
     rho: float = 1.0
     max_iter: int = 200
@@ -77,7 +77,6 @@ class V7_6Config:
     # 调仓 (周频)
     rebalance_freq: str = "W"
     min_history: int = 52  # 周频 52 周 = 1 年
-    window_size: int = 52  # 滚动窗口 52 周 = 1 年
 
     # 成本
     commission_bp: float = 5.0
@@ -125,14 +124,13 @@ def run_v7_6_backtest(
 
     T, N, K = X_panel.shape
 
-    # 2. 滚动估计 β_t
+    # 2. 扩展窗口估计 β_t
     beta_path = tvpr_estimator(
         Y, X_panel,
         lambda_tv=cfg.lambda_tv,
         lambda_l1=cfg.lambda_l1,
         method=cfg.method,
         min_history=cfg.min_history,
-        window_size=cfg.window_size,
         rho=cfg.rho,
         max_iter=cfg.max_iter,
         tol=cfg.tol,
