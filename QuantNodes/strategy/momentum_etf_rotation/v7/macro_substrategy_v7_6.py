@@ -160,13 +160,18 @@ def construct_portfolio(
     cfg: V7_6Config,
     return_weights: bool = False,
 ) -> pd.Series | tuple[pd.Series, pd.DataFrame]:
-    """根据 β_t 构造组合.
+    """根据 β_t 构造组合 (无未来函数版本).
 
-    逻辑:
-      1. 计算预测收益: r_hat = X[t] @ beta_path[t-1]
-      2. 按 r_hat 排序, 选 top_n ETF
+    逻辑 (X[t] → Y[t+1]):
+      1. 周末 t: 用 X[t] @ beta_path[t-1] 生成信号
+      2. 周 t+1: 按信号持有, 赚取 Y[t+1]
       3. 逆波动率加权
       4. 扣除成本
+
+    时间线:
+      周五 t-1 收盘 → 计算 beta_path[t-1]
+      周五 t 收盘   → X[t] 可用, 生成信号
+      周五 t+1 收盘 → 赚取 Y[t+1]
 
     Args:
         Y: (T, N) 周频资产收益
@@ -184,76 +189,79 @@ def construct_portfolio(
     weights_history = []  # 存储持仓权重
 
     prev_weights = {}
+    pending_weights = None  # 待执行的权重 (来自上一周的信号)
 
-    for t in range(1, T):
-        # 1. 用 TV-PR 预测收益
-        #   beta_path[t-1]: 用数据 up to t-1 估计的 β
-        #   X_panel[t-1]:   t-1 周末因子值 (t 周初已知, 避免未来函数)
-        beta_prev = beta_path.iloc[t - 1].values  # (K,) 上期估计的 β
-        scores = X_panel[t - 1] @ beta_prev  # (N,) 预测 Y[t]
+    for t in range(T):
+        # 1. 生成信号 (用本周 X[t] 和 beta_path[t-1])
+        if t >= 1:
+            beta_prev = beta_path.iloc[t - 1].values  # (K,) 上期估计的 β
+            scores = X_panel[t] @ beta_prev  # (N,) 用本周因子预测下周收益
 
-        # 转为 Series 并过滤 NaN
-        scores = pd.Series(scores, index=Y.columns)
-        scores = scores.dropna()
+            # 转为 Series 并过滤 NaN
+            scores = pd.Series(scores, index=Y.columns)
+            scores = scores.dropna()
 
-        # 2. 选 top_n
-        if len(scores) >= cfg.top_n:
-            chosen = scores.nlargest(cfg.top_n).index.tolist()
-        elif len(scores) > 0:
-            chosen = scores.index.tolist()
-        else:
-            # 无有效资产，跳过本期
-            nav.iloc[t] = nav.iloc[t - 1]
-            continue
+            # 2. 选 top_n
+            if len(scores) >= cfg.top_n:
+                chosen = scores.nlargest(cfg.top_n).index.tolist()
+            elif len(scores) > 0:
+                chosen = scores.index.tolist()
+            else:
+                chosen = []
 
-        # 3. 逆波动率加权
-        if len(chosen) > 0 and t >= cfg.vol_window:
-            # 计算波动率
-            vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
-            vols = vol_window[chosen].std()
-            vols = vols.fillna(cfg.vol_floor)  # NaN 用默认波动率填充
-            vols = vols.clip(lower=cfg.vol_floor)
+            # 3. 逆波动率加权
+            if len(chosen) > 0 and t >= cfg.vol_window:
+                vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
+                vols = vol_window[chosen].std()
+                vols = vols.fillna(cfg.vol_floor).clip(lower=cfg.vol_floor)
+                inv_vol = 1.0 / vols
+                weights = inv_vol / inv_vol.sum()
+                weights = weights.clip(upper=cfg.max_weight)
+                weights = weights / weights.sum()
+            elif len(chosen) > 0:
+                weights = pd.Series(1.0 / len(chosen), index=chosen)
+            else:
+                weights = pd.Series(dtype=float)
 
-            # 逆波动率权重
-            inv_vol = 1.0 / vols
-            weights = inv_vol / inv_vol.sum()
-
-            # 限制最大权重
-            weights = weights.clip(upper=cfg.max_weight)
-            weights = weights / weights.sum()
-        else:
-            # 等权
-            weights = pd.Series(1.0 / len(chosen), index=chosen)
-
-        # 存储持仓权重
-        date = Y.index[t]
-        for code in weights.index:
+            # 存储待执行的权重
+            pending_weights = weights
             weights_history.append({
-                'date': date,
-                'code': code,
-                'weight': weights[code],
+                'date': Y.index[t],
+                'code': None,  # 标记: 信号生成日
+                'weight': 0,
             })
 
-        # 4. 计算收益
-        daily_ret = 0.0
-        for code in chosen:
-            if code in Y.columns:
-                ret = Y[code].iloc[t]
-                if pd.notna(ret):
-                    daily_ret += weights.get(code, 0.0) * ret
+        # 4. 执行上周信号, 赚取本周收益 Y[t]
+        if pending_weights is not None and len(pending_weights) > 0 and t > 0:
+            weekly_ret = 0.0
+            for code, w in pending_weights.items():
+                if code in Y.columns:
+                    ret = Y[code].iloc[t]
+                    if pd.notna(ret):
+                        weekly_ret += w * ret
 
-        # 5. 交易成本
-        if cfg.cost_enabled:
-            turnover = 0.0
-            for code in set(list(prev_weights.keys()) + list(weights.keys())):
-                w_old = prev_weights.get(code, 0.0)
-                w_new = weights.get(code, 0.0) if code in weights else 0.0
-                turnover += abs(w_new - w_old)
-            cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
-            daily_ret -= turnover * cost_rate
+            # 5. 交易成本
+            if cfg.cost_enabled:
+                turnover = 0.0
+                for code in set(list(prev_weights.keys()) + list(pending_weights.keys())):
+                    w_old = prev_weights.get(code, 0.0)
+                    w_new = pending_weights.get(code, 0.0)
+                    turnover += abs(w_new - w_old)
+                cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
+                weekly_ret -= turnover * cost_rate
 
-        nav.iloc[t] = nav.iloc[t - 1] * (1 + daily_ret)
-        prev_weights = weights.to_dict()
+            nav.iloc[t] = nav.iloc[t - 1] * (1 + weekly_ret)
+            prev_weights = pending_weights.to_dict()
+
+            # 记录实际持仓权重 (用于 daily_nav)
+            for code, w in pending_weights.items():
+                weights_history.append({
+                    'date': Y.index[t],
+                    'code': code,
+                    'weight': w,
+                })
+        elif t > 0:
+            nav.iloc[t] = nav.iloc[t - 1]
 
     if return_weights:
         weights_df = pd.DataFrame(weights_history)

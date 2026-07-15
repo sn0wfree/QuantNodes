@@ -127,75 +127,83 @@ def construct_portfolio_with_defense(
     tf_bear=0.5, regime_bear=0.5, defense_code="511260",
     max_bear=0.7,
 ):
-    """带 TF/Regime 加固的组合构造."""
+    """带 TF/Regime 加固的组合构造 (X[t] → Y[t+1], 无未来函数)."""
     T, N = Y.shape
     nav = pd.Series(1.0, index=Y.index, dtype=float)
     weights_history = []
     prev_weights = {}
+    pending_weights = None
 
-    for t in range(1, T):
-        beta_prev = beta_path.iloc[t - 1].values
-        scores = X_panel[t - 1] @ beta_prev  # 用上期因子, 避免未来函数
-        scores = pd.Series(scores, index=Y.columns).dropna()
+    for t in range(T):
+        # 1. 生成信号 (用本周 X[t])
+        if t >= 1:
+            beta_prev = beta_path.iloc[t - 1].values
+            scores = X_panel[t] @ beta_prev  # 用本周因子预测下周收益
+            scores = pd.Series(scores, index=Y.columns).dropna()
 
-        if len(scores) >= cfg.top_n:
-            chosen = scores.nlargest(cfg.top_n).index.tolist()
-        elif len(scores) > 0:
-            chosen = scores.index.tolist()
-        else:
+            if len(scores) >= cfg.top_n:
+                chosen = scores.nlargest(cfg.top_n).index.tolist()
+            elif len(scores) > 0:
+                chosen = scores.index.tolist()
+            else:
+                chosen = []
+
+            if len(chosen) > 0 and t >= cfg.vol_window:
+                vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
+                vols = vol_window[chosen].std()
+                vols = vols.fillna(cfg.vol_floor).clip(lower=cfg.vol_floor)
+                inv_vol = 1.0 / vols
+                weights = inv_vol / inv_vol.sum()
+                weights = weights.clip(upper=cfg.max_weight)
+                weights = weights / weights.sum()
+            elif len(chosen) > 0:
+                weights = pd.Series(1.0 / len(chosen), index=chosen)
+            else:
+                weights = pd.Series(dtype=float)
+
+            # 应用 TF/Regime 防御
+            date = Y.index[t]
+            weights_dict = weights.to_dict() if len(weights) > 0 else {}
+
+            bear_pct = 0.0
+            if tf_signal is not None and date in tf_signal.index and tf_signal.loc[date]:
+                bear_pct = max(bear_pct, tf_bear)
+            if regime_signal is not None and date in regime_signal.index and regime_signal.loc[date]:
+                bear_pct = max(bear_pct, regime_bear)
+            bear_pct = min(bear_pct, max_bear)
+
+            if bear_pct > 0 and weights_dict:
+                for code in list(weights_dict.keys()):
+                    weights_dict[code] = weights_dict[code] * (1 - bear_pct)
+                weights_dict[defense_code] = weights_dict.get(defense_code, 0) + bear_pct
+
+            pending_weights = pd.Series(weights_dict) if weights_dict else pd.Series(dtype=float)
+
+        # 2. 执行上周信号, 赚取本周收益 Y[t]
+        if pending_weights is not None and len(pending_weights) > 0 and t > 0:
+            weekly_ret = 0.0
+            for code, w in pending_weights.items():
+                if code in Y.columns:
+                    ret = Y[code].iloc[t]
+                    if pd.notna(ret):
+                        weekly_ret += w * ret
+
+            if cfg.cost_enabled:
+                turnover = 0.0
+                for code in set(list(prev_weights.keys()) + list(pending_weights.keys())):
+                    w_old = prev_weights.get(code, 0.0)
+                    w_new = pending_weights.get(code, 0.0)
+                    turnover += abs(w_new - w_old)
+                cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
+                weekly_ret -= turnover * cost_rate
+
+            nav.iloc[t] = nav.iloc[t - 1] * (1 + weekly_ret)
+            prev_weights = pending_weights.to_dict()
+
+            for code, w in pending_weights.items():
+                weights_history.append({'date': Y.index[t], 'code': code, 'weight': w})
+        elif t > 0:
             nav.iloc[t] = nav.iloc[t - 1]
-            continue
-
-        if t >= cfg.vol_window:
-            vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
-            vols = vol_window[chosen].std()
-            vols = vols.fillna(cfg.vol_floor).clip(lower=cfg.vol_floor)
-            inv_vol = 1.0 / vols
-            weights = inv_vol / inv_vol.sum()
-            weights = weights.clip(upper=cfg.max_weight)
-            weights = weights / weights.sum()
-        else:
-            weights = pd.Series(1.0 / len(chosen), index=chosen)
-
-        date = Y.index[t]
-        weights_dict = weights.to_dict()
-
-        # 应用防御
-        bear_pct = 0.0
-        if tf_signal is not None and date in tf_signal.index and tf_signal.loc[date]:
-            bear_pct = max(bear_pct, tf_bear)
-        if regime_signal is not None and date in regime_signal.index and regime_signal.loc[date]:
-            bear_pct = max(bear_pct, regime_bear)
-        bear_pct = min(bear_pct, max_bear)
-
-        if bear_pct > 0:
-            for code in list(weights_dict.keys()):
-                weights_dict[code] = weights_dict[code] * (1 - bear_pct)
-            weights_dict[defense_code] = weights_dict.get(defense_code, 0) + bear_pct
-
-        weights = pd.Series(weights_dict)
-
-        for code, w in weights.items():
-            weights_history.append({'date': date, 'code': code, 'weight': w})
-
-        weekly_ret = 0.0
-        for code, w in weights.items():
-            if code in Y.columns:
-                ret = Y[code].iloc[t]
-                if pd.notna(ret):
-                    weekly_ret += w * ret
-
-        if cfg.cost_enabled:
-            turnover = 0.0
-            for code in set(list(prev_weights.keys()) + list(weights.keys())):
-                w_old = prev_weights.get(code, 0.0)
-                w_new = weights.get(code, 0.0)
-                turnover += abs(w_new - w_old)
-            cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
-            weekly_ret -= turnover * cost_rate
-
-        nav.iloc[t] = nav.iloc[t - 1] * (1 + weekly_ret)
-        prev_weights = weights.to_dict()
 
     weights_df = pd.DataFrame(weights_history)
     return nav, weights_df
