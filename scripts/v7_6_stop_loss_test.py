@@ -214,13 +214,42 @@ def construct_portfolio_full(
     pending_weights = None
 
     for t in range(T):
-        # 1. 生成信号 (用本周 X[t])
+        # 1. 先执行上周信号, 赚取本周收益 Y[t]
+        #    pending_weights 在 t-1 时由 Block 2 生成, 本 iteration 执行
+        if pending_weights is not None and len(pending_weights) > 0 and t > 0:
+            weekly_ret = 0.0
+            for code, w in pending_weights.items():
+                if code in Y.columns:
+                    ret = Y[code].iloc[t]
+                    if pd.notna(ret):
+                        weekly_ret += w * ret
+
+            # 2. 成本
+            if cfg.cost_enabled:
+                turnover = 0.0
+                for code in set(list(prev_weights.keys()) + list(pending_weights.keys())):
+                    w_old = prev_weights.get(code, 0.0)
+                    w_new = pending_weights.get(code, 0.0)
+                    turnover += abs(w_new - w_old)
+                cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
+                weekly_ret -= turnover * cost_rate
+
+            nav.iloc[t] = nav.iloc[t - 1] * (1 + weekly_ret)
+            prev_weights = pending_weights.to_dict()
+
+            for code, w in pending_weights.items():
+                weights_history.append({'date': Y.index[t], 'code': code, 'weight': w})
+        elif t > 0:
+            nav.iloc[t] = nav.iloc[t - 1]
+
+        # 3. 再生成下周信号 (用本周 X[t])
+        #    生成的权重将在 t+1 时执行, 赚取 Y[t+1]
         if t >= 1:
             beta_prev = beta_path.iloc[t - 1].values
             scores = X_panel[t] @ beta_prev  # 用本周因子预测下周收益
             scores = pd.Series(scores, index=Y.columns).dropna()
 
-            # 2. top_n
+            # 4. top_n
             if len(scores) >= cfg.top_n:
                 chosen = scores.nlargest(cfg.top_n).index.tolist()
             elif len(scores) > 0:
@@ -228,7 +257,7 @@ def construct_portfolio_full(
             else:
                 chosen = []
 
-            # 3. 逆波动率加权
+            # 5. 逆波动率加权
             if len(chosen) > 0 and t >= cfg.vol_window:
                 vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
                 vols = vol_window[chosen].std()
@@ -245,7 +274,7 @@ def construct_portfolio_full(
             date = Y.index[t]
             weights_dict = weights.to_dict() if len(weights) > 0 else {}
 
-            # 4. SL 检查
+            # 6. SL 检查
             if combo.get("sl_enabled") and t > 0:
                 current_nav = nav.iloc[t - 1]
                 peak_nav = nav.iloc[:t].max()
@@ -253,7 +282,7 @@ def construct_portfolio_full(
                 if dd > sl_threshold:
                     weights_dict = {sl_bond: 1.0}
 
-            # 5. TF / Regime 检查
+            # 7. TF / Regime 检查
             if combo.get("tf_enabled") or combo.get("regime_enabled"):
                 tf_bear = (combo.get("tf_enabled") and
                            tf_signal is not None and
@@ -273,60 +302,39 @@ def construct_portfolio_full(
 
             pending_weights = pd.Series(weights_dict) if weights_dict else pd.Series(dtype=float)
 
-        # 6. 执行上周信号, 赚取本周收益 Y[t]
-        if pending_weights is not None and len(pending_weights) > 0 and t > 0:
-            weekly_ret = 0.0
-            for code, w in pending_weights.items():
-                if code in Y.columns:
-                    ret = Y[code].iloc[t]
-                    if pd.notna(ret):
-                        weekly_ret += w * ret
-
-            # 7. 成本
-            if cfg.cost_enabled:
-                turnover = 0.0
-                for code in set(list(prev_weights.keys()) + list(pending_weights.keys())):
-                    w_old = prev_weights.get(code, 0.0)
-                    w_new = pending_weights.get(code, 0.0)
-                    turnover += abs(w_new - w_old)
-                cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
-                weekly_ret -= turnover * cost_rate
-
-            nav.iloc[t] = nav.iloc[t - 1] * (1 + weekly_ret)
-            prev_weights = pending_weights.to_dict()
-
-            for code, w in pending_weights.items():
-                weights_history.append({'date': Y.index[t], 'code': code, 'weight': w})
-        elif t > 0:
-            nav.iloc[t] = nav.iloc[t - 1]
-
     weights_df = pd.DataFrame(weights_history)
     return nav, weights_df
 
 
 def calculate_daily_nav(weights_df, daily_returns, cfg):
+    """日频 NAV (X[t] → Y[t+1])."""
     all_dates = daily_returns.index
     rebal_dates = sorted(weights_df["date"].unique())
 
+    # 构建映射: 交易日 -> 对应的调仓日
+    # 关键: 权重在周五(t)生成, 应用于下周一(t+1)~周五(t+1)
     date_to_rebal = {}
     for idx, rebal_date in enumerate(rebal_dates):
-        prev_dates = all_dates[all_dates <= rebal_date]
-        if len(prev_dates) == 0:
-            continue
-        week_end = prev_dates[-1]
-        if idx > 0:
-            prev_rebal = rebal_dates[idx - 1]
-            next_day_idx = all_dates.searchsorted(prev_rebal, side='right')
-            if next_day_idx < len(all_dates):
-                week_start = all_dates[next_day_idx]
-            else:
+        # 找到该调仓日之后的下一周的交易日范围
+        if idx + 1 < len(rebal_dates):
+            next_rebal = rebal_dates[idx + 1]
+            after_rebal = all_dates[all_dates > rebal_date]
+            if len(after_rebal) == 0:
                 continue
+            week_start = after_rebal[0]
+            before_next = all_dates[all_dates <= next_rebal]
+            if len(before_next) == 0:
+                continue
+            week_end = before_next[-1]
         else:
-            week_start_idx = all_dates.searchsorted(rebal_date) - 5
-            if week_start_idx < 0:
-                week_start_idx = 0
-            week_start = all_dates[week_start_idx]
+            # 最后一个调仓日: 应用到之后的所有交易日
+            after_rebal = all_dates[all_dates > rebal_date]
+            if len(after_rebal) == 0:
+                continue
+            week_start = after_rebal[0]
+            week_end = all_dates[-1]
 
+        # 为下一周的每个交易日分配权重
         week_mask = (all_dates >= week_start) & (all_dates <= week_end)
         for date in all_dates[week_mask]:
             date_to_rebal[date] = rebal_date
@@ -341,6 +349,8 @@ def calculate_daily_nav(weights_df, daily_returns, cfg):
 
         if rebal_date is not None:
             new_weights_df = weights_df[weights_df["date"] == rebal_date]
+            # 过滤掉 NaN 行 (信号生成标记)
+            new_weights_df = new_weights_df[new_weights_df["code"].notna()]
             new_weights = {str(k): v for k, v in new_weights_df.set_index("code")["weight"].to_dict().items()}
 
             if cfg.cost_enabled:
