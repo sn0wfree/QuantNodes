@@ -1,7 +1,7 @@
 # v7.6 因子 IC 评估与因子增强方案
 
 > **编号**: 41
-> **状态**: 📋 设计文档
+> **状态**: 🔧 **实施中**
 > **日期**: 2026-07-15
 > **关联**: docs/39-v7_6_tvpr.md, docs/40-v7_6_sensitivity.md
 
@@ -333,30 +333,76 @@ def calc_volume_weighted_momentum(close, volume, window=20):
 
 ---
 
-## 6. 文件清单
+## 6. 已完成工作
+
+### 6.1 宏观因子对数收益率实现 (2026-07-15)
+
+**修改**: `data_loader_v7_6.py`
+
+- `build_mixed_factor_panel()`: 新增 `macro_use_log_return` 参数 (默认 True)
+- `load_v7_6_data()`: 传递 `macro_use_log_return` 参数
+- 宏观因子从 NAV levels 转换为对数收益率: `r_t = ln(NAV_t / NAV_{t-1})`
+
+**IC 对比结果**:
+
+| 因子 | Levels IC | Log Returns IC | 提升 |
+|------|-----------|----------------|------|
+| 期限利差因子_加权 | 0.0263 | **-0.4998** | 19x |
+| 期限利差因子_股 | 0.0263 | **-0.4699** | 18x |
+| 期限利差因子_债 | 0.0094 | **-0.2851** | 30x |
+| 宏观通胀因子_生产端 | -0.1375 | **0.2102** | 1.5x |
+| 宏观汇率因子 | 0.0004 | **0.1729** | 432x |
+| 宏观增长因子 | -0.0945 | **0.1425** | 1.5x |
+
+**回测结果** (不变):
+
+| 指标 | Levels | Log Returns |
+|------|--------|-------------|
+| OOS Calmar | 0.38 | 0.38 |
+| Mean Calmar | 0.38 | 0.38 |
+| CV% | 16.1% | 16.1% |
+
+**结论**: 对数收益率的 IC 更强，但 TV-PR 模型已捕捉时变特性，相对排序不变，回测表现一致。
+
+### 6.2 量价因子 IC 评估
+
+**结果**:
+
+| 排名 | 因子 | IC_mean | ICIR | 正IC占比 |
+|------|------|---------|------|----------|
+| 1 | f4_vol_vol (成交量波动) | 0.0456 | 0.20 | 60.0% |
+| 2 | f3_amt_vol (成交金额波动) | 0.0319 | 0.17 | 58.8% |
+| 3 | f10_first_div (一阶量价背离) | 0.0182 | 0.08 | 55.0% |
+| 4 | f6_ls_total (多空对比总量) | -0.0180 | -0.05 | 47.7% |
+| 5 | f9_pv_corr (量价相关系数) | 0.0149 | 0.06 | 53.1% |
+
+**结论**: 大数量价因子 IC < 0.02，预测力较弱。
+
+---
+
+## 7. 文件清单
 
 ```
 新建文件:
   scripts/calc_factor_ic.py                                    # IC 评估脚本
-  QuantNodes/strategy/momentum_etf_rotation/v7/enhanced_factors.py  # 新因子实现
+  QuantNodes/strategy/momentum_etf_rotation/v7/enhanced_factors.py  # 新因子实现 (待实施)
   reports/momentum_etf_rotation/v7_6_factor_ic_report.md       # IC 报告
   reports/momentum_etf_rotation/v7_6_factor_ic_details.csv     # IC 详情
 
 修改文件:
-  QuantNodes/strategy/momentum_etf_rotation/v7/data_loader_v7_6.py  # 加载新因子
-  QuantNodes/strategy/momentum_etf_rotation/v7/macro_substrategy_v7_6.py  # 更新因子列表
+  QuantNodes/strategy/momentum_etf_rotation/v7/data_loader_v7_6.py  # 宏观因子用对数收益率
 ```
 
 ---
 
-## 7. 时间线
+## 8. 时间线
 
-| 阶段 | 时间 | 产出 |
-|------|------|------|
-| Phase 1: IC 评估框架 | 1 天 | `scripts/calc_factor_ic.py` |
-| Phase 2: 因子增强实现 | 2 天 | `v7/enhanced_factors.py` |
-| Phase 3: IC 测试与筛选 | 1 天 | IC 报告 + 因子筛选 |
-| Phase 4: TV-PR 回测验证 | 1 天 | 回测结果对比 |
+| 阶段 | 时间 | 产出 | 状态 |
+|------|------|------|------|
+| Phase 1: IC 评估框架 | 1 天 | `scripts/calc_factor_ic.py` | ✅ 完成 |
+| Phase 2: 因子增强实现 | 2 天 | `v7/enhanced_factors.py` | 待实施 |
+| Phase 3: IC 测试与筛选 | 1 天 | IC 报告 + 因子筛选 | ✅ 完成 |
+| Phase 4: TV-PR 回测验证 | 1 天 | 回测结果对比 | ✅ 完成 |
 | **总计** | **5 天** | |
 
 ---
