@@ -2,8 +2,8 @@
 """因子 IC 评估脚本 — v7.6 宏观因子 + 量价因子.
 
 计算三种 IC:
-  方法 1: 时序 IC (宏观因子, per asset)
-  方法 3: 面板 IC (宏观因子, 修正版, 用市场平均收益)
+  方法 1: 时序 IC (宏观因子, per asset) - 用对数收益率
+  方法 3: 面板 IC (宏观因子, 修正版, 用市场平均收益) - 用对数收益率
   方法 2: 截面 IC (量价因子)
 
 输出:
@@ -36,6 +36,7 @@ def calc_time_series_ic(
     factor_idx: int,
     factor_name: str,
     min_obs: int = 52,
+    use_log_return: bool = False,
 ) -> dict:
     """方法 1: 时序 IC (宏观因子, per asset).
 
@@ -51,14 +52,22 @@ def calc_time_series_ic(
     ic_list = []
 
     for i in range(N):
-        x = X_panel[:-1, i, factor_idx]  # (T-1,) 因子时序
-        r = Y.values[1:, i]               # (T-1,) 下期收益
+        nav = X_panel[:, i, factor_idx]  # (T,) NAV 值
+        r = Y.values[:, i]                # (T,) 资产收益
 
-        valid = ~np.isnan(x) & ~np.isnan(r)
+        if use_log_return:
+            # 转换为对数收益率
+            x = np.log(nav[1:] / nav[:-1])  # (T-1,)
+            r_next = r[1:]                    # (T-1,)
+        else:
+            x = nav[:-1]  # (T-1,)
+            r_next = r[1:]  # (T-1,)
+
+        valid = ~np.isnan(x) & ~np.isnan(r_next)
         if valid.sum() < min_obs:
             continue
 
-        ic, _ = spearmanr(x[valid], r[valid])
+        ic, _ = spearmanr(x[valid], r_next[valid])
         ic_list.append(ic)
 
     if len(ic_list) == 0:
@@ -94,6 +103,7 @@ def calc_panel_ic(
     factor_idx: int,
     factor_name: str,
     min_obs: int = 52,
+    use_log_return: bool = False,
 ) -> dict:
     """方法 3: 面板 IC (宏观因子, 修正版).
 
@@ -108,7 +118,13 @@ def calc_panel_ic(
     # 市场平均收益
     market_r = np.nanmean(Y.values[1:], axis=1)  # (T-1,)
     # 宏观因子时序（所有资产相同，取第一个）
-    x_ts = X_panel[:-1, 0, factor_idx]  # (T-1,)
+    nav = X_panel[:, 0, factor_idx]  # (T,)
+
+    if use_log_return:
+        # 转换为对数收益率
+        x_ts = np.log(nav[1:] / nav[:-1])  # (T-1,)
+    else:
+        x_ts = nav[:-1]  # (T-1,)
 
     valid = ~np.isnan(x_ts) & ~np.isnan(market_r)
     if valid.sum() < min_obs:
@@ -217,21 +233,21 @@ def run_ic_analysis():
     K_macro = len(macro_col_names)
 
     # ============================================================
-    # 1. 宏观因子 IC
+    # 1. 宏观因子 IC (用对数收益率)
     # ============================================================
     print("\n" + "=" * 60)
-    print("宏观因子 IC 分析")
+    print("宏观因子 IC 分析 (用对数收益率)")
     print("=" * 60)
 
     macro_results = []
     for k in range(K_macro):
         fname = factor_names[k]
 
-        # 方法 1: 时序 IC
-        ts_result = calc_time_series_ic(X_panel, Y, k, fname)
+        # 方法 1: 时序 IC (用对数收益率)
+        ts_result = calc_time_series_ic(X_panel, Y, k, fname, use_log_return=True)
 
-        # 方法 3: 面板 IC
-        panel_result = calc_panel_ic(X_panel, Y, k, fname)
+        # 方法 3: 面板 IC (用对数收益率)
+        panel_result = calc_panel_ic(X_panel, Y, k, fname, use_log_return=True)
 
         # 综合评分
         composite = 0.6 * abs(ts_result['ic_mean']) + 0.4 * abs(panel_result['panel_ic'])
@@ -252,7 +268,7 @@ def run_ic_analysis():
     macro_results.sort(key=lambda x: x['composite_score'], reverse=True)
 
     # 打印结果
-    print("\n方法 1: 时序 IC (per asset)")
+    print("\n方法 1: 时序 IC (per asset, 对数收益率)")
     print("-" * 75)
     print(f"{'因子名称':<20} {'IC_mean':>10} {'IC_std':>10} {'ICIR':>10} {'正IC占比':>10}")
     print("-" * 75)
@@ -260,7 +276,7 @@ def run_ic_analysis():
         print(f"{r['factor_name']:<20} {r['ts_ic_mean']:>10.4f} {r['ts_ic_std']:>10.4f} "
               f"{r['ts_icir']:>10.2f} {r['ts_ic_positive_ratio']:>10.1%}")
 
-    print("\n方法 3: 面板 IC (市场平均收益)")
+    print("\n方法 3: 面板 IC (市场平均收益, 对数收益率)")
     print("-" * 75)
     print(f"{'因子名称':<20} {'panel_IC':>10} {'t_stat':>10} {'p_value':>10} {'显著性':>10}")
     print("-" * 75)
@@ -356,7 +372,7 @@ def run_ic_analysis():
         f.write(f"- 资产数量: {N} 个\n")
         f.write(f"- 因子数量: {K} 个 (宏观 {K_macro} + 量价 {K - K_macro})\n\n")
 
-        f.write("## 宏观因子 IC\n\n")
+        f.write("## 宏观因子 IC (用对数收益率)\n\n")
         f.write("### 方法 1: 时序 IC (per asset)\n\n")
         f.write("| 因子名称 | IC_mean | IC_std | ICIR | 正IC占比 |\n")
         f.write("|----------|---------|--------|------|----------|\n")
