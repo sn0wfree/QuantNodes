@@ -227,7 +227,15 @@ def construct_portfolio(
         #    生成的权重将在 t+1 时执行, 赚取 Y[t+1]
         if t >= 1:
             beta_prev = beta_path.iloc[t - 1].values  # (K,) 上期估计的 β
-            scores = X_panel[t] @ beta_prev  # (N,) 用本周因子预测下周收益
+            
+            # 处理 NaN: 对每个资产，只用非NaN的因子计算 scores
+            N_assets = X_panel[t].shape[0]
+            scores = np.full(N_assets, np.nan)
+            for i in range(N_assets):
+                x_i = X_panel[t, i, :]
+                valid_mask = ~np.isnan(x_i) & ~np.isnan(beta_prev)
+                if np.sum(valid_mask) > 0:
+                    scores[i] = np.dot(x_i[valid_mask], beta_prev[valid_mask])
 
             # 转为 Series 并过滤 NaN
             scores = pd.Series(scores, index=Y.columns)

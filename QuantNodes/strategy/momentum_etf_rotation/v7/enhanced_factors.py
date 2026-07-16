@@ -140,8 +140,13 @@ def idiosyncratic_volatility(
     Returns:
         pd.Series, 特质波动率
     """
-    ret = close.pct_change()
-    mkt_ret = market_close.pct_change()
+    # 对齐数据
+    aligned = pd.concat([close, market_close], axis=1).dropna()
+    if len(aligned) < window:
+        return pd.Series(np.nan, index=close.index)
+
+    ret = aligned.iloc[:, 0].pct_change()
+    mkt_ret = aligned.iloc[:, 1].pct_change()
 
     # 滚动协方差和方差
     cov = ret.rolling(window, min_periods=max(1, window // 2)).cov(mkt_ret)
@@ -153,7 +158,11 @@ def idiosyncratic_volatility(
     # 残差
     resid = ret - beta * mkt_ret
 
-    return resid.rolling(window, min_periods=max(1, window // 2)).std()
+    # 计算特质波动率
+    idio_vol = resid.rolling(window, min_periods=max(1, window // 2)).std()
+
+    # 对齐回原始索引
+    return idio_vol.reindex(close.index)
 
 
 # ============================================================
