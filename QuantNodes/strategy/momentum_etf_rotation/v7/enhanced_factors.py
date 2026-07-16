@@ -310,13 +310,33 @@ def compute_all_enhanced_factors_panel(
 def load_dxy_factor() -> pd.DataFrame:
     """加载美元指数 (DXY) 日度数据.
 
+    优先使用 QuantNodes/data/美元指数.xlsx (1971-2026, 14224 条)，
+    否则回退到 data/high_freq_macro/macro_dxy_daily.parquet。
+
     Returns:
         DataFrame, index=date, columns=['dxy']
     """
-    cache = HF_DIR / "macro_dxy_daily.parquet"
-    if cache.exists():
-        return pd.read_parquet(cache)
-    raise FileNotFoundError(f"DXY 缓存不存在: {cache}")
+    # 优先使用新数据源
+    dxy_xlsx = REPO / "data" / "美元指数.xlsx"
+    cache_v2 = HF_DIR / "macro_dxy_daily_v2.parquet"
+    cache_v1 = HF_DIR / "macro_dxy_daily.parquet"
+
+    if cache_v2.exists():
+        return pd.read_parquet(cache_v2)
+
+    if dxy_xlsx.exists():
+        dxy_raw = pd.read_excel(dxy_xlsx, skiprows=7, header=0)
+        dxy_raw.columns = ['date', 'dxy']
+        dxy_raw['date'] = pd.to_datetime(dxy_raw['date'])
+        dxy_raw = dxy_raw.set_index('date').sort_index()
+        dxy = dxy_raw.dropna()
+        dxy.to_parquet(cache_v2)
+        return dxy
+
+    if cache_v1.exists():
+        return pd.read_parquet(cache_v1)
+
+    raise FileNotFoundError(f"DXY 数据不存在")
 
 
 def load_vix_factor() -> pd.DataFrame:
