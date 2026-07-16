@@ -167,6 +167,7 @@ def build_mixed_factor_panel(
     X_macro: pd.DataFrame,
     X_pv: dict[str, pd.DataFrame],
     asset_codes: list[str],
+    macro_use_log_return: bool = True,
 ) -> tuple[np.ndarray, list[str]]:
     """合并 9 macro + 11 量价 → 面板格式.
 
@@ -174,12 +175,13 @@ def build_mixed_factor_panel(
     其中 macro_t 是全局因子 (所有资产相同), pv_{i,t} 是资产特异因子.
 
     Args:
-        X_macro: (T_weekly, 9) 周频宏观因子
+        X_macro: (T_weekly, 9) 周频宏观因子 (NAV levels)
         X_pv: dict, code → (T_weekly, 11) 周频量价因子
         asset_codes: 资产代码列表
+        macro_use_log_return: 是否对宏观因子用对数收益率 (默认 True)
 
     Returns:
-        X_panel: (T_weekly, N_assets, 20) 周频混合因子面板
+        X_panel: (T_weekly, N_assets, K) 周频混合因子面板
         valid_codes: 有效资产代码列表
     """
     common_idx = X_macro.index
@@ -192,8 +194,15 @@ def build_mixed_factor_panel(
     X_panel = np.full((len(common_idx), N, K), np.nan)
 
     # 填充宏观因子 (所有资产相同)
-    for i in range(N):
-        X_panel[:, i, :K_macro] = X_macro.values
+    if macro_use_log_return:
+        # 用对数收益率: r_t = ln(NAV_t / NAV_{t-1})
+        X_macro_logret = np.log(X_macro / X_macro.shift(1))
+        # 第一行是 NaN，从第二行开始填充
+        X_panel[1:, :, :K_macro] = X_macro_logret.values[1:, np.newaxis, :]
+    else:
+        # 用原始 NAV levels
+        for i in range(N):
+            X_panel[:, i, :K_macro] = X_macro.values
 
     # 填充量价因子 (资产特异)
     valid_codes = []
@@ -210,11 +219,16 @@ def build_mixed_factor_panel(
 # ============================================================
 # 5. 端到端加载
 # ============================================================
-def load_v7_6_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
+def load_v7_6_data(
+    macro_use_log_return: bool = True,
+) -> tuple[np.ndarray, pd.DataFrame, list[str]]:
     """加载 v7.6 全部数据.
 
+    Args:
+        macro_use_log_return: 是否对宏观因子用对数收益率 (默认 True)
+
     Returns:
-        X_panel: (T_weekly, N_assets, 20) 周频混合因子面板
+        X_panel: (T_weekly, N_assets, K) 周频混合因子面板
         Y: (T_weekly, N_assets) 周频资产收益
         valid_codes: 有效资产代码列表
     """
@@ -234,7 +248,10 @@ def load_v7_6_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
 
     # 5. 合并因子
     asset_codes = list(Y.columns)
-    X_panel, valid_codes = build_mixed_factor_panel(X_macro, X_pv, asset_codes)
+    X_panel, valid_codes = build_mixed_factor_panel(
+        X_macro, X_pv, asset_codes,
+        macro_use_log_return=macro_use_log_return,
+    )
 
     # 6. 过滤有效资产
     Y = Y[valid_codes]
