@@ -1,21 +1,22 @@
 # coding=utf-8
-"""v7.6 数据加载: 9 macro + 11 量价, 周频.
+"""v7.6 数据加载: 12 macro + 17 量价, 周频.
 
-v7.6 = v7.3 (9 macro) + v5 (11 量价), 周频对齐.
+v7.6 = v7.3 (9 macro) + v5 (11 量价) + 增强因子 (3 macro + 6 量价), 周频对齐.
 
 数据流:
-  1. 9 macro factors: 周频 (保持不变)
-  2. 11 量价 factors: 日频 → 周频 (resample('W').last())
+  1. 12 macro factors: 周频 (9 原始 + 3 新增)
+  2. 17 量价 factors: 日频 → 周频 (resample('W').last())
   3. Y (asset returns): 日频 → 周频 (resample('W').last())
 
 输入:
   - ~/Public/高频宏观因子/高频宏观因子跟踪_output_2026-06-01.xlsx (9 macro)
+  - data/high_freq_macro/macro_*.parquet (3 新增宏观因子)
   - data/real/etf_ohlcv_2018-01-01_2026-06-30_adjusted.parquet (ETF OHLCV)
   - data/real/etf_nav_2018-01-01_2026-06-30.parquet (ETF NAV)
 
 输出:
-  - data/high_freq_macro/v7_6_X_macro_weekly.parquet (T_weekly, 9)
-  - data/high_freq_macro/v7_6_X_pv_weekly.parquet (T_weekly, 56×11)
+  - data/high_freq_macro/v7_6_X_macro_weekly.parquet (T_weekly, 12)
+  - data/high_freq_macro/v7_6_X_pv_weekly.parquet (T_weekly, 56×17)
   - data/high_freq_macro/v7_6_Y_weekly.parquet (T_weekly, 56)
 """
 from __future__ import annotations
@@ -46,47 +47,81 @@ from ..v5.industry_factors import (
     compute_all_factors_panel,
 )
 
+# 增强因子
+from .enhanced_factors import (
+    EnhancedFactorConfig,
+    compute_all_enhanced_factors_panel,
+    load_enhanced_macro_factors,
+)
+
 
 # ============================================================
-# 1. 9 macro factors: 周频 (保持不变)
+# 1. 12 macro factors: 周频 (9 原始 + 3 新增)
 # ============================================================
 def load_weekly_macro_factors() -> pd.DataFrame:
-    """加载 9 宏观因子, 周频 (保持不变).
+    """加载 12 宏观因子, 周频.
+
+    9 个原始宏观因子 (NAV levels) + 3 个新增宏观因子 (DXY, VIX, 实际利率)
 
     Returns:
-        DataFrame (T_weekly, 9) 周频宏观因子.
+        DataFrame (T_weekly, 12) 周频宏观因子.
     """
     cache = HF_DIR / "v7_6_X_macro_weekly.parquet"
     if cache.exists():
         return pd.read_parquet(cache)
 
-    # 加载周频
+    # 加载 9 原始宏观因子 (周频)
     weekly = load_macro_factors()
 
+    # 加载 3 新增宏观因子 (周频)
+    enhanced_macro = load_enhanced_macro_factors()
+
+    # 对齐时间
+    common_idx = weekly.index.intersection(enhanced_macro.index)
+    weekly = weekly.loc[common_idx]
+    enhanced_macro = enhanced_macro.loc[common_idx]
+
+    # 合并
+    merged = pd.concat([weekly, enhanced_macro], axis=1)
+
     # 保存缓存
-    weekly.to_parquet(cache)
-    return weekly
+    merged.to_parquet(cache)
+    return merged
 
 
 # ============================================================
-# 2. 11 量价 factors: 日频 → 周频
+# 2. 17 量价 factors: 日频 → 周频 (11 原始 + 6 增强)
 # ============================================================
 def load_weekly_pv_factors(
     factor_cfg: FactorEngineConfig | None = None,
+    enhanced_cfg: EnhancedFactorConfig | None = None,
+    include_enhanced: bool = True,
 ) -> dict[str, pd.DataFrame]:
-    """计算 11 量价因子, 日频 → 周频.
+    """计算 17 量价因子, 日频 → 周频.
 
     Args:
-        factor_cfg: 因子引擎配置 (None = 默认)
+        factor_cfg: 原始因子引擎配置 (None = 默认)
+        enhanced_cfg: 增强因子配置 (None = 默认)
+        include_enhanced: 是否包含增强因子 (默认 True)
 
     Returns:
-        dict, code → DataFrame (T_weekly, 11) 周频量价因子.
+        dict, code → DataFrame (T_weekly, K_pv) 周频量价因子.
     """
     cache_dir = HF_DIR / "v7_6_pv_weekly"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     factor_cfg = factor_cfg or FactorEngineConfig()
+    enhanced_cfg = enhanced_cfg or EnhancedFactorConfig()
     codes = sorted(set(EXPANDED_COLS) - set(EXPANDED_BOND_INDICES))  # 51 ETFs
+
+    # 加载市场基准 (用于特质波动率)
+    market_close = None
+    if include_enhanced:
+        try:
+            benchmark = pd.read_parquet(HF_DIR / "v9_benchmark_沪深300.parquet")
+            market_close = benchmark.iloc[:, 0]
+        except Exception as e:
+            print(f"  加载市场基准失败: {e}")
 
     result = {}
     for code in codes:
@@ -110,9 +145,19 @@ def load_weekly_pv_factors(
             if len(sub) < 252:
                 continue
 
-            # 计算 11 因子 (日频)
+            # 计算 11 原始因子 (日频)
             from ..v5.industry_factors import compute_all_factors
             daily_factors = compute_all_factors(sub, factor_cfg)
+
+            # 计算 6 增强因子 (日频)
+            if include_enhanced:
+                enhanced_factors = compute_all_enhanced_factors_panel(
+                    ohlcv_panel[[code]], market_close, enhanced_cfg
+                )
+                if code in enhanced_factors:
+                    enhanced_df = enhanced_factors[code]
+                    # 合并原始因子和增强因子
+                    daily_factors = pd.concat([daily_factors, enhanced_df], axis=1)
 
             # 日频 → 周频 (周末)
             weekly_factors = daily_factors.resample("W").last()
@@ -169,14 +214,14 @@ def build_mixed_factor_panel(
     asset_codes: list[str],
     macro_use_log_return: bool = True,
 ) -> tuple[np.ndarray, list[str]]:
-    """合并 9 macro + 11 量价 → 面板格式.
+    """合并 macro + 量价 → 面板格式.
 
     对于每个资产 i, 构造 x_{i,t} = [macro_t, pv_{i,t}]
     其中 macro_t 是全局因子 (所有资产相同), pv_{i,t} 是资产特异因子.
 
     Args:
-        X_macro: (T_weekly, 9) 周频宏观因子 (NAV levels)
-        X_pv: dict, code → (T_weekly, 11) 周频量价因子
+        X_macro: (T_weekly, K_macro) 周频宏观因子 (NAV levels)
+        X_pv: dict, code → (T_weekly, K_pv) 周频量价因子
         asset_codes: 资产代码列表
         macro_use_log_return: 是否对宏观因子用对数收益率 (默认 True)
 
@@ -187,7 +232,14 @@ def build_mixed_factor_panel(
     common_idx = X_macro.index
     N = len(asset_codes)
     K_macro = X_macro.shape[1]
-    K_pv = 11
+
+    # 获取量价因子维度
+    first_valid_code = next(iter(X_pv), None)
+    if first_valid_code is not None:
+        K_pv = X_pv[first_valid_code].shape[1]
+    else:
+        K_pv = 0
+
     K = K_macro + K_pv
 
     # 初始化面板
@@ -196,7 +248,12 @@ def build_mixed_factor_panel(
     # 填充宏观因子 (所有资产相同)
     if macro_use_log_return:
         # 用对数收益率: r_t = ln(NAV_t / NAV_{t-1})
-        X_macro_logret = np.log(X_macro / X_macro.shift(1))
+        # 对新增的宏观因子 (已经是收益率或水平值)，跳过对数转换
+        X_macro_logret = X_macro.copy()
+        # 前 9 个是 NAV 指数，需要转换
+        for col in X_macro.columns[:9]:
+            X_macro_logret[col] = np.log(X_macro[col] / X_macro[col].shift(1))
+        # 后 3 个是新增宏观因子，已经是合适的格式
         # 第一行是 NaN，从第二行开始填充
         X_panel[1:, :, :K_macro] = X_macro_logret.values[1:, np.newaxis, :]
     else:
