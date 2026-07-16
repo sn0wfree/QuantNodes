@@ -224,13 +224,18 @@ def run_ic_analysis():
     print(f"  Y: {Y.shape}")
     print(f"  有效资产数: {len(valid_codes)}")
 
-    # 使用实际数据中的因子名（宏观因子可能有9个而非8个）
-    cfg = V7_6Config()
+    # 使用实际数据中的因子名
     X_macro = load_weekly_macro_factors()
     macro_col_names = list(X_macro.columns)
-    pv_factor_names = list(cfg.pv_factors)
-    factor_names = macro_col_names + pv_factor_names
     K_macro = len(macro_col_names)
+
+    # 量价因子名 (从 V7_6Config + 增强因子)
+    cfg = V7_6Config()
+    enhanced_pv_names = [
+        'f12_amihud', 'f13_rv', 'f14_rs', 'f15_max5', 'f16_52w_high', 'f17_idio_vol',
+    ]
+    pv_factor_names = list(cfg.pv_factors) + enhanced_pv_names
+    factor_names = macro_col_names + pv_factor_names
 
     # ============================================================
     # 1. 宏观因子 IC (用对数收益率)
