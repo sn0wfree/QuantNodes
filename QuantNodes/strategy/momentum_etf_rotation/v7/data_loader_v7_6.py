@@ -206,13 +206,55 @@ def load_weekly_asset_returns() -> pd.DataFrame:
 
 
 # ============================================================
-# 4. 合并因子面板
+# 4. 截面标准化
+# ============================================================
+def cross_sectional_standardize(
+    X_panel: np.ndarray,
+    method: str = "zscore",
+) -> np.ndarray:
+    """截面标准化.
+
+    对每个时间点、每个因子独立标准化。
+
+    Args:
+        X_panel: (T, N, K) 因子面板
+        method: "zscore" 或 "rank"
+
+    Returns:
+        X_std: 标准化后的因子面板
+    """
+    T, N, K = X_panel.shape
+    X_std = X_panel.copy()
+
+    for t in range(T):
+        for k in range(K):
+            vals = X_panel[t, :, k]
+            valid = ~np.isnan(vals)
+            if valid.sum() <= 1:
+                continue
+
+            if method == "zscore":
+                mean = vals[valid].mean()
+                std = vals[valid].std()
+                if std > 1e-10:
+                    X_std[t, valid, k] = (vals[valid] - mean) / std
+            elif method == "rank":
+                from scipy.stats import rankdata
+                ranks = rankdata(vals[valid], method='average')
+                X_std[t, valid, k] = ranks / len(ranks)
+
+    return X_std
+
+
+# ============================================================
+# 5. 合并因子面板
 # ============================================================
 def build_mixed_factor_panel(
     X_macro: pd.DataFrame,
     X_pv: dict[str, pd.DataFrame],
     asset_codes: list[str],
     macro_use_log_return: bool = True,
+    standardize: str | None = None,
 ) -> tuple[np.ndarray, list[str]]:
     """合并 macro + 量价 → 面板格式.
 
@@ -224,6 +266,7 @@ def build_mixed_factor_panel(
         X_pv: dict, code → (T_weekly, K_pv) 周频量价因子
         asset_codes: 资产代码列表
         macro_use_log_return: 是否对宏观因子用对数收益率 (默认 True)
+        standardize: 截面标准化方法 ("zscore", "rank", None)
 
     Returns:
         X_panel: (T_weekly, N_assets, K) 周频混合因子面板
@@ -248,13 +291,18 @@ def build_mixed_factor_panel(
     # 填充宏观因子 (所有资产相同)
     if macro_use_log_return:
         # 用对数收益率: r_t = ln(NAV_t / NAV_{t-1})
-        # 对新增的宏观因子 (已经是收益率或水平值)，跳过对数转换
+        # 只对 FACTOR_COLS 中的 NAV 指数做 log 变换
+        # 排除已是收益率/差值/rank 的增强宏观因子 (如 dxy_logret, vix, real_rate_diff 等)
+        from .data_loader import FACTOR_COLS
+        _nav_cols = set(FACTOR_COLS)
+
         X_macro_logret = X_macro.copy()
-        # 前 9 个是 NAV 指数，需要转换
-        for col in X_macro.columns[:9]:
-            X_macro_logret[col] = np.log(X_macro[col] / X_macro[col].shift(1))
-        # 后 3 个是新增宏观因子，已经是合适的格式
-        # 第一行是 NaN，从第二行开始填充
+        for col in X_macro.columns:
+            if col in _nav_cols:
+                # NAV 指数 (全部正值): log(NAV_t / NAV_{t-1})
+                X_macro_logret[col] = np.log(X_macro[col] / X_macro[col].shift(1))
+            # 非 NAV 列 (已是 return/rate/rank/diff): 保持原值
+        # 第一行是 NaN (shift 导致), 从第二行开始填充
         X_panel[1:, :, :K_macro] = X_macro_logret.values[1:, np.newaxis, :]
     else:
         # 用原始 NAV levels
@@ -270,6 +318,20 @@ def build_mixed_factor_panel(
             X_panel[:, j, K_macro:] = aligned.values
             valid_codes.append(code)
 
+    # 截面 NaN 填充: 量价因子的 NaN (ETF 停牌/未上市) 用截面中位数填充
+    # 对每个时间点 t 和因子 k, 用当天其他资产的中位数填充 NaN
+    for t in range(len(common_idx)):
+        for k in range(K_macro, K):
+            col = X_panel[t, :, k]
+            if np.any(np.isnan(col)):
+                median_val = np.nanmedian(col)
+                if not np.isnan(median_val):
+                    col[np.isnan(col)] = median_val
+
+    # 截面标准化 (可选)
+    if standardize is not None:
+        X_panel = cross_sectional_standardize(X_panel, method=standardize)
+
     return X_panel, valid_codes
 
 
@@ -278,11 +340,13 @@ def build_mixed_factor_panel(
 # ============================================================
 def load_v7_6_data(
     macro_use_log_return: bool = True,
+    standardize: str | None = None,
 ) -> tuple[np.ndarray, pd.DataFrame, list[str]]:
     """加载 v7.6 全部数据.
 
     Args:
         macro_use_log_return: 是否对宏观因子用对数收益率 (默认 True)
+        standardize: 截面标准化方法 ("zscore", "rank", None)
 
     Returns:
         X_panel: (T_weekly, N_assets, K) 周频混合因子面板
@@ -308,6 +372,7 @@ def load_v7_6_data(
     X_panel, valid_codes = build_mixed_factor_panel(
         X_macro, X_pv, asset_codes,
         macro_use_log_return=macro_use_log_return,
+        standardize=standardize,
     )
 
     # 6. 过滤有效资产
@@ -344,6 +409,23 @@ def load_daily_etf_returns() -> pd.DataFrame:
     return daily_returns
 
 
+def load_v7_9_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
+    """加载 v7.9 数据 (去重 36 因子 + log 变换).
+
+    v7.9 = v7.8 - {f4_vol_vol, f9_pv_corr, f21_reversal}
+         + log transform on f3_amt_vol, f6_ls_total, f7_ls_change, f12_amihud, f22_rsi
+
+    Returns:
+        X_panel: (T_weekly, N_assets, 36) 周频因子面板
+        Y: (T_weekly, N_assets) 周频资产收益
+        valid_codes: 有效资产代码列表
+    """
+    X_panel = np.load(HF_DIR / "v7_9_X_panel.npy")
+    Y = pd.read_parquet(HF_DIR / "v7_9_Y_weekly.parquet")
+    codes = (HF_DIR / "v7_9_codes.csv").read_text().strip().split("\n")[1:]
+    return X_panel, Y, codes
+
+
 __all__ = [
     "load_weekly_macro_factors",
     "load_weekly_pv_factors",
@@ -351,4 +433,5 @@ __all__ = [
     "load_daily_etf_returns",
     "build_mixed_factor_panel",
     "load_v7_6_data",
+    "load_v7_9_data",
 ]

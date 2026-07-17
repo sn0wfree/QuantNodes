@@ -50,7 +50,7 @@ def compute_l1_cost(beta: np.ndarray) -> float:
 
 
 # ============================================================
-# ADMM 求解器 (标准 ADMM, 直接解线性系统)
+# ADMM 求解器 (标准 ADMM, 双辅助变量: TV + L1)
 # ============================================================
 def tvpr_admm(
     Y: np.ndarray,
@@ -61,41 +61,63 @@ def tvpr_admm(
     max_iter: int = 200,
     tol: float = 1e-5,
     beta_init: np.ndarray | None = None,
+    l1_weights: np.ndarray | None = None,
 ) -> np.ndarray:
-    """ADMM 求解 TV-PR (标准 ADMM, 直接解线性系统).
+    """ADMM 求解 TV-PR (标准 ADMM, 双辅助变量).
 
-    增广形式:
+    目标函数:
       min Σ_t Σ_i (r_{i,t} - x_{i,t}' β_t)^2
-          + λ_1 ||z||_1
-          + λ_2 ||β||_1
-          + (ρ/2) ||Δβ - z + u||_2^2
+          + λ_tv ||Δβ||_1       (TV 罚项: 控制结构性断裂)
+          + Σ_t Σ_k w_k(t) |β_{t,k}|  (L1 罚项: 控制因子稀疏性)
 
-    β-update 公式 (标准 ADMM):
-      (X'X + ρ*A^T*A) β = X'Y + ρ*A^T*(z - u)
-      其中 A 是差分算子, A^T*A 是三对角矩阵
+    ADMM 分裂 (两个辅助变量):
+      min Σ_t Σ_i (r_{i,t} - x_{i,t}' β_t)^2 + λ_tv ||z1||_1 + Σ_t Σ_k w_k(t) |z2_{t,k}|
+      s.t. Δβ = z1, β = z2
+
+    β-update:
+      (X'X + ρ*A^T*A + ρ*I) β = X'Y + ρ*A^T*(z1 - u1) + ρ*(z2 - u2)
 
     Parameters:
         Y: (T, N) 资产收益
-        X: (T, N, K) 因子值面板 (每个资产有自己的因子值)
-        lambda_tv: TV 罚项系数
-        lambda_l1: L1 罚项系数
+        X: (T, N, K) 因子值面板
+        lambda_tv: TV 罚项系数 (控制 β 时间变化幅度)
+        lambda_l1: L1 罚项系数 (控制因子稀疏性)
         rho: ADMM 惩罚参数
         max_iter: 最大迭代次数
         tol: 收敛阈值
         beta_init: (T, K) 初始 β (warm-start), None 则用 zeros
+        l1_weights: (T, K) 或 (K,) 或 None, 自适应 L1 权重
+                    None 则使用均匀权重 lambda_l1
+                    如果提供，z2-update 使用 w_k(t) 代替 lambda_l1
 
     Returns:
         beta: (T, K) 时变 β_t
     """
     T, N, K = X.shape
 
-    # 初始化 (用 beta_init 而不是 zeros)
+    # 初始化
     if beta_init is not None:
         beta = beta_init.copy()
     else:
         beta = np.zeros((T, K))
-    z = np.zeros((T - 1, K))
-    u = np.zeros((T - 1, K))
+    # TV 罚项辅助变量 (Δβ = z1)
+    z1 = np.zeros((T - 1, K))
+    u1 = np.zeros((T - 1, K))
+    # L1 罚项辅助变量 (β = z2)
+    z2 = np.zeros((T, K))
+    u2 = np.zeros((T, K))
+
+    # 处理 l1_weights: 统一为 (T, K) 形状
+    if l1_weights is None:
+        # 均匀权重
+        l1_weights_full = np.full((T, K), lambda_l1)
+    elif l1_weights.ndim == 1:
+        # (K,) → 广播到 (T, K)
+        l1_weights_full = np.tile(l1_weights, (T, 1))
+    elif l1_weights.ndim == 2:
+        l1_weights_full = l1_weights
+    else:
+        raise ValueError(f"l1_weights must be 1D or 2D, got {l1_weights.ndim}D")
 
     # 预计算 X'X 和 X'Y (每个时间点, 处理 NaN)
     # X[t] is (N, K), Y[t] is (N,)
@@ -125,59 +147,60 @@ def tvpr_admm(
     # ADMM 迭代
     for iteration in range(max_iter):
         beta_old = beta.copy()
-        z_old = z.copy()
+        z1_old = z1.copy()
+        z2_old = z2.copy()
 
-        # 1. β-update: 固定 z, u, 解线性系统
-        # (X'X + ρ*A^T*A) β = X'Y + ρ*A^T*(z - u)
-        # 对每个因子 k 独立求解 (因为 X'X 是对角的)
+        # 1. β-update: 固定 z1, u1, z2, u2, 解线性系统
+        # (X'X + ρ*A^T*A + ρ*I) β = X'Y + ρ*A^T*(z1 - u1) + ρ*(z2 - u2)
 
-        # 计算 A^T*(z - u)
-        # A^T 是差分算子的转置
-        # A^T*(z-u)[t] = (z[t-1] - u[t-1]) - (z[t] - u[t])  (内部点)
-        # A^T*(z-u)[0] = -(z[0] - u[0])  (起点)
-        # A^T*(z-u)[T-1] = (z[T-2] - u[T-2])  (终点)
-        AT_zu = np.zeros((T, K))
-        AT_zu[0] = -(z[0] - u[0])
+        # 计算 A^T*(z1 - u1) (差分算子的转置)
+        AT_z1u1 = np.zeros((T, K))
+        AT_z1u1[0] = -(z1[0] - u1[0])
         for t in range(1, T - 1):
-            AT_zu[t] = (z[t - 1] - u[t - 1]) - (z[t] - u[t])
-        AT_zu[T - 1] = z[T - 2] - u[T - 2]
+            AT_z1u1[t] = (z1[t - 1] - u1[t - 1]) - (z1[t] - u1[t])
+        AT_z1u1[T - 1] = z1[T - 2] - u1[T - 2]
 
         # 对每个因子 k 独立求解
         for k in range(K):
-            # 构建 (K, K) 的块状矩阵
-            # 对角块: XtX[t] + ρ*A^T*A[t,t]*I
-            # 非对角块: ρ*A^T*A[t,s]*I (只有相邻时点)
-
             # 构建 RHS
             rhs = np.zeros(T)
             for t in range(T):
-                rhs[t] = XtY[t, k] + rho * AT_zu[t, k]
+                # RHS: X'Y + ρ*A^T*(z1-u1) + ρ*(z2-u2)
+                rhs[t] = XtY[t, k] + rho * AT_z1u1[t, k] + rho * (z2[t, k] - u2[t, k])
 
-            # 构建 LHS 矩阵 (三对角)
-            # 对角线: XtX[t, k, k] + ρ*ATA_diag[t]
-            # 次对角线: ρ*ATA_offdiag[t]
+            # 构建 LHS 对角线
+            # 对角线: XtX[t,k,k] + ρ*ATA_diag[t] + ρ (多了 +ρ 来自 L1 罚项)
             diag = np.zeros(T)
             for t in range(T):
-                diag[t] = XtX[t, k, k] + rho * ATA_diag[t]
+                diag[t] = XtX[t, k, k] + rho * ATA_diag[t] + rho
 
             # 解三对角系统
-            # 使用 Thomas 算法 (追赶法)
             beta_k = _solve_tridiag(ATA_offdiag * rho, diag, ATA_offdiag * rho, rhs)
-            for t in range(T):
-                beta[t, k] = beta_k[t]
+            beta[:, k] = beta_k
 
-        # 2. z-update: 固定 β, u, 解 soft-thresholding
+        # 2. z1-update (TV penalty): z1 = S_{λ_tv/ρ}(Δβ + u1)
         diff_beta = np.diff(beta, axis=0)  # (T-1, K)
-        z = soft_thresholding(diff_beta + u, lambda_tv / rho)
+        z1 = soft_thresholding(diff_beta + u1, lambda_tv / rho)
 
-        # 3. u-update: 对偶变量更新
-        u = u + diff_beta - z
+        # 3. z2-update (L1 penalty): z2 = S_{w_k(t)/ρ}(β + u2)
+        #    使用自适应权重 l1_weights_full[t, k] 代替均匀 lambda_l1
+        z2 = soft_thresholding(beta + u2, l1_weights_full / rho)
 
-        # 4. 收敛检查 (原始残差 + 对偶残差)
-        # 原始残差: r = Δβ - z
-        primal_res = np.linalg.norm(diff_beta - z)
-        # 对偶残差: s = ρ * (z - z_old) (简化形式)
-        dual_res = rho * np.linalg.norm(z - z_old)
+        # 4. u-update
+        u1 = u1 + diff_beta - z1
+        u2 = u2 + beta - z2
+
+        # 5. 收敛检查 (原始残差 + 对偶残差)
+        # 原始残差: r = [Δβ - z1, β - z2]
+        primal_res = np.sqrt(
+            np.linalg.norm(diff_beta - z1) ** 2 +
+            np.linalg.norm(beta - z2) ** 2
+        )
+        # 对偶残差: s = [ρ*(z1 - z1_old), ρ*(z2 - z2_old)]
+        dual_res = rho * np.sqrt(
+            np.linalg.norm(z1 - z1_old) ** 2 +
+            np.linalg.norm(z2 - z2_old) ** 2
+        )
 
         # 收敛条件: 原始和对偶残差都小于阈值
         if primal_res < tol and dual_res < tol:
@@ -239,6 +262,7 @@ def full_sample_tvpr(
     rho: float = 1.0,
     max_iter: int = 200,
     tol: float = 1e-5,
+    l1_weights: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """全量样本估计 β_t (一次 ADMM 求解所有时点).
 
@@ -254,6 +278,7 @@ def full_sample_tvpr(
         rho: ADMM 惩罚参数
         max_iter: 最大迭代次数
         tol: 收敛阈值
+        l1_weights: (T, K) 或 (K,) 或 None, 自适应 L1 权重
 
     Returns:
         beta_path: (T, K) 时变 β_t
@@ -266,6 +291,7 @@ def full_sample_tvpr(
         lambda_tv, lambda_l1,
         rho=rho, max_iter=max_iter, tol=tol,
         beta_init=None,
+        l1_weights=l1_weights,
     )
 
     # 前 min_history 个时点的 β 设为零 (数据不足)
@@ -288,6 +314,7 @@ def tvpr_estimator(
     rho: float = 1.0,
     max_iter: int = 200,
     tol: float = 1e-5,
+    l1_weights: np.ndarray | None = None,
 ) -> pd.DataFrame:
     """TV-PR estimator: 识别因子溢价的结构性变化.
 
@@ -302,6 +329,8 @@ def tvpr_estimator(
         rho: ADMM 惩罚参数
         max_iter: 最大迭代次数
         tol: 收敛阈值
+        l1_weights: (T, K) 或 (K,) 或 None, 自适应 L1 权重
+                    None 则使用均匀权重 lambda_l1
 
     Returns:
         beta_path: (T, K) 时变 β_t
@@ -312,6 +341,7 @@ def tvpr_estimator(
             min_history=min_history,
             rho=rho,
             max_iter=max_iter, tol=tol,
+            l1_weights=l1_weights,
         )
     else:
         raise ValueError(f"未知 method: {method}")
@@ -324,5 +354,141 @@ __all__ = [
     "compute_l1_cost",
     "tvpr_admm",
     "full_sample_tvpr",
+    "expanding_window_tvpr",
+    "rolling_window_tvpr",
     "tvpr_estimator",
 ]
+
+
+# ============================================================
+# OOS 因果估计: expanding-window / rolling-window
+# ============================================================
+def expanding_window_tvpr(
+    Y: pd.DataFrame,
+    X_panel: np.ndarray,
+    lambda_tv: float,
+    lambda_l1: float,
+    min_history: int = 52,
+    rho: float = 1.0,
+    max_iter: int = 200,
+    tol: float = 1e-5,
+    step: int = 1,
+) -> pd.DataFrame:
+    """递增窗口 OOS 估计 β_t (无前视偏差).
+
+    对每个预测时点 t = min_history, ..., T-1:
+      1. 训练集: Y[:t], X_panel[:t]
+      2. 用上一次 beta 做 warm-start
+      3. 运行 ADMM → 取 beta_path[-1] 作为 beta_oos[t]
+
+    step > 1 时每 step 周更新一次 beta, 中间时点用最近的值 forward-fill.
+
+    Parameters:
+        Y: (T, N) 周频资产收益
+        X_panel: (T, N, K) 周频因子值面板
+        lambda_tv, lambda_l1: 罚项系数
+        min_history: 最少历史期数
+        rho, max_iter, tol: ADMM 参数
+        step: 更新频率 (1=每周, 4=每4周)
+
+    Returns:
+        beta_oos: (T, K) OOS 估计的 β_t, 前 min_history 行为 0
+    """
+    T, N, K = X_panel.shape
+    beta_oos = np.zeros((T, K))
+    beta_warm = None
+    last_beta = np.zeros(K)
+
+    for t in range(min_history, T, step):
+        Y_train = Y.iloc[:t]
+        X_train = X_panel[:t]
+
+        if beta_warm is not None:
+            beta_init = np.zeros((t, K))
+            beta_init[:beta_warm.shape[0]] = beta_warm
+        else:
+            beta_init = None
+
+        beta_path = tvpr_admm(
+            Y_train.values, X_train,
+            lambda_tv, lambda_l1,
+            rho=rho, max_iter=max_iter, tol=tol,
+            beta_init=beta_init,
+        )
+        last_beta = beta_path[-1]
+        beta_warm = beta_path
+
+        # Fill this step's beta into all timepoints from previous step to here
+        for s in range(max(t - step, min_history), t + 1):
+            if s < T:
+                beta_oos[s] = last_beta
+
+    return pd.DataFrame(beta_oos, index=Y.index,
+                        columns=[f"factor_{i}" for i in range(K)])
+
+
+def rolling_window_tvpr(
+    Y: pd.DataFrame,
+    X_panel: np.ndarray,
+    lambda_tv: float,
+    lambda_l1: float,
+    window: int = 104,
+    min_history: int = 52,
+    rho: float = 1.0,
+    max_iter: int = 200,
+    tol: float = 1e-5,
+    step: int = 1,
+) -> pd.DataFrame:
+    """滑动窗口 OOS 估计 β_t (无前视偏差).
+
+    对每个预测时点 t = min_history, ..., T-1:
+      1. W_eff = min(window, t)
+      2. 训练集: Y[t-W_eff:t], X_panel[t-W_eff:t]
+      3. warm-start: 上一次 beta 的最后 W_eff 行
+      4. 运行 ADMM → 取 beta_path[-1]
+
+    step > 1 时每 step 周更新一次 beta, 中间时点 forward-fill.
+
+    Parameters:
+        Y: (T, N) 周频资产收益
+        X_panel: (T, N, K) 因子值面板
+        lambda_tv, lambda_l1: 罚项系数
+        window: 滚动窗口大小 (周)
+        min_history: 最少历史期数
+        rho, max_iter, tol: ADMM 参数
+        step: 更新频率 (1=每周, 4=每4周)
+
+    Returns:
+        beta_oos: (T, K) OOS 估计的 β_t, 前 min_history 行为 0
+    """
+    T, N, K = X_panel.shape
+    beta_oos = np.zeros((T, K))
+    beta_warm = None
+    last_beta = np.zeros(K)
+
+    for t in range(min_history, T, step):
+        W_eff = min(window, t)
+        start = t - W_eff
+        Y_train = Y.iloc[start:t]
+        X_train = X_panel[start:t]
+
+        if beta_warm is not None and beta_warm.shape[0] >= W_eff:
+            beta_init = beta_warm[-W_eff:]
+        else:
+            beta_init = None
+
+        beta_path = tvpr_admm(
+            Y_train.values, X_train,
+            lambda_tv, lambda_l1,
+            rho=rho, max_iter=max_iter, tol=tol,
+            beta_init=beta_init,
+        )
+        last_beta = beta_path[-1]
+        beta_warm = beta_path
+
+        for s in range(max(t - step, min_history), t + 1):
+            if s < T:
+                beta_oos[s] = last_beta
+
+    return pd.DataFrame(beta_oos, index=Y.index,
+                        columns=[f"factor_{i}" for i in range(K)])

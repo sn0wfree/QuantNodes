@@ -40,10 +40,13 @@ def calc_time_series_ic(
 ) -> dict:
     """方法 1: 时序 IC (宏观因子, per asset).
 
-    对每个资产 i:
-      x_series = X_panel[:, i, factor_idx]  # (T,) 宏观因子时序
-      r_series = Y[:, i]                     # (T,) 资产收益时序
-      IC_i = spearmanr(x_series[:-1], r_series[1:])
+    预测 IC: 因子收益_t 预测 资产收益_{t+1}
+      当 use_log_return=True:
+        x = log(NAV_{t+1} / NAV_t)   因子对数收益
+        r_next = Y[t+2]               资产收益 (t+1 期)
+      当 use_log_return=False:
+        x = NAV_t                     因子水平
+        r_next = Y[t+1]               资产收益 (t+1 期)
 
     跨资产聚合:
       IC_mean, IC_std, ICIR, 正IC占比
@@ -52,13 +55,15 @@ def calc_time_series_ic(
     ic_list = []
 
     for i in range(N):
-        nav = X_panel[:, i, factor_idx]  # (T,) NAV 值
+        nav = X_panel[:, i, factor_idx]  # (T,) NAV levels
         r = Y.values[:, i]                # (T,) 资产收益
 
         if use_log_return:
-            # 转换为对数收益率
-            x = np.log(nav[1:] / nav[:-1])  # (T-1,)
-            r_next = r[1:]                    # (T-1,)
+            # 因子对数收益: log(NAV_t / NAV_{t-1}), t=1,...,T-1
+            factor_logret = np.log(nav[1:] / nav[:-1])  # (T-1,)
+            # 预测: 因子收益_t 预测 资产收益_{t+1}
+            x = factor_logret[:-1]  # (T-2,) 因子收益 at t=1,...,T-2
+            r_next = r[2:]           # (T-2,) 资产收益 at t=2,...,T-1
         else:
             x = nav[:-1]  # (T-1,)
             r_next = r[1:]  # (T-1,)
@@ -107,24 +112,29 @@ def calc_panel_ic(
 ) -> dict:
     """方法 3: 面板 IC (宏观因子, 修正版).
 
-    用市场平均收益作为因变量:
-      market_r[t] = mean(Y[t+1, :])
-      x_ts[t] = X_panel[t, 0, factor_idx]  # 所有资产相同，取任意一个
-
-      IC_panel = spearmanr(x_ts[:-1], market_r[1:])
+    预测 IC: 因子收益_t 预测 市场收益_{t+1}
+      当 use_log_return=True:
+        x_ts[t] = log(NAV_{t+1} / NAV_t)   因子对数收益
+        market_r[t] = mean(Y[t+2, :])       市场收益 (t+1 期)
+      当 use_log_return=False:
+        x_ts[t] = NAV_t                     因子水平
+        market_r[t] = mean(Y[t+1, :])       市场收益 (t+1 期)
     """
     T, N, K = X_panel.shape
 
-    # 市场平均收益
-    market_r = np.nanmean(Y.values[1:], axis=1)  # (T-1,)
     # 宏观因子时序（所有资产相同，取第一个）
-    nav = X_panel[:, 0, factor_idx]  # (T,)
+    nav = X_panel[:, 0, factor_idx]  # (T,) NAV levels
 
     if use_log_return:
-        # 转换为对数收益率
-        x_ts = np.log(nav[1:] / nav[:-1])  # (T-1,)
+        # 因子对数收益: log(NAV_t / NAV_{t-1}), t=1,...,T-1
+        factor_logret = np.log(nav[1:] / nav[:-1])  # (T-1,)
+        # 预测: 因子收益_t 预测 市场收益_{t+1}
+        x_ts = factor_logret[:-1]                     # (T-2,) 因子收益 at t=1,...,T-2
+        market_r = np.nanmean(Y.values[2:], axis=1)   # (T-2,) 市场收益 at t=2,...,T-1
     else:
         x_ts = nav[:-1]  # (T-1,)
+        # 市场平均收益
+        market_r = np.nanmean(Y.values[1:], axis=1)  # (T-1,)
 
     valid = ~np.isnan(x_ts) & ~np.isnan(market_r)
     if valid.sum() < min_obs:
@@ -216,9 +226,9 @@ def run_ic_analysis():
     print("v7.6 因子 IC 评估")
     print("=" * 60)
 
-    # 加载数据
+    # 加载数据 (NAV levels，避免双重对数变换)
     print("\n加载数据...")
-    X_panel, Y, valid_codes = load_v7_6_data()
+    X_panel, Y, valid_codes = load_v7_6_data(macro_use_log_return=False)
     T, N, K = X_panel.shape
     print(f"  X_panel: ({T}, {N}, {K})")
     print(f"  Y: {Y.shape}")
@@ -241,7 +251,7 @@ def run_ic_analysis():
     # 1. 宏观因子 IC (用对数收益率)
     # ============================================================
     print("\n" + "=" * 60)
-    print("宏观因子 IC 分析 (用对数收益率)")
+    print("宏观因子 IC 分析 (滞后对数收益率: 因子收益_t 预测 市场收益_{t+1})")
     print("=" * 60)
 
     macro_results = []
@@ -273,7 +283,7 @@ def run_ic_analysis():
     macro_results.sort(key=lambda x: x['composite_score'], reverse=True)
 
     # 打印结果
-    print("\n方法 1: 时序 IC (per asset, 对数收益率)")
+    print("\n方法 1: 时序 IC (per asset, 滞后对数收益率)")
     print("-" * 75)
     print(f"{'因子名称':<20} {'IC_mean':>10} {'IC_std':>10} {'ICIR':>10} {'正IC占比':>10}")
     print("-" * 75)
@@ -281,7 +291,7 @@ def run_ic_analysis():
         print(f"{r['factor_name']:<20} {r['ts_ic_mean']:>10.4f} {r['ts_ic_std']:>10.4f} "
               f"{r['ts_icir']:>10.2f} {r['ts_ic_positive_ratio']:>10.1%}")
 
-    print("\n方法 3: 面板 IC (市场平均收益, 对数收益率)")
+    print("\n方法 3: 面板 IC (市场平均收益, 滞后对数收益率)")
     print("-" * 75)
     print(f"{'因子名称':<20} {'panel_IC':>10} {'t_stat':>10} {'p_value':>10} {'显著性':>10}")
     print("-" * 75)
@@ -377,7 +387,7 @@ def run_ic_analysis():
         f.write(f"- 资产数量: {N} 个\n")
         f.write(f"- 因子数量: {K} 个 (宏观 {K_macro} + 量价 {K - K_macro})\n\n")
 
-        f.write("## 宏观因子 IC (用对数收益率)\n\n")
+        f.write("## 宏观因子 IC (滞后对数收益率: 因子收益_t 预测 市场收益_{t+1})\n\n")
         f.write("### 方法 1: 时序 IC (per asset)\n\n")
         f.write("| 因子名称 | IC_mean | IC_std | ICIR | 正IC占比 |\n")
         f.write("|----------|---------|--------|------|----------|\n")

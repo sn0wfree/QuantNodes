@@ -50,6 +50,16 @@ from .macro_substrategy_v7_6 import (
     v7_6_no_pv,
     v7_6_with_stop_loss,
 )
+from .macro_substrategy_v7_7 import (
+    V7_7Config,
+    run_v7_7_backtest,
+    run_v7_7_batch,
+    v7_7_lgbm,
+    v7_7_ridge,
+    v7_7_rf,
+    v7_7_xgboost,
+    v7_7_catboost,
+)
 
 __all__ = [
     "V7_3Config",
@@ -73,6 +83,15 @@ __all__ = [
     "v7_6_baseline",
     "v7_6_no_pv",
     "v7_6_with_stop_loss",
+    # v7.7 PyCaret
+    "V7_7Config",
+    "run_v7_7_backtest",
+    "run_v7_7_batch",
+    "v7_7_lgbm",
+    "v7_7_ridge",
+    "v7_7_rf",
+    "v7_7_xgboost",
+    "v7_7_catboost",
     "RollingSymmetry",
     "BootstrapLassoMapping",
     "FactorRiskParityOptimizer",

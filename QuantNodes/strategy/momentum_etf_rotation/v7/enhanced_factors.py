@@ -1,5 +1,5 @@
 # coding=utf-8
-"""增强因子库 — 6 个新量价因子 + 3 个新宏观因子.
+"""增强因子库 — 6 个新量价因子 + 5 个新宏观因子.
 
 新增量价因子 (f12-f17):
   微观结构:
@@ -10,10 +10,13 @@
     16. 52-Week High (52week_high)
     17. Idiosyncratic Volatility (idiosyncratic_volatility)
 
-新增宏观因子 (f21-f23):
-    21. 美元指数 (DXY) 对数收益率
-    22. 实际利率 (Real Rate)
-    23. VIX 恐慌指数
+新增宏观因子:
+    美元指数 (DXY) 对数收益率
+    实际利率 (Real Rate) + diff + rank20
+    VIX 恐慌指数 (pct_change) + rank20
+    TF dummy (趋势过滤)
+    中美利差 CN_US_SPREAD (CN_10Y - US_10Y)
+    黄金原油收益率相关性 (GOLD_OIL_CORR, 20日滚动)
 
 参考:
   - Amihud (2002) "Illiquidity and stock returns"
@@ -38,9 +41,9 @@ HF_DIR = REPO / "data" / "high_freq_macro"
 # ============================================================
 
 def amihud_illiquidity(close: pd.Series, volume: pd.Series, window: int = 20) -> pd.Series:
-    """Amihud 非流动性: mean(|r| / volume).
+    """Amihud 非流动性: mean(|r| / amount), 取对数.
 
-    衡量单位成交量引起的价格变动，流动性风险指标。
+    衡量单位成交金额引起的价格变动，流动性风险指标。
     因子值越大，流动性越差。
 
     Args:
@@ -49,14 +52,19 @@ def amihud_illiquidity(close: pd.Series, volume: pd.Series, window: int = 20) ->
         window: 滚动窗口 (默认 20 天)
 
     Returns:
-        pd.Series, Amihud 非流动性指标
+        pd.Series, Amihud 非流动性指标 (对数值)
     """
     returns = close.pct_change()
     abs_ret = returns.abs()
-    # 避免除以零
-    volume_safe = volume.replace(0, np.nan)
-    illiq = abs_ret / volume_safe
-    return illiq.rolling(window, min_periods=max(1, window // 2)).mean()
+    # 用成交金额代替成交量
+    amount = close * volume
+    amount_safe = amount.replace(0, np.nan)
+    illiq = abs_ret / amount_safe
+    # 处理 inf 值 (当 abs_ret > 0 但 amount = 0 时)
+    illiq = illiq.replace([np.inf, -np.inf], np.nan)
+    # 取对数避免数值过小
+    log_illiq = np.log(illiq.replace(0, np.nan))
+    return log_illiq.rolling(window, min_periods=max(1, window // 2)).mean()
 
 
 def realized_volatility(close: pd.Series, window: int = 20) -> pd.Series:
@@ -165,6 +173,63 @@ def idiosyncratic_volatility(
     return idio_vol.reindex(close.index)
 
 
+def momentum_return(close: pd.Series, window: int = 20) -> pd.Series:
+    """经典动量因子: pct_change(window).
+
+    捕捉动量效应，window=5 为短期反转，window=20 为中期动量，window=60 为长期动量。
+
+    Args:
+        close: 收盘价
+        window: 滚动窗口 (默认 20 天)
+
+    Returns:
+        pd.Series, 动量收益率
+    """
+    return close.pct_change(window)
+
+
+def short_term_reversal(close: pd.Series, window: int = 5) -> pd.Series:
+    """短期反转因子: -pct_change(window).
+
+    捕捉短期反转效应，过去涨幅大的资产未来可能下跌。
+
+    Args:
+        close: 收盘价
+        window: 滚动窗口 (默认 5 天)
+
+    Returns:
+        pd.Series, 短期反转因子 (取反)
+    """
+    return -close.pct_change(window)
+
+
+def rsi_indicator(close: pd.Series, window: int = 14) -> pd.Series:
+    """RSI 技术指标: 相对强弱指数.
+
+    衡量超买超卖，RSI > 70 超买，RSI < 30 超卖。
+
+    Args:
+        close: 收盘价
+        window: 滚动窗口 (默认 14 天)
+
+    Returns:
+        pd.Series, RSI 值 [0, 100]
+    """
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+
+    avg_gain = gain.rolling(window, min_periods=max(1, window // 2)).mean()
+    avg_loss = loss.rolling(window, min_periods=max(1, window // 2)).mean()
+
+    # 当 avg_loss = 0 时 (单调上涨)，RS = inf，RSI = 100
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rs = rs.fillna(np.inf)
+    rsi = 100 - (100 / (1 + rs))
+
+    return rsi
+
+
 # ============================================================
 # 量价因子计算引擎
 # ============================================================
@@ -191,6 +256,14 @@ class EnhancedFactorConfig:
     # Idiosyncratic Volatility
     idio_vol_window: int = 60
 
+    # 经典动量
+    momentum_short_window: int = 5   # 短期反转
+    momentum_mid_window: int = 20    # 中期动量
+    momentum_long_window: int = 60   # 长期动量
+
+    # RSI
+    rsi_window: int = 14
+
     # 因子名映射
     name_map: dict[str, str] = None
 
@@ -203,6 +276,11 @@ class EnhancedFactorConfig:
                 "f15_max5": "Max5",
                 "f16_52w_high": "52周高点距离",
                 "f17_idio_vol": "特质波动率",
+                "f18_mom_short": "短期动量(5日)",
+                "f19_mom_mid": "中期动量(20日)",
+                "f20_mom_long": "长期动量(60日)",
+                "f21_reversal": "短期反转(5日)",
+                "f22_rsi": "RSI(14日)",
             }
 
 
@@ -241,6 +319,16 @@ def compute_enhanced_factor(
         if market_close is None:
             raise ValueError("f17_idio_vol 需要 market_close 参数")
         return idiosyncratic_volatility(close, market_close, cfg.idio_vol_window)
+    elif factor == "f18_mom_short":
+        return momentum_return(close, cfg.momentum_short_window)
+    elif factor == "f19_mom_mid":
+        return momentum_return(close, cfg.momentum_mid_window)
+    elif factor == "f20_mom_long":
+        return momentum_return(close, cfg.momentum_long_window)
+    elif factor == "f21_reversal":
+        return short_term_reversal(close, cfg.momentum_short_window)
+    elif factor == "f22_rsi":
+        return rsi_indicator(close, cfg.rsi_window)
     else:
         raise ValueError(f"未知增强因子: {factor}")
 
@@ -352,43 +440,157 @@ def load_vix_factor() -> pd.DataFrame:
 
 
 def load_real_rate_factor() -> pd.DataFrame:
-    """加载实际利率月度数据.
+    """加载实际利率日频数据 (DFII10, 10Y TIPS yield).
+
+    优先使用缓存的 daily parquet，否则从 FRED API 获取 DFII10。
 
     Returns:
-        DataFrame, index=date, columns=['real_rate']
+        DataFrame, index=date, columns=['real_rate'], 日频
     """
-    cache = HF_DIR / "macro_real_rate_monthly.parquet"
+    cache = HF_DIR / "macro_real_rate_daily.parquet"
     if cache.exists():
         return pd.read_parquet(cache)
-    raise FileNotFoundError(f"实际利率缓存不存在: {cache}")
+
+    # 从 FRED API 获取 DFII10 (10-Year TIPS yield, daily)
+    from fredapi import Fred
+    fred = Fred(api_key="7ee6f74caae5aa717a7e849fb14b055e")
+    tips = fred.get_series("DFII10")
+    tips.index.name = "date"
+    df = tips.to_frame("real_rate").dropna()
+    df.to_parquet(cache)
+    return df
+
+
+def load_cn_us_spread() -> pd.DataFrame:
+    """加载中美10年期国债利差 (日频).
+
+    CN_10Y - US_10Y, 单位: 百分点.
+
+    Returns:
+        DataFrame, index=date, columns=['cn_us_spread']
+    """
+    cache = HF_DIR / "cn_us_spread_10y.parquet"
+    if cache.exists():
+        return pd.read_parquet(cache).set_index("date")[["cn_us_spread"]]
+    raise FileNotFoundError(f"中美利差缓存不存在: {cache}")
+
+
+def load_gold_oil_correlation() -> pd.DataFrame:
+    """加载黄金原油收益率20日滚动相关系数 (日频).
+
+    沪金指数 vs 布伦特原油, 20日滚动Pearson相关系数.
+
+    Returns:
+        DataFrame, index=date, columns=['gold_oil_corr']
+    """
+    cache = HF_DIR / "gold_oil_corr.parquet"
+    if cache.exists():
+        return pd.read_parquet(cache).set_index("date")[["gold_oil_corr"]]
+    raise FileNotFoundError(f"黄金原油相关性缓存不存在: {cache}")
+
+
+def load_trend_filter_dummy(ma_window: int = 200) -> pd.Series:
+    """加载趋势过滤 dummy 变量 (日频).
+
+    当 benchmark < MA(ma_window) 时为 1 (熊市), 否则为 0 (牛市).
+
+    Args:
+        ma_window: 移动平均窗口 (默认 200 日)
+
+    Returns:
+        pd.Series, 日频, name="tf_dummy", 值域 {0, 1}
+    """
+    benchmark_path = HF_DIR / "v9_benchmark_沪深300.parquet"
+    if not benchmark_path.exists():
+        raise FileNotFoundError(f"Benchmark 数据不存在: {benchmark_path}")
+
+    benchmark = pd.read_parquet(benchmark_path)
+    if "沪深300指数" in benchmark.columns:
+        price = benchmark["沪深300指数"]
+    else:
+        price = benchmark.iloc[:, 0]
+
+    # 计算移动平均
+    ma = price.rolling(window=ma_window, min_periods=ma_window).mean()
+
+    # 创建 dummy: 1 if price < MA, 0 otherwise
+    # 前 ma_window-1 天为 NaN (数据不足)
+    dummy = (price < ma).astype(float)
+    dummy.name = "tf_dummy"
+
+    # 将 NaN (数据不足) 填充为 0 (默认牛市)
+    dummy = dummy.fillna(0)
+
+    return dummy
 
 
 def load_enhanced_macro_factors() -> pd.DataFrame:
     """加载全部增强宏观因子, 对齐到周频.
 
     Returns:
-        DataFrame, index=weekly_date, columns=['dxy_logret', 'vix', 'real_rate']
+        DataFrame, index=weekly_date, columns=[
+            'dxy_logret', 'vix', 'vix_rank20',
+            'real_rate', 'real_rate_diff', 'real_rate_rank20',
+            'tf_dummy',
+            'cn_us_spread', 'gold_oil_corr'
+        ]
     """
     # 加载日度数据
     dxy = load_dxy_factor()
     vix = load_vix_factor()
-    real_rate = load_real_rate_factor()
+    real_rate = load_real_rate_factor()    # 日频 DFII10
+    tf_dummy = load_trend_filter_dummy()   # 日频
+    cn_us_spread = load_cn_us_spread()    # 日频
+    gold_oil_corr = load_gold_oil_correlation()  # 日频
 
-    # 转换为对数收益率 (DXY) 或直接使用 (VIX, 实际利率)
-    dxy_logret = np.log(dxy / dxy.shift(1))
-    dxy_logret.columns = ["dxy_logret"]
+    # --- DXY: 先 resample 到周频 (周五价格), 再算 log return ---
+    dxy_weekly_price = dxy.resample("W").last()
+    dxy_weekly = np.log(dxy_weekly_price / dxy_weekly_price.shift(1))
+    dxy_weekly.columns = ["dxy_logret"]
 
-    # 对齐到周频 (取周末值)
-    dxy_weekly = dxy_logret.resample("W").last()
+    # --- VIX: log return of weekly level ---
     vix_weekly = vix.resample("W").last()
-    # 实际利率是月频，前向填充到周频
-    real_rate_weekly = real_rate.resample("W").ffill()
+    vix_logret = np.log(vix_weekly / vix_weekly.shift(1))
+    vix_logret.columns = ["vix"]
+
+    # VIX 时序 rank (过去20周的排名归一化到 [0,1])
+    vix_rank20 = vix_logret.rolling(20, min_periods=10).apply(
+        lambda x: pd.Series(x).rank().iloc[-1] / len(x)
+    )
+    vix_rank20.columns = ["vix_rank20"]
+
+    # --- Real Rate: 日频 → 周频 Friday close → diff ---
+    real_rate_weekly = real_rate.resample("W").last()
+    real_rate_diff = real_rate_weekly.diff()
+    real_rate_diff.columns = ["real_rate_diff"]
+
+    # 实际利率时序 rank (过去20周的排名归一化到 [0,1])
+    real_rate_rank20 = real_rate_weekly.rolling(20, min_periods=10).apply(
+        lambda x: pd.Series(x).rank().iloc[-1] / len(x)
+    )
+    real_rate_rank20.columns = ["real_rate_rank20"]
+
+    # --- TF dummy, CN-US spread, Gold-Oil corr: 日频 → 周频 Friday ---
+    tf_dummy_weekly = tf_dummy.resample("W").last()
+    tf_dummy_weekly.name = "tf_dummy"
+    cn_us_spread_weekly = cn_us_spread.resample("W").last()
+    gold_oil_corr_weekly = gold_oil_corr.resample("W").last()
 
     # 合并
-    merged = pd.concat([dxy_weekly, vix_weekly, real_rate_weekly], axis=1)
+    merged = pd.concat([
+        dxy_weekly, vix_logret, vix_rank20,
+        real_rate_weekly, real_rate_diff, real_rate_rank20,
+        tf_dummy_weekly,
+        cn_us_spread_weekly, gold_oil_corr_weekly
+    ], axis=1)
 
     # 对齐列名
-    merged.columns = ["dxy_logret", "vix", "real_rate"]
+    merged.columns = [
+        "dxy_logret", "vix", "vix_rank20",
+        "real_rate", "real_rate_diff", "real_rate_rank20",
+        "tf_dummy",
+        "cn_us_spread", "gold_oil_corr"
+    ]
 
     return merged
 
@@ -414,5 +616,8 @@ __all__ = [
     "load_dxy_factor",
     "load_vix_factor",
     "load_real_rate_factor",
+    "load_trend_filter_dummy",
+    "load_cn_us_spread",
+    "load_gold_oil_correlation",
     "load_enhanced_macro_factors",
 ]
