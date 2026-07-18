@@ -55,7 +55,7 @@ COLORS = {
     "v6 (TF 趋势过滤)": "#17BECF",  # 青色 — Stage 26 v6 单策略风控
     "v6 TF+Cost":      "#17BECF",
     "v6.1 IC12":       "#D62728",  # 深红 — Stage 27 v6.1 IC 加权 (RECOMMENDED)
-    "v6.2 ir_expanding": "#9467BD",  # 紫 — Stage 29 v6.2 因子正交化 (PROMISING)
+    "v6.2 ir_expanding": "#9467BD",  # 紫 — Stage 32 v6.2 DEPRECATED
     "v7.10 TV-PR (标准化+CV)":      "#FF4500",  # 橙红 — v7.10 TV-PR (标准化+CV) (Cui 2025, 时变 β_t)
 }
 
@@ -643,7 +643,7 @@ def main(include_strategies: bool = True):
                   f"{metrics(v6_combined['v6.1 IC12'].loc[OOS_START:])['calmar']:.3f}")
         if "v6.2 ir_expanding" in v6_combined.columns:
             navs_A["v6.2 ir_expanding"] = v6_combined["v6.2 ir_expanding"]
-            print(f"[curve] v6.2 ir_expanding 已加入 (Stage 29 PROMISING): OOS Calmar="
+            print(f"[curve] v6.2 ir_expanding 已加入 (Stage 32 DEPRECATED): OOS Calmar="
                   f"{metrics(v6_combined['v6.2 ir_expanding'].loc[OOS_START:])['calmar']:.3f}")
         elif "v6.2 (正交+IC36)" in v6_combined.columns:
             # 兼容旧列名
@@ -699,7 +699,7 @@ def main(include_strategies: bool = True):
         v62_dd_pct = abs(v62_oos['max_dd']) * 100
         v61_dd_pct = abs(v61_oos['max_dd']) * 100
         v62_key_finding = (
-            f"• <b>v6.2 ir_expanding Stage 29 ⭐ PROMISING</b>: v5 因子排序 + IC 加权 + 因子正交化 (Gram-Schmidt, expanding IR 排序) → "
+            f"• <b>v6.2 ir_expanding Stage 32 ❌ DEPRECATED</b>: v5 因子排序 + IC 加权 + 因子正交化 (Gram-Schmidt, expanding IR 排序) → "
             f"OOS Calmar <b>{v62_oos.get('calmar', 0):.3f}</b> "
             f"<br>• <b>v7.10 TV-PR (标准化+CV) 🚀 Stage 31 NEW</b>: 17 macro + 19 量价, 时变 β_t (Cui 2025), 混合标准化 + 两阶段 CV + expanding window → "
             f"OOS Calmar <b>{v710_oos.get('calmar', 0):.3f}</b> "
@@ -710,14 +710,14 @@ def main(include_strategies: bool = True):
         )
         v62_strategy_card = f"""
   <div class="strategy-card" style="background: #F3E5F5; border-color: #9467BD;">
-    <h4>v6.2 ir_expanding <span class="legend-box legend-best">⭐ Stage 29 PROMISING</span></h4>
+    <h4>v6.2 ir_expanding <span class="legend-box legend-deprecated">Stage 32 DEPRECATED</span></h4>
     <p><b>类型</b>: 11 量价因子 + IC 加权 + 因子正交化 + 逆波动率加权</p>
     <p><b>核心</b>: Gram-Schmidt 残差化, expanding IR 排序, 最大化因子纯度</p>
     <p><b>类型</b>: <b>v5 因子排序</b> + <b>IC 加权 (12 月 expanding)</b> + <b>Gram-Schmidt 因子正交化</b> (按 expanding IR 排序) + v5.1 逆波动加权</p>
     <p><b>核心</b>: 用截至 d<sub>i-1</sub> 的 expanding IR 给 11 因子排序, Gram-Schmidt 残差化去除 f8-f9, f3-f4 冗余. 5-fold 验证 4/5 胜 v6.1 IC12, 真实提升非运气.</p>
     <p><b>OOS</b>: {v62_oos['ann_return']*100:+.2f}% / Sharpe {v62_oos['sharpe']:.2f} / DD {v62_dd_pct:.2f}% / <b>Calmar {v62_cal:.3f}</b> ⭐</p>
     <p><b>5-fold 跨期</b>: mean=1.512, min=-0.016 (vs v6.1 mean=0.867, min=-0.604). 4/5 fold 胜 v6.1.</p>
-    <p><b>状态</b>: Stage 29 升为 v6.2 默认 (PROMISING). v6.1 IC12 仍为 RECOMMENDED (稳健 baseline).</p>
+    <p><b>状态</b>: Stage 32 降为 DEPRECATED (扣成本 Calmar 0.331, CV% 56.9% FAIL). 被 v7.10 TV-PR 超越.</p>
   </div>
 """
         # v7.10 详细策略卡 (内部版独有, 外发版不显示)
@@ -1063,6 +1063,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 .methodology code {{ background: #e9ecef; padding: 1px 5px; border-radius: 3px; font-size: 13px; color: #c7254e; }}
 .legend-box {{ display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 12px; margin-right: 6px; }}
 .legend-best {{ background: #FFF9E6; color: #B8860B; border: 1px solid #FFD700; }}
+.legend-deprecated {{ background: #F5F5F5; color: #9E9E9E; border: 1px solid #BDBDBD; text-decoration: line-through; }}
 .legend-bench {{ background: #F0F0F0; color: #555; border: 1px solid #999; font-style: italic; }}
 .legend-good {{ background: #E8F5E9; color: #2E7D32; border: 1px solid #66BB6A; }}
 .legend-bad {{ background: #FFEBEE; color: #C62828; border: 1px solid #EF5350; }}
@@ -1101,7 +1102,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   • <b>绝对收益冠军</b>: v7.10 TV-PR — OOS 年化 <b>{v710_oos.get('ann_return', 0)*100:+.2f}%</b> (HS300 同期 {hs300_oos['ann_return']*100:+.2f}%, α {v710_oos.get('ann_return', 0)*100-hs300_oos['ann_return']*100:+.1f}%)<br>
   • <b>最均衡 (稳健)</b>: v3 (52 池) — OOS 年化 7.69%, Sharpe 1.08, DD -9.89%<br>
   • <b>v7.10 vs v6.2</b>: Calmar {v710_oos.get('calmar', 0):.3f} vs {v62_oos.get('calmar', 0):.3f} (+{(v710_oos.get('calmar', 0)/v62_oos.get('calmar', 0)-1)*100:+.1f}%); DD -{v710_dd_pct:.1f}% vs -{abs(v62_oos.get('max_dd', 0))*100:.1f}%<br>
-  • <b>v6.x 系列</b>: v6.1 IC12 Stage 27 BASELINE (稳健) → v6.2 ir_expanding Stage 29 PROMISING (强, 已被 v7.10 超越)<br>
+  • <b>v6.x 系列</b>: v6.1 IC12 Stage 27 BASELINE (稳健) → v6.2 ir_expanding Stage 32 DEPRECATED (扣成本 Calmar 0.331, CV% 56.9% FAIL)<br>
   • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
   • <b>推荐</b>: <b>v7.10 单策略</b> (最优) 或 v1.0 80% + <b>v7.10 20%</b> (保守+进攻, 兼顾低 DD 与高 α)
 </div>
@@ -1112,7 +1113,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   • <b>诊断</b>: 条件数 2.17e+10 → 1.32e+02 (改善 8 个数量级); Beta TV Norm 166.78 → 56.44; β[t-1] 优于 β[t] (+4.8% Sharpe); step=4 优于 step=1 (+28% Sharpe, DD_duration 374→136 天)<br>
   • <b>OOS</b>: weekly Sharpe 1.60, Calmar 2.144 ⭐; daily Sharpe 1.47, Calmar 1.636, DD -14.8%, DD_duration 136 天<br>
   • <b>超越 v6.2</b>: Calmar +{(v710_oos.get('calmar', 0)/v62_oos.get('calmar', 0)-1)*100:+.1f}% (daily); weekly CV +161% (2.144 vs 0.821)<br>
-  • <b>决策</b>: v7.10 为新默认 RECOMMENDED (稳健+最优), v6.1 IC12 降为 BASELINE (历史稳健 baseline), v6.2 ir_expanding 降为 PROMISING 备份. 详见 <code>reports/momentum_etf_rotation/v7_10_oos_validation.md</code>
+  • <b>决策</b>: v7.10 为新默认 RECOMMENDED (稳健+最优), v6.1 IC12 降为 BASELINE (历史稳健 baseline), v6.2 ir_expanding 降为 DEPRECATED (扣成本 Calmar 0.331). 详见 <code>reports/momentum_etf_rotation/v7_10_oos_validation.md</code>
 </div>
 
 <div class="toc">

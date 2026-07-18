@@ -1,20 +1,21 @@
 # coding=utf-8
-"""v7.6 宏观子策略: TV-PR (9 macro + 11 量价, 周频).
+"""v7.6 宏观子策略: TV-PR (8 macro + 11 量价, 周频).
 
 Cui et al. (2025) "Breaks and trends in factor premia."
 
-v7.6 = v7.3 (9 macro) + v5 (11 量价) + TV-PR 时变 β_t
+v7.6 = v7.3 (8 macro) + v5 (11 量价) + TV-PR 时变 β_t
+v7.10 = v7.9 (17 macro + 19 PV) + 混合标准化 + 两阶段 CV
 
 回测流程:
-  1. 加载数据: 9 macro + 11 量价 → 周频
+  1. 加载数据: 8 macro + 11 量价 → 周频 (v7.6) 或 17 macro + 19 PV (v7.10)
   2. 滚动估计: 用 TV-PR 估计 β_t
   3. 构造组合: 按 β_t 预测收益排序, 逆波动率加权
   4. 扣除成本: 5bp 佣金 + 5bp 滑点
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Sequence
+from dataclasses import dataclass
+from typing import Sequence  # noqa: F401 (re-export)
 
 import numpy as np
 import pandas as pd
@@ -34,7 +35,7 @@ from .data_loader import (
     COMMODITY_ETF_COLS,
     EXPANDED_BOND_INDICES,
 )
-from ..v5.industry_factors import FactorEngineConfig
+from ..v5.industry_factors import FactorEngineConfig  # noqa: F401 (re-export)
 
 
 # ============================================================
@@ -42,7 +43,7 @@ from ..v5.industry_factors import FactorEngineConfig
 # ============================================================
 @dataclass
 class V7_6Config:
-    """v7.6 TV-PR 配置 (9 macro + 11 量价, 周频)."""
+    """v7.6 TV-PR 配置 (8 macro + 11 量价, 周频). v7.10 扩展到 17 macro + 19 PV."""
     name: str = "v7_6_tvpr"
 
     # 资产池
@@ -197,6 +198,8 @@ def construct_portfolio(
         return_weights: 是否返回持仓权重
         monday_open_returns: (T, N) 周一开盘到周五收盘收益 (不含周末隔夜).
             如果提供, 使用周一开盘执行模式.
+        use_latest_beta: 是否用本周 β (True) 还是上期 β[t-1] (False, 默认).
+        benchmark_daily: 日频基准价格 (用于趋势过滤). 如果 TF 启用但未提供, 自动从 load_daily_etf_returns() 加载.
 
     Returns:
         nav: pd.Series, 周频 NAV
@@ -470,7 +473,7 @@ def calculate_daily_nav(
 # 工厂函数
 # ============================================================
 def v7_6_baseline(**overrides) -> V7_6Config:
-    """v7.6 baseline: TV-PR (9 macro + 11 量价, 周频).
+    """v7.6 baseline: TV-PR (8 macro + 11 量价, 周频).
 
     预期性能:
       - OOS Calmar: 0.5-0.7 (估)
@@ -480,7 +483,7 @@ def v7_6_baseline(**overrides) -> V7_6Config:
 
 
 def v7_6_no_pv(**overrides) -> V7_6Config:
-    """v7.6 变体: 只用 9 macro, 不用量价.
+    """v7.6 变体: 只用 8 macro, 不用量价.
 
     用于对比 11 量价的增量贡献.
     """
