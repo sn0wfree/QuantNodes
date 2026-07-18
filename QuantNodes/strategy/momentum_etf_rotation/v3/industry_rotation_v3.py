@@ -123,12 +123,12 @@ def get_rebalance_dates(
 
     Args:
         trading_dates: 完整交易日索引
-        freq: "W-FRI" (周五) / "ME" (月末) / "W" (周)
+        freq: "W-FRI" (周五) / "M" (月末) / "W" (周)
 
     Returns:
         list[pd.Timestamp]: 调仓日列表
     """
-    if freq == "ME":
+    if freq == "M":
         # 月末: 用 groupby period max (避免 resample 标签错位)
         rebal = pd.Series(trading_dates).groupby(
             trading_dates.to_period("M")

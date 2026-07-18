@@ -149,6 +149,9 @@ def get_version(version: str = LATEST) -> RotationConfig:
 
     Returns:
         对应版本的 RotationConfig
+
+    Note:
+        v7.x 系列使用 V7_6Config (非 RotationConfig), 请直接调用 v7_10_std_newλ().
     """
     if version not in VERSIONS:
         available = ", ".join(sorted(VERSIONS.keys(), reverse=True))
@@ -156,6 +159,27 @@ def get_version(version: str = LATEST) -> RotationConfig:
             f"未知版本: {version!r}. 可用: {available}"
         )
     return VERSIONS[version]()
+
+
+def v7_10_std_newλ(**overrides):
+    """v7.10 TV-PR (标准化+CV) — Stage 31 RECOMMENDED.
+
+    17 macro + 19 量价因子, 时变 β_t (Cui 2025), 混合标准化 + 两阶段 CV.
+    OOS Calmar 2.144, Sharpe 1.60, DD -14.3%.
+
+    Returns:
+        V7_6Config 实例
+    """
+    from .v7.macro_substrategy_v7_6 import V7_6Config
+    from .v7.data_loader_v7_6 import load_v7_10_data
+
+    cfg = V7_6Config(**overrides)
+    cfg.lambda_tv = 0.06
+    cfg.lambda_l1 = 0.105
+    cfg.name = "v7_10_std_newλ"
+    cfg.stop_loss_threshold = -0.15  # 最优阈值 (Calmar 0.671 vs 0.451 无止损)
+    cfg.stop_loss_cooldown = 5
+    return cfg
 
 
 __all__ = [
@@ -168,4 +192,5 @@ __all__ = [
     "VERSIONS",
     "LATEST",
     "get_version",
+    "v7_10_std_newλ",
 ]

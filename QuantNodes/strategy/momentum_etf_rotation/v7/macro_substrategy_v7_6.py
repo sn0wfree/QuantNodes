@@ -89,6 +89,16 @@ class V7_6Config:
     vol_window: int = 26  # 周频 26 周 ≈ 半年
     vol_floor: float = 0.01
 
+    # 硬止损 (v7.10 Stage 32)
+    stop_loss_threshold: float | None = None  # e.g. -0.10 = 10% DD 触发
+    stop_loss_cooldown: int = 5  # 止损后冷却周数 (避免震荡来回止损)
+
+    # 趋势过滤 (v7.10 Stage 32)
+    trend_filter_enabled: bool = False
+    trend_filter_benchmark: str = "510300"  # 沪深300 ETF
+    trend_filter_ma: int = 200  # 日频 MA 窗口
+    trend_filter_bear: float = 0.5  # 熊市时权益仓位缩放比例
+
 
 # ============================================================
 # 回测主函数
@@ -157,19 +167,27 @@ def construct_portfolio(
     beta_path: pd.DataFrame,
     cfg: V7_6Config,
     return_weights: bool = False,
+    monday_open_returns: pd.DataFrame | None = None,
+    use_latest_beta: bool = False,
+    benchmark_daily: pd.Series | None = None,
 ) -> pd.Series | tuple[pd.Series, pd.DataFrame]:
     """根据 β_t 构造组合 (无未来函数版本).
 
     逻辑 (X[t] → Y[t+1]):
-      1. 周末 t: 用 X[t] @ beta_path[t-1] 生成信号
-      2. 周 t+1: 按信号持有, 赚取 Y[t+1]
-      3. 逆波动率加权
-      4. 扣除成本
+      1. 周五 t 收盘: 用 X[t] @ beta_path[t] 生成信号
+      2. 周一 t+1 开盘: 执行 pending_weights (如果 monday_open_returns 提供)
+      3. 周五 t+1 收盘: 赚取收益
+      4. 逆波动率加权
+      5. 扣除成本
 
-    时间线:
-      周五 t-1 收盘 → 计算 beta_path[t-1]
-      周五 t 收盘   → X[t] 可用, 生成信号
-      周五 t+1 收盘 → 赚取 Y[t+1]
+    时间线 (周一开盘执行模式):
+      周五 t 收盘   → 估计 beta_path[t], 生成信号 → pending_weights
+      周一 t+1 开盘 → 执行 pending_weights
+      周五 t+1 收盘 → 赚取 NAV_friday / NAV_monday_open - 1 (不含周末隔夜)
+
+    时间线 (原始模式):
+      周五 t 收盘   → 生成信号 (用 beta_path[t-1])
+      周五 t+1 收盘 → 赚取 Y[t+1] (包含周末隔夜)
 
     Args:
         Y: (T, N) 周频资产收益
@@ -177,6 +195,8 @@ def construct_portfolio(
         beta_path: (T, K) 时变 β_t
         cfg: 配置
         return_weights: 是否返回持仓权重
+        monday_open_returns: (T, N) 周一开盘到周五收盘收益 (不含周末隔夜).
+            如果提供, 使用周一开盘执行模式.
 
     Returns:
         nav: pd.Series, 周频 NAV
@@ -189,14 +209,40 @@ def construct_portfolio(
     prev_weights = {}
     pending_weights = None  # 待执行的权重 (来自上一周的信号)
 
+    # 判断执行模式: 周一开盘 or 原始 (周五到周五)
+    use_monday_open = monday_open_returns is not None
+
+    # 止损状态
+    _stop_loss_active = cfg.stop_loss_threshold is not None
+    _stop_loss_triggered = False
+    _stop_loss_cooldown_remaining = 0
+    _peak_nav = 1.0
+
+    # 趋势过滤状态
+    _tf_active = cfg.trend_filter_enabled
+    _tf_benchmark_prices = None
+    if _tf_active:
+        if benchmark_daily is not None:
+            _tf_benchmark_prices = benchmark_daily.dropna()
+        else:
+            from .data_loader_v7_6 import load_daily_etf_returns
+            _daily_rets = load_daily_etf_returns()
+            if cfg.trend_filter_benchmark in _daily_rets.columns:
+                _tf_benchmark_prices = (1 + _daily_rets[cfg.trend_filter_benchmark]).cumprod().dropna()
+
     for t in range(T):
-        # 1. 先执行上周信号, 赚取本周收益 Y[t]
+        # 1. 先执行上周信号, 赚取本周收益
         #    pending_weights 在 t-1 时由 Block 2 生成, 本 iteration 执行
         if pending_weights is not None and len(pending_weights) > 0 and t > 0:
             weekly_ret = 0.0
             for code, w in pending_weights.items():
                 if code in Y.columns:
-                    ret = Y[code].iloc[t]
+                    if use_monday_open:
+                        # 周一开盘执行: 赚取周一开盘到周五收盘收益 (不含周末隔夜)
+                        ret = monday_open_returns[code].iloc[t]
+                    else:
+                        # 原始: 赚取周五到周五收益 (含周末隔夜)
+                        ret = Y[code].iloc[t]
                     if pd.notna(ret):
                         weekly_ret += w * ret
 
@@ -213,6 +259,14 @@ def construct_portfolio(
             nav.iloc[t] = nav.iloc[t - 1] * (1 + weekly_ret)
             prev_weights = pending_weights.to_dict()
 
+            # 止损检查 (仅在有持仓时检查 DD, 触发止损)
+            if _stop_loss_active:
+                _peak_nav = max(_peak_nav, nav.iloc[t])
+                drawdown = nav.iloc[t] / _peak_nav - 1.0
+                if drawdown < cfg.stop_loss_threshold and not _stop_loss_triggered:
+                    _stop_loss_triggered = True
+                    _stop_loss_cooldown_remaining = cfg.stop_loss_cooldown
+
             # 记录实际持仓权重 (用于 daily_nav)
             for code, w in pending_weights.items():
                 weights_history.append({
@@ -223,10 +277,20 @@ def construct_portfolio(
         elif t > 0:
             nav.iloc[t] = nav.iloc[t - 1]
 
-        # 3. 再生成下周信号 (用本周 X[t] 和 beta_path[t-1])
+        # 止损冷却递减 (每期都执行, 包括现金期)
+        if _stop_loss_active and _stop_loss_triggered and _stop_loss_cooldown_remaining > 0:
+            _stop_loss_cooldown_remaining -= 1
+            if _stop_loss_cooldown_remaining <= 0:
+                _stop_loss_triggered = False
+                _peak_nav = nav.iloc[t]  # 重置峰值, 从新起点计 DD
+
+        # 3. 再生成下周信号 (用本周 X[t] 和 beta_path[t] 或 beta_path[t-1])
         #    生成的权重将在 t+1 时执行, 赚取 Y[t+1]
         if t >= 1:
-            beta_prev = beta_path.iloc[t - 1].values  # (K,) 上期估计的 β
+            if use_latest_beta:
+                beta_prev = beta_path.iloc[t].values  # (K,) 本周估计的 β (用 Y[:t])
+            else:
+                beta_prev = beta_path.iloc[t - 1].values  # (K,) 上期估计的 β
             
             # 处理 NaN: 对每个资产，只用非NaN的因子计算 scores
             N_assets = X_panel[t].shape[0]
@@ -263,8 +327,21 @@ def construct_portfolio(
             else:
                 weights = pd.Series(dtype=float)
 
+            # 趋势过滤: 熊市时缩放权重 (benchmark < MA200)
+            if _tf_active and _tf_benchmark_prices is not None and len(weights) > 0:
+                current_date = Y.index[t]
+                bm = _tf_benchmark_prices.loc[:current_date].dropna()
+                if len(bm) >= cfg.trend_filter_ma:
+                    ma = bm.iloc[-cfg.trend_filter_ma:].mean()
+                    if bm.iloc[-1] < ma:
+                        weights = weights * cfg.trend_filter_bear
+
             # 存储待执行的权重 (将在 t+1 时执行)
             pending_weights = weights
+
+            # 止损覆盖: 如果触发止损, 全仓现金 (0% 收益)
+            if _stop_loss_active and _stop_loss_triggered:
+                pending_weights = pd.Series(dtype=float)
             weights_history.append({
                 'date': Y.index[t],
                 'code': None,  # 标记: 信号生成日
@@ -415,10 +492,14 @@ def v7_6_no_pv(**overrides) -> V7_6Config:
 def v7_6_with_stop_loss(**overrides) -> V7_6Config:
     """v7.6 变体: 加硬止损.
 
-    当 NAV 回撤 > 10% 时, 全仓债券.
+    当 NAV 回撤 > 10% 时, 全仓现金 (0% 收益, 等效 "flight to safety").
+    止损后冷却 5 周, 避免震荡市来回止损.
+
+    设计动机: "金融预测存在极限, 这条止损线是所有逻辑假设失效时的最后实盘生存保障"
     """
     cfg = V7_6Config(**overrides)
-    # TODO: 实现止损逻辑
+    cfg.stop_loss_threshold = -0.10
+    cfg.stop_loss_cooldown = 5
     return cfg
 
 

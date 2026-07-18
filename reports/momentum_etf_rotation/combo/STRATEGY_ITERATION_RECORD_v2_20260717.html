@@ -3934,7 +3934,7 @@ return Plotly;
   <a href="#radar">雷达图</a>
   <a href="#monthly_heatmap">月度热图</a>
   <a href="#metrics_table">指标表</a>
-  <a href="#strategies">策略简述</a>
+  
   <a href="#events">关键事件</a>
 </div>
 
@@ -4255,130 +4255,6 @@ return Plotly;
         </section>
 
 
-<section id="strategies">
-  <h2>v0 - v7.10 策略简述 (13 策略 + HS300 基准, 按时间顺序)</h2>
-  <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 v7.10 (TV-PR 标准化+CV, Cui 2025), 完整记录量化策略演进轨迹. 主文件 (内部跟踪) 完整呈现; 报告版 (STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html) 省略本节.</p>
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段 (Stage 8 - 22): CICC → v5 量价</h3>
-  
-  <div class="strategy-card">
-    <h4>v0.0 baseline <span class="legend-box legend-good">Stage 8</span></h4>
-    <p><b>类型</b>: CICC 原始复现 | <b>信号</b>: 144 日纯价格动量 | <b>选股</b>: 池中 Top-10 | <b>加权</b>: 逆波动</p>
-    <p><b>核心</b>: CICC 报告 (2026-07-03) 的 4 步组合管理, 仅价格动量, 无任何增强</p>
-    <p><b>OOS</b>: ret +8.23% / Sharpe +0.77 / DD -16.27% / <b>Calmar +0.506</b></p>
-  </div>
-  
-  <div class="strategy-card">
-    <h4>v0.1 +VT <span class="legend-box legend-good">Stage 9-C</span></h4>
-    <p><b>类型</b>: 波动率目标 | <b>增强</b>: 在 v0.0 基础上启用 VT (target=0.15, lookback=60, scale∈[0.3, 1.5])</p>
-    <p><b>核心</b>: 高波动期降仓, 目标年化波动 15%, 极端时只保留 30% 仓位</p>
-    <p><b>OOS</b>: ret +2.62% / Sharpe +0.78 / DD -5.10% / <b>Calmar +0.513</b> — 收益被压低但 DD 大幅改善</p>
-  </div>
-  
-  <div class="strategy-card">
-    <h4>v0.2 +TF <span class="legend-box legend-good">Stage 9-B</span></h4>
-    <p><b>类型</b>: 趋势过滤 | <b>增强</b>: 在 v0.0 基础上启用 TF (HS300 MA200, bear=0.7)</p>
-    <p><b>核心</b>: 沪深 300 跌破 200 日均线时, 整体仓位缩至 70% (剩余 30% 转 511260 国债 ETF)</p>
-    <p><b>OOS</b>: ret +8.65% / Sharpe +0.87 / DD -16.27% / <b>Calmar +0.531</b> — TF 收益略高于 VT</p>
-  </div>
-  
-  <div class="strategy-card">
-    <h4>v1.0 locked <span class="legend-box legend-best">⭐ OOS 最佳 (历史)</span></h4>
-    <p><b>类型</b>: v1.0 锁定配置 | <b>增强</b>: 斜率×R² 混合动量 + VT + 成本 (5bp+10bp)</p>
-    <p><b>核心</b>: 用 (价格动量 × 0.5 + 斜率×R² × 0.5) 替代纯价格动量, 信号更稳定; VT 缩放降低 DD; 含完整交易成本</p>
-    <p><b>OOS</b>: ret +3.63% / Sharpe +1.51 / DD -1.94% / <b>Calmar +1.868</b> — 风险调整冠军 (12 SmartBeta 子集, 口径 B)</p>
-  </div>
-  
-  <div class="strategy-card">
-    <h4>v3 (52 池) <span class="legend-box legend-good">Stage 16A</span></h4>
-    <p><b>类型</b>: 多策略组合 | <b>子策略</b>: 动量(144d) + 均值反转(60d 反向+MA 金叉) + 行业轮动(60d 动量+加速度, 周度)</p>
-    <p><b>核心</b>: 三子策略互补, 动量抓趋势/反转抓修复/行业轮动抓短期切换, 子策略等权</p>
-    <p><b>OOS</b>: ret +8.03% / Sharpe +1.08 / DD -9.89% / <b>Calmar +0.812</b> — 最均衡</p>
-  </div>
-  
-  <div class="strategy-card">
-    <h4>v4 style <span class="legend-box legend-bad">Stage 18 ⚠️</span></h4>
-    <p><b>类型</b>: 风格轮动 | <b>池</b>: 5 风格组 (HS300/CSI500/ChiNext/STAR50/红利) | <b>信号</b>: 多窗口 (5/20/120/180) 动量</p>
-    <p><b>核心</b>: 多窗口动量排名 + 20% 红利底仓 + Top-2 精选 + Sideways 缩仓 50%</p>
-    <p><b>问题</b>: 5 风格组高度相关 (0.86-0.90), 选股 ≈ 噪声; 70% 时间是 sideways, 年化 -2.5%</p>
-    <p><b>OOS</b>: ret +5.29% / Sharpe +0.36 / DD -38.73% / <b>Calmar +0.137</b> — 表现差</p>
-  </div>
-  
-  <div class="strategy-card">
-    <h4>v4 factor <span class="legend-box legend-bad">Stage 18 ❌ 失效</span></h4>
-    <p><b>类型</b>: IC 因子择时 | <b>因子</b>: 5 个 (momentum/reversal/value/dividend/quality) | <b>权重</b>: max(0, IC+0.05)²</p>
-    <p><b>核心</b>: 滚动 IC 估计 + 因子特异性窗口 + Regime 条件化 (bull/bear/sideways)</p>
-    <p><b>问题</b>: IC 信噪比极差 (84-94% 低于 0.05 阈值); 70% 时间退化为单因子 (value only)</p>
-    <p><b>OOS</b>: ret -3.38% / Sharpe -0.07 / DD -38.04% / <b>Calmar -0.089</b> — 完全失效</p>
-  </div>
-  
-  <div class="strategy-card">
-    <h4>v5 量价 <span class="legend-box legend-good">Stage 22 基础版</span></h4>
-    <p><b>类型</b>: 11 量价因子复合 | <b>因子</b>: 6 大类 (动量/交易波动/换手率/多空对比/量价背离/量幅同向)</p>
-    <p><b>核心</b>: 截面 z-score + 复合因子加权 (z 加权 vs 等权在 52 池差异 <b>0.5%</b>, Stage 24 ablation 结论)</p>
-    <p><b>加权</b>: 等权 | <b>调仓</b>: 月度</p>
-    <p><b>OOS</b>: ret +9.90% / Sharpe +0.60 / DD -19.41% / <b>Calmar +0.510</b></p>
-    <p><b>说明</b>: v5 已被 v5.1 (逆波动) 替代, 此卡保留作为演进基线</p>
-  </div>
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🚀 加权与风控阶段 (Stage 23+ - 26): v5.1 → v6 TF</h3>
-  
-  <div class="strategy-card">
-    <h4>v5.1 量价 (逆波动) <span class="legend-box legend-good">Stage 23+ 推荐</span></h4>
-    <p><b>类型</b>: 11 量价因子 (同 v5) | <b>加权</b>: 逆波动 (60d 窗口, vol_floor=0.01, max_weight=0.25)</p>
-    <p><b>核心</b>: 等权 → 逆波动加权, T+1 调仓, 消融 look-ahead (Stage 24)</p>
-    <p><b>OOS</b>: ret +11.39% / Sharpe +0.70 / DD -18.04% / <b>Calmar +0.631</b></p>
-    <p><b>说明</b>: 历史上绝对收益冠军 (年化 12.32%), 但 DD -18.04% 较大; 已被 v7.10 TV-PR (Calmar 2.144, DD -14.3%) 超越</p>
-  </div>
-  
-  <div class="strategy-card" style="background: #E0F7FA; border-color: #17BECF;">
-    <h4>v6 (TF 趋势过滤) <span class="legend-box legend-best">⭐ Stage 26 单策略</span></h4>
-    <p><b>类型</b>: <b>v5 因子排序</b> + v5.1 逆波动加权 + <b>TF 风控</b> (HS300 MA200, bear=0.7)</p>
-    <p><b>核心</b>: v6 单策略版, 排序逻辑沿用 v5 (截面 z-score + 复合因子 Top-N), 加权沿用 v5.1 逆波动, 仅加 1 层风控 (TF). TF 在 HS300 < MA200 时缩仓至 70%, 留 30% 给 511260 国债 ETF.</p>
-    <p><b>OOS</b>: 10.47% / Sharpe 0.74 / DD 15.14% / <b>Calmar 0.691</b> ⭐</p>
-    <p><b>v5.1.1 → v6 TF 改善</b>: OOS Calmar +9.5%, DD 改善 2.90pp</p>
-    <p><b>设计动机</b>: v5.1.1 无风控高 beta 收益, 单月最大回撤 -18%. 加 TF 让熊市只亏 70%, 大幅降 DD. 不开 VT 是因为 v5.1.1 信号源已经偏进攻, VT 会严重拖累收益 (消融实验证实).</p>
-  </div>
-
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🎯 智能加权阶段 (Stage 27 - 31): v6.1 IC12 → v6.2 ir_expanding → v7.10 TV-PR (标准化+CV)</h3>
-  
-  <div class="strategy-card" style="background: #FFF8E1; border-color: #D4A017;">
-    <h4>v6.1 IC12 <span class="legend-box legend-good">Stage 27 BASELINE (v7.10 已超越)</span></h4>
-    <p><b>类型</b>: <b>v5 因子排序</b> + <b>IC 加权 (12 月 expanding)</b> + v5.1 逆波动加权</p>
-    <p><b>核心</b>: 用截至 d<sub>i-1</sub> 的 12 月 IC 加权替代等权, 给近期有效因子更高权重, 自动剔除失效因子 (负 IC)</p>
-    <p><b>OOS</b>: ret +11.50% / Sharpe 0.75 / DD -15.38% / <b>Calmar 0.748</b> ⭐</p>
-    <p><b>稳定性</b>: 跨期稳健, DD -15.4% (v5.1.1 -18.0%); Stage 31 起降为 BASELINE, v7.10 已超越 (DD -14.3%, Calmar 2.144)</p>
-  </div>
-  
-  <div class="strategy-card" style="background: #F3E5F5; border-color: #9467BD;">
-    <h4>v6.2 ir_expanding <span class="legend-box legend-best">⭐ Stage 29 PROMISING</span></h4>
-    <p><b>类型</b>: 11 量价因子 + IC 加权 + 因子正交化 + 逆波动率加权</p>
-    <p><b>核心</b>: Gram-Schmidt 残差化, expanding IR 排序, 最大化因子纯度</p>
-    <p><b>类型</b>: <b>v5 因子排序</b> + <b>IC 加权 (12 月 expanding)</b> + <b>Gram-Schmidt 因子正交化</b> (按 expanding IR 排序) + v5.1 逆波动加权</p>
-    <p><b>核心</b>: 用截至 d<sub>i-1</sub> 的 expanding IR 给 11 因子排序, Gram-Schmidt 残差化去除 f8-f9, f3-f4 冗余. 5-fold 验证 4/5 胜 v6.1 IC12, 真实提升非运气.</p>
-    <p><b>OOS</b>: +13.74% / Sharpe 0.81 / DD 16.73% / <b>Calmar 0.821</b> ⭐</p>
-    <p><b>5-fold 跨期</b>: mean=1.512, min=-0.016 (vs v6.1 mean=0.867, min=-0.604). 4/5 fold 胜 v6.1.</p>
-    <p><b>状态</b>: Stage 29 升为 v6.2 默认 (PROMISING). v6.1 IC12 仍为 RECOMMENDED (稳健 baseline).</p>
-  </div>
-
-  
-  <div class="strategy-card" style="background: #FFE4B5; border-color: #FF4500;">
-    <h4>v7.10 TV-PR (标准化+CV) <span class="legend-box legend-best">🚀 Stage 31 NEW</span></h4>
-    <p><b>类型</b>: 17 macro + 19 量价因子, 时变 β_t (TV-PR, Cui 2025)</p>
-    <p><b>核心</b>: 混合标准化 (宏观=时间序列 Z-score, PV=截面 Z-score + Winsorize) + 两阶段 CV (粗搜 10 → 细搜 25) + expanding window + β[t-1] (滞后一期) + step=4 (月度调仓) + 逆波动加权</p>
-    <p><b>诊断</b>: 条件数 2.17e+10 → 1.32e+02 (改善 8 个数量级); Beta TV Norm 166.78 → 56.44</p>
-    <p><b>OOS</b>: ret +24.15% / Sharpe 1.13 / DD -14.8% / <b>Calmar 1.636</b> 🚀</p>
-    <p><b>消融</b>: β[t] 劣于 β[t-1] (Sharpe -4.8%); step=1 劣于 step=4 (Sharpe -28%, DD_duration 374天); EMA/MA 平滑均无改善</p>
-    <p><b>状态</b>: Stage 31 OOS Calmar <b>1.636</b> (vs v6.2 0.821, ++99.2%), DD -14.8%, 跨期稳健</p>
-  </div>
-
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📊 基准</h3>
-  
-  <div class="strategy-card" style="background: #F0F0F0; border-color: #999;">
-    <h4>HS300 基准 📊 <span class="legend-box" style="background:#999;color:#fff;">基准</span></h4>
-    <p><b>类型</b>: 被动指数 (沪深 300 ETF 510300) | <b>说明</b>: 无主动管理, 纯市场暴露, 用于 α 超额参考</p>
-    <p><b>OOS</b>: ret +2.20% / Sharpe 0.21 / DD -34.87% / <b>Calmar 0.063</b></p>
-  </div>
-</section>
-
 <section id="events">
   <h2>关键事件时间线</h2>
   <table>
@@ -4438,7 +4314,7 @@ return Plotly;
 
 <footer style="margin-top: 40px; padding: 20px; background: #F0F4F8; border-radius: 8px; font-size: 12px; color: #666;">
   <b>📊 数据来源</b>: <code>combo/unified_v1v5_compare.py</code> 生成 NAV, <code>combo/nav_curves_html.py</code> 生成此 HTML<br>
-  <b>📁 主文件 (内部跟踪)</b>: <code>STRATEGY_ITERATION_RECORD.html</code> (完整版, 含策略简述, 每次跑都覆盖)<br>
+  <b>📤 报告版 (对外汇报)</b>: <code>STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html</code> (简化版, 无策略简述, 带日期)<br>
   <b>🔗 相关文件</b>: <code>UNIFIED_V1V5_EVOLUTION.html</code> (v1-v5 演进专题) | <code>UNIFIED_V1V5_REPORT.md</code> (完整 markdown 报告)<br>
   <b>⚙️ 统一口径</b>: 52 ETF 池 | 2018-2026 | 5bp 单边成本 | A 股 cap=3 (CICC 规则) | v4 用 12 SmartBeta 子集
 </footer>

@@ -1,7 +1,13 @@
 # coding=utf-8
 """v6.2 模块 (Stage 27 v6.2 + Stage 29 PROMISING + Stage 30 过拟合修复).
 
-[Stage 30 状态] ⚠️ 研究版本 (扣成本后 Calmar 0.3310, 起点 CV% 56.9%)
+[Stage 32 状态] ❌ DEPRECATED (2026-07-17)
+  - v6.2 扣成本 (5bp+10bp) 后 Calmar: 0.3310 (-25.6% vs 不扣成本)
+  - v6.2 起点依赖: CV% 56.9% (阈值 25%, FAIL)
+  - v6.2 定位降级: 从 PROMISING → DEPRECATED
+  - 正式被 v7.10 TV-PR (标准化+CV) 超越 (Calmar 2.144 vs 0.331)
+
+[Stage 30 状态] ⚠️ 研究版本 (历史记录)
   - v6.2 扣成本 (5bp+10bp) 后 Calmar: 0.3310 (-25.6% vs 不扣成本)
   - v6.2 起点依赖: CV% 56.9% (阈值 25%, FAIL)
   - v6.2 定位降级: 从 PROMISING → 研究版本
@@ -42,6 +48,13 @@ v6.2 = v5 选股 + IC 加权 + 因子正交化 (去除冗余) + v5.1.1 加权.
 - 5-fold 验证: reports/momentum_etf_rotation/combo/v6_2_ir_expanding_5fold.csv
 - 过拟合修复: scripts/eval_v6_2_overfitting.py
 """
+import warnings
+import sys
+
+# v6.2 已于 2026-07-17 降级为 DEPRECATED
+# 原因: 扣成本后 Calmar 0.331, 起点 CV% 56.9% (FAIL)
+# 推荐使用 v7.10 TV-PR (Calmar 2.144)
+# 详见 reports/momentum_etf_rotation/STAGE32_PLAN.md
 from .industry_rotation_v6_2 import (
     V6_2Config,
     V6_2SubStrategy,

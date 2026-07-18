@@ -169,7 +169,7 @@ def run_v6_backtest(
 
     # 1. 确定调仓日期
     if rebalance_dates is None:
-        rebal_dates_idx = dates.to_series().resample("ME").last().index
+        rebal_dates_idx = dates.to_series().resample("M").last().index
     else:
         rebal_dates_idx = pd.DatetimeIndex(rebalance_dates)
     rebal_set = set(d for d in rebal_dates_idx if d in dates)

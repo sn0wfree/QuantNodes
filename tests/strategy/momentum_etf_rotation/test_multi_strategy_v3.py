@@ -36,7 +36,7 @@ class TestMultiStrategyConfig:
         assert cfg.reversion_enabled
         assert cfg.industry_rotation_enabled
         assert cfg.weight_method == "equal"
-        assert cfg.main_rebal_freq == "ME"
+        assert cfg.main_rebal_freq == "M"
         assert cfg.a_share_total == 3
         assert cfg.max_weight == 0.15
 

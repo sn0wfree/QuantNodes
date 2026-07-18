@@ -14,7 +14,7 @@ class FixedIncomePlusConfig:
     bond_code: str = "511260"
     bond_weight: float = 0.8
     rotation: object = None
-    rebalance_freq: str = "ME"
+    rebalance_freq: str = "M"
 
 
 @dataclass

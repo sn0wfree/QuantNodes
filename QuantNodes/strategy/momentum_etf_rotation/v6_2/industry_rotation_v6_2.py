@@ -294,7 +294,7 @@ def run_v6_2_backtest(
 
     if rebalance_dates is None:
         # [Phase 4 修复] 取每月最后一个**实际 trading day**
-        # pandas 的 resample("ME").last() 在 trading day index 上
+        # pandas 的 resample("M").last() 在 trading day index 上
         # 输出 calendar month end (例如 03-31, 04-30), 不是 trading day,
         # 导致 orthogonalize / compute_cross_section_ic 找不到 as_of 而退化.
         # 改为: groupby by month, 取每月最后一个 trading day (落在原 index 中).

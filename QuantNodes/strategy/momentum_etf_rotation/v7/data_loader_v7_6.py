@@ -409,6 +409,76 @@ def load_daily_etf_returns() -> pd.DataFrame:
     return daily_returns
 
 
+def load_weekly_monday_open_returns(codes: list[str]) -> pd.DataFrame:
+    """加载周一开盘到周五收盘的周频收益 (不含周末隔夜).
+
+    使用 OHLCV 数据源 (同一数据源), 计算:
+      ret[t] = OHLCV_friday_close[t] / OHLCV_monday_open[t] - 1
+
+    Returns:
+        DataFrame (T_weekly, N_etf) 周一开盘到周五收盘的收益.
+        index 与 Y_df 对齐 (每周日).
+    """
+    cache = HF_DIR / "v7_10_monday_open_returns.parquet"
+    if cache.exists():
+        return pd.read_parquet(cache)
+
+    ohlc_path = REAL_DIR / "etf_ohlcv_2018-01-01_2026-06-30_adjusted.parquet"
+    ohlc = pd.read_parquet(ohlc_path)
+    opens = ohlc.xs("open", level=1, axis=1)
+    closes = ohlc.xs("close", level=1, axis=1)
+
+    # 只保留 v7.10 的 43 个 code
+    valid_codes = [c for c in codes if c in opens.columns and c in closes.columns]
+
+    # 每周一开盘价 (W-MON: 周一所在的周)
+    monday_open = opens[valid_codes].resample("W-MON").first()
+    # 每周五收盘价
+    friday_close = closes[valid_codes].resample("W-FRI").last()
+
+    # 对齐: monday_open index 是周一, friday_close 是周五
+    # 将 monday_open 的 index +4 天 → 周五, 表示"本周一的开盘价, 对齐到上周五"
+    monday_open.index = monday_open.index + pd.Timedelta(days=4)  # 周一 → 周五
+    monday_open = monday_open.reindex(friday_close.index)
+
+    # 收益 = 周五收盘 / 周一开盘 - 1 (周一到周五收益, 不含周末隔夜)
+    monday_open_returns = friday_close / monday_open - 1
+
+    # 对齐到 Y_df 的 index (Y 是周日, friday_close 是周五, 差 2 天)
+    monday_open_returns.index = monday_open_returns.index + pd.Timedelta(days=2)
+
+    monday_open_returns.to_parquet(cache)
+    return monday_open_returns
+
+
+def load_weekly_ohlcv_returns(codes: list[str]) -> pd.DataFrame:
+    """加载 OHLCV 周频收益 (周五到周五, 用于与 monday_open_returns 同源对比).
+
+    计算: ret[t] = OHLCV_friday_close[t] / OHLCV_friday_close[t-1] - 1
+
+    Returns:
+        DataFrame (T_weekly, N_etf) 周五到周五收益.
+        index 与 Y_df 对齐 (每周日).
+    """
+    cache = HF_DIR / "v7_10_weekly_ohlcv_returns.parquet"
+    if cache.exists():
+        return pd.read_parquet(cache)
+
+    ohlc_path = REAL_DIR / "etf_ohlcv_2018-01-01_2026-06-30_adjusted.parquet"
+    ohlc = pd.read_parquet(ohlc_path)
+    closes = ohlc.xs("close", level=1, axis=1)
+
+    valid_codes = [c for c in codes if c in closes.columns]
+    friday_close = closes[valid_codes].resample("W-FRI").last()
+    weekly_returns = friday_close.pct_change()
+
+    # 对齐到 Y_df 的 index (Y 是周日, friday_close 是周五, 差 2 天)
+    weekly_returns.index = weekly_returns.index + pd.Timedelta(days=2)
+
+    weekly_returns.to_parquet(cache)
+    return weekly_returns
+
+
 def load_v7_9_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
     """加载 v7.9 数据 (去重 36 因子 + log 变换).
 
@@ -426,12 +496,148 @@ def load_v7_9_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
     return X_panel, Y, codes
 
 
+# ============================================================
+# v7.10 混合标准化
+# ============================================================
+MACRO_K = 17  # 宏观因子数量 (k=0..16)
+
+# 极端偏度因子 (需要 Winsorize)
+SKEWED_FACTORS = {"f13_rv", "f17_idio_vol", "f15_max5", "f1_first_mom"}
+
+
+def winsorize_factor(X_panel: np.ndarray, factor_names: list[str],
+                     lower: float = 0.01, upper: float = 0.99) -> np.ndarray:
+    """对极端偏度因子做 Winsorize (截断异常值).
+
+    Parameters:
+        X_panel: (T, N, K) 因子面板
+        factor_names: 因子名称列表
+        lower, upper: 分位数截断点
+
+    Returns:
+        X_out: Winsorize 后的因子面板
+    """
+    T, N, K = X_panel.shape
+    X_out = X_panel.copy()
+
+    for k in range(K):
+        fname = factor_names[k] if k < len(factor_names) else f"f{k}"
+        if fname not in SKEWED_FACTORS:
+            continue
+
+        vals = X_out[:, :, k].ravel()
+        valid = vals[~np.isnan(vals)]
+        if len(valid) < 10:
+            continue
+
+        q_low = np.quantile(valid, lower)
+        q_high = np.quantile(valid, upper)
+        X_out[:, :, k] = np.clip(X_out[:, :, k], q_low, q_high)
+
+    return X_out
+
+
+def standardize_v7_10(X_panel: np.ndarray, factor_names: list[str]) -> np.ndarray:
+    """v7.10 混合标准化: 宏观=时间序列Z-score, PV=截面Z-score.
+
+    处理顺序:
+      1. Winsorize 极端偏度因子 (f13_rv, f17_idio_vol, f15_max5, f1_first_mom)
+      2. 宏观因子 (k=0-16): 时间序列 Z-score (每个因子在时间维度上标准化)
+      3. PV 因子 (k=17-35): 截面 Z-score (每个时间点、每个因子在截面上标准化)
+
+    Parameters:
+        X_panel: (T, N, K) 因子面板 (v7.9 原始)
+        factor_names: 因子名称列表
+
+    Returns:
+        X_std: 标准化后的因子面板
+    """
+    T, N, K = X_panel.shape
+
+    # Step 1: Winsorize 极端偏度因子
+    X_std = winsorize_factor(X_panel, factor_names)
+
+    # Step 2: 宏观因子 - 时间序列 Z-score
+    for k in range(min(MACRO_K, K)):
+        vals = X_std[:, :, k].ravel()
+        valid = vals[~np.isnan(vals)]
+        if len(valid) < 2:
+            continue
+        mean_t = np.mean(valid)
+        std_t = np.std(valid)
+        if std_t > 1e-10:
+            X_std[:, :, k] = (X_std[:, :, k] - mean_t) / std_t
+
+    # Step 3: PV 因子 - 截面 Z-score
+    for t in range(T):
+        for k in range(MACRO_K, K):
+            vals = X_std[t, :, k]
+            valid = vals[~np.isnan(vals)]
+            if len(valid) <= 1:
+                continue
+            mean_cs = np.mean(valid)
+            std_cs = np.std(valid)
+            if std_cs > 1e-10:
+                X_std[t, :, k] = (X_std[t, :, k] - mean_cs) / std_cs
+
+    return X_std
+
+
+def generate_v7_10_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
+    """生成 v7.10 数据 (v7.9 + 混合标准化).
+
+    Returns:
+        X_panel: (T_weekly, N_assets, 36) 标准化后因子面板
+        Y: (T_weekly, N_assets) 周频资产收益
+        valid_codes: 有效资产代码列表
+    """
+    X_raw, Y, codes = load_v7_9_data()
+    factor_names = (HF_DIR / "v7_9_factor_names.csv").read_text().strip().split("\n")[1:]
+
+    X_std = standardize_v7_10(X_raw, factor_names)
+
+    # 保存
+    np.save(HF_DIR / "v7_10_X_panel.npy", X_std)
+    (HF_DIR / "v7_10_codes.csv").write_text("\n".join(["code"] + codes))
+    (HF_DIR / "v7_10_factor_names.csv").write_text("\n".join(["factor"] + factor_names))
+    Y.to_parquet(HF_DIR / "v7_10_Y_weekly.parquet")
+
+    return X_std, Y, codes
+
+
+def load_v7_10_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
+    """加载 v7.10 数据 (混合标准化).
+
+    如果数据文件不存在, 自动调用 generate_v7_10_data() 生成.
+
+    Returns:
+        X_panel: (T_weekly, N_assets, 36) 标准化后因子面板
+        Y: (T_weekly, N_assets) 周频资产收益
+        valid_codes: 有效资产代码列表
+    """
+    npy_path = HF_DIR / "v7_10_X_panel.npy"
+    parquet_path = HF_DIR / "v7_10_Y_weekly.parquet"
+    codes_path = HF_DIR / "v7_10_codes.csv"
+
+    if not npy_path.exists() or not parquet_path.exists() or not codes_path.exists():
+        return generate_v7_10_data()
+
+    X_panel = np.load(npy_path)
+    Y = pd.read_parquet(parquet_path)
+    codes = codes_path.read_text().strip().split("\n")[1:]
+    return X_panel, Y, codes
+
+
 __all__ = [
     "load_weekly_macro_factors",
     "load_weekly_pv_factors",
     "load_weekly_asset_returns",
     "load_daily_etf_returns",
+    "load_weekly_monday_open_returns",
     "build_mixed_factor_panel",
     "load_v7_6_data",
     "load_v7_9_data",
+    "standardize_v7_10",
+    "generate_v7_10_data",
+    "load_v7_10_data",
 ]

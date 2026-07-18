@@ -74,7 +74,7 @@ class V4Config:
     max_weight: float = 0.20
 
     # 调仓
-    main_rebal_freq: str = "ME"
+    main_rebal_freq: str = "M"
 
     # 交易成本
     cost_bps: float = 5.0
@@ -98,9 +98,9 @@ class V4Result:
     mode: str = ""
 
 
-def _get_rebal_dates(panel: pd.DataFrame, freq: str = "ME") -> list[pd.Timestamp]:
+def _get_rebal_dates(panel: pd.DataFrame, freq: str = "M") -> list[pd.Timestamp]:
     """取主调仓日 (默认月末)."""
-    if freq == "ME":
+    if freq == "M":
         return (
             pd.Series(panel.index)
             .groupby(panel.index.to_period("M"))

@@ -43,7 +43,7 @@ BOND_INDICES = [
 @dataclass
 class V7_3Config:
     """v7.3 v2 配置 (忠实于 source)."""
-    rebalance_freq: str = "QE"
+    rebalance_freq: str = "Q"
 
     # 回看窗口 (source cell 102 length=8)
     quarter_window: int = 8

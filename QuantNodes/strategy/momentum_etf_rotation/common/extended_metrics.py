@@ -136,7 +136,7 @@ def _profit_loss_ratio(nav: pd.Series) -> float:
 def _max_monthly_loss(nav: pd.Series) -> float:
     if nav.empty:
         return 0.0
-    monthly = nav.resample("ME").last().pct_change().dropna()
+    monthly = nav.resample("M").last().pct_change().dropna()
     if monthly.empty:
         return 0.0
     return float(monthly.min())
@@ -145,7 +145,7 @@ def _max_monthly_loss(nav: pd.Series) -> float:
 def _profit_months_ratio(nav: pd.Series) -> float:
     if nav.empty:
         return 0.0
-    monthly = nav.resample("ME").last().pct_change().dropna()
+    monthly = nav.resample("M").last().pct_change().dropna()
     if monthly.empty:
         return 0.0
     return float((monthly > 0).mean())

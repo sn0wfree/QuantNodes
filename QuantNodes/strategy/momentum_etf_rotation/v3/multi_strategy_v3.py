@@ -72,7 +72,7 @@ class MultiStrategyConfig:
     weight_method: str = "equal"  # "equal" | "risk_parity" | "signal"
 
     # 主调仓频率
-    main_rebal_freq: str = "ME"  # "ME" / "W"
+    main_rebal_freq: str = "M"  # "M" / "W"
 
     # 持仓 cap
     a_share_total: int = 3       # A 股宽基+行业上限
@@ -187,7 +187,7 @@ def run_multi_strategy_backtest(
     dates = etf.index
 
     # 主调仓日
-    if cfg.main_rebal_freq == "ME":
+    if cfg.main_rebal_freq == "M":
         rebal_dates = pd.Series(dates).groupby(
             dates.to_period("M")
         ).max().tolist()
