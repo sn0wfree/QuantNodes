@@ -180,3 +180,17 @@ data/mine_runs/
 quant/
 wiki_auto/
 reports/momentum_etf_rotation/plotly.min.js
+
+# Strategy data files (regeneratable from source)
+data/high_freq_macro/*.npy
+data/high_freq_macro/*.parquet
+data/high_freq_macro/*.csv
+data/high_freq_macro/v7_6_pv_weekly/
+data/real/*.parquet
+data/*.xlsx
+
+# Chart cache (regeneratable)
+combo/_chart_cache/
+
+# Old quant artifacts (from other projects)
+old_quant/
