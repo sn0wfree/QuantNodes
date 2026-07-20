@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # coding=utf-8
-"""v7.10 TV-PR 验证: 修复 look-ahead 后重跑.
+"""v7.10 TV-PR 验证: expanding-window (无 look-ahead).
 
-验证 TV-PR 是否过拟合:
-  原始: Y[t] = t-1→t 收益 (同周 look-ahead)
-  修复: Y[t] = t→t+1 收益 (shift -1, 正确预测对齐)
+三种方案对比:
+  A. 原始: expanding(Y_orig), 组合用 Y_orig — 同周关系, beta 不含未来
+  B. 修复: expanding(Y_fixed), 组合用 Y_orig — 预测关系, beta 不含未来
+  C. full-sample (参考): tvpr_estimator(Y_orig), 组合用 Y_orig — 含未来函数
 
 用法:
   python scripts/v7_10_tvpr_fixed_test.py
-  python scripts/v7_10_tvpr_fixed_test.py --step 4  # 每4周重估
+  python scripts/v7_10_tvpr_fixed_test.py --step 4
 """
 from __future__ import annotations
 
@@ -28,18 +29,18 @@ sys.path.insert(0, str(REPO))
 
 from QuantNodes.strategy.momentum_etf_rotation.v7.data_loader_v7_6 import (
     load_v7_10_data,
-    load_daily_etf_returns,
 )
 from QuantNodes.strategy.momentum_etf_rotation.v7.macro_substrategy_v7_6 import (
     V7_6Config,
     construct_portfolio,
-    calculate_daily_nav,
 )
-from QuantNodes.strategy.momentum_etf_rotation.v7.tvpr_estimator import tvpr_estimator
+from QuantNodes.strategy.momentum_etf_rotation.v7.tvpr_estimator import (
+    expanding_window_tvpr,
+    tvpr_estimator,
+)
 
 
 def compute_metrics(nav: pd.Series, label: str) -> dict:
-    """计算周频指标."""
     ret = nav.pct_change().dropna()
     ann_ret = ret.mean() * 52
     ann_vol = ret.std() * np.sqrt(52)
@@ -48,15 +49,43 @@ def compute_metrics(nav: pd.Series, label: str) -> dict:
     dd = (nav - peak) / peak
     max_dd = dd.min()
     calmar = ann_ret / abs(max_dd) if abs(max_dd) > 0 else 0.0
-    return {
-        "label": label,
-        "ann_return": ann_ret,
-        "ann_vol": ann_vol,
-        "sharpe": sharpe,
-        "max_dd": max_dd,
-        "calmar": calmar,
-        "n_weeks": len(nav),
-    }
+    return {"label": label, "ann_return": ann_ret, "ann_vol": ann_vol,
+            "sharpe": sharpe, "max_dd": max_dd, "calmar": calmar, "n_weeks": len(nav)}
+
+
+def run_scenario(Y_train, X_train, Y_trade, X_trade, cfg, step, label):
+    """运行一个场景: expanding-window TV-PR + construct_portfolio.
+
+    Y_train: 用于训练 beta 的收益 (可能 shift 过)
+    X_train: 用于训练 beta 的因子
+    Y_trade: 用于 construct_portfolio 赚取收益的收益 (必须是原始 Y)
+    X_trade: 用于 construct_portfolio 的因子
+    """
+    t0 = time.time()
+    beta = expanding_window_tvpr(
+        Y_train, X_train,
+        lambda_tv=cfg.lambda_tv, lambda_l1=cfg.lambda_l1,
+        min_history=52, rho=1.0, max_iter=200, tol=1e-5, step=step,
+    )
+    # expanding_window_tvpr 返回 (T, K) 的 beta
+    # construct_portfolio 需要 DataFrame
+    beta_df = pd.DataFrame(beta, index=Y_train.index)
+
+    # 如果 Y_train 和 Y_trade 长度不同, 对齐 beta
+    if len(Y_train) != len(Y_trade):
+        # 补齐 beta 到 Y_trade 的长度
+        extra = len(Y_trade) - len(Y_train)
+        if extra > 0:
+            beta_pad = np.tile(beta[-1:], (extra, 1))
+            beta_full = np.vstack([beta, beta_pad])
+        else:
+            beta_full = beta[:len(Y_trade)]
+        beta_df = pd.DataFrame(beta_full, index=Y_trade.index)
+
+    nav, _ = construct_portfolio(Y_trade, X_trade, beta_df, cfg, return_weights=True)
+    m = compute_metrics(nav, label)
+    m["time"] = time.time() - t0
+    return m
 
 
 def main():
@@ -65,112 +94,76 @@ def main():
     args = parser.parse_args()
 
     print("=" * 70)
-    print("v7.10 TV-PR 验证: 修复 look-ahead 后重跑")
+    print("v7.10 TV-PR 验证: expanding-window (无 look-ahead)")
     print("=" * 70)
 
-    # 1. 加载原始数据
-    print("\n[1/4] 加载 v7.10 原始数据...")
+    # 1. 加载数据
+    print("\n[1/3] 加载 v7.10 数据...")
     X_panel, Y_orig, codes = load_v7_10_data()
-    print(f"  X: {X_panel.shape}, Y: {Y_orig.shape}, codes: {len(codes)}")
-    print(f"  Y_orig[t=100, 0]: {Y_orig.iloc[100, 0]:.6f} (t-1→t 收益)")
+    print(f"  X: {X_panel.shape}, Y: {Y_orig.shape}")
 
-    # 2. 修复 Y: shift -1
-    print("\n[2/4] 修复 Y (shift -1)...")
+    # 2. 修复 Y
+    print("\n[2/3] 修复 Y (shift -1)...")
     Y_fixed = Y_orig.shift(-1).iloc[:-1]
     X_fixed = X_panel[:-1]
     print(f"  X_fixed: {X_fixed.shape}, Y_fixed: {Y_fixed.shape}")
-    print(f"  Y_fixed[t=100, 0]: {Y_fixed.iloc[100, 0]:.6f} (t→t+1 收益)")
 
-    # 3. 验证因子相关性
-    print("\n[3/4] 验证因子相关性...")
-    from scipy.stats import spearmanr
-
-    factor_names_csv = REPO / "data" / "high_freq_macro" / "v7_10_factor_names.csv"
-    factor_names = factor_names_csv.read_text().strip().split("\n")[1:]
-
-    T, N, K = X_fixed.shape
-    print(f"  {'因子':<20} {'corr(X[t],Y_orig[t])':<20} {'corr(X[t],Y_fixed[t])':<20} {'修复效果':<10}")
-    print(f"  {'-'*70}")
-
-    for k in range(min(K, len(factor_names))):
-        fname = factor_names[k]
-
-        # 原始
-        v1 = ~np.isnan(X_panel[:-1, :, k].ravel()) & ~np.isnan(Y_orig.iloc[:-1].values.ravel())
-        c_orig = spearmanr(X_panel[:-1, :, k].ravel()[v1], Y_orig.iloc[:-1].values.ravel()[v1])[0] if v1.sum() > 100 else np.nan
-
-        # 修复后
-        v2 = ~np.isnan(X_fixed[:, :, k].ravel()) & ~np.isnan(Y_fixed.values.ravel())
-        c_fixed = spearmanr(X_fixed[:, :, k].ravel()[v2], Y_fixed.values.ravel()[v2])[0] if v2.sum() > 100 else np.nan
-
-        if abs(c_orig) > 0.3 or abs(c_fixed) > 0.3:
-            effect = "✓ 修复" if abs(c_fixed) < abs(c_orig) * 0.5 else "⚠️ 仍高"
-            print(f"  {fname:<20} {c_orig:<20.4f} {c_fixed:<20.4f} {effect}")
-
-    # 4. 跑 TV-PR
-    print(f"\n[4/4] TV-PR 回测 (step={args.step})...")
-
-    # 4a. 原始数据 (baseline)
-    print("\n  --- 原始数据 (Y[t] = t-1→t) ---")
+    # 3. 配置
     cfg = V7_6Config(lambda_tv=0.06, lambda_l1=0.105, stop_loss_threshold=-0.15, stop_loss_cooldown=5)
-    t0 = time.time()
-    beta_orig = tvpr_estimator(
-        Y_orig, X_panel,
-        lambda_tv=cfg.lambda_tv, lambda_l1=cfg.lambda_l1,
-        method='admm', min_history=52, rho=1.0, max_iter=200, tol=1e-5,
-    )
-    nav_orig, _ = construct_portfolio(Y_orig, X_panel, beta_orig, cfg, return_weights=True)
-    m_orig = compute_metrics(nav_orig, "原始 (look-ahead)")
-    print(f"  年化={m_orig['ann_return']*100:+.2f}%, Sharpe={m_orig['sharpe']:.3f}, DD={m_orig['max_dd']*100:.2f}%, Calmar={m_orig['calmar']:.3f} ({time.time()-t0:.1f}s)")
 
-    # 4b. 修复后数据
-    #    TV-PR 用 Y_fixed 训练 (学习 X[t] → Y[t] = t→t+1 收益 的预测关系)
-    #    construct_portfolio 用原始 Y (正确时间对齐: 赚 Y[t+1] = t→t+1 收益)
-    print("\n  --- 修复后数据 (beta 用 Y_fixed 训练, 组合用原始 Y) ---")
+    # 4. 三种场景
+    print(f"\n[3/3] TV-PR 回测 (step={args.step})...")
+
+    # A: 原始数据, expanding-window
+    print("\n  --- A: expanding-window + 原始 Y (同周关系) ---")
+    m_a = run_scenario(Y_orig, X_panel, Y_orig, X_panel, cfg, args.step, "A: 原始")
+    print(f"  年化={m_a['ann_return']*100:+.2f}%, Sharpe={m_a['sharpe']:.3f}, DD={m_a['max_dd']*100:.2f}%, Calmar={m_a['calmar']:.3f} ({m_a['time']:.1f}s)")
+
+    # B: 修复后数据, expanding-window, 组合用原始 Y
+    print("\n  --- B: expanding-window + Y_fixed 训练, 原始 Y 组合 (预测关系) ---")
+    m_b = run_scenario(Y_fixed, X_fixed, Y_orig, X_panel, cfg, args.step, "B: 修复后")
+    print(f"  年化={m_b['ann_return']*100:+.2f}%, Sharpe={m_b['sharpe']:.3f}, DD={m_b['max_dd']*100:.2f}%, Calmar={m_b['calmar']:.3f} ({m_b['time']:.1f}s)")
+
+    # C: full-sample (参考, 含未来函数)
+    print("\n  --- C: full-sample TV-PR (含未来函数, 仅供对比) ---")
     t0 = time.time()
-    beta_fixed = tvpr_estimator(
-        Y_fixed, X_fixed,
-        lambda_tv=cfg.lambda_tv, lambda_l1=cfg.lambda_l1,
-        method='admm', min_history=52, rho=1.0, max_iter=200, tol=1e-5,
-    )
-    # beta_fixed 有 429 步, Y_orig 有 430 步
-    # construct_portfolio 用 beta[t-1], 所以补齐最后一个 beta
-    beta_fixed_full = np.vstack([beta_fixed, beta_fixed[-1:]])
-    beta_fixed_df = pd.DataFrame(beta_fixed_full, index=Y_orig.index)
-    nav_fixed, _ = construct_portfolio(Y_orig, X_panel, beta_fixed_df, cfg, return_weights=True)
-    m_fixed = compute_metrics(nav_fixed, "修复后 (正确)")
-    print(f"  年化={m_fixed['ann_return']*100:+.2f}%, Sharpe={m_fixed['sharpe']:.3f}, DD={m_fixed['max_dd']*100:.2f}%, Calmar={m_fixed['calmar']:.3f} ({time.time()-t0:.1f}s)")
+    beta_c = tvpr_estimator(Y_orig, X_panel, lambda_tv=cfg.lambda_tv, lambda_l1=cfg.lambda_l1,
+                            method='admm', min_history=52, rho=1.0, max_iter=200, tol=1e-5)
+    nav_c, _ = construct_portfolio(Y_orig, X_panel, beta_c, cfg, return_weights=True)
+    m_c = compute_metrics(nav_c, "C: full-sample")
+    m_c["time"] = time.time() - t0
+    print(f"  年化={m_c['ann_return']*100:+.2f}%, Sharpe={m_c['sharpe']:.3f}, DD={m_c['max_dd']*100:.2f}%, Calmar={m_c['calmar']:.3f} ({m_c['time']:.1f}s)")
 
     # 5. 对比
     print("\n" + "=" * 70)
     print("对比结果")
     print("=" * 70)
-    print(f"\n  {'指标':<14} {'原始 (look-ahead)':<20} {'修复后 (正确)':<20} {'变化':<10}")
-    print(f"  {'-'*64}")
-    print(f"  {'年化收益':<14} {m_orig['ann_return']*100:+.2f}%{'':<14} {m_fixed['ann_return']*100:+.2f}%{'':<14} {(m_fixed['ann_return']-m_orig['ann_return'])*100:+.2f}%")
-    print(f"  {'Sharpe':<14} {m_orig['sharpe']:.3f}{'':<16} {m_fixed['sharpe']:.3f}{'':<16} {m_fixed['sharpe']-m_orig['sharpe']:+.3f}")
-    print(f"  {'最大回撤':<14} {m_orig['max_dd']*100:.2f}%{'':<14} {m_fixed['max_dd']*100:.2f}%{'':<14} {(m_fixed['max_dd']-m_orig['max_dd'])*100:+.2f}%")
-    print(f"  {'Calmar':<14} {m_orig['calmar']:.3f}{'':<16} {m_fixed['calmar']:.3f}{'':<16} {m_fixed['calmar']-m_orig['calmar']:+.3f}")
+    rows = [m_a, m_b, m_c]
+    print(f"\n  {'场景':<20} {'年化':<10} {'Sharpe':<10} {'DD':<10} {'Calmar':<10}")
+    print(f"  {'-'*60}")
+    for r in rows:
+        print(f"  {r['label']:<20} {r['ann_return']*100:+.2f}%{'':<4} {r['sharpe']:<10.3f} {r['max_dd']*100:.2f}%{'':<4} {r['calmar']:<10.3f}")
 
-    # 6. 判断
+    # 6. 结论
     print(f"\n{'='*70}")
     print("结论")
     print(f"{'='*70}")
-    calmar_drop = (m_orig['calmar'] - m_fixed['calmar']) / m_orig['calmar'] * 100 if m_orig['calmar'] > 0 else 0
+    print(f"\n  A (expanding + 原始 Y): Calmar {m_a['calmar']:.3f} — 同周关系 (beta 学的是 X[t] → Y[t] = t-1→t)")
+    print(f"  B (expanding + Y_fixed): Calmar {m_b['calmar']:.3f} — 预测关系 (beta 学的是 X[t] → Y[t] = t→t+1)")
+    print(f"  C (full-sample):         Calmar {m_c['calmar']:.3f} — 含未来函数 (TV penalty 耦合所有 beta)")
 
-    if m_fixed['calmar'] > 0.5:
-        verdict = "✅ TV-PR 有效 (Calmar > 0.5), 因子有真实预测信号"
-    elif m_fixed['calmar'] > 0.2:
-        verdict = "⚠️ TV-PR 信号很弱 (Calmar 0.2-0.5), 部分过拟合"
-    elif m_fixed['calmar'] > 0:
-        verdict = "⚠️ TV-PR 几乎无效 (Calmar < 0.2), 严重过拟合"
+    drop_a_b = (m_a['calmar'] - m_b['calmar']) / m_a['calmar'] * 100 if m_a['calmar'] > 0 else 0
+    drop_a_c = (m_a['calmar'] - m_c['calmar']) / m_a['calmar'] * 100 if m_a['calmar'] > 0 else 0
+
+    print(f"\n  A→B 下降: {drop_a_b:.1f}% (去掉同周 look-ahead 的影响)")
+    print(f"  A→C 下降: {drop_a_c:.1f}% (去掉 full-sample look-ahead 的影响)")
+
+    if m_b['calmar'] > 0.5:
+        print(f"\n  ✅ B (正确验证): Calmar {m_b['calmar']:.3f} > 0.5, 因子有真实预测信号")
+    elif m_b['calmar'] > 0.2:
+        print(f"\n  ⚠️ B (正确验证): Calmar {m_b['calmar']:.3f}, 信号较弱但真实")
     else:
-        verdict = "❌ TV-PR 完全无效 (Calmar ≤ 0), 确认过拟合"
-
-    print(f"\n  修复前 Calmar: {m_orig['calmar']:.3f}")
-    print(f"  修复后 Calmar: {m_fixed['calmar']:.3f}")
-    print(f"  下降幅度: {calmar_drop:.1f}%")
-    print(f"\n  {verdict}")
+        print(f"\n  ❌ B (正确验证): Calmar {m_b['calmar']:.3f}, 信号很弱, 需要新因子")
 
 
 if __name__ == "__main__":
