@@ -32,8 +32,8 @@ import pandas as pd
 from .backtest_config import BacktestConfig, CostConfig
 from .backtest_utils import (
     apply_max_weight,
+    calculate_turnover,
     calculate_turnover_cost,
-    compute_daily_nav_from_weights,
     generate_rebalance_dates,
     normalize_weights,
 )
@@ -116,7 +116,7 @@ class BacktestCallbacks:
     def apply_risk_controls(
         self,
         weights: dict[str, float],
-        nav_history: np.ndarray,
+        nav_history: pd.Series,
         date: pd.Timestamp,
         config: BacktestConfig,
     ) -> dict[str, float]:
@@ -126,7 +126,7 @@ class BacktestCallbacks:
 
         Parameters:
             weights: 当前权重
-            nav_history: 历史 NAV 数组
+            nav_history: 历史 NAV Series (DatetimeIndex, 用于 VT rolling vol)
             date: 当前调仓日
             config: 回测配置
 
@@ -188,9 +188,8 @@ def run_backtest(
 
     流程:
     1. 生成调仓日
-    2. 每个调仓日: 信号 → 选择 → 权重 → 风控 → 后处理 → 记录
-    3. compute_daily_nav_from_weights() 计算日频 NAV
-    4. 计算指标
+    2. 每日循环: 调仓日 → 信号/选择/权重/风控/后处理; 非调仓日 → 日收益累积
+    3. 计算指标
 
     Parameters:
         price_panel: (T_daily, N) 价格面板 (用于信号计算)
@@ -211,7 +210,7 @@ def run_backtest(
     )
     rebal_set = set(rebal_dates_list)
 
-    # 2. 主循环: 每个调仓日计算权重
+    # 2. 主循环: 逐日计算 (inline NAV, 避免 VT 看到零 vol)
     weights_history: list[tuple[pd.Timestamp, dict[str, float]]] = []
     prev_weights: dict[str, float] = {}
     nav_arr = np.ones(len(dates))
@@ -228,8 +227,9 @@ def run_backtest(
             # 权重
             weights = callbacks.compute_weights(selected, price_panel, date, config)
 
-            # 风控
-            weights = callbacks.apply_risk_controls(weights, nav_arr[:i + 1], date, config)
+            # 风控 (传入 pandas Series, VT 需要正确的 rolling vol)
+            nav_series = pd.Series(nav_arr[:i + 1], index=dates[:i + 1])
+            weights = callbacks.apply_risk_controls(weights, nav_series, date, config)
 
             # 后处理 (max_weight + normalize)
             weights = callbacks.post_weights(weights, config)
@@ -238,14 +238,34 @@ def run_backtest(
             weights_history.append((date, dict(weights)))
             prev_weights = weights
 
-    # 3. 计算日频 NAV
-    nav_daily = compute_daily_nav_from_weights(
-        weights_history, daily_returns, config.cost
-    )
+            # 调仓日: 扣成本, 不算日收益 (与 v1/v2 一致)
+            if config.cost.enabled and len(weights_history) >= 2:
+                old_w = weights_history[-2][1]
+                new_w = weights_history[-1][1]
+                turnover = calculate_turnover(old_w, new_w)
+                cost = turnover * config.cost.cost_rate()
+                nav_arr[i] = nav_arr[i - 1] * (1 - cost) if i > 0 else 1.0
+            elif i > 0:
+                nav_arr[i] = nav_arr[i - 1]
+        else:
+            # 非调仓日: 累积日收益
+            if i > 0 and prev_weights:
+                daily_ret = 0.0
+                for code, w in prev_weights.items():
+                    if code in daily_returns.columns:
+                        ret = daily_returns.loc[date, code]
+                        if pd.notna(ret):
+                            daily_ret += w * ret
+                nav_arr[i] = nav_arr[i - 1] * (1 + daily_ret)
+            else:
+                nav_arr[i] = 1.0 if i == 0 else nav_arr[i - 1]
 
-    # 4. 计算指标
-    from ..rd_utils import compute_weekly_metrics
-    metrics = compute_weekly_metrics(nav_daily)
+    # 3. 构造日频 NAV Series
+    nav_daily = pd.Series(nav_arr, index=dates, name="nav")
+
+    # 4. 计算指标 (日频 NAV)
+    from ..fi_plus import performance_metrics
+    metrics = performance_metrics(nav_daily)
 
     return BacktestResult(
         nav_daily=nav_daily,
