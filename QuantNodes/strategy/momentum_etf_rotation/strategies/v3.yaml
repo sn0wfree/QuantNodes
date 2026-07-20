@@ -1,0 +1,26 @@
+# v3 — momentum + reversion + industry rotation
+strategy:
+  name: v3
+
+pool:
+  universe: etf_52
+
+rebalance:
+  freq: M
+  min_history: 144
+
+cost:
+  enabled: false
+
+risk:
+  vol_targeting:
+    enabled: false
+
+strategy_params:
+  momentum_enabled: true
+  reversion_enabled: true
+  industry_rotation_enabled: true
+  weight_method: equal
+  momentum_lookback: 144
+  momentum_top_n: 10
+  max_weight: 0.15

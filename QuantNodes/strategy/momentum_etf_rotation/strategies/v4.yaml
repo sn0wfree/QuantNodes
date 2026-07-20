@@ -1,0 +1,27 @@
+# v4 — style rotation + smart beta + factor timing
+strategy:
+  name: v4
+
+pool:
+  universe: etf_52
+
+rebalance:
+  freq: M
+  min_history: 252
+
+cost:
+  enabled: false
+
+risk:
+  vol_targeting:
+    enabled: false
+
+strategy_params:
+  mode: v4C_combo
+  style_enabled: true
+  smart_beta_enabled: true
+  factor_timing_enabled: false
+  max_weight: 0.20
+  style_weight: 0.5
+  smart_beta_weight: 0.5
+  warmup_days: 252

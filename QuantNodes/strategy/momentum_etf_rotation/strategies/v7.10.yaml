@@ -1,0 +1,31 @@
+# v7.10 — TV-PR factor timing (expanding_window_tvpr, OOS)
+strategy:
+  name: v7_10
+
+pool:
+  universe: etf_52
+
+rebalance:
+  freq: W
+  min_history: 52
+
+cost:
+  enabled: true
+  commission_bp: 5
+  slippage_bp: 5
+
+risk:
+  vol_targeting:
+    enabled: false
+  trend_filter:
+    enabled: false
+  stop_loss:
+    enabled: true
+    threshold: -0.10
+
+strategy_params:
+  lambda_tv: 0.15
+  lambda_l1: 0.05
+  top_n: 10
+  max_weight: 0.25
+  vol_floor: 0.01

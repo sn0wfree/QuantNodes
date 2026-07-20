@@ -1,0 +1,31 @@
+# v6 — v5 factor scoring + v5.1 inverse-vol + VT/TF
+strategy:
+  name: v6
+
+pool:
+  universe: etf_52
+
+rebalance:
+  freq: M
+  min_history: 252
+
+cost:
+  enabled: false
+
+risk:
+  vol_targeting:
+    enabled: true
+    target_vol: 0.15
+    lookback: 60
+    min_scale: 0.3
+    max_scale: 1.5
+  trend_filter:
+    enabled: false
+  stop_loss:
+    enabled: false
+
+strategy_params:
+  top_n: 5
+  max_weight: 0.25
+  vol_window: 60
+  vol_floor: 0.01

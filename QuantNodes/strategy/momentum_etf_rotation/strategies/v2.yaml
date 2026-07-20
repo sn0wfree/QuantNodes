@@ -1,0 +1,26 @@
+# v2 — momentum + stops + VT
+strategy:
+  name: v2
+
+pool:
+  universe: etf_52
+
+rebalance:
+  freq: M
+  min_history: 144
+
+cost:
+  enabled: false
+
+risk:
+  vol_targeting:
+    enabled: false
+  trend_filter:
+    enabled: false
+  stop_loss:
+    enabled: false
+
+strategy_params:
+  lookback: 144
+  top_n: 10
+  weight_method: inv_vol

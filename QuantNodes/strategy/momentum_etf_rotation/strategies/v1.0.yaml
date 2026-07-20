@@ -1,0 +1,39 @@
+# v1.0 locked — hybrid momentum + inverse-vol + stops + VT
+strategy:
+  name: v1_0
+
+pool:
+  universe: etf_52
+
+rebalance:
+  freq: M
+  min_history: 90
+
+cost:
+  enabled: true
+  commission_bp: 5
+  slippage_bp: 10
+  impact_factor: 0.1
+
+risk:
+  vol_targeting:
+    enabled: true
+    target_vol: 0.15
+    lookback: 60
+    min_scale: 0.3
+    max_scale: 1.5
+  trend_filter:
+    enabled: false
+  stop_loss:
+    enabled: false
+
+strategy_params:
+  lookback: 90
+  top_n: 10
+  momentum_type: hybrid
+  momentum_fused_weight: 0.5
+  weight_method: inv_vol
+  corr_threshold: 0.9
+  corr_window: 60
+  ma_window: 55
+  rank_cutoff: 0.30
