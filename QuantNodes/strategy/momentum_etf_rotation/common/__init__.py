@@ -1,7 +1,7 @@
 # coding=utf-8
 """共享代码: v1-v7 共用的基础设施.
 
-包含: ETF 池, 数据加载, 评估指标, 贡献分析, Brinson, 验证, 回测引擎.
+包含: ETF 池, 数据加载, 评估指标, 回测引擎.
 不包含: 版本特定的策略逻辑 (在 v1/-v7/ 中).
 """
 from __future__ import annotations
@@ -14,6 +14,7 @@ from .backtest_config import (
     VolTargetingConfig,
 )
 from .backtest_engine import BacktestCallbacks, BacktestResult, run_backtest
+from .strategy_engine import BaseStrategy, StrategyEngine, BacktestResult as StrategyResult
 from .backtest_utils import (
     apply_max_weight,
     calculate_turnover,
@@ -21,11 +22,6 @@ from .backtest_utils import (
     generate_rebalance_dates,
     normalize_weights,
 )
-# 适配器 (延迟导入, 避免循环依赖)
-# from .adapter_v3 import V3Callbacks
-# from .adapter_v4 import V4Callbacks
-# from .adapter_v6 import V6Callbacks
-# from .adapter_v7 import V7Callbacks
 from .brinson import CATEGORIES, brinson_attribution
 from .contribution import (
     category_contribution,
@@ -47,7 +43,6 @@ from .covariance import (
     sample_covariance,
 )
 from .data import load_bond_etf_nav, load_etf_nav_panel
-
 from .extended_metrics import extended_metrics, format_metrics_table
 from .regime_detector import RegimeDetector
 from .risk_parity import (
@@ -74,69 +69,32 @@ from .validation import (
     validate_starting_points,
 )
 
-
 __all__ = [
-    # Backtest engine
-    "BacktestCallbacks",
-    "BacktestConfig",
-    "BacktestResult",
-    "CostConfig",
-    "StopLossConfig",
-    "TrendFilterConfig",
-    "VolTargetingConfig",
-    "apply_max_weight",
-    "calculate_turnover",
-    "calculate_turnover_cost",
-    "generate_rebalance_dates",
-    "normalize_weights",
-    "run_backtest",
-    # Adapters (import from submodule directly)
-    # "V3Callbacks",  # from .adapter_v3
-    # "V4Callbacks",  # from .adapter_v4
-    # "V6Callbacks",  # from .adapter_v6
-    # "V7Callbacks",  # from .adapter_v7
+    # Strategy engine (新)
+    "BaseStrategy", "StrategyEngine", "StrategyResult",
+    # Backtest engine (旧, 兼容)
+    "BacktestCallbacks", "BacktestConfig", "BacktestResult", "run_backtest",
+    # Config
+    "CostConfig", "StopLossConfig", "TrendFilterConfig", "VolTargetingConfig",
+    # Utils
+    "apply_max_weight", "calculate_turnover", "calculate_turnover_cost",
+    "generate_rebalance_dates", "normalize_weights",
     # Universe
-    "Category",
-    "DEFAULT_POOL",
-    "ETFCategorizer",
-    "ETFMeta",
-    "ETFPool",
-    # Regime
+    "Category", "DEFAULT_POOL", "ETFCategorizer", "ETFMeta", "ETFPool",
+    # Others
     "RegimeDetector",
-    # Validation
-    "ValidationConfig",
-    "ValidationReport",
-    "ValidationResult",
-    "ablation",
-    # Brinson
-    "brinson_attribution",
-    "CATEGORIES",
-    "category_contribution",
-    # Covariance
-    "condition_number",
-    "CovMethod",
-    "diagonal_covariance",
-    "estimate_covariance",
-    # Contribution
-    "etf_contribution",
-    "extended_metrics",
-    "ewma_covariance",
-    "format_metrics_table",
-    "is_positive_definite",
-    "ledoit_wolf_shrinkage",
-    "load_bond_etf_nav",
-    "load_etf_nav_panel",
-    "marginal_contribution",
-    "period_contribution",
-    "reconstruct_daily_weights",
-    "risk_contribution",
-    "risk_parity_objective",
-    "rp_risk_contribution",
-    "run_full_validation",
-    "sample_covariance",
-    "solve_max_diversification",
-    "solve_risk_parity",
-    "validate_parameter_perturbation",
-    "validate_rebalance_offsets",
+    "ValidationConfig", "ValidationReport", "ValidationResult",
+    "ablation", "brinson_attribution", "CATEGORIES",
+    "category_contribution", "condition_number", "CovMethod",
+    "diagonal_covariance", "estimate_covariance", "etf_contribution",
+    "extended_metrics", "ewma_covariance", "format_metrics_table",
+    "is_positive_definite", "ledoit_wolf_shrinkage",
+    "load_bond_etf_nav", "load_etf_nav_panel",
+    "marginal_contribution", "period_contribution",
+    "reconstruct_daily_weights", "risk_contribution",
+    "risk_parity_objective", "rp_risk_contribution",
+    "run_full_validation", "sample_covariance",
+    "solve_max_diversification", "solve_risk_parity",
+    "validate_parameter_perturbation", "validate_rebalance_offsets",
     "validate_starting_points",
 ]
