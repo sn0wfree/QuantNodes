@@ -124,15 +124,20 @@ def main():
     print(f"  年化={m_orig['ann_return']*100:+.2f}%, Sharpe={m_orig['sharpe']:.3f}, DD={m_orig['max_dd']*100:.2f}%, Calmar={m_orig['calmar']:.3f} ({time.time()-t0:.1f}s)")
 
     # 4b. 修复后数据
-    print("\n  --- 修复后数据 (Y[t] = t→t+1) ---")
+    #    TV-PR 用 Y_fixed 训练 (学习 X[t] → Y[t] = t→t+1 收益 的预测关系)
+    #    construct_portfolio 用原始 Y (正确时间对齐: 赚 Y[t+1] = t→t+1 收益)
+    print("\n  --- 修复后数据 (beta 用 Y_fixed 训练, 组合用原始 Y) ---")
     t0 = time.time()
     beta_fixed = tvpr_estimator(
         Y_fixed, X_fixed,
         lambda_tv=cfg.lambda_tv, lambda_l1=cfg.lambda_l1,
         method='admm', min_history=52, rho=1.0, max_iter=200, tol=1e-5,
     )
-    # construct_portfolio 内部赚 Y[t], 修复后 Y[t] = t→t+1 收益, 正确!
-    nav_fixed, _ = construct_portfolio(Y_fixed, X_fixed, beta_fixed, cfg, return_weights=True)
+    # beta_fixed 有 429 步, Y_orig 有 430 步
+    # construct_portfolio 用 beta[t-1], 所以补齐最后一个 beta
+    beta_fixed_full = np.vstack([beta_fixed, beta_fixed[-1:]])
+    beta_fixed_df = pd.DataFrame(beta_fixed_full, index=Y_orig.index)
+    nav_fixed, _ = construct_portfolio(Y_orig, X_panel, beta_fixed_df, cfg, return_weights=True)
     m_fixed = compute_metrics(nav_fixed, "修复后 (正确)")
     print(f"  年化={m_fixed['ann_return']*100:+.2f}%, Sharpe={m_fixed['sharpe']:.3f}, DD={m_fixed['max_dd']*100:.2f}%, Calmar={m_fixed['calmar']:.3f} ({time.time()-t0:.1f}s)")
 
