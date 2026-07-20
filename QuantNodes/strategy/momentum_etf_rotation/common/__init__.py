@@ -18,10 +18,14 @@ from .backtest_utils import (
     apply_max_weight,
     calculate_turnover,
     calculate_turnover_cost,
-    compute_daily_nav_from_weights,
     generate_rebalance_dates,
     normalize_weights,
 )
+# 适配器 (延迟导入, 避免循环依赖)
+# from .adapter_v3 import V3Callbacks
+# from .adapter_v4 import V4Callbacks
+# from .adapter_v6 import V6Callbacks
+# from .adapter_v7 import V7Callbacks
 from .brinson import CATEGORIES, brinson_attribution
 from .contribution import (
     category_contribution,
@@ -83,10 +87,14 @@ __all__ = [
     "apply_max_weight",
     "calculate_turnover",
     "calculate_turnover_cost",
-    "compute_daily_nav_from_weights",
     "generate_rebalance_dates",
     "normalize_weights",
     "run_backtest",
+    # Adapters (import from submodule directly)
+    # "V3Callbacks",  # from .adapter_v3
+    # "V4Callbacks",  # from .adapter_v4
+    # "V6Callbacks",  # from .adapter_v6
+    # "V7Callbacks",  # from .adapter_v7
     # Universe
     "Category",
     "DEFAULT_POOL",
