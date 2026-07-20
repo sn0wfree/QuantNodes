@@ -34,13 +34,13 @@ class V3Strategy(BaseStrategy):
         self.ind = IndustryRotationSubStrategy(cfg.industry_rotation, pool) if cfg.industry_rotation_enabled else None
 
     def compute_weights(self, date, pp, nav):
-        from ..v3.sub_weighting_v3 import combine_sub_results, sub_weights_from_results_safe
+        from ..v3.sub_weighting_v3 import combine_sub_results, sub_weights_from_results
         subs = []
         if self.mom: subs.append(self.mom.run_step(pp, date))
         if self.rev: subs.append(self.rev.run_step(pp, date))
         if self.ind: subs.append(self.ind.run_step(pp, date))
         if not subs: return {}
-        sw = sub_weights_from_results_safe(subs, self.cfg.weight_method)
+        sw = sub_weights_from_results(subs, self.cfg.weight_method)
         return combine_sub_results(subs, sw, pool_codes=set(self.pool.codes))
 
     def on_risk_check(self, weights, nav, date):

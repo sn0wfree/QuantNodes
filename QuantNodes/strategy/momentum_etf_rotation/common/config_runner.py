@@ -91,7 +91,9 @@ def create_strategy(cfg: dict):
         from ..v6.industry_rotation_v6 import V6Config
         v6_cfg = V6Config(**{k: v for k, v in params.items()
                              if hasattr(V6Config, k)})
-        return cls(v6_cfg)
+        # v6 需要 OHLCV 数据
+        ohlcv = _load_ohlcv()
+        return cls(v6_cfg, panel_ohlcv=ohlcv)
     elif name in ("v7_10", "v7"):
         from ..v7.macro_substrategy_v7_6 import V7_6Config
         v7_cfg = V7_6Config(**{k: v for k, v in params.items()
@@ -192,6 +194,16 @@ def create_engine(cfg: dict) -> StrategyEngine:
 # ============================================================
 # 5. 数据加载
 # ============================================================
+def _load_ohlcv() -> pd.DataFrame:
+    """加载 OHLCV 数据 (v6 因子计算需要)."""
+    from pathlib import Path
+    data_dir = Path.home() / "Public" / "QuantNodes" / "data" / "real"
+    ohlcv_path = data_dir / "etf_ohlcv_2018-01-01_2026-06-30_adjusted.parquet"
+    if ohlcv_path.exists():
+        return pd.read_parquet(ohlcv_path)
+    return pd.DataFrame()
+
+
 def load_data(cfg: dict) -> pd.DataFrame:
     """加载 ETF 价格面板."""
     pool_cfg = cfg.get("pool", {})

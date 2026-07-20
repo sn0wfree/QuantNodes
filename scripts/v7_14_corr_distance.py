@@ -35,6 +35,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from QuantNodes.strategy.momentum_etf_rotation.v7.data_loader_v7_6 import (
     load_daily_etf_returns,
     load_v7_10_data,
+    cross_sectional_standardize,
 )
 from QuantNodes.strategy.momentum_etf_rotation.v7.correlation_distance_factors import (
     compute_all_corr_factors,
@@ -154,18 +155,9 @@ def main() -> int:
 
     print(f"  周频因子面板: {X_corr.shape}")
 
-    # 2c. 标准化新因子 (截面 Z-score, 与 v7.10 一致)
+    # 2c. 标准化新因子 (复用 data_loader_v7_6 的 cross_sectional_standardize)
     print("  标准化新因子 (截面 Z-score)...")
-    for t in range(X_corr.shape[0]):
-        for k in range(X_corr.shape[2]):
-            vals = X_corr[t, :, k]
-            valid = ~np.isnan(vals)
-            if valid.sum() > 1:
-                mean = np.nanmean(vals[valid])
-                std = np.nanstd(vals[valid])
-                if std > 1e-10:
-                    X_corr[t, :, k] = (vals - mean) / std
-
+    X_corr = cross_sectional_standardize(X_corr, method="zscore")
     print(f"  标准化后: mean={np.nanmean(X_corr):.4f}, std={np.nanstd(X_corr):.4f}")
 
     # 3. 合并为 v7.14

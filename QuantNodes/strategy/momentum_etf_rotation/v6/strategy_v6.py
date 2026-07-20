@@ -14,8 +14,13 @@ class V6Strategy(BaseStrategy):
         self._fp = None
 
     def compute_weights(self, date, pp, nav):
-        if self._fp is not None:
+        # 首次调用时计算因子面板并注入
+        if self._fp is None and self.ohlcv is not None:
+            from ..v5.industry_factors import compute_all_factors_panel
+            self._fp = compute_all_factors_panel(self.ohlcv, self.cfg.factor_cfg)
             self.sub._factor_panel = self._fp
+            self.sub._last_init_date = pd.Timestamp("2099-01-01")  # 永不重算
+
         chosen = self.sub.select(pp, date)
         if not chosen: return {}
         return self.sub.weight(pp, chosen, date)
