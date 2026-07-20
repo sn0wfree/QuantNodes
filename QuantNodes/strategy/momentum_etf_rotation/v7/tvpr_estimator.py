@@ -128,8 +128,9 @@ def tvpr_admm(
     for t in range(T):
         # 过滤 NaN
         valid_mask = ~np.isnan(Y[t]) & ~np.any(np.isnan(X[t]), axis=1)
-        if np.sum(valid_mask) < K:
-            # 样本不足，跳过
+        if np.sum(valid_mask) < 10:
+            # 样本不足 (< 10 个有效资产), 跳过
+            # 注意: K > N 时 (如 v7.13 K=46 > N=43), L1 正则化可以处理欠定情况
             continue
         X_valid = X[t][valid_mask]
         Y_valid = Y[t][valid_mask]
