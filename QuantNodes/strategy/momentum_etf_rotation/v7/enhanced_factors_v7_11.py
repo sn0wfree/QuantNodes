@@ -139,6 +139,82 @@ def compute_all_v7_11_factors(
     return factors
 
 
+# ============================================================
+# DCC 特征 (来自 comovement ARWS, 6 维时序因子)
+# ============================================================
+def compute_dcc_features(
+    returns: pd.DataFrame,
+    window: int = 60,
+    min_periods: int = 30,
+) -> pd.DataFrame:
+    """计算 DCC (Dynamic Conditional Correlation) 6 维时序特征.
+
+    来源: ~/Public/comovement/resonance_warning/data/features.py
+    每个时间点计算 6 个统计量 (所有资产相同):
+      dcc_mean: 平均成对相关性
+      dcc_std: 相关性离散度
+      dcc_max: 最大成对相关性
+      dcc_min: 最小成对相关性
+      dcc_zscore_mean: 相关性异常程度 (vs 基线 0.3)
+      dcc_skewness: 相关性分布偏度
+
+    Parameters:
+        returns: (T, N) 日频收益 DataFrame
+        window: 滚动窗口 (默认 60 天)
+        min_periods: 最小观测数
+
+    Returns:
+        DataFrame (T-window+1, 6), index=DatetimeIndex
+    """
+    from scipy import stats as sp_stats
+
+    T, N = returns.shape
+    n_dates = T - window + 1
+    dcc_features = []
+
+    for i in range(n_dates):
+        window_data = returns.iloc[i:i + window]
+        if len(window_data) < min_periods:
+            dcc_features.append([0.0] * 6)
+            continue
+
+        try:
+            corr = window_data.corr().values
+            np.fill_diagonal(corr, 0)
+            upper = corr[np.triu_indices(N, k=1)]
+
+            if len(upper) == 0:
+                dcc_features.append([0.0] * 6)
+                continue
+
+            typical_corr = 0.3
+            z_scores = (upper - typical_corr) / (np.std(upper) + 1e-10)
+
+            dcc_features.append([
+                float(np.mean(upper)),              # dcc_mean
+                float(np.std(upper)),               # dcc_std
+                float(np.max(upper)),               # dcc_max
+                float(np.min(upper)),               # dcc_min
+                float(np.mean(np.abs(z_scores))),   # dcc_zscore_mean
+                float(sp_stats.skew(upper)) if len(upper) > 2 else 0.0,  # dcc_skewness
+            ])
+        except Exception:
+            dcc_features.append([0.0] * 6)
+
+    dates = returns.index[window - 1:]
+    return pd.DataFrame(
+        dcc_features, index=dates,
+        columns=["dcc_mean", "dcc_std", "dcc_max", "dcc_min",
+                 "dcc_zscore_mean", "dcc_skewness"],
+    )
+
+
+def get_dcc_factor_names() -> list[str]:
+    """返回 6 个 DCC 因子名."""
+    return ["dcc_mean", "dcc_std", "dcc_max", "dcc_min",
+            "dcc_zscore_mean", "dcc_skewness"]
+
+
 def resample_factors_to_weekly(
     daily_factors: dict[str, pd.DataFrame],
 ) -> dict[str, pd.DataFrame]:
@@ -150,7 +226,7 @@ def resample_factors_to_weekly(
 
 
 def get_factor_names() -> list[str]:
-    """返回 10 个新因子名."""
+    """返回 10 个新因子名 (v7.11)."""
     return [
         "skew_60d", "kurt_60d", "max_dd_60d",
         "macd_hist", "bollinger_pos", "atr_14d",
