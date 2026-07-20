@@ -179,9 +179,9 @@ class BacktestResult:
 # ============================================================
 def run_backtest(
     price_panel: pd.DataFrame,
-    daily_returns: pd.DataFrame,
-    config: BacktestConfig,
-    callbacks: BacktestCallbacks,
+    daily_returns: pd.DataFrame | None = None,
+    config: BacktestConfig | None = None,
+    callbacks: BacktestCallbacks | None = None,
     context: dict | None = None,
 ) -> BacktestResult:
     """统一回测引擎.
@@ -192,8 +192,9 @@ def run_backtest(
     3. 计算指标
 
     Parameters:
-        price_panel: (T_daily, N) 价格面板 (用于信号计算)
-        daily_returns: (T_daily, N) 日频收益 (用于 NAV 计算)
+        price_panel: (T_daily, N) 价格面板 (用于信号计算和日收益计算)
+        daily_returns: (T_daily, N) 日频收益. None 则从 price_panel 自动计算
+            (推荐 None, 避免用户 pct_change().fillna(0) 导致 NaN→0 错误)
         config: 回测配置
         callbacks: 回调 (版本特定逻辑)
         context: 预计算数据 (如因子面板, HMM 状态等)
@@ -202,7 +203,13 @@ def run_backtest(
         BacktestResult (含日频 NAV)
     """
     context = context or {}
+    config = config or BacktestConfig()
+    callbacks = callbacks or BacktestCallbacks()
     dates = price_panel.index
+
+    # 自动计算日收益 (不做 fillna, 保持 NaN 语义与原始代码一致)
+    if daily_returns is None:
+        daily_returns = price_panel.pct_change(fill_method=None)
 
     # 1. 生成调仓日
     rebal_dates_list = generate_rebalance_dates(
