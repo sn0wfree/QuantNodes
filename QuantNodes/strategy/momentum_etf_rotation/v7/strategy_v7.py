@@ -36,7 +36,11 @@ class V7Strategy(BaseStrategy):
         if not scores: return {}
         top = sorted(scores, key=scores.get, reverse=True)[:self.cfg.top_n]
         lb = self.Y.iloc[max(0, wi - 26):wi]
-        vols = lb[top].std().clip(lower=self.cfg.vol_floor)
+        vols = lb[top].std()
+        # 过滤 NaN vol (数据不足的资产)
+        valid = vols.dropna()
+        if valid.empty: return {}
+        vols = valid.clip(lower=self.cfg.vol_floor)
         w = (1.0 / vols)
         w = (w / w.sum()).clip(upper=self.cfg.max_weight)
         return (w / w.sum()).to_dict()
