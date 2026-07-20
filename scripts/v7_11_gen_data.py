@@ -88,19 +88,27 @@ def main():
     print(f"  新因子面板: {X_new.shape}")
 
     # 4. 计算 IC
-    print("\n[4/4] 计算 IC (corr(X[t], Y[t+1]))...")
+    print("\n[4/4] 计算 IC...")
     from scipy.stats import spearmanr
+
+    # 时序因子列表 (所有资产值相同, 截面 IC 无意义)
+    TIME_SERIES_FACTORS = {"return_dispersion"}
 
     # Y_shifted[t] = Y[t+1] (t→t+1 收益)
     Y_shifted = Y.shift(-1).iloc[:-1].values
     X_new_shifted = X_new[:-1]
+    market_ret = Y.shift(-1).iloc[:-1].mean(axis=1).values  # 市场平均收益
 
-    print(f"\n  {'因子':<20} {'IC_mean':<10} {'IC_std':<10} {'ICIR':<10} {'pct_pos':<10}")
+    print(f"\n  截面因子 (每个资产不同):")
+    print(f"  {'因子':<20} {'IC_mean':<10} {'IC_std':<10} {'ICIR':<10} {'pct_pos':<10}")
     print(f"  {'-'*60}")
 
     for k, fname in enumerate(new_factor_names):
+        if fname in TIME_SERIES_FACTORS:
+            continue  # 跳过时序因子, 后面单独处理
+
         ic_list = []
-        for t in range(52, T - 1):  # 跳过前52周 (warmup)
+        for t in range(52, T - 1):
             x_t = X_new_shifted[t, :, k]
             y_t = Y_shifted[t]
             valid = ~np.isnan(x_t) & ~np.isnan(y_t)
@@ -114,6 +122,22 @@ def main():
             icir = ic_mean / ic_std if ic_std > 0 else 0
             pct_pos = sum(1 for x in ic_list if x > 0) / len(ic_list)
             print(f"  {fname:<20} {ic_mean:<10.4f} {ic_std:<10.4f} {icir:<10.4f} {pct_pos:<10.2%}")
+
+    # 时序因子 IC: factor[t] vs market_return[t+1] (时间序列相关)
+    print(f"\n  时序因子 (所有资产相同, 用时间序列 IC):")
+    print(f"  {'因子':<20} {'IC (Pearson)':<14} {'p-value':<10}")
+    print(f"  {'-'*44}")
+    for k, fname in enumerate(new_factor_names):
+        if fname not in TIME_SERIES_FACTORS:
+            continue
+        # 取第一个资产的值 (时序因子所有资产相同)
+        factor_ts = X_new_shifted[52:T-1, 0, k]
+        mkt_ts = market_ret[52:T-1]
+        valid = ~np.isnan(factor_ts) & ~np.isnan(mkt_ts)
+        if valid.sum() > 10:
+            from scipy.stats import pearsonr
+            corr, pval = pearsonr(factor_ts[valid], mkt_ts[valid])
+            print(f"  {fname:<20} {corr:<14.4f} {pval:<10.4f}")
         else:
             print(f"  {fname:<20} {'N/A':<10}")
 
