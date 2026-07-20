@@ -1,11 +1,27 @@
 # coding=utf-8
-"""共享代码: v1 和 v2 共用的基础设施.
+"""共享代码: v1-v7 共用的基础设施.
 
-包含: ETF 池, 数据加载, 评估指标, 贡献分析, Brinson, 验证.
-不包含: 版本特定的策略逻辑 (在 v1/ 和 v2/ 中).
+包含: ETF 池, 数据加载, 评估指标, 贡献分析, Brinson, 验证, 回测引擎.
+不包含: 版本特定的策略逻辑 (在 v1/-v7/ 中).
 """
 from __future__ import annotations
 
+from .backtest_config import (
+    BacktestConfig,
+    CostConfig,
+    StopLossConfig,
+    TrendFilterConfig,
+    VolTargetingConfig,
+)
+from .backtest_engine import BacktestCallbacks, BacktestResult, run_backtest
+from .backtest_utils import (
+    apply_max_weight,
+    calculate_turnover,
+    calculate_turnover_cost,
+    compute_daily_nav_from_weights,
+    generate_rebalance_dates,
+    normalize_weights,
+)
 from .brinson import CATEGORIES, brinson_attribution
 from .contribution import (
     category_contribution,
@@ -56,23 +72,44 @@ from .validation import (
 
 
 __all__ = [
+    # Backtest engine
+    "BacktestCallbacks",
+    "BacktestConfig",
+    "BacktestResult",
+    "CostConfig",
+    "StopLossConfig",
+    "TrendFilterConfig",
+    "VolTargetingConfig",
+    "apply_max_weight",
+    "calculate_turnover",
+    "calculate_turnover_cost",
+    "compute_daily_nav_from_weights",
+    "generate_rebalance_dates",
+    "normalize_weights",
+    "run_backtest",
+    # Universe
     "Category",
     "DEFAULT_POOL",
     "ETFCategorizer",
     "ETFMeta",
     "ETFPool",
+    # Regime
     "RegimeDetector",
+    # Validation
     "ValidationConfig",
     "ValidationReport",
     "ValidationResult",
     "ablation",
+    # Brinson
     "brinson_attribution",
     "CATEGORIES",
     "category_contribution",
+    # Covariance
     "condition_number",
     "CovMethod",
     "diagonal_covariance",
     "estimate_covariance",
+    # Contribution
     "etf_contribution",
     "extended_metrics",
     "ewma_covariance",
@@ -91,7 +128,6 @@ __all__ = [
     "sample_covariance",
     "solve_max_diversification",
     "solve_risk_parity",
-
     "validate_parameter_perturbation",
     "validate_rebalance_offsets",
     "validate_starting_points",
