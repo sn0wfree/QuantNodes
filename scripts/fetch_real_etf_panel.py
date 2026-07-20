@@ -28,7 +28,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from QuantNodes.strategy.momentum_etf_rotation import DEFAULT_POOL
-from QuantNodes.strategy.momentum_etf_rotation.data_tencent import (
+from QuantNodes.strategy.momentum_etf_rotation.common.data_tencent import (
     fetch_one_etf_tencent,
     write_fetch_log,
 )
