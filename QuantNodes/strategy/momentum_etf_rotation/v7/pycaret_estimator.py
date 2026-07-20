@@ -1,8 +1,11 @@
 # coding=utf-8
-"""PyCaret 多模型估计器.
+"""PyCaret 多模型估计器 [ARCHIVED: v7.7 ML 失败, R2 ≈ 0].
 
 Phase 1: PyCaret compare_models 一次性筛选 top-K 模型
 Phase 2: sklearn 原生 API 滚动训练（后续实现）
+
+状态: 2026-07-18 确认 v7.7 ML 路线失败 (修复 look-ahead 后所有模型 R2 ≈ 0).
+保留作为研究记录, 不再维护.
 """
 from __future__ import annotations
 

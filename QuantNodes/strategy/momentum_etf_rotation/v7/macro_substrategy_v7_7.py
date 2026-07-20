@@ -1,5 +1,5 @@
 # coding=utf-8
-"""v7.7 宏观子策略: PyCaret 多模型因子择时.
+"""v7.7 宏观子策略: PyCaret 多模型因子择时 [ARCHIVED: v7.7 ML 失败, R2 ≈ 0].
 
 替代 v7.6 的 TV-PR 线性模型，用 PyCaret 对比多种 ML 模型。
 复用 v7.6 的 construct_portfolio + calculate_daily_nav 逻辑。

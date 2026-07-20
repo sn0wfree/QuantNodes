@@ -15,7 +15,6 @@ v7.10 = v7.9 (17 macro + 19 PV) + 混合标准化 + 两阶段 CV
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence  # noqa: F401 (re-export)
 
 import numpy as np
 import pandas as pd
@@ -35,7 +34,6 @@ from .data_loader import (
     COMMODITY_ETF_COLS,
     EXPANDED_BOND_INDICES,
 )
-from ..v5.industry_factors import FactorEngineConfig  # noqa: F401 (re-export)
 
 
 # ============================================================
