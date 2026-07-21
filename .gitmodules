@@ -1,0 +1,3 @@
+[submodule "research/strategy-research"]
+	path = research/strategy-research
+	url = https://github.com/sn0wfree/quantnodes-strategy-research.git
