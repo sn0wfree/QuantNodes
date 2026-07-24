@@ -63,7 +63,7 @@ class TestEndToEnd:
     def test_load_real_indices(self) -> None:
         factors = load_factor_returns()
         rets = load_index_panel()
-        assert factors.shape[1] == 9
+        assert factors.shape[1] == 8  # 8 macro factors (v7.6 removed 期限利差因子_加权)
         assert rets.shape[1] == 13
         assert len(rets) > 1000
 

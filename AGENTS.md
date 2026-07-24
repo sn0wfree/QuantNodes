@@ -1,70 +1,62 @@
-## graphify
+## 核心原则
+### 0. Human Edit Only
+本文件只允许人类进行修改编辑
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+### 1. Think Before Coding（编码前思考）
+不假设。多解就列出。困惑就停下问。资深工程师会嫌复杂就重写。
+**When in doubt, ask。** 停下来，说出困惑，问清楚再动手。
 
-Only `GRAPH_REPORT.md` and `.graphify_root` are tracked in VCS. The `graph.json` (~21MB) and `manifest.json` (~144KB) are gitignored and **regenerated locally** by `graphify update .` (AST-only, no API cost). After fresh clone, run `graphify update .` once before reading the graph.
+### 2. Simplicity First（简洁优先）
+200 行能 50 行就重写。无推测功能、无单次抽象、无用不到的"灵活性"。
 
-Rules:
-- ALWAYS read graphify-out/GRAPH_REPORT.md before reading any source files, running grep/glob searches, or answering codebase questions. The graph is your primary map of the codebase.
-- IF graphify-out/wiki/index.md EXISTS, navigate it instead of reading raw files
-- For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+### 3. Surgical Changes（精准修改）
+只动该动的。匹配现有风格。每一行 diff 可追溯到用户请求。
+顺手重构 / 改格式 / 删预存死代码 = 禁止。
+发现无关死代码 → **提，不删**。发现无关未跟踪文件 → **不动，除非用户请求**。
 
-## nanobot 上游依赖
+### 4. Goal-Driven Execution（目标驱动）
+"修 bug" → "写复现测试，让它通过"。多步任务先列 [步骤] → [verify]。
 
-> v3.0.0+ Agent 核心直接消费 [HKUDS/nanobot](https://github.com/HKUDS/nanobot) 上游（PyPI 包名 `nanobot-ai`）。
+### 5. Context First（上下文优先）
+动手前 Read 完整实现、grep 同模式用法、graphify 查现成测试。
+不假设 helper 是空的。
 
-依赖声明（**可选依赖，从 v3.0.0 Stage 5.3 起**）：`nanobot-ai>=0.2.1,<0.3.0`（alpha 期锁次版本号，避免 API 破坏）。
+### 6. Verify-Then-Proceed（改完即验）
+每 edit 后立即 `ruff check <file>`。改完一处就跑受影响的 `test_<name>.py`。
+不攒到最后才发现 fixture 错。
 
-```bash
-# 三档安装
-pip install quantnodes            # 纯量化库
-pip install 'quantnodes[agent]'   # + nanobot agent / WebUI / MCP
-pip install 'quantnodes[all]'     # 一键装齐 agent + mcp
-```
-本地开发期从 `~/Public/nanobot` 装：
+### 7. Loop Until Done（循环到目标）
+目标明确就循环到通过（ruff 干净 + pytest 全过 + 用户状态达成）。
+不"差不多"就停。
 
-```bash
-pip install -e ~/Public/nanobot
-```
+### 8. Memory Hygiene（记忆清洁）
+中文 commit `<type>(<scope>): 说明`。archive 不删（保留 rename）。
+stash 遗留改动 commit 前主动提醒。
 
-> **注意**：若 GitHub 不可达，可直接从 PyPI 安装：`python3.11 -m pip install nanobot-ai==0.2.1`
+### 9. Safety First（破坏性操作红线）
 
-关键路径（v3.0.0）：
-- `QuantNodes/agent/__init__.py` — `NANOBOT_AVAILABLE` 标志 + PEP 562 proxy + `NanobotNotInstalled` 异常
-- `QuantNodes/agent/nanobot_bridge.py` — `Agent` 门面（包装 `Nanobot.from_config`）
-- `QuantNodes/agent/config_mapper.py` — `.env` → `.agent/nanobot_config.json`（含 channels / mcpServers）
-- `QuantNodes/agent/core/quant_dream.py` — 量化专属 Dream 钩子（保留自 v2.x）
-- `QuantNodes/agent/cron_jobs.py` — 3 个 quant 系统任务（daily-recap / weekly-review / monthly-strategy-pool）
-- `QuantNodes/agent/tools/*.py` — 14 个量化工具（父类 `nanobot.agent.tools.base.Tool`）
-- `QuantNodes/agent/skills_quant/*.md` — 6 个 SKILL.md（factor / strategy / backtest / risk / dream / config）
-- `api/services/nanobot_runtime.py` — 单进程 lifespan 包装器（FastAPI + nanobot 共存）
-- `api/routers/agent.py` — `/api/agent/{status,health,restart,chat/send,sessions,cron,...}`
-- `frontend/src/views/AgentChat.vue` — iframe + 状态机
-- `frontend/src/composables/useNanobotWebSocket.ts` — wire protocol client
-- `QuantNodes/mcp_server/server.py` — FastMCP 9 tools（stdio + HTTP）
-- `.agent/` — workspace 根（HKUDS nanobot 约定，从 v2.x 的 `.quant_agent/` 迁移）
-  - 迁移脚本：`scripts/migrate_workspace.py`
-  - 在 `.gitignore` 中（含 API key）
-- `.agent/nanobot_config.json` — 主配置（由 `agent/config_mapper.py` 从 `.env` 生成）
-- `.agent/SOUL.md` + `.agent/agents/*.md` — 多 Agent 团队（main + factor-analyst / backtest-engineer / risk-manager）
+**`docker` / `pkill` / `rm -rf` / `git push --force` 永远指定目标，禁止模糊匹配。**
 
-升级指南见 [`docs/14-上游nanobot升级指南.md`](docs/14-上游nanobot升级指南.md)。
-可选依赖 + 单进程集成指南见 [`docs/15-可选依赖安装指南.md`](docs/15-可选依赖安装指南.md)。
+| 禁止 | 必须替代为 | 原因 |
+|------|-----------|------|
+| `docker rm -f $(docker ps -aq)` | `docker rm -f <container_id>` | `ps -aq` 包含**所有**容器（含其他服务），`-f` 强删 = 误杀 |
+| `pkill -f <pattern>` | `kill <pid>` 或 `pkill -x <exact_name>` | `-f` 匹配整条命令行，可能误杀同名进程 |
+| `rm -rf $path`（变量未引号） | 先 `ls "$path"` 确认范围，加 `set -e` 早停 | 变量未引号 = 灾难 |
+| `git push --force` | 永远先 `git status` + `git log --oneline` | 误覆盖他人提交 |
 
-## 测试（Python 3.11 + pandas 3.0）
+**debug 卡住进程的顺序**：
+1. `docker logs <id>` / `docker exec <id> ps aux` 看具体卡哪
+2. `docker stop <id>`（指定单个，给 10s 优雅停）
+3. 实在不行才 `docker kill <id>` + `docker rm <id>`（指定单个）
+4. **绝不**用 `$(docker ps -aq)` 或 `pkill -f` 一锅端
 
-全量测试基线（v3.0.0 Stage 6 起）：
+## Before Acting Checklist（操作前清单）
+**每次修改文件/删除/提交前，必须过这 7 步：**
 
-```bash
-pip install ta-lib tables plotly   # 全量测试所需系统级/可选依赖
-python3.11 -m pytest tests/        # 非 agent: 5163 passed / 21 skipped / 0 failed
-python3.11 -m pytest tests/agent   # 574 passed / 13 skipped
-```
-
-规则：
-- **不要依赖测试执行顺序**。改动了全局状态的测试必须还原：用 `monkeypatch.setenv` 而非裸 `os.environ[...] = ...`；对全局注册表（如 `_COMPOSITE_REGISTRY`）用快照/还原 autouse fixture。
-- 可选依赖缺失时代码应**优雅降级**（plotly→`None` + 安装提示、sklearn→`IdentityRetriever`、nanobot→`NanobotNotInstalled`），对应测试用 `pytest.importorskip` 跳过而非删除。
-- pandas 3.0：`DataFrame.applymap` 已移除（用 `.map`）；`df.values` 单 dtype 下只读（用 `.where()`）；字符串列推断为 `StringDtype` 而非 `object`。
-
-详见 CHANGELOG [3.0.0] *Stage 6 — 测试稳定化与依赖兼容*。
+0. （**docker/systemd/全局进程**）先 `docker ps` / `ps aux` 列出**当前所有**在跑的容器/进程，操作前报告「会动哪些」给用户
+0. （**破坏性批量命令**）`rm -f <list>` 类必须先 dry-run（`docker ps -q --filter name=...` 列出）再执行
+1. 这个操作需要做吗？（YAGNI — 不需要就别做）
+2. 这是用户明确请求的吗？（未请求 → 不动）
+3. 会影响其他文件吗？（grep 改动范围）
+4. 改完后 ruff / test 会过吗？（验证）
+5. 用户确认了吗？（commit/删除/大改动必须确认）

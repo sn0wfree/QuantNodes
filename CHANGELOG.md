@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **v7.10 TV-PR 前视偏差修复** — `full_sample_tvpr` → `expanding_window_tvpr`
+
+  问题: `macro_substrategy_v7_6.py` 中 `tvpr_estimator()` 默认调用 `full_sample_tvpr`，
+  用全量数据 (含未来) 估计 β_t，存在前视偏差 (lookahead bias)。
+
+  修复: `strategy_v7.py` 改用 `expanding_window_tvpr` (β[t] 仅用 [0:t] 数据)。
+
+  验证结果 (2018-2026, 52 ETFs, construct_portfolio):
+  | 方法 | Sharpe | Calmar | Max DD |
+  |---|---|---|---|
+  | full_sample_tvpr (有前视) | 1.520 | 2.671 | -21.73% |
+  | expanding step=13 (月频 OOS) | 1.801 | 2.435 | -24.85% |
+  | expanding step=4 (季频 OOS) | 2.902 | 6.290 | -17.30% |
+
+  结论: expanding_window OOS 性能优于 full_sample (1.801 > 1.520)，
+  说明 full_sample 的前视偏差反而导致过拟合，expanding window 更好地捕捉结构性变化。
+
+  清理: `tvpr_estimator.py` 中保留 `full_sample_tvpr` 但标记 DEPRECATED，
+  `macro_substrategy_v7_6.py` 默认方法改为 expanding_window。
+
 ## [2.10.0-mock.1] - 2026-06-25
 
 Stage 1 mock Table 4 复现 — 论文 Alpha-GPT 框架 mock 端到端验证。

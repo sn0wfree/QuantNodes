@@ -305,8 +305,8 @@ def load_expanded_panel(start: str = "2018-01-01") -> pd.DataFrame:
     smartbeta_unique = [c for c in smartbeta_nav.columns if c not in main_nav.columns]
     etf_nav = pd.concat([main_nav, smartbeta_nav[smartbeta_unique]], axis=1)
 
-    # Daily log returns
-    etf_rets = np.log(etf_nav / etf_nav.shift(1)).dropna(how="all")
+    # Daily simple returns (业界标准, 用于回测)
+    etf_rets = etf_nav.pct_change().dropna(how="all")
 
     # ── Bond indices (already daily log returns) ──
     index_daily = pd.read_parquet(HF_DIR / "v9_indices_daily.parquet")

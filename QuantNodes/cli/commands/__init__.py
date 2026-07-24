@@ -39,6 +39,7 @@ def _register_all() -> None:
         FactorRagShowCommand,
     )
     from QuantNodes.cli.commands.version import VersionCommand, HelpCommand
+    from QuantNodes.cli.commands.research import ResearchCommand
 
     for cmd in [
         InitCommand(),
@@ -60,6 +61,7 @@ def _register_all() -> None:
         FactorRagEvalCommand(),
         FactorDataFetchCommand(),
         FactorDashboardCommand(),
+        ResearchCommand(),
         VersionCommand(),
         HelpCommand(),
     ]:

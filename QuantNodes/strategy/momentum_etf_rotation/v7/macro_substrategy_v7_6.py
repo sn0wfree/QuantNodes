@@ -68,10 +68,11 @@ class V7_6Config:
     # TV-PR 参数
     lambda_tv: float = 0.15
     lambda_l1: float = 0.05
-    method: str = "admm"
+    method: str = "expanding"  # OOS, 无前视偏差 (旧 "admm" 有前视, 已 DEPRECATED)
     rho: float = 1.0
     max_iter: int = 200
     tol: float = 1e-5
+    step: int = 13  # expanding window 更新频率 (13=每月, 1=每周)
 
     # 调仓 (周频)
     rebalance_freq: str = "W"
@@ -143,6 +144,7 @@ def run_v7_6_backtest(
         rho=cfg.rho,
         max_iter=cfg.max_iter,
         tol=cfg.tol,
+        step=cfg.step,
     )
 
     # 3. 构造组合 (使用 β_t 预测收益, 必须返回权重)
@@ -160,66 +162,100 @@ def run_v7_6_backtest(
         return nav
 
 
-def construct_portfolio(
+def construct_portfolio_components(
     Y: pd.DataFrame,
     X_panel: np.ndarray,
     beta_path: pd.DataFrame,
     cfg: V7_6Config,
-    return_weights: bool = False,
     monday_open_returns: pd.DataFrame | None = None,
     use_latest_beta: bool = False,
     benchmark_daily: pd.Series | None = None,
-) -> pd.Series | tuple[pd.Series, pd.DataFrame]:
-    """根据 β_t 构造组合 (无未来函数版本).
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """根据 β_t 构造组合, 返回 (shares, prices, weights).
 
-    逻辑 (X[t] → Y[t+1]):
-      1. 周五 t 收盘: 用 X[t] @ beta_path[t] 生成信号
-      2. 周一 t+1 开盘: 执行 pending_weights (如果 monday_open_returns 提供)
-      3. 周五 t+1 收盘: 赚取收益
-      4. 逆波动率加权
-      5. 扣除成本
+    输出:
+      - shares: (T_daily, N) 每日各资产份额 (按 NAV=1 基准: shares = weights/prices)
+                调仓日: shares 按目标权重重新分配
+                非调仓日: shares = 上一次调仓日的 shares (固定不变)
+      - prices: (T_daily, N) 每日各资产价格 (从日频价格表加载)
+      - weights: (T_weekly, N) 周频目标权重 (用于保存)
 
-    时间线 (周一开盘执行模式):
-      周五 t 收盘   → 估计 beta_path[t], 生成信号 → pending_weights
-      周一 t+1 开盘 → 执行 pending_weights
-      周五 t+1 收盘 → 赚取 NAV_friday / NAV_monday_open - 1 (不含周末隔夜)
-
-    时间线 (原始模式):
-      周五 t 收盘   → 生成信号 (用 beta_path[t-1])
-      周五 t+1 收盘 → 赚取 Y[t+1] (包含周末隔夜)
+    无未来函数:
+      - 信号在 t (周频) 周五生成, 用 β[t-1] 和 X[t]
+      - 调仓执行在下周一 (T_daily 第一个工作日), 锁定份额
+      - 非调仓日份额不变, NAV 随价格变动
 
     Args:
-        Y: (T, N) 周频资产收益
-        X_panel: (T, N, K) 周频因子值面板
+        Y: (T, N) 周频资产收益 (用于生成调仓信号)
+        X_panel: (T, N, K) 周频因子面板
         beta_path: (T, K) 时变 β_t
         cfg: 配置
-        return_weights: 是否返回持仓权重
-        monday_open_returns: (T, N) 周一开盘到周五收盘收益 (不含周末隔夜).
-            如果提供, 使用周一开盘执行模式.
-        use_latest_beta: 是否用本周 β (True) 还是上期 β[t-1] (False, 默认).
-        benchmark_daily: 日频基准价格 (用于趋势过滤). 如果 TF 启用但未提供, 自动从 load_daily_etf_returns() 加载.
+        monday_open_returns: (T, N) 周一开盘到周五收盘收益
+        use_latest_beta: 是否用 β[t] (True) 还是 β[t-1] (False, 默认)
+        benchmark_daily: 日频基准价格 (用于趋势过滤)
 
     Returns:
-        nav: pd.Series, 周频 NAV
-        weights_df: pd.DataFrame (如果 return_weights=True), columns=[date, code, weight]
+        shares: (T_daily, N) DataFrame, columns=Y.columns, index=日频工作日
+        prices: (T_daily, N) DataFrame, columns=Y.columns, index=日频工作日
+        weights: (T_weekly, N) DataFrame, columns=Y.columns, index=Y.index (周频)
     """
+    from .data_loader_v7_6 import load_daily_etf_returns
+    from ..common.data import load_etf_nav_panel
+
+    codes = list(Y.columns)
+
+    # 加载日频价格 (NAV)
+    try:
+        daily_nav_panel = load_etf_nav_panel(codes=codes, end="2026-06-30")
+        available = [c for c in codes if c in daily_nav_panel.columns]
+        if len(available) < len(codes):
+            print(f"  Warning: {len(codes)-len(available)} codes missing in daily prices")
+        daily_prices = daily_nav_panel[available].copy()
+        daily_prices = daily_prices.ffill().dropna(how='all')
+    except Exception:
+        daily_ret = load_daily_etf_returns()
+        available = [c for c in codes if c in daily_ret.columns]
+        daily_prices = (1 + daily_ret[available]).cumprod()
+        daily_prices = daily_prices.ffill().dropna(how='all')
+
+    # 确保 prices 用日频索引
+    daily_prices = daily_prices.reindex(columns=codes)
+
+    # 调仓信号 (周频权重)
+    weekly_weights = compute_weekly_weights(
+        Y, X_panel, beta_path, cfg,
+        monday_open_returns=monday_open_returns,
+        use_latest_beta=use_latest_beta,
+        benchmark_daily=benchmark_daily,
+    )
+
+    # 把周频权重转日频 shares (按 NAV=1 基准)
+    shares = convert_weights_to_daily_shares(
+        weekly_weights, daily_prices, cfg, codes,
+    )
+
+    return shares, daily_prices, weekly_weights
+
+
+def compute_weekly_weights(
+    Y: pd.DataFrame,
+    X_panel: np.ndarray,
+    beta_path: pd.DataFrame,
+    cfg: V7_6Config,
+    monday_open_returns: pd.DataFrame | None = None,
+    use_latest_beta: bool = False,
+    benchmark_daily: pd.Series | None = None,
+) -> pd.DataFrame:
+    """计算每周的目标权重 (周频, 用于后续转日频份额)."""
     T, N = Y.shape
-    nav = pd.Series(1.0, index=Y.index, dtype=float)
-    weights_history = []  # 存储持仓权重
+    codes = list(Y.columns)
+    weights_df = pd.DataFrame(0.0, index=Y.index, columns=codes)
 
-    prev_weights = {}
-    pending_weights = None  # 待执行的权重 (来自上一周的信号)
-
-    # 判断执行模式: 周一开盘 or 原始 (周五到周五)
-    use_monday_open = monday_open_returns is not None
-
-    # 止损状态
+    # 止损/趋势状态
     _stop_loss_active = cfg.stop_loss_threshold is not None
     _stop_loss_triggered = False
     _stop_loss_cooldown_remaining = 0
-    _peak_nav = 1.0
 
-    # 趋势过滤状态
     _tf_active = cfg.trend_filter_enabled
     _tf_benchmark_prices = None
     if _tf_active:
@@ -231,127 +267,146 @@ def construct_portfolio(
             if cfg.trend_filter_benchmark in _daily_rets.columns:
                 _tf_benchmark_prices = (1 + _daily_rets[cfg.trend_filter_benchmark]).cumprod().dropna()
 
-    for t in range(T):
-        # 1. 先执行上周信号, 赚取本周收益
-        #    pending_weights 在 t-1 时由 Block 2 生成, 本 iteration 执行
-        if pending_weights is not None and len(pending_weights) > 0 and t > 0:
-            weekly_ret = 0.0
+    pending_weights = None
+
+    for t in range(1, T):
+        # 1. 执行上周信号 (t-1 时生成的 pending_weights)
+        if pending_weights is not None and len(pending_weights) > 0:
             for code, w in pending_weights.items():
-                if code in Y.columns:
-                    if use_monday_open:
-                        # 周一开盘执行: 赚取周一开盘到周五收盘收益 (不含周末隔夜)
-                        ret = monday_open_returns[code].iloc[t]
-                    else:
-                        # 原始: 赚取周五到周五收益 (含周末隔夜)
-                        ret = Y[code].iloc[t]
-                    if pd.notna(ret):
-                        weekly_ret += w * ret
+                if code in codes:
+                    weights_df.iloc[t, weights_df.columns.get_loc(code)] = w
+            # 止损覆盖
+            if _stop_loss_active and _stop_loss_triggered:
+                weights_df.iloc[t, :] = 0.0
 
-            # 2. 交易成本
-            if cfg.cost_enabled:
-                turnover = 0.0
-                for code in set(list(prev_weights.keys()) + list(pending_weights.keys())):
-                    w_old = prev_weights.get(code, 0.0)
-                    w_new = pending_weights.get(code, 0.0)
-                    turnover += abs(w_new - w_old)
-                cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000
-                weekly_ret -= turnover * cost_rate
-
-            nav.iloc[t] = nav.iloc[t - 1] * (1 + weekly_ret)
-            prev_weights = pending_weights.to_dict()
-
-            # 止损检查 (仅在有持仓时检查 DD, 触发止损)
-            if _stop_loss_active:
-                _peak_nav = max(_peak_nav, nav.iloc[t])
-                drawdown = nav.iloc[t] / _peak_nav - 1.0
-                if drawdown < cfg.stop_loss_threshold and not _stop_loss_triggered:
-                    _stop_loss_triggered = True
-                    _stop_loss_cooldown_remaining = cfg.stop_loss_cooldown
-
-            # 记录实际持仓权重 (用于 daily_nav)
-            for code, w in pending_weights.items():
-                weights_history.append({
-                    'date': Y.index[t],
-                    'code': code,
-                    'weight': w,
-                })
-        elif t > 0:
-            nav.iloc[t] = nav.iloc[t - 1]
-
-        # 止损冷却递减 (每期都执行, 包括现金期)
+        # 止损冷却递减
         if _stop_loss_active and _stop_loss_triggered and _stop_loss_cooldown_remaining > 0:
             _stop_loss_cooldown_remaining -= 1
             if _stop_loss_cooldown_remaining <= 0:
                 _stop_loss_triggered = False
-                _peak_nav = nav.iloc[t]  # 重置峰值, 从新起点计 DD
 
-        # 3. 再生成下周信号 (用本周 X[t] 和 beta_path[t] 或 beta_path[t-1])
-        #    生成的权重将在 t+1 时执行, 赚取 Y[t+1]
-        if t >= 1:
-            if use_latest_beta:
-                beta_prev = beta_path.iloc[t].values  # (K,) 本周估计的 β (用 Y[:t])
-            else:
-                beta_prev = beta_path.iloc[t - 1].values  # (K,) 上期估计的 β
-            
-            # 处理 NaN: 对每个资产，只用非NaN的因子计算 scores
-            N_assets = X_panel[t].shape[0]
-            scores = np.full(N_assets, np.nan)
-            for i in range(N_assets):
-                x_i = X_panel[t, i, :]
-                valid_mask = ~np.isnan(x_i) & ~np.isnan(beta_prev)
-                if np.sum(valid_mask) > 0:
-                    scores[i] = np.dot(x_i[valid_mask], beta_prev[valid_mask])
+        # 2. 生成 t 时信号 (在 t+1 执行)
+        if use_latest_beta:
+            beta_prev = beta_path.iloc[t].values
+        else:
+            beta_prev = beta_path.iloc[t - 1].values
 
-            # 转为 Series 并过滤 NaN
-            scores = pd.Series(scores, index=Y.columns)
-            scores = scores.dropna()
+        # 计算 scores
+        N_assets = X_panel[t].shape[0]
+        scores = np.full(N_assets, np.nan)
+        for i in range(N_assets):
+            x_i = X_panel[t, i, :]
+            valid_mask = ~np.isnan(x_i) & ~np.isnan(beta_prev)
+            if np.sum(valid_mask) > 0:
+                scores[i] = np.dot(x_i[valid_mask], beta_prev[valid_mask])
 
-            # 4. 选 top_n
-            if len(scores) >= cfg.top_n:
-                chosen = scores.nlargest(cfg.top_n).index.tolist()
-            elif len(scores) > 0:
-                chosen = scores.index.tolist()
-            else:
-                chosen = []
+        scores = pd.Series(scores, index=codes).dropna()
 
-            # 5. 逆波动率加权
-            if len(chosen) > 0 and t >= cfg.vol_window:
-                vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
-                vols = vol_window[chosen].std()
-                vols = vols.fillna(cfg.vol_floor).clip(lower=cfg.vol_floor)
-                inv_vol = 1.0 / vols
-                weights = inv_vol / inv_vol.sum()
-                weights = weights.clip(upper=cfg.max_weight)
-                weights = weights / weights.sum()
-            elif len(chosen) > 0:
-                weights = pd.Series(1.0 / len(chosen), index=chosen)
-            else:
-                weights = pd.Series(dtype=float)
+        # 选 top_n
+        if len(scores) >= cfg.top_n:
+            chosen = scores.nlargest(cfg.top_n).index.tolist()
+        elif len(scores) > 0:
+            chosen = scores.index.tolist()
+        else:
+            chosen = []
 
-            # 趋势过滤: 熊市时缩放权重 (benchmark < MA200)
-            if _tf_active and _tf_benchmark_prices is not None and len(weights) > 0:
-                current_date = Y.index[t]
-                bm = _tf_benchmark_prices.loc[:current_date].dropna()
-                if len(bm) >= cfg.trend_filter_ma:
-                    ma = bm.iloc[-cfg.trend_filter_ma:].mean()
-                    if bm.iloc[-1] < ma:
-                        weights = weights * cfg.trend_filter_bear
+        # 逆波动率加权
+        if len(chosen) > 0 and t >= cfg.vol_window:
+            vol_window = Y.iloc[max(0, t - cfg.vol_window):t]
+            vols = vol_window[chosen].std()
+            vols = vols.fillna(cfg.vol_floor).clip(lower=cfg.vol_floor)
+            inv_vol = 1.0 / vols
+            weights = inv_vol / inv_vol.sum()
+            weights = weights.clip(upper=cfg.max_weight)
+            weights = weights / weights.sum()
+        elif len(chosen) > 0:
+            weights = pd.Series(1.0 / len(chosen), index=chosen)
+        else:
+            weights = pd.Series(dtype=float)
 
-            # 存储待执行的权重 (将在 t+1 时执行)
-            pending_weights = weights
+        # 趋势过滤
+        if _tf_active and _tf_benchmark_prices is not None and len(weights) > 0:
+            current_date = Y.index[t]
+            bm = _tf_benchmark_prices.loc[:current_date].dropna()
+            if len(bm) >= cfg.trend_filter_ma:
+                ma = bm.iloc[-cfg.trend_filter_ma:].mean()
+                if bm.iloc[-1] < ma:
+                    weights = weights * cfg.trend_filter_bear
 
-            # 止损覆盖: 如果触发止损, 全仓现金 (0% 收益)
-            if _stop_loss_active and _stop_loss_triggered:
-                pending_weights = pd.Series(dtype=float)
-            weights_history.append({
-                'date': Y.index[t],
-                'code': None,  # 标记: 信号生成日
-                'weight': 0,
-            })
+        pending_weights = weights
+
+    return weights_df
+
+
+def convert_weights_to_daily_shares(
+    weekly_weights: pd.DataFrame,
+    daily_prices: pd.DataFrame,
+    cfg: V7_6Config,
+    codes: list[str],
+) -> pd.DataFrame:
+    """把周频权重转日频份额 (按 NAV=1 基准) — v7.6 兼容封装.
+
+    实际调用通用工具 weights_to_daily_shares.
+
+    Parameters:
+        weekly_weights: (T_weekly, N) 周频目标权重
+        daily_prices: (T_daily, N) 日频价格
+        cfg: 配置 (保留接口, 未使用)
+        codes: 资产代码列表
+
+    Returns:
+        shares: (T_daily, N) DataFrame, index=daily_prices.index
+    """
+    from ..common.walk_forward import weights_to_daily_shares
+    return weights_to_daily_shares(weekly_weights, daily_prices)
+
+
+def _generate_nav_from_components(
+    shares: pd.DataFrame,
+    prices: pd.DataFrame,
+    cost_bp: float = 0.0,
+) -> pd.Series:
+    """由 shares 和 prices 累积生成日频 NAV.
+
+    公式:
+      nav[t] = sum_i(shares[t, i] * prices[t, i])
+      调仓日: shares 变化, 扣除成本
+    """
+    from ..common.walk_forward import generate_nav_from_shares
+    return generate_nav_from_shares(shares, prices, cost_bp=cost_bp)
+
+
+def construct_portfolio(
+    Y: pd.DataFrame,
+    X_panel: np.ndarray,
+    beta_path: pd.DataFrame,
+    cfg: V7_6Config,
+    return_weights: bool = False,
+    monday_open_returns: pd.DataFrame | None = None,
+    use_latest_beta: bool = False,
+    benchmark_daily: pd.Series | None = None,
+) -> pd.Series | tuple[pd.Series, pd.DataFrame]:
+    """根据 β_t 构造组合 (无未来函数版本) — 向后兼容封装.
+
+    内部调用 construct_portfolio_components 生成 (shares, prices, weekly_weights),
+    然后累积日频 NAV.
+    """
+    from ..common.walk_forward import generate_nav_from_shares
+
+    shares, prices, weekly_weights = construct_portfolio_components(
+        Y, X_panel, beta_path, cfg,
+        monday_open_returns=monday_open_returns,
+        use_latest_beta=use_latest_beta,
+        benchmark_daily=benchmark_daily,
+    )
+
+    nav = generate_nav_from_shares(
+        shares, prices,
+        cost_bp=(cfg.commission_bp + cfg.slippage_bp) if cfg.cost_enabled else 0.0,
+    )
 
     if return_weights:
-        weights_df = pd.DataFrame(weights_history)
-        return nav, weights_df
+        return nav, weekly_weights
     else:
         return nav
 

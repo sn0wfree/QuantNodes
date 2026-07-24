@@ -68,6 +68,15 @@ from .validation import (
     validate_rebalance_offsets,
     validate_starting_points,
 )
+from .walk_forward import (
+    GridSearchSpace,
+    WalkForwardConfig,
+    WalkForwardResult,
+    WalkResult,
+    concat_oos_nav,
+    grid_search,
+    walk_forward,
+)
 
 __all__ = [
     # Strategy engine (新)
@@ -97,4 +106,7 @@ __all__ = [
     "solve_max_diversification", "solve_risk_parity",
     "validate_parameter_perturbation", "validate_rebalance_offsets",
     "validate_starting_points",
+    # Walk-forward
+    "GridSearchSpace", "WalkForwardConfig", "WalkForwardResult", "WalkResult",
+    "concat_oos_nav", "grid_search", "walk_forward",
 ]

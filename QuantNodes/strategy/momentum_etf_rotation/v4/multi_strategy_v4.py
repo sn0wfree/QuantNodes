@@ -1,18 +1,19 @@
 # coding=utf-8
-"""v4 多策略回测主入口 (Stage 17, v4.0).
+"""v4 多策略回测主入口 (Stage 17 + Stage 27).
 
 3 个子策略 (可独立启用):
 - 风格轮动 (style_rotation_v4)
 - Smart β (smart_beta_v4)
-- 因子择时 (factor_timing_v4) — IC 驱动
+- 因子择时 (factor_timing_v4) — IC + HMM 融合
+- 行业轮动 (industry_rotation_v4) — Stage 27 新增
 
 6 回测模式:
 - v4A: 仅风格轮动
 - v4B: 仅 Smart β
 - v4C: 风格 + Smart β (无因子择时)
 - v4D: + 因子择时 (IC only)
-- v4E: + 因子择时 (HMM, 待实施)
-- v4F: + 因子择时 (IC + HMM 融合, 待实施)
+- v4E: + 因子择时 (HMM only)
+- v4F: + 因子择时 (IC + HMM 融合, 默认推荐)
 
 参考: reports/momentum_etf_rotation/v4/STAGE17_PLAN.md
 """
@@ -29,6 +30,8 @@ import pandas as pd
 from .factor_timing_v4 import (
     FactorTimingConfig,
     compute_factor_weights,
+    compute_factor_weights_fusion,
+    compute_factor_weights_hmm,
     compute_strategy_weights,
     backtest_factor_timing,
 )
@@ -36,6 +39,7 @@ from .smart_beta_v4 import SmartBetaConfig, SmartBetaSubStrategy
 from .style_rotation_v4 import StyleRotationConfig, StyleRotationSubStrategy
 from .sub_strategy_v4 import SubStrategy, SubStrategyConfig, SubStrategyResult
 from .universe_v4 import ALL_V4_CODES, load_smartbeta_panel
+from .industry_rotation_v4 import IndustryRotationConfig, IndustryRotationV4
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +50,8 @@ class V4Mode(Enum):
     SMART_BETA_ONLY = "v4B_smartbeta"
     COMBO_NO_TIMING = "v4C_combo"
     WITH_IC_TIMING = "v4D_ic"
-    WITH_HMM_TIMING = "v4E_hmm"      # 待实施
-    WITH_FUSION_TIMING = "v4F_fusion" # 待实施
+    WITH_HMM_TIMING = "v4E_hmm"
+    WITH_FUSION_TIMING = "v4F_fusion"
 
 
 @dataclass
@@ -60,6 +64,7 @@ class V4Config:
     style_enabled: bool = True
     smart_beta_enabled: bool = True
     factor_timing_enabled: bool = False
+    industry_rotation_enabled: bool = False  # Stage 27: 行业轮动
 
     # 子策略配置
     style: StyleRotationConfig = field(default_factory=lambda: StyleRotationConfig(
@@ -69,6 +74,9 @@ class V4Config:
         top_n=3, max_weight=0.20,
     ))
     factor_timing: FactorTimingConfig = field(default_factory=FactorTimingConfig)
+    industry_rotation: IndustryRotationConfig = field(
+        default_factory=IndustryRotationConfig
+    )
 
     # 持仓 cap (放宽到 0.20, 避免 cap 吸收差异)
     max_weight: float = 0.20
@@ -80,8 +88,9 @@ class V4Config:
     cost_bps: float = 5.0
 
     # 子策略初始权重 (无因子择时时用)
-    style_weight: float = 0.5
-    smart_beta_weight: float = 0.5
+    style_weight: float = 0.4
+    smart_beta_weight: float = 0.3
+    industry_rotation_weight: float = 0.3  # Stage 27: 行业轮动权重
 
     # 预热期 (用等权)
     warmup_days: int = 252  # 1 年
@@ -157,7 +166,7 @@ def _performance_metrics(nav: pd.Series) -> dict:
     n = len(nav)
     if n < 2:
         return {}
-    ann_ret = nav.iloc[-1] ** (252 / n) - 1
+    ann_ret = (nav.iloc[-1] / nav.iloc[0]) ** (252 / n) - 1
     daily_ret = nav.pct_change().dropna()
     if len(daily_ret) < 2:
         return {"ann_return": float(ann_ret)}
@@ -200,6 +209,7 @@ def run_v4_backtest(
     # 子策略初始化
     style_sub = StyleRotationSubStrategy(cfg.style) if cfg.style_enabled else None
     sb_sub = SmartBetaSubStrategy(cfg.smart_beta) if cfg.smart_beta_enabled else None
+    ir_sub = IndustryRotationV4(cfg.industry_rotation) if cfg.industry_rotation_enabled else None
 
     # 因子择时 IC 历史 (如果启用)
     ic_history: pd.DataFrame = pd.DataFrame()
@@ -214,6 +224,8 @@ def run_v4_backtest(
         sub_weights["style_rotation"] = cfg.style_weight
     if cfg.smart_beta_enabled:
         sub_weights["smart_beta"] = cfg.smart_beta_weight
+    if cfg.industry_rotation_enabled:
+        sub_weights["industry_rotation"] = cfg.industry_rotation_weight
     # 归一化
     total = sum(sub_weights.values())
     if total > 0:
@@ -225,6 +237,8 @@ def run_v4_backtest(
         sub_navs["style_rotation"] = pd.Series(dtype=float)
     if cfg.smart_beta_enabled:
         sub_navs["smart_beta"] = pd.Series(dtype=float)
+    if cfg.industry_rotation_enabled:
+        sub_navs["industry_rotation"] = pd.Series(dtype=float)
 
     # 状态
     last_sub_results: dict[str, SubStrategyResult] = {}
@@ -234,6 +248,7 @@ def run_v4_backtest(
     states: list[dict] = []
     rebal_actual: list[pd.Timestamp] = []
     weights_combined: dict[str, float] = {}
+    current_regime = -1  # 初始化 regime 状态
 
     for i, date in enumerate(dates):
         if date in rebal_dates:
@@ -241,12 +256,29 @@ def run_v4_backtest(
             sub_results: list[SubStrategyResult] = []
             if style_sub is not None:
                 r = style_sub.run_step(panel, date)
+                # Stage 27: 大类轮动 (AssetClassRotation) 也用 style_rotation 槽位
+                if not r.meta.get("strategy"):
+                    r.meta["strategy"] = "style_rotation"
                 sub_results.append(r)
                 last_sub_results["style_rotation"] = r
             if sb_sub is not None:
                 r = sb_sub.run_step(panel, date)
+                if not r.meta.get("strategy"):
+                    r.meta["strategy"] = "smart_beta"
                 sub_results.append(r)
                 last_sub_results["smart_beta"] = r
+            if ir_sub is not None:
+                # Stage 27: 行业轮动需要 regime 信息
+                regime_str = "sideways"
+                if current_regime >= 0:
+                    regime_str = {0: "bull", 1: "bear", 2: "transition"}.get(
+                        current_regime, "sideways"
+                    )
+                r = ir_sub.run_step(date, panel, regime=regime_str)
+                if not r.meta.get("strategy"):
+                    r.meta["strategy"] = "industry_rotation"
+                sub_results.append(r)
+                last_sub_results["industry_rotation"] = r
 
             # 2. 因子择时 (IC + HMM 融合)
             current_regime = -1
@@ -256,10 +288,34 @@ def run_v4_backtest(
                     ic_dict = ic_history.iloc[idx].to_dict()
                 else:
                     ic_dict = {n: 0.0 for n in ic_history.columns}
-                f_w = compute_factor_weights(
-                    pd.DataFrame([ic_dict], index=[date]),
-                    cfg.factor_timing,
-                )
+
+                # Stage 27: 支持 v4E/v4F 模式
+                if cfg.factor_timing.hmm_enabled:
+                    # 获取 regime
+                    if hmm_regime_series is not None and date in hmm_regime_series.index:
+                        current_regime = int(hmm_regime_series.loc[date])
+                    elif hmm_regime_series is not None and len(hmm_regime_series) > 0:
+                        idx_r = hmm_regime_series.index.get_indexer([date], method="ffill")[0]
+                        if idx_r >= 0:
+                            current_regime = int(hmm_regime_series.iloc[idx_r])
+
+                    regime_str = {0: "bull", 1: "bear", 2: "transition"}.get(
+                        current_regime, "sideways"
+                    )
+
+                    if cfg.factor_timing.hmm_mode == "v4E":
+                        f_w = compute_factor_weights_hmm(
+                            ic_history.iloc[:idx + 1], cfg.factor_timing, regime=regime_str,
+                        )
+                    else:  # v4F
+                        f_w = compute_factor_weights_fusion(
+                            ic_history.iloc[:idx + 1], cfg.factor_timing, regime=regime_str,
+                        )
+                else:
+                    f_w = compute_factor_weights(
+                        pd.DataFrame([ic_dict], index=[date]),
+                        cfg.factor_timing,
+                    )
 
                 # HMM regime 调整
                 if hmm_regime_series is not None and date in hmm_regime_series.index:
@@ -327,10 +383,19 @@ def run_v4_backtest(
                 daily_ret = 0.0
                 for code, w in weights_combined.items():
                     if code in panel.columns:
-                        a, b = panel[code].iloc[i], panel[code].iloc[i - 1]
-                        if not pd.isna(a) and not pd.isna(b) and b != 0:
-                            daily_ret += w * (a / b - 1)
+                        a = panel[code].iloc[i]
+                        b = panel[code].iloc[i - 1]
+                        # Stage 27: 严格的数据检查, 避免除零产生极端值
+                        if pd.isna(a) or pd.isna(b) or b <= 0 or a < 0:
+                            continue
+                        # 单期收益率限制 (-50% ~ +50%)
+                        ret = a / b - 1
+                        ret = max(-0.5, min(0.5, ret))
+                        daily_ret += w * ret
                 nav[i] = nav[i - 1] * (1 + daily_ret)
+                # 防止 NAV 变成负数
+                if nav[i] < 0:
+                    nav[i] = 0.0
             else:
                 nav[i] = 1.0 if i == 0 else nav[i - 1]
 
@@ -369,19 +434,19 @@ def run_v4_mode(
     mode: str,
     factor_timing_cfg: FactorTimingConfig | None = None,
     hmm_detector: "RegimeDetector | None" = None,
+    hmm_regime_series: pd.Series | None = None,
 ) -> V4Result:
-    """按 mode 跑 v4 回测 (便捷接口).
+    """按 mode 跑 v4 回测 (便捷接口, Stage 27 支持外部传入 regime).
 
     Args:
         panel: 价格面板
         mode: V4Mode value
         factor_timing_cfg: 因子择时配置
         hmm_detector: 已训练好的 HMM 检测器 (v4E/v4F 必需)
+        hmm_regime_series: 外部传入的 regime 时序 (Stage 27 新增)
     """
     cfg = V4Config()
     cfg.mode = mode
-
-    hmm_series: pd.Series | None = None
 
     if mode == "v4A_style":
         cfg.style_enabled = True
@@ -401,30 +466,32 @@ def run_v4_mode(
         # 仅 HMM 因子择时
         cfg.style_enabled = True
         cfg.smart_beta_enabled = True
-        cfg.factor_timing_enabled = True  # 必须开启
-        cfg.factor_timing = factor_timing_cfg or FactorTimingConfig()
-        if hmm_detector is not None:
-            hmm_series = hmm_detector.predict_series(
+        cfg.factor_timing_enabled = True
+        cfg.factor_timing = factor_timing_cfg or FactorTimingConfig(hmm_enabled=True, hmm_mode="v4E")
+        if hmm_regime_series is None and hmm_detector is not None:
+            hmm_regime_series = hmm_detector.predict_series(
                 panel, panel.index[0], panel.index[-1], step=5,
             )
-        else:
-            logger.warning("v4E_hmm 需要 hmm_detector, 退化为 v4D_ic")
+        if hmm_regime_series is None:
+            logger.warning("v4E_hmm 需要 hmm_detector 或 hmm_regime_series")
     elif mode == "v4F_fusion":
         # IC + HMM 融合
         cfg.style_enabled = True
         cfg.smart_beta_enabled = True
         cfg.factor_timing_enabled = True
-        cfg.factor_timing = factor_timing_cfg or FactorTimingConfig()
-        if hmm_detector is not None:
-            hmm_series = hmm_detector.predict_series(
+        cfg.factor_timing = factor_timing_cfg or FactorTimingConfig(
+            hmm_enabled=True, hmm_mode="v4F", hmm_fusion_alpha=0.7,
+        )
+        if hmm_regime_series is None and hmm_detector is not None:
+            hmm_regime_series = hmm_detector.predict_series(
                 panel, panel.index[0], panel.index[-1], step=5,
             )
-        else:
-            logger.warning("v4F_fusion 需要 hmm_detector, 退化为 v4D_ic")
+        if hmm_regime_series is None:
+            logger.warning("v4F_fusion 需要 hmm_detector 或 hmm_regime_series")
     else:
         raise ValueError(f"未知 mode: {mode}")
 
-    return run_v4_backtest(panel, cfg, hmm_regime_series=hmm_series)
+    return run_v4_backtest(panel, cfg, hmm_regime_series=hmm_regime_series)
 
 
 __all__ = [

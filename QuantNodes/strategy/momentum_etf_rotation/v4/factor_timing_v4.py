@@ -1,5 +1,5 @@
 # coding=utf-8
-"""v4 因子择时 (Stage 18 合并版) — IC 驱动 + 多改进.
+"""v4 因子择时 (Stage 18 合并版 + Stage 27 v4E/v4F) — IC 驱动 + HMM 融合.
 
 核心思想 (金融街证券《风格轮动与因子择时》):
 - 把因子作为"可交易品种"
@@ -13,20 +13,28 @@ Stage 18 升级 (基于 v4 诊断 SUB_STRATEGY_DIAGNOSTIC.md §2):
 4. **删除 low_vol 因子** (诊断: IC vs forward 相关 -0.454, 反指因子)
 5. **IC 质量过滤** (诊断: |IC|<0.05 视为噪声, 84-94% 频率)
 
+Stage 27 新增 (v4E/v4F HMM 因子择时):
+6. **v4E: 纯 HMM regime → 因子权重** (HMM 检测牛/熊/转换, 调整因子权重)
+7. **v4F: IC + HMM 融合** (IC 70% + HMM 30%, 默认推荐)
+
 向后兼容:
 - `forward_window` 字段保留 (默认 None = 走因子特异 FW)
 - `use_low_vol: bool = True` 字段保留 (默认 False, 走 v5 优化)
 - `factor_to_strategy` 字段保留 (默认 None = 走因子→ETF 直接映射)
 
 权重公式:
-    raw_weight[name] = max(0, IC[name] + base) ** power
-    weight[name] = raw_weight / sum(raw_weight)
+    v4D (IC): raw_weight[name] = max(0, IC[name] + base) ** power
+    v4E (HMM): weight[name] = equal_weight * regime_adjustment[name]
+    v4F (融合): weight = alpha * ic_weight + (1-alpha) * hmm_weight
 
 参数:
 - factor_fw: 因子→前向窗口 (默认 5 因子特异)
 - factor_smooth_window: 因子→lag 平滑窗口
 - factor_ic_threshold: |IC| 阈值
 - regime_factors: regime→可用因子
+- hmm_enabled: 启用 HMM 因子择时
+- hmm_mode: "v4E" (纯 HMM) 或 "v4F" (IC+HMM 融合)
+- hmm_fusion_alpha: v4F 融合权重 (IC 占比)
 """
 from __future__ import annotations
 
@@ -98,9 +106,9 @@ class FactorTimingConfig:
 
     # Stage 18 #3: Regime-conditioned 因子选择
     regime_factors: dict[str, tuple[str, ...]] = field(default_factory=lambda: {
-        "bull":     ("momentum", "value"),
-        "bear":     ("value", "dividend", "quality"),
-        "sideways": ("value",),
+        "bull":     ("momentum", "value", "value_proxy"),
+        "bear":     ("value", "dividend", "quality", "quality_proxy"),
+        "sideways": ("value", "value_proxy"),
     })
 
     # 因子 → ETF 直接映射 (Stage 18 新增, 替代 factor_to_strategy)
@@ -110,6 +118,8 @@ class FactorTimingConfig:
         "value":    ("512040",),
         "dividend": ("510880", "512890", "515080", "515100"),
         "quality":  ("515900",),
+        "value_proxy": ("510300", "510500", "159915", "588000", "510880"),  # Stage 27: 估值代理
+        "quality_proxy": ("515900", "512040"),  # Stage 27: 基本面代理
     })
 
     # 向后兼容: 因子→子策略名映射
@@ -137,6 +147,38 @@ class FactorTimingConfig:
     lw_val_window: int = 12
     lw_long_only: bool = True
     lw_l1_norm: float = 1.0
+
+    # Stage 27: v4E/v4F HMM 因子择时 (可选, 默认关闭)
+    # v4E: 纯 HMM regime → 因子权重
+    # v4F: IC + HMM 融合 → 因子权重
+    hmm_enabled: bool = False
+    hmm_mode: str = "v4F"  # "v4E" | "v4F"
+    hmm_fusion_alpha: float = 0.7  # v4F: IC 权重占比 (0.7 = IC 70% + HMM 30%)
+    hmm_regime_factor_weights: dict[str, dict[str, float]] = field(
+        default_factory=lambda: {
+            "bull": {
+                "momentum": 1.5,   # 牛市加动量
+                "reversal": 0.8,   # 牛市减反转
+                "value": 0.7,      # 牛市减价值
+                "dividend": 0.8,   # 牛市减红利
+                "quality": 1.0,    # 牛市质量中性
+            },
+            "bear": {
+                "momentum": 0.5,   # 熊市减动量
+                "reversal": 1.2,   # 熊市加反转
+                "value": 1.5,      # 熊市加价值
+                "dividend": 1.5,   # 熊市加红利
+                "quality": 1.3,    # 熊市加质量
+            },
+            "transition": {
+                "momentum": 0.8,   # 转换期减动量
+                "reversal": 1.0,   # 转换期反转中性
+                "value": 1.2,      # 转换期加价值
+                "dividend": 1.2,   # 转换期加红利
+                "quality": 1.1,    # 转换期加质量
+            },
+        }
+    )
 
 
 def get_active_factors(cfg: FactorTimingConfig) -> tuple[str, ...]:
@@ -204,6 +246,117 @@ def compute_factor_weights(
         raw = {k: v / total for k, v in raw.items()}
 
     return raw
+
+
+def compute_factor_weights_hmm(
+    ic_history: pd.DataFrame,
+    cfg: FactorTimingConfig | None = None,
+    regime: str = "sideways",
+) -> dict[str, float]:
+    """v4E: 纯 HMM regime → 因子权重.
+
+    算法:
+        1. 选可用因子 (regime 过滤 + use_low_vol)
+        2. 根据 regime 查表获取因子权重调整系数
+        3. 等权 × 调整系数 → 归一化
+
+    Args:
+        ic_history: 滚动 IC DataFrame (用于获取因子列表)
+        cfg: 配置
+        regime: "bull" | "bear" | "transition" | "sideways"
+
+    Returns:
+        dict, factor name → weight (sum=1)
+    """
+    cfg = cfg or FactorTimingConfig()
+    active = get_active_factors(cfg)
+    available = cfg.regime_factors.get(regime, active)
+
+    if ic_history.empty:
+        return {n: 1.0 / len(available) for n in available}
+
+    latest = ic_history.iloc[-1].fillna(0.0)
+
+    # 获取 regime 对应的因子权重调整系数
+    regime_weights = cfg.hmm_regime_factor_weights.get(regime, {})
+    if not regime_weights:
+        # 无 regime 信息, 返回等权
+        return {n: 1.0 / len(available) for n in available}
+
+    raw: dict[str, float] = {}
+    for name in available:
+        if name not in latest.index:
+            continue
+        # 基础权重: 等权
+        base_weight = 1.0
+        # 应用 regime 调整系数
+        adjustment = regime_weights.get(name, 1.0)
+        raw[name] = base_weight * adjustment
+
+    if not raw:
+        return {n: 0.0 for n in available}
+
+    total = sum(raw.values())
+    if total > 0:
+        raw = {k: v / total for k, v in raw.items()}
+
+    for name in raw:
+        if raw[name] < cfg.min_weight:
+            raw[name] = cfg.min_weight
+        if raw[name] > cfg.max_weight:
+            raw[name] = cfg.max_weight
+
+    total = sum(raw.values())
+    if total > 0:
+        raw = {k: v / total for k, v in raw.items()}
+
+    return raw
+
+
+def compute_factor_weights_fusion(
+    ic_history: pd.DataFrame,
+    cfg: FactorTimingConfig | None = None,
+    regime: str = "sideways",
+) -> dict[str, float]:
+    """v4F: IC + HMM 融合 → 因子权重.
+
+    算法:
+        1. 计算 IC 权重 (同 v4D)
+        2. 计算 HMM 权重 (同 v4E)
+        3. 融合: final = alpha * ic_weight + (1-alpha) * hmm_weight
+        4. 归一化
+
+    Args:
+        ic_history: 滚动 IC DataFrame
+        cfg: 配置
+        regime: "bull" | "bear" | "transition" | "sideways"
+
+    Returns:
+        dict, factor name → weight (sum=1)
+    """
+    cfg = cfg or FactorTimingConfig()
+
+    # 1. 计算 IC 权重
+    ic_weights = compute_factor_weights(ic_history, cfg, regime)
+
+    # 2. 计算 HMM 权重
+    hmm_weights = compute_factor_weights_hmm(ic_history, cfg, regime)
+
+    # 3. 融合
+    all_factors = set(list(ic_weights.keys()) + list(hmm_weights.keys()))
+    fused: dict[str, float] = {}
+
+    for name in all_factors:
+        ic_w = ic_weights.get(name, 0.0)
+        hmm_w = hmm_weights.get(name, 0.0)
+        fused[name] = cfg.hmm_fusion_alpha * ic_w + (1 - cfg.hmm_fusion_alpha) * hmm_w
+
+    # 4. 归一化
+    total = sum(fused.values())
+    if total > 0:
+        fused = {k: v / total for k, v in fused.items()}
+
+    return fused
 
 
 def compute_strategy_weights(
@@ -355,15 +508,19 @@ def backtest_factor_weights_history(
     dates = []
     for i, (ts, row) in enumerate(ic_history.iterrows()):
         ic_window = ic_history.iloc[:i + 1]
-        if cfg.lw_enabled:
-            regime = "sideways"
-            if regime_series is not None and ts in regime_series.index:
-                regime = str(regime_series.loc[ts])
+        regime = "sideways"
+        if regime_series is not None and ts in regime_series.index:
+            regime = str(regime_series.loc[ts])
+
+        if cfg.hmm_enabled:
+            # v4E/v4F: HMM 因子择时
+            if cfg.hmm_mode == "v4E":
+                f_w = compute_factor_weights_hmm(ic_window, cfg, regime=regime)
+            else:  # v4F
+                f_w = compute_factor_weights_fusion(ic_window, cfg, regime=regime)
+        elif cfg.lw_enabled:
             f_w = compute_factor_weights_lw(ic_window, cfg, regime=regime)
         else:
-            regime = "sideways"
-            if regime_series is not None and ts in regime_series.index:
-                regime = str(regime_series.loc[ts])
             f_w = compute_factor_weights(
                 pd.DataFrame([row.to_dict()], index=[ts]), cfg, regime=regime,
             )
@@ -382,6 +539,8 @@ __all__ = [
     "backtest_factor_weights_history",
     "get_active_factors",
     "compute_factor_weights_lw",
+    "compute_factor_weights_hmm",
+    "compute_factor_weights_fusion",
 ]
 
 

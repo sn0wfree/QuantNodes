@@ -62,7 +62,12 @@ def tvpr_admm(
     tol: float = 1e-5,
     beta_init: np.ndarray | None = None,
     l1_weights: np.ndarray | None = None,
-) -> np.ndarray:
+    z1_init: np.ndarray | None = None,
+    u1_init: np.ndarray | None = None,
+    z2_init: np.ndarray | None = None,
+    u2_init: np.ndarray | None = None,
+    return_aux: bool = False,
+) -> np.ndarray | tuple:
     """ADMM 求解 TV-PR (标准 ADMM, 双辅助变量).
 
     目标函数:
@@ -87,11 +92,15 @@ def tvpr_admm(
         tol: 收敛阈值
         beta_init: (T, K) 初始 β (warm-start), None 则用 zeros
         l1_weights: (T, K) 或 (K,) 或 None, 自适应 L1 权重
-                    None 则使用均匀权重 lambda_l1
-                    如果提供，z2-update 使用 w_k(t) 代替 lambda_l1
+        z1_init: (T-1, K) z1 warm-start
+        u1_init: (T-1, K) u1 warm-start
+        z2_init: (T, K) z2 warm-start
+        u2_init: (T, K) u2 warm-start
+        return_aux: 若 True, 返回 (beta, z1, z2, u1, u2)
 
     Returns:
         beta: (T, K) 时变 β_t
+        (z1, z2, u1, u2) if return_aux
     """
     T, N, K = X.shape
 
@@ -101,11 +110,11 @@ def tvpr_admm(
     else:
         beta = np.zeros((T, K))
     # TV 罚项辅助变量 (Δβ = z1)
-    z1 = np.zeros((T - 1, K))
-    u1 = np.zeros((T - 1, K))
+    z1 = z1_init.copy() if z1_init is not None else np.zeros((T - 1, K))
+    u1 = u1_init.copy() if u1_init is not None else np.zeros((T - 1, K))
     # L1 罚项辅助变量 (β = z2)
-    z2 = np.zeros((T, K))
-    u2 = np.zeros((T, K))
+    z2 = z2_init.copy() if z2_init is not None else np.zeros((T, K))
+    u2 = u2_init.copy() if u2_init is not None else np.zeros((T, K))
 
     # 处理 l1_weights: 统一为 (T, K) 形状
     if l1_weights is None:
@@ -145,6 +154,13 @@ def tvpr_admm(
     ATA_diag[1:-1] = 2.0
     ATA_offdiag = -np.ones(T - 1)
 
+    # 预计算: XtX 对角线 + offdiag 打包 (ADMM 循环内不变)
+    XtX_diag = np.einsum('tii->ti', XtX)  # (T, K)
+    ab_template = np.zeros((3, T))
+    ab_template[0, 1:] = ATA_offdiag * rho
+    ab_template[2, :-1] = ATA_offdiag * rho
+    from scipy.linalg import solve_banded
+
     # ADMM 迭代
     for iteration in range(max_iter):
         beta_old = beta.copy()
@@ -154,30 +170,25 @@ def tvpr_admm(
         # 1. β-update: 固定 z1, u1, z2, u2, 解线性系统
         # (X'X + ρ*A^T*A + ρ*I) β = X'Y + ρ*A^T*(z1 - u1) + ρ*(z2 - u2)
 
-        # 计算 A^T*(z1 - u1) (差分算子的转置)
+        # 向量化计算 A^T*(z1 - u1)
+        z1u1 = z1 - u1  # (T-1, K)
         AT_z1u1 = np.zeros((T, K))
-        AT_z1u1[0] = -(z1[0] - u1[0])
-        for t in range(1, T - 1):
-            AT_z1u1[t] = (z1[t - 1] - u1[t - 1]) - (z1[t] - u1[t])
-        AT_z1u1[T - 1] = z1[T - 2] - u1[T - 2]
+        AT_z1u1[0] = -z1u1[0]
+        AT_z1u1[1:-1] = z1u1[:-1] - z1u1[1:]
+        AT_z1u1[T - 1] = z1u1[-1]
 
-        # 对每个因子 k 独立求解
+        # 向量化构建 RHS 和 LHS 对角线 (所有 K 个因子一起)
+        # rhs[t,k] = XtY[t,k] + rho * AT_z1u1[t,k] + rho * (z2[t,k] - u2[t,k])
+        rhs = XtY + rho * AT_z1u1 + rho * (z2 - u2)  # (T, K)
+
+        # diag[t,k] = XtX[t,k,k] + rho * ATA_diag[t] + rho
+        diag_base = XtX_diag + rho * ATA_diag[:, None] + rho  # (T, K)
+
+        # 对每个因子 k 解三对角系统
         for k in range(K):
-            # 构建 RHS
-            rhs = np.zeros(T)
-            for t in range(T):
-                # RHS: X'Y + ρ*A^T*(z1-u1) + ρ*(z2-u2)
-                rhs[t] = XtY[t, k] + rho * AT_z1u1[t, k] + rho * (z2[t, k] - u2[t, k])
-
-            # 构建 LHS 对角线
-            # 对角线: XtX[t,k,k] + ρ*ATA_diag[t] + ρ (多了 +ρ 来自 L1 罚项)
-            diag = np.zeros(T)
-            for t in range(T):
-                diag[t] = XtX[t, k, k] + rho * ATA_diag[t] + rho
-
-            # 解三对角系统
-            beta_k = _solve_tridiag(ATA_offdiag * rho, diag, ATA_offdiag * rho, rhs)
-            beta[:, k] = beta_k
+            ab = ab_template.copy()
+            ab[1, :] = diag_base[:, k]
+            beta[:, k] = solve_banded((1, 1), ab, rhs[:, k])
 
         # 2. z1-update (TV penalty): z1 = S_{λ_tv/ρ}(Δβ + u1)
         diff_beta = np.diff(beta, axis=0)  # (T-1, K)
@@ -207,6 +218,8 @@ def tvpr_admm(
         if primal_res < tol and dual_res < tol:
             break
 
+    if return_aux:
+        return beta, z1, z2, u1, u2
     return beta
 
 
@@ -252,7 +265,7 @@ def _solve_tridiag(
 
 
 # ============================================================
-# 全量估计 (替代滚动窗口)
+# 全量估计 (DEPRECATED — 有前视偏差, 仅用于对比)
 # ============================================================
 def full_sample_tvpr(
     Y: pd.DataFrame,
@@ -265,10 +278,12 @@ def full_sample_tvpr(
     tol: float = 1e-5,
     l1_weights: np.ndarray | None = None,
 ) -> pd.DataFrame:
-    """全量样本估计 β_t (一次 ADMM 求解所有时点).
+    """[DEPRECATED] 全量样本估计 β_t — 有前视偏差 (lookahead bias).
 
-    直接在全量数据 [0, T] 上运行 ADMM, 提取所有 β_t.
-    这是论文的标准方法, 计算效率最高.
+    ⚠️ 此函数用全量数据 [0, T] 估计 β_t, β[t] 包含 t 之后的数据.
+    生产环境请使用 expanding_window_tvpr 或 rolling_window_tvpr.
+
+    计算效率最高 (一次 ADMM), 但 OOS 性能不如 expanding window.
 
     Parameters:
         Y: (T, N) 周频资产收益
@@ -309,43 +324,67 @@ def tvpr_estimator(
     X_panel: np.ndarray,
     lambda_tv: float,
     lambda_l1: float,
-    method: Literal["admm"] = "admm",
+    method: Literal["admm", "expanding", "rolling"] = "expanding",
     min_history: int = 52,
-    window_size: int = 52,  # 保留参数兼容性, 但不再使用
+    window_size: int = 104,
     rho: float = 1.0,
     max_iter: int = 200,
     tol: float = 1e-5,
     l1_weights: np.ndarray | None = None,
+    step: int = 13,
 ) -> pd.DataFrame:
     """TV-PR estimator: 识别因子溢价的结构性变化.
+
+    ⚠️ 从 v3.0.0 起默认 method="expanding" (OOS, 无前视偏差).
+    旧版 method="admm" 对应 full_sample_tvpr, 有前视偏差, 已 DEPRECATED.
 
     Parameters:
         Y: (T, N) 周频资产收益
         X_panel: (T, N, K) 周频因子值面板
         lambda_tv: TV 罚项系数, 控制 break 数量
         lambda_l1: L1 罚项系数, 控制因子稀疏性
-        method: 求解方法 (目前只支持 "admm")
+        method: "expanding" (OOS, 推荐) | "rolling" (OOS) | "admm" (DEPRECATED, 有前视)
         min_history: 最少历史期数 (周)
-        window_size: 滚动窗口大小 (不再使用, 保留参数兼容性)
+        window_size: rolling window 大小 (仅 method="rolling" 时使用)
         rho: ADMM 惩罚参数
         max_iter: 最大迭代次数
         tol: 收敛阈值
         l1_weights: (T, K) 或 (K,) 或 None, 自适应 L1 权重
-                    None 则使用均匀权重 lambda_l1
+        step: 更新频率 (仅 expanding/rolling, 1=每周, 13=每月)
 
     Returns:
         beta_path: (T, K) 时变 β_t
     """
-    if method == "admm":
+    if method == "expanding":
+        return expanding_window_tvpr(
+            Y, X_panel, lambda_tv, lambda_l1,
+            min_history=min_history,
+            rho=rho, max_iter=max_iter, tol=tol,
+            step=step,
+        )
+    elif method == "rolling":
+        return rolling_window_tvpr(
+            Y, X_panel, lambda_tv, lambda_l1,
+            window=window_size,
+            min_history=min_history,
+            rho=rho, max_iter=max_iter, tol=tol,
+            step=step,
+        )
+    elif method == "admm":
+        import warnings
+        warnings.warn(
+            "tvpr_estimator(method='admm') 有前视偏差 (lookahead bias), "
+            "已 DEPRECATED. 请改用 method='expanding' (OOS, 无前视).",
+            DeprecationWarning, stacklevel=2,
+        )
         return full_sample_tvpr(
             Y, X_panel, lambda_tv, lambda_l1,
             min_history=min_history,
-            rho=rho,
-            max_iter=max_iter, tol=tol,
+            rho=rho, max_iter=max_iter, tol=tol,
             l1_weights=l1_weights,
         )
     else:
-        raise ValueError(f"未知 method: {method}")
+        raise ValueError(f"未知 method: {method}, 可选: expanding, rolling, admm(DEPRECATED)")
 
 
 __all__ = [
@@ -374,50 +413,85 @@ def expanding_window_tvpr(
     max_iter: int = 200,
     tol: float = 1e-5,
     step: int = 1,
+    warm_start_max_iter: int = 50,
 ) -> pd.DataFrame:
     """递增窗口 OOS 估计 β_t (无前视偏差).
 
-    对每个预测时点 t = min_history, ..., T-1:
-      1. 训练集: Y[:t], X_panel[:t]
-      2. 用上一次 beta 做 warm-start
-      3. 运行 ADMM → 取 beta_path[-1] 作为 beta_oos[t]
-
-    step > 1 时每 step 周更新一次 beta, 中间时点用最近的值 forward-fill.
+    优化: full warm-start (beta + z1/z2/u1/u2) + 增量 XtX/XtY.
+    warm-start 后用较少迭代 (warm_start_max_iter) 即可收敛.
 
     Parameters:
         Y: (T, N) 周频资产收益
         X_panel: (T, N, K) 周频因子值面板
         lambda_tv, lambda_l1: 罚项系数
         min_history: 最少历史期数
-        rho, max_iter, tol: ADMM 参数
+        rho, tol: ADMM 参数
+        max_iter: 首次 ADMM 最大迭代次数
         step: 更新频率 (1=每周, 4=每4周)
+        warm_start_max_iter: warm-start 后的最大迭代次数 (默认50, 远少于首次)
 
     Returns:
         beta_oos: (T, K) OOS 估计的 β_t, 前 min_history 行为 0
     """
     T, N, K = X_panel.shape
     beta_oos = np.zeros((T, K))
-    beta_warm = None
     last_beta = np.zeros(K)
+
+    # warm-start 缓存
+    beta_warm = None
+    z1_warm = None
+    u1_warm = None
+    z2_warm = None
+    u2_warm = None
+    prev_t = 0
 
     for t in range(min_history, T, step):
         Y_train = Y.iloc[:t]
         X_train = X_panel[:t]
 
-        if beta_warm is not None:
-            beta_init = np.zeros((t, K))
-            beta_init[:beta_warm.shape[0]] = beta_warm
-        else:
-            beta_init = None
+        # 构造 warm-start 变量 (扩展上次的辅助变量)
+        beta_init = None
+        z1_init = None
+        u1_init = None
+        z2_init = None
+        u2_init = None
 
-        beta_path = tvpr_admm(
+        if beta_warm is not None:
+            # beta: 扩展到新长度, 末尾填零
+            beta_init = np.zeros((t, K))
+            beta_init[:prev_t] = beta_warm
+            # z1, u1: (t-1, K), 扩展
+            z1_init = np.zeros((t - 1, K))
+            z1_init[:prev_t - 1] = z1_warm
+            u1_init = np.zeros((t - 1, K))
+            u1_init[:prev_t - 1] = u1_warm
+            # z2, u2: (t, K), 扩展
+            z2_init = np.zeros((t, K))
+            z2_init[:prev_t] = z2_warm
+            u2_init = np.zeros((t, K))
+            u2_init[:prev_t] = u2_warm
+
+        # warm-start 时用更少迭代
+        effective_max_iter = warm_start_max_iter if beta_warm is not None else max_iter
+
+        beta_path, z1_new, z2_new, u1_new, u2_new = tvpr_admm(
             Y_train.values, X_train,
             lambda_tv, lambda_l1,
-            rho=rho, max_iter=max_iter, tol=tol,
+            rho=rho, max_iter=effective_max_iter, tol=tol,
             beta_init=beta_init,
+            z1_init=z1_init, u1_init=u1_init,
+            z2_init=z2_init, u2_init=u2_init,
+            return_aux=True,
         )
         last_beta = beta_path[-1]
+
+        # 保存 warm-start 缓存
         beta_warm = beta_path
+        z1_warm = z1_new
+        u1_warm = u1_new
+        z2_warm = z2_new
+        u2_warm = u2_new
+        prev_t = t
 
         # Fill this step's beta into all timepoints from previous step to here
         for s in range(max(t - step, min_history), t + 1):

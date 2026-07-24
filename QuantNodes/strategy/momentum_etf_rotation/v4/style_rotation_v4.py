@@ -456,4 +456,274 @@ __all__ = [
     "select_top_styles",
     "style_etf_picks",
     "classify_regime",
+    "AssetClassRotation",  # Stage 27: 大类轮动
+    "asset_class_rotation_score",
+    "select_top_asset_classes",
+    "asset_class_etf_picks",
 ]
+
+
+# ============================================================
+# 大类轮动 (Stage 27 新增: 适配 43 ETF)
+# ============================================================
+
+@dataclass
+class AssetClassRotationConfig(SubStrategyConfig):
+    """大类轮动配置 (Stage 27 新增).
+
+    与风格轮动不同, 大类轮动在 4 大类 (宽基/行业/海外/黄金) 间轮动.
+    """
+    name: str = "style_rotation"  # 复用 style_rotation 槽位
+
+    # 多窗口动量 (默认 5/20/60)
+    windows: tuple[int, ...] = (5, 20, 60)
+    window_weights: tuple[float, ...] = (0.2, 0.3, 0.5)
+
+    # 大类权重
+    broad_weight: float = 0.30
+    sector_weight: float = 0.40
+    overseas_weight: float = 0.20
+    gold_weight: float = 0.10
+
+    # Regime filter
+    regime_lookback_short: int = 60
+    regime_lookback_long: int = 252
+    bull_threshold: float = 0.05
+    bear_threshold: float = -0.05
+
+    # 通用
+    min_history: int = 252
+    max_weight: float = 0.40
+    rebalance_freq: str = "M"
+    top_n_per_class: int = 2  # 每类选几个
+
+
+def asset_class_rotation_score(
+    nav_df: pd.DataFrame,
+    as_of: pd.Timestamp,
+    asset_class_codes: dict[str, tuple[str, ...]],
+    windows: tuple[int, ...] = (5, 20, 60),
+    window_weights: tuple[float, ...] = (0.2, 0.3, 0.5),
+    min_history: int = 60,
+) -> pd.Series:
+    """大类轮动得分 (Stage 27 新增).
+
+    对每个大类计算多窗口动量得分, 加权合成.
+
+    Stage 27 修复: 过滤掉早期没有数据的 ETF (返回 0 或全空).
+    """
+    if abs(sum(window_weights) - 1.0) > 1e-6:
+        raise ValueError("window_weights 之和必须为 1")
+
+    sub = nav_df.loc[:as_of]
+    if len(sub) < min_history:
+        return pd.Series(dtype=float)
+
+    combined = pd.Series(dtype=float)
+
+    for ac, codes in asset_class_codes.items():
+        valid = [c for c in codes if c in sub.columns]
+        if not valid:
+            continue
+
+        # Stage 27: 过滤掉早期没有数据的 ETF
+        recent_data = sub[valid].iloc[-min_history:]
+        valid_with_data = []
+        for c in valid:
+            nonzero_count = (recent_data[c] != 0).sum()
+            if nonzero_count >= min_history * 0.5:  # 至少 50% 有数据
+                valid_with_data.append(c)
+        if not valid_with_data:
+            continue
+
+        # 多窗口动量加权
+        score = 0.0
+        for L, w in zip(windows, window_weights):
+            if len(sub) < L + 2:
+                continue
+            ret = sub[valid_with_data].iloc[-1] / sub[valid_with_data].iloc[-L - 1] - 1.0
+            ret = ret.dropna()
+            if len(ret) > 0:
+                score += float(ret.mean()) * w
+
+        combined[ac] = score
+
+    if combined.empty:
+        return combined
+
+    return combined.sort_values(ascending=False)
+
+
+def select_top_asset_classes(
+    scores: pd.Series,
+    top_n: int = 2,
+    mandatory: tuple[str, ...] = ("broad",),
+) -> list[str]:
+    """选 Top-N 大类, 必含 mandatory."""
+    if scores.empty:
+        return []
+    ranked = scores.sort_values(ascending=False)
+    selected = list(ranked.index)[:top_n]
+    for m in mandatory:
+        if m in ranked.index and m not in selected:
+            selected.append(m)
+    return selected
+
+
+def asset_class_etf_picks(
+    nav_df: pd.DataFrame,
+    as_of: pd.Timestamp,
+    asset_class_codes: dict[str, tuple[str, ...]],
+    selected_classes: list[str],
+    top_n_per_class: int = 2,
+    lookback: int = 60,
+) -> list[str]:
+    """从每个大类选 top_n_per_class ETF (按 60d 动量).
+
+    Stage 27 修复: 过滤掉早期没有数据的 ETF.
+    """
+    sub = nav_df.loc[:as_of]
+    if len(sub) < lookback + 2:
+        return []
+    picks = []
+    for ac in selected_classes:
+        codes = asset_class_codes.get(ac, ())
+        valid = [c for c in codes if c in sub.columns]
+        if not valid:
+            continue
+
+        # 过滤有效 ETF
+        recent_data = sub[valid].iloc[-(lookback + 1):]
+        valid_with_data = []
+        for c in valid:
+            nonzero_count = (recent_data[c] != 0).sum()
+            if nonzero_count >= lookback * 0.5:
+                valid_with_data.append(c)
+        if not valid_with_data:
+            continue
+
+        ret = sub[valid_with_data].iloc[-1] / sub[valid_with_data].iloc[-lookback - 1] - 1.0
+        ret = ret.dropna().sort_values(ascending=False)
+        picks.extend(ret.index[:top_n_per_class].tolist())
+    return picks
+
+
+class AssetClassRotation(SubStrategy):
+    """大类轮动子策略 (Stage 27 新增).
+
+    在 4 大类 (宽基/行业/海外/黄金) 间轮动.
+    """
+
+    def __init__(self, config: AssetClassRotationConfig | None = None):
+        if config is None:
+            config = AssetClassRotationConfig()
+        super().__init__(config)
+        self.config: AssetClassRotationConfig = config
+
+        # 大类 → ETF 映射 (默认 43 ETF 分类)
+        from .universe_v4 import (
+            BROAD_CODES, SECTOR_CODES, OVERSEAS_CODES, GOLD_CODES,
+        )
+        self.asset_class_codes = {
+            "broad": BROAD_CODES,
+            "sector": SECTOR_CODES,
+            "overseas": OVERSEAS_CODES,
+            "gold": GOLD_CODES,
+        }
+
+    def select(self, nav_df: pd.DataFrame, as_of: pd.Timestamp) -> list[str]:
+        cfg = self.config
+        if cfg.min_history > 0 and len(nav_df) < cfg.min_history:
+            return []
+
+        scores = asset_class_rotation_score(
+            nav_df, as_of, self.asset_class_codes,
+            cfg.windows, cfg.window_weights,
+        )
+        if scores.empty:
+            return []
+
+        # 选 Top-2 大类 (必含 broad)
+        selected = select_top_asset_classes(scores, top_n=2, mandatory=("broad",))
+
+        # 从每个大类选 ETF
+        picks = asset_class_etf_picks(
+            nav_df, as_of, self.asset_class_codes,
+            selected, cfg.top_n_per_class,
+        )
+        return picks
+
+    def weight(
+        self,
+        nav_df: pd.DataFrame,
+        codes: Sequence[str],
+        as_of: pd.Timestamp,
+    ) -> dict[str, float]:
+        """根据大类固定权重分配."""
+        cfg = self.config
+        if not codes:
+            return {}
+
+        # 按大类分配
+        weights = {}
+        class_weight = {
+            "broad": cfg.broad_weight,
+            "sector": cfg.sector_weight,
+            "overseas": cfg.overseas_weight,
+            "gold": cfg.gold_weight,
+        }
+
+        # 按大类分组
+        from .universe_v4 import classify_43_etf, AssetClass
+        ac_of_codes = classify_43_etf(list(codes))
+
+        # 计算每类内的 ETF
+        class_to_codes = {}
+        for code in codes:
+            ac = ac_of_codes.get(code)
+            if ac is not None:
+                ac_name = ac.value
+                if ac_name not in class_to_codes:
+                    class_to_codes[ac_name] = []
+                class_to_codes[ac_name].append(code)
+
+        # 按大类权重分配
+        for ac_name, ac_codes in class_to_codes.items():
+            w_per_code = class_weight.get(ac_name, 0.0) / len(ac_codes)
+            for code in ac_codes:
+                weights[code] = w_per_code
+
+        # 归一化
+        total = sum(weights.values())
+        if total > 0:
+            weights = {k: v / total for k, v in weights.items()}
+
+        return weights
+
+    def run_step(
+        self,
+        nav_df: pd.DataFrame,
+        as_of: pd.Timestamp,
+    ) -> SubStrategyResult:
+        codes = self.select(nav_df, as_of)
+        if not codes:
+            return SubStrategyResult(date=as_of, meta={"strategy": self.config.name})
+
+        weights = self.weight(nav_df, codes, as_of)
+
+        scores = asset_class_rotation_score(
+            nav_df, as_of, self.asset_class_codes,
+            self.config.windows, self.config.window_weights,
+        )
+        signal = float(scores.iloc[0]) if len(scores) > 0 else 0.0
+
+        return SubStrategyResult(
+            date=as_of,
+            chosen=codes,
+            weights=weights,
+            signal_strength=signal,
+            meta={
+                "strategy": self.config.name,
+                "asset_classes": list(self.asset_class_codes.keys()),
+            },
+        )

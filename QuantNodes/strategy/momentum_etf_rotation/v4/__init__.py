@@ -1,20 +1,43 @@
 # coding=utf-8
-"""v4 = Stage 17 风格轮动 + Smart β + 因子择时.
+"""v4 = Stage 17 风格轮动 + Smart β + 因子择时 + Stage 27 重构 (适配 43 ETF).
 
 与 v3 完全独立:
 - v3 (Stage 16A) 多策略组合在 ../v3/
 - v4 (Stage 17) 风格/Smart β/因子择时 在 ./ (本目录)
 
+Stage 27 重构:
+- 适配 43 ETF (宽基 6 + 行业 23 + 海外 11 + 黄金 3)
+- 大类轮动替代风格轮动
+- Smart β 用行业 ETF 代理筛选
+- 行业轮动适配 43 ETF
+- 宏观因子融合 regime 检测
+
 子策略:
-- 风格轮动 (style_rotation_v4.py) - 大盘/中盘/成长/科创/红利
-- Smart β (smart_beta_v4.py) - 红利低波/低波/质量/价值/现金流
-- 因子择时 (factor_timing_v4.py) - IC + HMM 融合, 控制子策略权重
+- 风格轮动 (style_rotation_v4.py) - 兼容旧版
+- 大类轮动 (AssetClassRotation) - Stage 27 新增
+- Smart β (smart_beta_v4.py) - 行业 ETF 代理
+- 因子择时 (factor_timing_v4.py) - 8 因子 IC + HMM 融合
+- 行业轮动 (industry_rotation_v4.py) - 23 行业 ETF + regime
 
 参考: reports/momentum_etf_rotation/v4/STAGE17_PLAN.md
 """
 from __future__ import annotations
 
 from .universe_v4 import (
+    # 43 ETF 分类
+    BROAD_CODES,
+    SECTOR_CODES,
+    OVERSEAS_CODES,
+    GOLD_CODES,
+    DEFENSIVE_SECTOR_CODES,
+    GROWTH_SECTOR_CODES,
+    AssetClass,
+    ASSET_CLASS_CODES,
+    get_all_43_codes,
+    classify_43_etf,
+    select_smart_beta_proxy,
+    select_defensive_smart_beta,
+    # 兼容旧版
     ALL_V4_CODES,
     SMART_BETA_CODES,
     SMART_BETA_FACTOR_TYPE,
@@ -41,6 +64,12 @@ from .style_rotation_v4 import (
     select_top_styles,
     style_etf_picks,
     style_rotation_score,
+    # Stage 27: 大类轮动
+    AssetClassRotationConfig,
+    AssetClassRotation,
+    asset_class_rotation_score,
+    select_top_asset_classes,
+    asset_class_etf_picks,
 )
 from .smart_beta_v4 import (
     SmartBetaConfig,
@@ -61,6 +90,8 @@ from .regime_detector_v4 import (
     REGIME_LABELS,
     RegimeConfig,
     RegimeDetector,
+    detect_regime_simple,
+    detect_regime_with_macro,
     get_regime_factor_weight,
 )
 from .factor_timing_v4 import (
@@ -68,6 +99,8 @@ from .factor_timing_v4 import (
     backtest_factor_timing,
     backtest_factor_weights_history,
     compute_factor_weights,
+    compute_factor_weights_fusion,
+    compute_factor_weights_hmm,
     compute_strategy_weights,
 )
 from .regime_transitions import (
@@ -88,9 +121,28 @@ from .multi_strategy_v4 import (
     run_v4_backtest,
     run_v4_mode,
 )
+from .industry_rotation_v4 import (
+    IndustryRotationConfig,
+    IndustryRotationV4,
+    DEFENSIVE_INDUSTRIES,
+    GROWTH_INDUSTRIES,
+)
 
 __all__ = [
-    # Universe
+    # 43 ETF 分类 (Stage 27)
+    "BROAD_CODES",
+    "SECTOR_CODES",
+    "OVERSEAS_CODES",
+    "GOLD_CODES",
+    "DEFENSIVE_SECTOR_CODES",
+    "GROWTH_SECTOR_CODES",
+    "AssetClass",
+    "ASSET_CLASS_CODES",
+    "get_all_43_codes",
+    "classify_43_etf",
+    "select_smart_beta_proxy",
+    "select_defensive_smart_beta",
+    # Universe (兼容旧版)
     "ALL_V4_CODES",
     "STYLE_GROUP_CODES",
     "STYLE_GROUP_METAS",
@@ -110,12 +162,18 @@ __all__ = [
     "SubStrategy",
     "SubStrategyConfig",
     "SubStrategyResult",
-    # Style Rotation
+    # Style Rotation (兼容旧版)
     "StyleRotationConfig",
     "StyleRotationSubStrategy",
     "style_rotation_score",
     "select_top_styles",
     "style_etf_picks",
+    # 大类轮动 (Stage 27)
+    "AssetClassRotationConfig",
+    "AssetClassRotation",
+    "asset_class_rotation_score",
+    "select_top_asset_classes",
+    "asset_class_etf_picks",
     # Smart Beta
     "SmartBetaConfig",
     "SmartBetaSubStrategy",
@@ -133,10 +191,14 @@ __all__ = [
     "REGIME_LABELS",
     "RegimeConfig",
     "RegimeDetector",
+    "detect_regime_simple",
+    "detect_regime_with_macro",
     "get_regime_factor_weight",
     # Factor Timing
     "FactorTimingConfig",
     "compute_factor_weights",
+    "compute_factor_weights_fusion",
+    "compute_factor_weights_hmm",
     "compute_strategy_weights",
     "backtest_factor_timing",
     "backtest_factor_weights_history",
@@ -156,4 +218,9 @@ __all__ = [
     "V4Result",
     "run_v4_backtest",
     "run_v4_mode",
+    # Industry Rotation (Stage 27)
+    "IndustryRotationConfig",
+    "IndustryRotationV4",
+    "DEFENSIVE_INDUSTRIES",
+    "GROWTH_INDUSTRIES",
 ]

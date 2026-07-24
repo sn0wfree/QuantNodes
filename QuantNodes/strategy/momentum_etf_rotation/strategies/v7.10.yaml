@@ -26,6 +26,8 @@ risk:
 strategy_params:
   lambda_tv: 0.15
   lambda_l1: 0.05
+  method: expanding    # OOS, 无前视偏差
+  step: 13             # 每月更新 beta
   top_n: 10
   max_weight: 0.25
   vol_floor: 0.01

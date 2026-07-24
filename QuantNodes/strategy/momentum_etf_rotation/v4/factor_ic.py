@@ -1,15 +1,23 @@
 # coding=utf-8
-"""因子 IC 计算 (Stage 17, v4.0).
+"""因子 IC 计算 (Stage 17 + Stage 27 重构: 适配 43 ETF).
 
-6 个因子 (用 5 只风格组 ETF + 7 只 Smart β ETF 构造):
-1. momentum  (动量):   rank(60d return)
-2. reversal  (反转):   -rank(5d return)
-3. value     (价值):   -rank(净值/MA60 - 1)  (低偏离=低估)
-4. low_vol   (低波):   -rank(60d vol)
-5. dividend  (红利):   rank(红利组代表 return)
-6. quality   (质量):   rank(质量组代表 return)
+8 个因子 (基于 ETF 收益本身构造, 不依赖特定 ETF):
+1. momentum     (动量):   rank(60d return)
+2. reversal     (反转):   -rank(5d return)
+3. value        (价值):   -rank(净值/MA60 - 1)  (低偏离=低估)
+4. low_vol      (低波):   -rank(60d vol)
+5. momentum_12_1 (中期动量): rank(12-1 月收益)  (Stage 27: 跳过最近 1 月)
+6. volatility_change (波动率变化): rank(20d vol - 60d vol)  (上升=风险)
+7. value_proxy  (估值代理): -rank(52周累计收益) (越跌越便宜)
+8. quality_proxy (基本面代理): rank(26周 Sharpe) (高质量≈高ROE)
 
 IC = Spearman(factor_score, forward_return)
+
+Stage 27 重构:
+- 移除 dividend/quality 因子 (依赖特定 ETF)
+- 用 momentum_12_1 替代 (更通用)
+- 用 volatility_change 替代 (波动率代理)
+- 适配任意 ETF 池 (43 ETF)
 """
 from __future__ import annotations
 
@@ -19,23 +27,17 @@ from typing import Sequence
 import numpy as np
 import pandas as pd
 
-from .universe_v4 import (
-    SMART_BETA_CODES,
-    SMART_BETA_METAS,
-    STYLE_GROUP_CODES,
-    StyleGroup,
-    SmartBetaFactor,
-)
 
-
-# 因子名
+# 因子名 (8 个, Stage 27 重构)
 FACTOR_NAMES: tuple[str, ...] = (
-    "momentum",   # 动量
-    "reversal",   # 反转
-    "value",      # 价值
-    "low_vol",    # 低波
-    "dividend",   # 红利
-    "quality",    # 质量
+    "momentum",            # 动量
+    "reversal",            # 反转
+    "value",               # 价值
+    "low_vol",             # 低波
+    "momentum_12_1",       # 中期动量 (12-1 月) - Stage 27 新增
+    "volatility_change",   # 波动率变化 - Stage 27 新增
+    "value_proxy",         # 估值代理
+    "quality_proxy",       # 基本面代理
 )
 
 
@@ -47,7 +49,6 @@ def _safe_rank(s: pd.Series, pct: bool = True) -> pd.Series:
 def _safe_corr(x: pd.Series, y: pd.Series) -> float:
     """安全 Spearman 相关."""
     aligned = pd.concat([x, y], axis=1).dropna()
-    # 至少 5 个样本才能算相关
     if len(aligned) < 5:
         return 0.0
     try:
@@ -65,7 +66,9 @@ def compute_factor_scores(
     all_codes: Sequence[str],
     lookback: int = 60,
 ) -> dict[str, pd.Series]:
-    """计算 6 个因子的截面得分 (index=code).
+    """计算 8 个因子的截面得分 (适配 43 ETF).
+
+    所有因子仅基于 ETF 自身收益构造, 不依赖特定 ETF 池.
 
     Returns:
         dict, name → pd.Series (index=code, values=score, 越大越强)
@@ -74,65 +77,76 @@ def compute_factor_scores(
     if len(sub) < lookback + 2:
         return {n: pd.Series(dtype=float) for n in FACTOR_NAMES}
 
-    # 1. 动量
+    # 1. 动量 (60d)
     ret_60 = sub.iloc[-1] / sub.iloc[-lookback - 1] - 1.0
     mom_score = _safe_rank(ret_60)
 
-    # 2. 反转 (短期)
-    ret_5 = sub.iloc[-1] / sub.iloc[-6] - 1.0
-    rev_score = -_safe_rank(ret_5)
+    # 2. 反转 (5d)
+    if len(sub) >= 6:
+        ret_5 = sub.iloc[-1] / sub.iloc[-6] - 1.0
+        rev_score = -_safe_rank(ret_5)
+    else:
+        rev_score = pd.Series(0.0, index=sub.columns)
 
-    # 3. 价值 (低偏离=低估)
+    # 3. 价值 (低偏离 = 低估)
     ma60 = sub.iloc[-lookback:].mean()
     dev = sub.iloc[-1] / ma60 - 1.0
     val_score = -_safe_rank(dev)
 
     # 4. 低波
-    log_ret = np.log(sub / sub.shift(1))
-    vol_60 = log_ret.iloc[-lookback:].std() * np.sqrt(252)
+    log_ret = np.log(sub / sub.shift(1).replace(0, np.nan))
+    vol_60 = log_ret.iloc[-lookback:].std() * np.sqrt(52)
     lv_score = -_safe_rank(vol_60)
 
-    # 5. 红利 (红利组得分高)
-    div_codes = SMART_BETA_CODES.get(  # 红利类 Smart β
-        # 取 510880 (红利) + 512890 + 515080 + 515100
-    ) if False else [
-        "510880", "512890", "515080", "515100"
-    ]
-    # 红利组收益 = 红利类 ETF 平均收益
-    div_codes_valid = [c for c in div_codes if c in ret_60.index]
-    if div_codes_valid:
-        div_avg_ret = ret_60[div_codes_valid].mean()
+    # 5. 中期动量 (12-1 月, skip 1 月) - Stage 27 新增
+    lookback_252 = min(252, len(sub) - 1)
+    lookback_21 = min(21, len(sub) - 1)
+    if lookback_252 > 30 and lookback_21 < lookback_252:
+        ret_252 = sub.iloc[-1] / sub.iloc[-lookback_252 - 1] - 1.0
+        ret_21 = sub.iloc[-1] / sub.iloc[-lookback_21 - 1] - 1.0
+        mom_12_1 = (1 + ret_252) / (1 + ret_21) - 1
+        mom_12_1_score = _safe_rank(mom_12_1)
     else:
-        div_avg_ret = 0.0
-    # 红利得分: 红利组内为正, 其他相对为 0
-    div_score = pd.Series(0.0, index=ret_60.index)
-    for c in div_codes_valid:
-        div_score[c] = div_avg_ret - ret_60[c]
-    # 排名 (高分 = 红利组)
-    div_score = _safe_rank(div_score)
+        mom_12_1_score = mom_score  # fallback
 
-    # 6. 质量 (质量类 Smart β ETF)
-    qual_codes = [
-        "515900",   # 中证质量
-        "512040",   # 国泰价值
-    ]
-    qual_codes_valid = [c for c in qual_codes if c in ret_60.index]
-    if qual_codes_valid:
-        qual_avg_ret = ret_60[qual_codes_valid].mean()
+    # 6. 波动率变化 (vol 上升 = 风险上升) - Stage 27 新增
+    lookback_60 = min(60, len(sub) - 1)
+    if lookback_60 > 10 and lookback_21 > 5:
+        vol_20 = log_ret.iloc[-lookback_21:].std() * np.sqrt(52)
+        vol_60_recent = log_ret.iloc[-lookback_60:].std() * np.sqrt(52)
+        vol_change = (vol_20 - vol_60_recent) / (vol_60_recent + 1e-10)
+        vol_change_score = _safe_rank(vol_change)  # 高 = 波动率上升
     else:
-        qual_avg_ret = 0.0
-    qual_score = pd.Series(0.0, index=ret_60.index)
-    for c in qual_codes_valid:
-        qual_score[c] = qual_avg_ret - ret_60[c]
-    qual_score = _safe_rank(qual_score)
+        vol_change_score = pd.Series(0.0, index=sub.columns)
+
+    # 7. 估值代理 (52 周累计收益的反向)
+    lookback_52 = min(52, len(sub) - 1)
+    if lookback_52 > 10:
+        ret_52 = sub.iloc[-1] / sub.iloc[-lookback_52 - 1] - 1.0
+        val_proxy_score = -_safe_rank(ret_52)
+    else:
+        val_proxy_score = pd.Series(0.0, index=sub.columns)
+
+    # 8. 基本面代理 (26 周 Sharpe ratio)
+    lookback_26 = min(26, len(sub) - 1)
+    if lookback_26 > 5:
+        log_ret_26 = log_ret.iloc[-lookback_26:]
+        mean_ret_26 = log_ret_26.mean()
+        std_ret_26 = log_ret_26.std()
+        sharpe_26 = mean_ret_26 / (std_ret_26 + 1e-10)
+        qual_proxy_score = _safe_rank(sharpe_26)
+    else:
+        qual_proxy_score = pd.Series(0.0, index=sub.columns)
 
     return {
         "momentum": mom_score,
         "reversal": rev_score,
-        "value":    val_score,
-        "low_vol":  lv_score,
-        "dividend": div_score,
-        "quality":  qual_score,
+        "value": val_score,
+        "low_vol": lv_score,
+        "momentum_12_1": mom_12_1_score,
+        "volatility_change": vol_change_score,
+        "value_proxy": val_proxy_score,
+        "quality_proxy": qual_proxy_score,
     }
 
 
@@ -142,19 +156,14 @@ def compute_forward_return(
     all_codes: Sequence[str],
     forward_window: int = 20,
 ) -> pd.Series:
-    """计算 as_of 之后 forward_window 天的累计收益.
-
-    实际: 用 (as_of + forward_window) 的 close / as_of 的 close - 1
-    """
+    """计算 as_of 之后 forward_window 天的累计收益."""
     sub = nav_df.loc[as_of:, [c for c in all_codes if c in nav_df.columns]]
     if len(sub) < 2:
         return pd.Series(dtype=float)
     base = sub.iloc[0]
-    # 取 forward_window 之后的价格
     if len(sub) > forward_window:
         future = sub.iloc[forward_window]
     else:
-        # 没有足够未来数据, 返回空
         return pd.Series(dtype=float)
     return future / base - 1.0
 
@@ -166,7 +175,7 @@ def factor_ic_at(
     forward_window: int = 20,
     lookback: int = 60,
 ) -> dict[str, float]:
-    """计算 as_of 当天的 6 因子 IC.
+    """计算 as_of 当天的 8 因子 IC (Stage 27 升级).
 
     IC = Spearman(factor_score, forward_return)
 
@@ -197,22 +206,8 @@ def rolling_factor_ic(
     step: int = 5,
     lookback: int = 60,
 ) -> pd.DataFrame:
-    """滚动计算 6 因子 IC 序列.
-
-    Args:
-        nav_df: 价格面板
-        all_codes: ETF codes
-        start/end: 日期范围
-        window: 滚动窗口 (60d)
-        forward_window: 预测未来收益窗口 (20d)
-        step: 采样步长 (5d, 避免太密)
-        lookback: 因子 lookback (60d)
-
-    Returns:
-        pd.DataFrame, index=date, columns=factor name
-    """
+    """滚动计算 8 因子 IC 序列."""
     dates = nav_df.loc[start:end].index
-    # 截止日期需要留出 forward_window
     last_valid_date = nav_df.index[-forward_window] if len(nav_df) > forward_window else None
     if last_valid_date is None:
         return pd.DataFrame(columns=list(FACTOR_NAMES))
@@ -228,7 +223,6 @@ def rolling_factor_ic(
     for ts in sample_dates:
         if ts not in nav_df.index:
             continue
-        # 确保有足够历史
         hist = nav_df.loc[:ts]
         if len(hist) < lookback + 2:
             continue
@@ -247,7 +241,7 @@ def rolling_factor_ic(
 
 def factor_ic_rolling_mean(
     ic_series: pd.DataFrame,
-    smooth_window: int = 12,  # ~ 60 天 (5d step)
+    smooth_window: int = 12,
 ) -> pd.DataFrame:
     """IC 滚动平均 (平滑)."""
     return ic_series.rolling(window=smooth_window, min_periods=3).mean()
