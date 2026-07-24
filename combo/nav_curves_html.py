@@ -44,8 +44,6 @@ OOS_2022_MS = pd.Timestamp("2022-04-26").value // 10**6
 
 COLORS = {
     "v0.0 baseline":    "#888888",
-    "v0.1 +VT":         "#FF7F0E",
-    "v0.2 +TF":         "#D62728",
     "v1.0 locked":      "#2CA02C",
     "v5 量价":          "#E377C2",
     "v5.1 量价 (逆波动)": "#FF6B9D",
@@ -61,8 +59,6 @@ COLORS = {
     "基础风险平价":                "#999999",
     # === v10 阶段 ===
     "v10 DualMom (4资产)":         "#00BCD4",
-    "v10 EPO (行业动量)":          "#795548",
-    "v10 RRG (行业轮动)":          "#FF9800",
     "v10 4策略Vol-parity":         "#E91E63",
     "v10-DynA 市场状态":           "#9C27B0",
     "v10-DynB 波动率":             "#3F51B5",
@@ -72,43 +68,38 @@ COLORS = {
 }
 
 STAGE_MAP = {
-    "v0.0 baseline":    "Stage 8 (原始 CICC 复现)",
-    "v0.1 +VT":         "Stage 9-C (波动率目标)",
-    "v0.2 +TF":         "Stage 9-B (趋势过滤)",
-    "v1.0 locked":      "Stage 12A (斜率×R² 混合, v1.0 锁定)",
-    "v5 量价":          "Stage 22 (11 量价因子, 等权)",
-    "v5.1 量价 (逆波动)": "Stage 25.1 (v5.1 升级, S1+S3+S4 消融选中)",
-    "v7.10 TV-PR (标准化+CV)":       "v7.10 (TV-PR 标准化+CV: 17 macro + 19 量价, 时变 β_t, expanding-window OOS Calmar 0.662)",
-    "v7.14 TV-PR (修正)":            "v7.14 (TV-PR 修正版: NAV bug fix, OOS Calmar 0.801)",
-    "v8 Jump Model 方案B":           "v8 (Jump Model 仓位调节: 2 状态 bull/bear, OOS Sharpe 1.485, MaxDD -12.3%)",
-    "v8 Jump Model 优化版":          "v8 优化版 (bt=0.25, alpha=0.7, t=0.01, cost=10bp: OOS Sharpe 1.204, Calmar 1.395)",
+    "v0.0 baseline":    "原始 CICC 复现",
+    "v1.0 locked":      "v1.0 (斜率×R² 混合, 锁定)",
+    "v5 量价":          "11 量价因子, 等权",
+    "v5.1 量价 (逆波动)": "v5.1 升级, 逆波动加权",
+    "v7.10 TV-PR (标准化+CV)":       "v7.10 TV-PR: 时变 β_t, expanding-window OOS Calmar 0.662",
+    "v7.14 TV-PR (修正)":            "v7.14 TV-PR 修正版: NAV bug fix",
+    "v8 Jump Model 方案B":           "v8 Jump Model: 2 状态 bull/bear, OOS Sharpe 1.485",
+    "v8 Jump Model 优化版":          "v8 优化版: OOS Sharpe 1.204, Calmar 1.395",
     # === v9 阶段 ===
-    "银河方案-动态仓位":  "v9 头牌 (银河方案-动态仓位: pos=(0.7-0.5z).clip(0.2,1.0), OOS Sharpe 1.230)",
-    "银河因子配置":      "v9 银河基础 (17 宏观因子 + 熵权 + 风险预算, OOS Sharpe 0.386)",
+    "银河方案-动态仓位":  "v9 头牌: 动态仓位, OOS Sharpe 1.230",
+    "银河因子配置":      "v9 银河基础: 17 宏观因子 + 熵权 + 风险预算",
     # === v10 阶段 ===
-    "v10 DualMom (4资产)":       "v10 DualMom (全球4资产轮动, 12M绝对+相对动量, OOS Sharpe 0.904)",
-    "v10 EPO (行业动量)":        "v10 EPO (44 ETF行业动量TOP5 + Risk Parity, OOS Sharpe 0.560)",
-    "v10 RRG (行业轮动)":        "v10 RRG (18行业ETF相对旋转图RS-RM, OOS Sharpe 0.424)",
-    "v10 4策略Vol-parity":       "v10 4策略Vol-parity (v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12%, OOS Calmar 1.117)",
-    "v10-DynA 市场状态":         "v10-DynA 市场状态切换 (牛→进攻, 熊→v1 90%, OOS Calmar 1.500)",
-    "v10-DynB 波动率":           "v10-DynB 波动率目标 (高vol→全v1, 低vol→进攻, OOS Calmar 1.108)",
-    "v10-DynC 回撤控制":         "v10-DynC 回撤控制 (3%/5%/8% 三级阈值, OOS Calmar 1.639)",
-    "v10-DynD 信号加权":         "v10-DynD 信号加权 (动量Sharpe动态配权, OOS Calmar 1.753)",
-    "v10-DynE 混合":             "v10-DynE 混合动态 (市场状态+回撤+波动率三重, OOS Calmar 1.442)",
+    "v10 DualMom (4资产)":       "v10 DualMom: 全球4资产轮动, OOS Sharpe 0.904",
+    "v10 4策略Vol-parity":       "v10 4策略Vol-parity, OOS Calmar 1.117",
+    "v10-DynA 市场状态":         "v10-DynA: 市场状态切换, OOS Calmar 1.500",
+    "v10-DynB 波动率":           "v10-DynB: 波动率目标, OOS Calmar 1.108",
+    "v10-DynC 回撤控制":         "v10-DynC: 回撤控制, OOS Calmar 1.639",
+    "v10-DynD 信号加权":         "v10-DynD: 信号加权, OOS Calmar 1.753",
+    "v10-DynE 混合":             "v10-DynE: 混合动态, OOS Calmar 1.442",
 }
 
 # 分组
 GROUPS = {
-    "v1.0 演进路径": ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"],
+    "v1.0 演进路径": ["v0.0 baseline", "v1.0 locked"],
     "进攻型":       ["v5 量价", "v5.1 量价 (逆波动)", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "v8 Jump Model 优化版", "v1.0 locked"],
     "v7 TV-PR 演进":  ["v1.0 locked", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "v8 Jump Model 优化版"],
-    "风险型 (VT)":  ["v1.0 locked", "v0.1 +VT"],
     # === v9 阶段 ===
     "v9 银河组": ["银河方案-动态仓位", "银河因子配置", "基础风险平价", "等权基准", "60/40股债"],
     # === v10 阶段 ===
-    "v10 独立策略": ["v10 DualMom (4资产)", "v10 EPO (行业动量)", "v10 RRG (行业轮动)"],
+    "v10 独立策略": ["v10 DualMom (4资产)"],
     "v10 组合+动态": ["v10 4策略Vol-parity", "v10-DynA 市场状态", "v10-DynB 波动率", "v10-DynC 回撤控制", "v10-DynD 信号加权", "v10-DynE 混合"],
-    "v10 全部": ["v10 DualMom (4资产)", "v10 EPO (行业动量)", "v10 RRG (行业轮动)", "v10 4策略Vol-parity", "v10-DynA 市场状态", "v10-DynB 波动率", "v10-DynC 回撤控制", "v10-DynD 信号加权", "v10-DynE 混合"],
+    "v10 全部": ["v10 DualMom (4资产)", "v10 4策略Vol-parity", "v10-DynA 市场状态", "v10-DynB 波动率", "v10-DynC 回撤控制", "v10-DynD 信号加权", "v10-DynE 混合"],
 }
 
 
@@ -204,7 +195,7 @@ _WIDTH_RULES = [
     (lambda c: "v8" in c,               2.2),
 ]
 # 背景 (淡色虚线)
-BACKGROUND = {"v0.0 baseline", "v0.2 +TF",
+BACKGROUND = {"v0.0 baseline",
               "等权基准", "60/40股债", "基础风险平价"}
 
 
@@ -324,14 +315,14 @@ def chart_grouped_curves(navs):
     print(f"  [chart 2/7] grouped...", flush=True)
     n_strategies = len([c for c in navs.columns if c != "HS300 基准"])
     panels = [
-        ("v1.0 演进 (Stage 8 → v1.0)",
-         ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"]),
+        ("v0 → v1.0 演进",
+         ["v0.0 baseline", "v1.0 locked"]),
         ("v5/v7/v8 进攻型",
          ["v5.1 量价 (逆波动)", "v7.10 TV-PR (标准化+CV)", "v8 Jump Model 方案B", "v1.0 locked", "HS300 基准"]),
         ("v9 银河 (5 策略)",
          ["银河方案-动态仓位", "银河因子配置", "基础风险平价", "等权基准", "60/40股债", "HS300 基准"]),
-        ("v10 独立策略 (3 策略)",
-         ["v10 DualMom (4资产)", "v10 EPO (行业动量)", "v10 RRG (行业轮动)", "HS300 基准"]),
+        ("v10 DualMom + 组合",
+         ["v10 DualMom (4资产)", "v10 4策略Vol-parity", "HS300 基准"]),
         ("v10 组合+动态 (6 方案)",
          ["v10 4策略Vol-parity", "v10-DynA 市场状态", "v10-DynB 波动率", "v10-DynC 回撤控制", "v10-DynD 信号加权", "v10-DynE 混合", "HS300 基准"]),
         ("v7 TV-PR → v8 演进",
@@ -671,8 +662,8 @@ def main(include_strategies: bool = True):
     print(f"[curve] include_strategies={include_strategies}", flush=True)
     print("[curve] 加载数据...", flush=True)
     navs_A = pd.read_parquet(OUT_DIR / "unified_v1v5_navs_calA.parquet")
-    # 移除 v3/v4 策略
-    remove_cols = [c for c in navs_A.columns if c.startswith("v3") or c.startswith("v4")]
+    # 移除 v0.1/v0.2/v3/v4 策略
+    remove_cols = [c for c in navs_A.columns if c.startswith("v0.1") or c.startswith("v0.2") or c.startswith("v3") or c.startswith("v4")]
     navs_A = navs_A.drop(columns=remove_cols, errors='ignore')
     print(f"  [data] parquet: {navs_A.shape}, cols={len(navs_A.columns)}, "
           f"{navs_A.index[0].date()}~{navs_A.index[-1].date()}", flush=True)
@@ -773,12 +764,20 @@ def main(include_strategies: bool = True):
     else:
         print(f"[curve] ⚠️ v9_navs.parquet 不存在, 跳过 v9 (运行 scripts/combo/export_v9_navs.py 生成)")
 
+    # 等权基准 (52 ETF 等权, 月度再平衡)
+    ew_path = OUT_DIR / "equal_weight_baseline.parquet"
+    if ew_path.exists():
+        ew_nav = pd.read_parquet(ew_path).iloc[:, 0]
+        # 如果已有同名列 (来自 v9_navs), 跳过
+        if "等权基准" not in navs_A.columns:
+            navs_A["等权基准"] = ew_nav
+            cal = metrics(ew_nav.loc[OOS_START:])['calmar'] if len(ew_nav.loc[OOS_START:]) > 0 else 0.0
+            print(f"[curve] 等权基准 (52ETF)      已加入: OOS Calmar={cal:.3f}")
+
     # v10 独立策略 + Vol-parity 组合
     v10_dir = REPO / "reports/momentum_etf_rotation/v10"
     v10_navs = {
         "v10 DualMom (4资产)": v10_dir / "dual_momentum_nav.parquet",
-        "v10 EPO (行业动量)": v10_dir / "epo_momentum_nav.parquet",
-        "v10 RRG (行业轮动)": v10_dir / "rrg_rotation_nav.parquet",
         "v10 4策略Vol-parity": v10_dir / "vol_parity_4strat_nav.parquet",
     }
     for name, path in v10_navs.items():
@@ -823,8 +822,6 @@ def main(include_strategies: bool = True):
 
     # ===== 策略卡 =====
     v00_oos = oos_metrics.get('v0.0 baseline', {})
-    v01_oos = oos_metrics.get('v0.1 +VT', {})
-    v02_oos = oos_metrics.get('v0.2 +TF', {})
     v10_oos = oos_metrics.get('v1.0 locked', {})
     v5_oos  = oos_metrics.get('v5 量价', {})
     v51_oos_full = oos_metrics.get('v5.1 量价 (逆波动)', {})
@@ -844,22 +841,6 @@ def main(include_strategies: bool = True):
     <p><b>类型</b>: CICC 原始复现 | <b>信号</b>: 144 日纯价格动量 | <b>选股</b>: 池中 Top-10 | <b>加权</b>: 逆波动</p>
     <p><b>核心</b>: CICC 报告 (2026-07-03) 的 4 步组合管理, 仅价格动量, 无任何增强</p>
     <p><b>OOS</b>: {_fmt_m(v00_oos)}</p>
-  </div>"""
-
-    v01_strategy_card = f"""
-  <div class="strategy-card">
-    <h4>v0.1 +VT <span class="legend-box legend-good">Stage 9-C</span></h4>
-    <p><b>类型</b>: 波动率目标 | <b>增强</b>: 在 v0.0 基础上启用 VT (target=0.15, lookback=60, scale∈[0.3, 1.5])</p>
-    <p><b>核心</b>: 高波动期降仓, 目标年化波动 15%, 极端时只保留 30% 仓位</p>
-    <p><b>OOS</b>: {_fmt_m(v01_oos)} — 收益被压低但 DD 大幅改善</p>
-  </div>"""
-
-    v02_strategy_card = f"""
-  <div class="strategy-card">
-    <h4>v0.2 +TF <span class="legend-box legend-good">Stage 9-B</span></h4>
-    <p><b>类型</b>: 趋势过滤 | <b>增强</b>: 在 v0.0 基础上启用 TF (HS300 MA200, bear=0.7)</p>
-    <p><b>核心</b>: 沪深 300 跌破 200 日均线时, 整体仓位缩至 70% (剩余 30% 转 511260 国债 ETF)</p>
-    <p><b>OOS</b>: {_fmt_m(v02_oos)} — TF 收益略高于 VT</p>
   </div>"""
 
     v1_strategy_card = f"""
@@ -935,32 +916,18 @@ def main(include_strategies: bool = True):
 
     # v10 策略卡片
     v10_dm_oos = oos_metrics.get('v10 DualMom (4资产)', {})
-    v10_epo_oos = oos_metrics.get('v10 EPO (行业动量)', {})
-    v10_rrg_oos = oos_metrics.get('v10 RRG (行业轮动)', {})
     v10_combo_oos = oos_metrics.get('v10 4策略Vol-parity', {})
     v10_dynE_oos = oos_metrics.get('v10-DynE 混合', {})
 
     v10_cards = f"""
   <div class="strategy-card" style="background: #E8F5E9; border-color: #4CAF50;">
-    <h4>🎯 v10 DualMom (4资产轮动) <span class="legend-box legend-best">OOS Sharpe 1.276</span></h4>
+    <h4>🎯 v10 DualMom (4资产轮动)</h4>
     <p><b>类型</b>: 全球 4 资产绝对+相对动量 (510300/513100/518880/511260)</p>
     <p><b>核心</b>: 12M 绝对收益 > 0 且相对排名 Top1 → 持有; 否则转 511260 国债</p>
     <p><b>OOS</b>: ret {v10_dm_oos.get('ann_return', 0)*100:+.2f}% / Sharpe {v10_dm_oos.get('sharpe', 0):.2f} / DD {v10_dm_oos.get('max_dd', 0)*100:.2f}% / Calmar {v10_dm_oos.get('calmar', 0):.3f}</p>
   </div>
-  <div class="strategy-card" style="background: #E3F2FD; border-color: #2196F3;">
-    <h4>🎯 v10 EPO (行业动量+Risk Parity) <span class="legend-box legend-bench">OOS Sharpe 0.932</span></h4>
-    <p><b>类型</b>: 44 ETF 行业动量 TOP5 + Risk Parity 等权</p>
-    <p><b>核心</b>: 截面动量排名 Top5 高配 + 波动率倒数加权, 简化版 EPO</p>
-    <p><b>OOS</b>: ret {v10_epo_oos.get('ann_return', 0)*100:+.2f}% / Sharpe {v10_epo_oos.get('sharpe', 0):.2f} / DD {v10_epo_oos.get('max_dd', 0)*100:.2f}% / Calmar {v10_epo_oos.get('calmar', 0):.3f}</p>
-  </div>
-  <div class="strategy-card" style="background: #FFF3E0; border-color: #FF9800;">
-    <h4>🎯 v10 RRG (行业轮动) <span class="legend-box legend-bench">OOS Sharpe 0.424</span></h4>
-    <p><b>类型</b>: 18 行业 ETF 相对旋转图 (RS-RM 打分)</p>
-    <p><b>核心</b>: Relative Strength + Relative Momentum → 4 象限分类, Leader 最高配</p>
-    <p><b>OOS</b>: ret {v10_rrg_oos.get('ann_return', 0)*100:+.2f}% / Sharpe {v10_rrg_oos.get('sharpe', 0):.2f} / DD {v10_rrg_oos.get('max_dd', 0)*100:.2f}% / Calmar {v10_rrg_oos.get('calmar', 0):.3f}</p>
-  </div>
   <div class="strategy-card" style="background: linear-gradient(135deg, #E8F5E9 0%, #E3F2FD 100%); border-color: #FF1493;">
-    <h4>🏆 v10 4策略 Vol-parity <span class="legend-box legend-best">OOS Sharpe 1.991</span></h4>
+    <h4>🏆 v10 4策略 Vol-parity</h4>
     <p><b>类型</b>: v1.0 74% + v9macro 12% + v7.10 9% + DualMom 5%, 波动率平价组合</p>
     <p><b>核心</b>: 4 独立策略 (相关性 -0.005~0.682) + 波动率倒数配权 → Sharpe 提升 28% vs v1.0</p>
     <p><b>OOS</b>: ret {v10_combo_oos.get('ann_return', 0)*100:+.2f}% / Sharpe {v10_combo_oos.get('sharpe', 0):.2f} / DD {v10_combo_oos.get('max_dd', 0)*100:.2f}% / Calmar {v10_combo_oos.get('calmar', 0):.3f}</p>
@@ -1135,8 +1102,6 @@ def main(include_strategies: bool = True):
   <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 v10 动态权重方案 (OOS Calmar 1.753), 完整记录量化策略演进轨迹.</p>
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段: v0 → v5</h3>
   {v0_strategy_card}
-  {v01_strategy_card}
-  {v02_strategy_card}
   {v1_strategy_card}
   {v5_strategy_card}
 
@@ -1145,7 +1110,7 @@ def main(include_strategies: bool = True):
   {v9_overview_card}
   {v9_galaxy_card}
   {v9_gf_card}
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🎯 v10 阶段 (独立策略 + Vol-parity 组合 + 动态权重)</h3>
+  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🎯 v10 阶段 (DualMom + Vol-parity + 动态权重)</h3>
   {v10_cards}
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📊 基准</h3>
   {hs300_card}
@@ -1226,7 +1191,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 
 <div class="key-finding" style="background: linear-gradient(135deg, #E8F5E9 0%, #E3F2FD 100%); border-left-color: #E91E63; margin-top: 12px;">
   <strong>🏆 v10 阶段 (2026-07-24): 独立策略 + Vol-parity + 动态权重</strong><br>
-  • <b>3 个独立策略</b>: DualMom (全球4资产轮动) + EPO (44 ETF动量+RP) + RRG (行业相对旋转图)<br>
+  • <b>3 个独立策略</b>: DualMom (全球4资产轮动) 等<br>
   • <b>4策略Vol-parity</b>: v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12% — 波动率倒数配权, OOS Calmar 1.117<br>
   • <b>5 个动态权重方案</b>: A 市场状态 / B 波动率 / C 回撤控制 / D 信号加权 / E 混合 — 全部优于静态基线<br>
   • <b>最优</b>: v10-DynD 信号加权 Calmar 1.753, v10-DynC 回撤控制 DD 仅 -3.7%<br>
