@@ -45,14 +45,12 @@ OOS_2022_MS = pd.Timestamp("2022-04-26").value // 10**6
 COLORS = {
     "v0.0 baseline":    "#888888",
     "v1.0 locked":      "#2CA02C",
-    "v5 量价":          "#E377C2",
     "v5.1 量价 (逆波动)": "#FF6B9D",
     "v7.10 TV-PR (标准化+CV)":      "#FF4500",
     "v7.14 TV-PR (修正)":           "#B71C1C",
     "v8 Jump Model 优化版":         "#1B5E20",
     # === v9 阶段 ===
     "银河方案-动态仓位":            "#FF1493",
-    "银河因子配置":                "#4682B4",
     "等权基准":                    "#AAAAAA",
     "60/40股债":                   "#BBBBBB",
     "基础风险平价":                "#999999",
@@ -66,14 +64,12 @@ COLORS = {
 STAGE_MAP = {
     "v0.0 baseline":    "原始 CICC 复现",
     "v1.0 locked":      "v1.0 (斜率×R² 混合, 锁定)",
-    "v5 量价":          "11 量价因子, 等权",
     "v5.1 量价 (逆波动)": "v5.1 升级, 逆波动加权",
     "v7.10 TV-PR (标准化+CV)":       "v7.10 TV-PR: 时变 β_t, expanding-window OOS Calmar 0.662",
     "v7.14 TV-PR (修正)":            "v7.14 TV-PR 修正版: NAV bug fix",
     "v8 Jump Model 优化版":          "v8 优化版: OOS Sharpe 1.204, Calmar 1.395",
     # === v9 阶段 ===
     "银河方案-动态仓位":  "v9 头牌: 动态仓位, OOS Sharpe 1.230",
-    "银河因子配置":      "v9 银河基础: 17 宏观因子 + 熵权 + 风险预算",
     # === v10 阶段 ===
     "v10 DualMom (4资产)":       "v10 DualMom: 全球4资产轮动, OOS Sharpe 0.904",
     "v10 4策略Vol-parity":       "v10 4策略Vol-parity, OOS Calmar 1.117",
@@ -84,10 +80,10 @@ STAGE_MAP = {
 # 分组
 GROUPS = {
     "v1.0 演进路径": ["v0.0 baseline", "v1.0 locked"],
-    "进攻型":       ["v5 量价", "v5.1 量价 (逆波动)", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 优化版", "v1.0 locked"],
+    "进攻型":       ["v5.1 量价 (逆波动)", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 优化版", "v1.0 locked"],
     "v7 TV-PR 演进":  ["v1.0 locked", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 优化版"],
     # === v9 阶段 ===
-    "v9 银河组": ["银河方案-动态仓位", "银河因子配置", "基础风险平价", "等权基准", "60/40股债"],
+    "v9 银河组": ["银河方案-动态仓位", "基础风险平价", "等权基准", "60/40股债"],
     # === v10 阶段 ===
     "v10 独立策略": ["v10 DualMom (4资产)"],
     "v10 组合+动态": ["v10 4策略Vol-parity", "v10-DynD 信号加权", "v10-DynE 混合"],
@@ -309,10 +305,10 @@ def chart_grouped_curves(navs):
     panels = [
         ("v0 → v1.0 演进",
          ["v0.0 baseline", "v1.0 locked"]),
-        ("v5/v7/v8 进攻型",
+        ("v5.1/v7/v8 进攻型",
          ["v5.1 量价 (逆波动)", "v7.10 TV-PR (标准化+CV)", "v8 Jump Model 优化版", "v1.0 locked", "HS300 基准"]),
-        ("v9 银河 (5 策略)",
-         ["银河方案-动态仓位", "银河因子配置", "基础风险平价", "等权基准", "60/40股债", "HS300 基准"]),
+        ("v9 银河 (4 策略)",
+         ["银河方案-动态仓位", "基础风险平价", "等权基准", "60/40股债", "HS300 基准"]),
         ("v10 DualMom + 组合",
          ["v10 DualMom (4资产)", "v10 4策略Vol-parity", "HS300 基准"]),
         ("v10 组合+动态 (6 方案)",
@@ -654,8 +650,8 @@ def main(include_strategies: bool = True):
     print(f"[curve] include_strategies={include_strategies}", flush=True)
     print("[curve] 加载数据...", flush=True)
     navs_A = pd.read_parquet(OUT_DIR / "unified_v1v5_navs_calA.parquet")
-    # 移除 v0.1/v0.2/v3/v4 策略
-    remove_cols = [c for c in navs_A.columns if c.startswith("v0.1") or c.startswith("v0.2") or c.startswith("v3") or c.startswith("v4")]
+    # 移除 v0.1/v0.2/v3/v4/v5 策略
+    remove_cols = [c for c in navs_A.columns if c.startswith("v0.1") or c.startswith("v0.2") or c.startswith("v3") or c.startswith("v4") or c == "v5 量价"]
     navs_A = navs_A.drop(columns=remove_cols, errors='ignore')
     print(f"  [data] parquet: {navs_A.shape}, cols={len(navs_A.columns)}, "
           f"{navs_A.index[0].date()}~{navs_A.index[-1].date()}", flush=True)
@@ -748,8 +744,8 @@ def main(include_strategies: bool = True):
     v9_path = OUT_DIR / "v9_navs.parquet"
     if v9_path.exists():
         v9_navs = pd.read_parquet(v9_path)
-        # 移除中信策略
-        remove_citic = [c for c in v9_navs.columns if "中信" in c]
+        # 移除中信策略 + 银河因子配置
+        remove_citic = [c for c in v9_navs.columns if "中信" in c or "银河因子" in c]
         v9_navs = v9_navs.drop(columns=remove_citic, errors='ignore')
         for col in v9_navs.columns:
             navs_A[col] = v9_navs[col]
@@ -815,7 +811,6 @@ def main(include_strategies: bool = True):
     # ===== 策略卡 =====
     v00_oos = oos_metrics.get('v0.0 baseline', {})
     v10_oos = oos_metrics.get('v1.0 locked', {})
-    v5_oos  = oos_metrics.get('v5 量价', {})
     v51_oos_full = oos_metrics.get('v5.1 量价 (逆波动)', {})
 
     def _fmt_m(oos: dict) -> str:
@@ -849,23 +844,13 @@ def main(include_strategies: bool = True):
 
     v4_factor_card = ""
 
-    v5_strategy_card = f"""
-  <div class="strategy-card">
-    <h4>v5 量价 <span class="legend-box legend-good">Stage 22 基础版</span></h4>
-    <p><b>类型</b>: 11 量价因子复合 | <b>因子</b>: 6 大类 (动量/交易波动/换手率/多空对比/量价背离/量幅同向)</p>
-    <p><b>核心</b>: 截面 z-score + 复合因子加权 (z 加权 vs 等权在 52 池差异 <b>0.5%</b>, Stage 24 ablation 结论)</p>
-    <p><b>加权</b>: 等权 | <b>调仓</b>: 月度</p>
-    <p><b>OOS</b>: {_fmt_m(v5_oos)}</p>
-    <p><b>说明</b>: v5 已被 v5.1 (逆波动) 替代, 此卡保留作为演进基线</p>
-  </div>"""
-
     v51_strategy_card = ""
 
     v61_strategy_card = ""
 
     # ===== v9 阶段策略卡片 (2021-08 ~ 2026-05, 247 周) =====
     v9_galaxy_oos = oos_metrics.get('银河方案-动态仓位', {})
-    v9_gf_oos = oos_metrics.get('银河因子配置', {})
+    v9_gf_oos = {}
 
     # 概览卡片
     v9_overview_card = f"""
@@ -891,17 +876,8 @@ def main(include_strategies: bool = True):
   </div>"""
 
 
-    # D3: 银河因子配置 (银河方案的基础)
-    if v9_gf_oos:
-        v9_gf_card = f"""
-  <div class="strategy-card" style="background: #F0F4F8; border-color: #4682B4;">
-    <h4>🌌 银河因子配置 <span class="legend-box legend-good">v9 银河基础 (Sharpe 0.386)</span></h4>
-    <p><b>类型</b>: 17 宏观因子 + 熵权 + 风险预算 | <b>用途</b>: 作为银河方案-动态仓位的选股信号源</p>
-    <p><b>5 类宏观指标</b>: 消费/内需 (增长+生活端通胀) + 出口/外部 (汇率+DXY) + 工业/生产 + 信贷/金融 + 风险/情绪 (VIX等)</p>
-    <p><b>核心</b>: 类内等权平均 → 熵权合成 (104 周滚动) → 滚动 β 回归 (52 周) → 风险预算权重反推</p>
-    <p><b>OOS</b>: ret {v9_gf_oos['ann_return']*100:+.2f}% / Sharpe {v9_gf_oos['sharpe']:.3f} / DD {v9_gf_oos['max_dd']*100:.2f}% / <b>Calmar {v9_gf_oos['calmar']:.3f}</b></p>
-    <p><b>说明</b>: 固定仓位版本 (无 pos 公式) 仅 0.386, 但叠加动态仓位后变 1.230</p>
-  </div>"""
+    # D3: 银河因子配置 (已移除)
+    v9_gf_card = ""
 
 
 
@@ -1092,10 +1068,9 @@ def main(include_strategies: bool = True):
 <section id="strategies">
   <h2>v0 - v10 策略简述 (按时间顺序)</h2>
   <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 v10 动态权重方案 (OOS Calmar 1.753), 完整记录量化策略演进轨迹.</p>
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段: v0 → v5</h3>
+  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段: v0 → v1.0</h3>
   {v0_strategy_card}
   {v1_strategy_card}
-  {v5_strategy_card}
 
   {v710_strategy_card}
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🏆 v9 阶段: 银河方案</h3>
