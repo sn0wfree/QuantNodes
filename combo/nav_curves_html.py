@@ -47,39 +47,28 @@ COLORS = {
     "v0.1 +VT":         "#FF7F0E",
     "v0.2 +TF":         "#D62728",
     "v1.0 locked":      "#2CA02C",
-    "v3 (52 池)":       "#1F77B4",
-    "v4 style":         "#9467BD",
-    "v4 factor":        "#8C564B",
     "v5 量价":          "#E377C2",
     "v5.1 量价 (逆波动)": "#FF6B9D",
-    "v6 (TF 趋势过滤)": "#17BECF",
-    "v6 TF+Cost":      "#17BECF",
-    "v6.1 IC12":       "#D62728",
-    "v6.2 ir_expanding": "#9467BD",
     "v7.10 TV-PR (标准化+CV)":      "#FF4500",
     "v7.14 TV-PR (修正)":           "#B71C1C",
     "v8 Jump Model 方案B":          "#0D47A1",
     "v8 Jump Model 优化版":         "#1B5E20",
     # === v9 阶段 ===
     "银河方案-动态仓位":            "#FF1493",
-    "中信多因子选股":              "#1E90FF",
     "银河因子配置":                "#4682B4",
-    "中信里昂全天候":              "#DAA520",
-    "中信大类资产配置":            "#708090",
-    "中信行业轮动":                "#FFA07A",
     "等权基准":                    "#AAAAAA",
     "60/40股债":                   "#BBBBBB",
     "基础风险平价":                "#999999",
     # === v10 阶段 ===
-    "v10 DualMom (4资产)":         "#00BCD4",  # 青色 — 全球4资产轮动
-    "v10 EPO (行业动量)":          "#795548",  # 棕色 — 44 ETF动量+RP
-    "v10 RRG (行业轮动)":          "#FF9800",  # 橙色 — 行业相对旋转图
-    "v10 4策略Vol-parity":         "#E91E63",  # 玫红 — 4策略波动率平价
-    "v10-DynA 市场状态":           "#9C27B0",  # 紫色 — 市场状态切换
-    "v10-DynB 波动率":             "#3F51B5",  # 靛蓝 — 波动率目标
-    "v10-DynC 回撤控制":           "#009688",  # 蓝绿 — 回撤控制
-    "v10-DynD 信号加权":           "#FF5722",  # 深橙 — 信号加权
-    "v10-DynE 混合":               "#CDDC39",  # 黄绿 — 混合动态
+    "v10 DualMom (4资产)":         "#00BCD4",
+    "v10 EPO (行业动量)":          "#795548",
+    "v10 RRG (行业轮动)":          "#FF9800",
+    "v10 4策略Vol-parity":         "#E91E63",
+    "v10-DynA 市场状态":           "#9C27B0",
+    "v10-DynB 波动率":             "#3F51B5",
+    "v10-DynC 回撤控制":           "#009688",
+    "v10-DynD 信号加权":           "#FF5722",
+    "v10-DynE 混合":               "#CDDC39",
 }
 
 STAGE_MAP = {
@@ -87,28 +76,17 @@ STAGE_MAP = {
     "v0.1 +VT":         "Stage 9-C (波动率目标)",
     "v0.2 +TF":         "Stage 9-B (趋势过滤)",
     "v1.0 locked":      "Stage 12A (斜率×R² 混合, v1.0 锁定)",
-    "v3 (52 池)":       "Stage 16A (多策略组合)",
-    "v4 style":         "Stage 18 (风格轮动)",
-    "v4 factor":        "Stage 18 (IC 因子择时)",
     "v5 量价":          "Stage 22 (11 量价因子, 等权)",
     "v5.1 量价 (逆波动)": "Stage 25.1 (v5.1 升级, S1+S3+S4 消融选中)",
-    "v6 (TF 趋势过滤)": "Stage 26 (v6 单策略: TF 风控 + v5 因子排序 + v5.1 逆波动加权)",
-    "v6 TF+Cost":       "Stage 26 (v6 单策略: TF 风控 + 调仓成本 + v5.1.1)",
-    "v6.1 IC12":       "Stage 27 (v6.1: IC-IR 加权, IC12 expanding, RECOMMENDED)",
-    "v6.2 ir_expanding": "Stage 29 (v6.2: 因子正交化 + ir_expanding + IC12, ⭐ OOS Calmar 0.821, 5-fold 4/5 胜 v6.1)",
-    "v7.10 TV-PR (标准化+CV)":       "v7.10 (TV-PR 标准化+CV: 17 macro + 19 量价, 时变 β_t, 🚀 Stage 31 NEW, expanding-window OOS Calmar 0.662)",
+    "v7.10 TV-PR (标准化+CV)":       "v7.10 (TV-PR 标准化+CV: 17 macro + 19 量价, 时变 β_t, expanding-window OOS Calmar 0.662)",
     "v7.14 TV-PR (修正)":            "v7.14 (TV-PR 修正版: NAV bug fix, OOS Calmar 0.801)",
     "v8 Jump Model 方案B":           "v8 (Jump Model 仓位调节: 2 状态 bull/bear, OOS Sharpe 1.485, MaxDD -12.3%)",
-    "v8 Jump Model 优化版":          "v8 优化版 (bt=0.25, alpha=0.7, t=0.01, cost=10bp: OOS Sharpe 1.204, Calmar 1.395, Turnover 20x)",
+    "v8 Jump Model 优化版":          "v8 优化版 (bt=0.25, alpha=0.7, t=0.01, cost=10bp: OOS Sharpe 1.204, Calmar 1.395)",
     # === v9 阶段 ===
-    "银河方案-动态仓位":  "v9 头牌 (银河方案-动态仓位: pos=(0.7-0.5z).clip(0.2,1.0), ⭐ OOS Sharpe 1.230, Brinson 归因 71% 仓位 alpha)",
-    "中信多因子选股":    "v9 中信最优 (5 风格因子 mom/vol/qual/size/value_reversal + Top-K=10, OOS Sharpe 0.615, MaxDD -18.0%)",
-    "银河因子配置":      "v9 银河基础 (17 宏观因子 + 熵权 + 风险预算, OOS Sharpe 0.386, MaxDD -26.4%)",
-    "中信里昂全天候":    "v9 中信里昂 (风险平价 × 增长/通胀象限, OOS Sharpe 0.348, MaxDD -22.6%)",
-    "中信大类资产配置":  "v9 中信大类 (5 宏观因子战术倾斜, 风险资产 30-80%, OOS Sharpe 0.249)",
-    "中信行业轮动":      "v9 中信行业 (23 行业 ETF 动量+质量 Top-5, OOS Sharpe 0.280)",
+    "银河方案-动态仓位":  "v9 头牌 (银河方案-动态仓位: pos=(0.7-0.5z).clip(0.2,1.0), OOS Sharpe 1.230)",
+    "银河因子配置":      "v9 银河基础 (17 宏观因子 + 熵权 + 风险预算, OOS Sharpe 0.386)",
     # === v10 阶段 ===
-    "v10 DualMom (4资产)":       "v10 DualMom (全球4资产轮动: 510300/513100/518880/511260, 12M绝对+相对动量, OOS Sharpe 0.904)",
+    "v10 DualMom (4资产)":       "v10 DualMom (全球4资产轮动, 12M绝对+相对动量, OOS Sharpe 0.904)",
     "v10 EPO (行业动量)":        "v10 EPO (44 ETF行业动量TOP5 + Risk Parity, OOS Sharpe 0.560)",
     "v10 RRG (行业轮动)":        "v10 RRG (18行业ETF相对旋转图RS-RM, OOS Sharpe 0.424)",
     "v10 4策略Vol-parity":       "v10 4策略Vol-parity (v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12%, OOS Calmar 1.117)",
@@ -122,15 +100,11 @@ STAGE_MAP = {
 # 分组
 GROUPS = {
     "v1.0 演进路径": ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"],
-    "进攻型":       ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "v8 Jump Model 优化版", "v1.0 locked"],
-    "量价族演进 (Stage 22→29)":  ["v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding"],
-    "v7 TV-PR 演进":  ["v1.0 locked", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "v8 Jump Model 优化版"],
+    "进攻型":       ["v5 量价", "v5.1 量价 (逆波动)", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "v8 Jump Model 优化版", "v1.0 locked"],
+    "v7 TV-PR 演进":  ["v1.0 locked", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "v8 Jump Model 优化版"],
     "风险型 (VT)":  ["v1.0 locked", "v0.1 +VT"],
     # === v9 阶段 ===
-    "v9 头牌 (动态仓位)": ["银河方案-动态仓位"],
-    "v9 中信组 (4 策略)": ["中信多因子选股", "中信里昂全天候", "中信大类资产配置", "中信行业轮动"],
-    "v9 银河组 (5 策略)": ["银河方案-动态仓位", "银河因子配置", "基础风险平价", "等权基准", "60/40股债"],
-    "v9 全部 9 策略": ["银河方案-动态仓位", "中信多因子选股", "银河因子配置", "中信里昂全天候", "中信行业轮动", "基础风险平价", "中信大类资产配置", "等权基准", "60/40股债"],
+    "v9 银河组": ["银河方案-动态仓位", "银河因子配置", "基础风险平价", "等权基准", "60/40股债"],
     # === v10 阶段 ===
     "v10 独立策略": ["v10 DualMom (4资产)", "v10 EPO (行业动量)", "v10 RRG (行业轮动)"],
     "v10 组合+动态": ["v10 4策略Vol-parity", "v10-DynA 市场状态", "v10-DynB 波动率", "v10-DynC 回撤控制", "v10-DynD 信号加权", "v10-DynE 混合"],
@@ -221,7 +195,6 @@ _PREFIX_RULES = [
     (lambda c: "v7.14" in c,            "📊 "),
     (lambda c: "v8" in c,               "🛡️ "),
     (lambda c: "v5.1" in c,             "🆕 "),
-    (lambda c: "v6" in c and "TF" in c, "🆕 "),
 ]
 _WIDTH_RULES = [
     (lambda c: c.startswith("v10-Dyn"),  2.8),
@@ -231,7 +204,7 @@ _WIDTH_RULES = [
     (lambda c: "v8" in c,               2.2),
 ]
 # 背景 (淡色虚线)
-BACKGROUND = {"v4 style", "v4 factor", "v0.0 baseline", "v0.2 +TF",
+BACKGROUND = {"v0.0 baseline", "v0.2 +TF",
               "等权基准", "60/40股债", "基础风险平价"}
 
 
@@ -353,16 +326,16 @@ def chart_grouped_curves(navs):
     panels = [
         ("v1.0 演进 (Stage 8 → v1.0)",
          ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"]),
-        ("进攻型 (v3 / v5 / v6 / v7.10 / v8)",
-         ["v3 (52 池)", "v5.1 量价 (逆波动)", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)", "v8 Jump Model 方案B", "v1.0 locked", "HS300 基准"]),
-        ("v9 银河+中信 (9 策略)",
-         ["银河方案-动态仓位", "中信多因子选股", "银河因子配置", "中信里昂全天候", "中信大类资产配置", "中信行业轮动", "HS300 基准"]),
+        ("v5/v7/v8 进攻型",
+         ["v5.1 量价 (逆波动)", "v7.10 TV-PR (标准化+CV)", "v8 Jump Model 方案B", "v1.0 locked", "HS300 基准"]),
+        ("v9 银河 (5 策略)",
+         ["银河方案-动态仓位", "银河因子配置", "基础风险平价", "等权基准", "60/40股债", "HS300 基准"]),
         ("v10 独立策略 (3 策略)",
          ["v10 DualMom (4资产)", "v10 EPO (行业动量)", "v10 RRG (行业轮动)", "HS300 基准"]),
         ("v10 组合+动态 (6 方案)",
          ["v10 4策略Vol-parity", "v10-DynA 市场状态", "v10-DynB 波动率", "v10-DynC 回撤控制", "v10-DynD 信号加权", "v10-DynE 混合", "HS300 基准"]),
-        ("v7 TV-PR 演进 (Stage 27→v8)",
-         ["v1.0 locked", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "HS300 基准"]),
+        ("v7 TV-PR → v8 演进",
+         ["v1.0 locked", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "HS300 基准"]),
     ]
     fig = make_subplots(
         rows=3, cols=2,
@@ -698,6 +671,9 @@ def main(include_strategies: bool = True):
     print(f"[curve] include_strategies={include_strategies}", flush=True)
     print("[curve] 加载数据...", flush=True)
     navs_A = pd.read_parquet(OUT_DIR / "unified_v1v5_navs_calA.parquet")
+    # 移除 v3/v4 策略
+    remove_cols = [c for c in navs_A.columns if c.startswith("v3") or c.startswith("v4")]
+    navs_A = navs_A.drop(columns=remove_cols, errors='ignore')
     print(f"  [data] parquet: {navs_A.shape}, cols={len(navs_A.columns)}, "
           f"{navs_A.index[0].date()}~{navs_A.index[-1].date()}", flush=True)
     oos = navs_A.loc[OOS_START:]  # DataFrame (用于表格)
@@ -714,40 +690,6 @@ def main(include_strategies: bool = True):
                 if 'v7.10' in orig_col:
                     navs_A[orig_col] = v710_v56[col].reindex(navs_A.index)
                     print(f"[curve] {orig_col} 已用 v56 数据更新")
-        oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
-
-    # 加载 v6 NAV (Stage 26: v6 单策略, 推荐 TF 档)
-    v6_path = OUT_DIR / "v6_navs.parquet"
-    if v6_path.exists():
-        v6_navs = pd.read_parquet(v6_path)
-        # 推荐档: TF (OOS Calmar 0.662)
-        if "v6 只 TF" in v6_navs.columns:
-            navs_A["v6 (TF 趋势过滤)"] = v6_navs["v6 只 TF"]
-            print(f"[curve] v6 TF 已加入 (Stage 26): OOS Calmar="
-                  f"{metrics(v6_navs['v6 只 TF'].loc[OOS_START:])['calmar']:.3f}")
-        # TF+Cost 档
-        if "v6 TF+Cost" in v6_navs.columns:
-            navs_A["v6 TF+Cost"] = v6_navs["v6 TF+Cost"]
-        # 重建 oos_metrics 含 v6 (后续 main() 还会再算, 这里先设保险)
-        oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
-
-    # 加载 v6.1 / v6.2 combined NAV (Stage 27 + Stage 29 更新)
-    v6_combined_path = OUT_DIR / "v6_1_v6_2_combined_navs.parquet"
-    if v6_combined_path.exists():
-        v6_combined = pd.read_parquet(v6_combined_path)
-        if "v6.1 IC12" in v6_combined.columns:
-            navs_A["v6.1 IC12"] = v6_combined["v6.1 IC12"]
-            print(f"[curve] v6.1 IC12 已加入 (Stage 27 RECOMMENDED): OOS Calmar="
-                  f"{metrics(v6_combined['v6.1 IC12'].loc[OOS_START:])['calmar']:.3f}")
-        if "v6.2 ir_expanding" in v6_combined.columns:
-            navs_A["v6.2 ir_expanding"] = v6_combined["v6.2 ir_expanding"]
-            print(f"[curve] v6.2 ir_expanding 已加入 (Stage 32 DEPRECATED): OOS Calmar="
-                  f"{metrics(v6_combined['v6.2 ir_expanding'].loc[OOS_START:])['calmar']:.3f}")
-        elif "v6.2 (正交+IC36)" in v6_combined.columns:
-            # 兼容旧列名
-            navs_A["v6.2 ir_expanding"] = v6_combined["v6.2 (正交+IC36)"]
-            print(f"[curve] v6.2 (旧列名兼容) 已加入: OOS Calmar="
-                  f"{metrics(v6_combined['v6.2 (正交+IC36)'].loc[OOS_START:])['calmar']:.3f}")
         oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
 
     # 加载 v7.14 TV-PR 修正版 NAV (优先用 v56 数据)
@@ -816,10 +758,13 @@ def main(include_strategies: bool = True):
                   f"{metrics(v8_v56[col].loc[OOS_START:])['calmar']:.3f}")
         oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
 
-    # 加载 v9 9 策略 NAV (银河方案 + 中信 4 策略 + 等权/60-40/RP)
+    # 加载 v9 银河策略 NAV
     v9_path = OUT_DIR / "v9_navs.parquet"
     if v9_path.exists():
         v9_navs = pd.read_parquet(v9_path)
+        # 移除中信策略
+        remove_citic = [c for c in v9_navs.columns if "中信" in c]
+        v9_navs = v9_navs.drop(columns=remove_citic, errors='ignore')
         for col in v9_navs.columns:
             navs_A[col] = v9_navs[col]
             cal = metrics(v9_navs[col].loc[OOS_START:])['calmar'] if len(v9_navs[col].loc[OOS_START:]) > 0 else 0.0
@@ -864,107 +809,23 @@ def main(include_strategies: bool = True):
 
     oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
 
-    # 构造 v6 Key Finding HTML 片段
-    v6_tf_oos = oos_metrics.get('v6 (TF 趋势过滤)', {})
-    v51_oos = oos_metrics.get('v5.1 量价 (逆波动)', {})
-    if v6_tf_oos:
-        v6_delta_pct = (v6_tf_oos['calmar'] - v51_oos['calmar']) / v51_oos['calmar'] * 100
-        v6_dd_v51 = abs(v51_oos['max_dd'])*100
-        v6_dd_v6 = abs(v6_tf_oos['max_dd'])*100
-        v6_key_finding = (
-            f"• <b>v6 (TF 趋势过滤) Stage 26</b>: v5 因子排序 + v5.1 逆波动加权 + TF 风控 → "
-            f"OOS Calmar <b>{v6_tf_oos['calmar']:.3f}</b> (+{v6_delta_pct:.1f}%), "
-            f"DD -<b>{v6_dd_v6:.1f}%</b> "
-            f"(vs v5.1.1 -{v6_dd_v51:.1f}%)<br>"
-        )
-        v6_aggressive_row = (
-            f"<tr><td>🚀 进取 (TF 风控)</td><td>v6 (TF 趋势过滤) 🆕🆕</td>"
-            f"<td>v5.1.1 + TF 风控, DD 仅 <b>-{v6_dd_v6:.1f}%</b> "
-            f"(vs v5.1.1 -{v6_dd_v51:.1f}%)</td>"
-            f"<td><b>{v6_tf_oos['calmar']:.3f}</b></td></tr>"
-        )
-        v6_dd_improve = v6_dd_v51 - v6_dd_v6
-        v6_strategy_card = f"""
-  <div class="strategy-card" style="background: #E0F7FA; border-color: #17BECF;">
-    <h4>v6 (TF 趋势过滤) <span class="legend-box legend-best">⭐ Stage 26 单策略</span></h4>
-    <p><b>类型</b>: <b>v5 因子排序</b> + v5.1 逆波动加权 + <b>TF 风控</b> (HS300 MA200, bear=0.7)</p>
-    <p><b>核心</b>: v6 单策略版, 排序逻辑沿用 v5 (截面 z-score + 复合因子 Top-N), 加权沿用 v5.1 逆波动, 仅加 1 层风控 (TF). TF 在 HS300 < MA200 时缩仓至 70%, 留 30% 给 511260 国债 ETF.</p>
-    <p><b>OOS</b>: {v6_tf_oos['ann_return']*100:.2f}% / Sharpe {v6_tf_oos['sharpe']:.2f} / DD {v6_dd_v6:.2f}% / <b>Calmar {v6_tf_oos['calmar']:.3f}</b> ⭐</p>
-    <p><b>v5.1.1 → v6 TF 改善</b>: OOS Calmar +{v6_delta_pct:.1f}%, DD 改善 {v6_dd_improve:.2f}pp</p>
-    <p><b>设计动机</b>: v5.1.1 无风控高 beta 收益, 单月最大回撤 -18%. 加 TF 让熊市只亏 70%, 大幅降 DD. 不开 VT 是因为 v5.1.1 信号源已经偏进攻, VT 会严重拖累收益 (消融实验证实).</p>
-  </div>
-"""
-    else:
-        v6_key_finding = ""
-        v6_aggressive_row = ""
-        v6_strategy_card = ""
-    # 删除冗余: oos_metrics 和 full_metrics_v6 在 main 后面重算
-
-    # v6.1 / v6.2 Key Finding + 策略卡 (Stage 27 + Stage 29)
-    v62_oos = oos_metrics.get('v6.2 ir_expanding', oos_metrics.get('v6.2 (正交+IC36)', {}))
+    # v7.10 策略卡
     v710_oos = oos_metrics.get('v7.10 TV-PR (标准化+CV)', {})
-    v61_oos = oos_metrics.get('v6.1 IC12', {})
-    if v62_oos and v61_oos:
-        v62_cal = v62_oos['calmar']
-        v61_cal = v61_oos['calmar']
-        v51_cal = oos_metrics.get('v5.1 量价 (逆波动)', {}).get('calmar', 0)
-        v62_dd_pct = abs(v62_oos['max_dd']) * 100
-        v61_dd_pct = abs(v61_oos['max_dd']) * 100
-        v62_key_finding = (
-            f"• <b>v6.2 ir_expanding Stage 32 ❌ DEPRECATED</b>: v5 因子排序 + IC 加权 + 因子正交化 (Gram-Schmidt, expanding IR 排序) → "
-            f"OOS Calmar <b>{v62_oos.get('calmar', 0):.3f}</b> "
-            f"<br>• <b>v7.10 TV-PR (标准化+CV) 🚀 Stage 31 NEW</b>: 17 macro + 19 量价, 时变 β_t (Cui 2025), 混合标准化 + 两阶段 CV + expanding window → "
-            f"OOS Calmar <b>{v710_oos.get('calmar', 0):.3f}</b> "
-            f"<br>• <b>v7.10 vs v6.2</b>: v7.10 OOS Calmar {v710_oos.get('calmar', 0):.3f} vs v6.2 {v62_oos.get('calmar', 0):.3f} "
-            f"({'✅ 优于' if v710_oos.get('calmar', 0) > v62_oos.get('calmar', 0) else '⚠️ 待优化'})"
-            f"OOS Calmar <b>{v62_cal:.3f}</b> (vs v6.1 IC12 {v61_cal:.3f}, +{(v62_cal/v61_cal-1)*100:+.1f}%) "
-            f"5-fold walk-forward <b>4/5 胜 v6.1</b>, DD -{v62_dd_pct:.1f}%<br>"
-        )
-        v62_strategy_card = f"""
-  <div class="strategy-card" style="background: #F3E5F5; border-color: #9467BD;">
-    <h4>v6.2 ir_expanding <span class="legend-box legend-deprecated">Stage 32 DEPRECATED</span></h4>
-    <p><b>类型</b>: 11 量价因子 + IC 加权 + 因子正交化 + 逆波动率加权</p>
-    <p><b>核心</b>: Gram-Schmidt 残差化, expanding IR 排序, 最大化因子纯度</p>
-    <p><b>类型</b>: <b>v5 因子排序</b> + <b>IC 加权 (12 月 expanding)</b> + <b>Gram-Schmidt 因子正交化</b> (按 expanding IR 排序) + v5.1 逆波动加权</p>
-    <p><b>核心</b>: 用截至 d<sub>i-1</sub> 的 expanding IR 给 11 因子排序, Gram-Schmidt 残差化去除 f8-f9, f3-f4 冗余. 5-fold 验证 4/5 胜 v6.1 IC12, 真实提升非运气.</p>
-    <p><b>OOS</b>: {v62_oos['ann_return']*100:+.2f}% / Sharpe {v62_oos['sharpe']:.2f} / DD {v62_dd_pct:.2f}% / <b>Calmar {v62_cal:.3f}</b> ⭐</p>
-    <p><b>5-fold 跨期</b>: mean=1.512, min=-0.016 (vs v6.1 mean=0.867, min=-0.604). 4/5 fold 胜 v6.1.</p>
-    <p><b>状态</b>: Stage 32 降为 DEPRECATED (扣成本 Calmar 0.331, CV% 56.9% FAIL). 被 v7.10 TV-PR 超越.</p>
-  </div>
-"""
-        # v7.10 详细策略卡 (内部版独有, 外发版不显示)
-        v710_dd_pct = abs(v710_oos.get('max_dd', 0)) * 100
-        v710_strategy_card = f"""
+    v710_dd_pct = abs(v710_oos.get('max_dd', 0)) * 100
+    v710_strategy_card = f"""
   <div class="strategy-card" style="background: #FFE4B5; border-color: #FF4500;">
-    <h4>v7.10 TV-PR (标准化+CV) <span class="legend-box legend-best">🚀 Stage 31 NEW</span></h4>
+    <h4>v7.10 TV-PR (标准化+CV)</h4>
     <p><b>类型</b>: 17 macro + 19 量价因子, 时变 β_t (TV-PR, Cui 2025)</p>
-    <p><b>核心</b>: 混合标准化 (宏观=时间序列 Z-score, PV=截面 Z-score + Winsorize) + 两阶段 CV (粗搜 10 → 细搜 25) + expanding window + β[t-1] (滞后一期) + step=4 (月度调仓) + 逆波动加权</p>
-    <p><b>诊断</b>: 条件数 2.17e+10 → 1.32e+02 (改善 8 个数量级); Beta TV Norm 166.78 → 56.44</p>
-    <p><b>OOS</b>: ret {v710_oos.get('ann_return', 0)*100:+.2f}% / Sharpe {v710_oos.get('sharpe', 0):.2f} / DD -{v710_dd_pct:.1f}% / <b>Calmar {v710_oos.get('calmar', 0):.3f}</b> 🚀</p>
-    <p><b>消融</b>: β[t] 劣于 β[t-1] (Sharpe -4.8%); step=1 劣于 step=4 (Sharpe -28%, DD_duration 374天); EMA/MA 平滑均无改善</p>
-    <p><b>状态</b>: Stage 31 OOS Calmar <b>{v710_oos.get('calmar', 0):.3f}</b> (vs v6.2 {v62_oos.get('calmar', 0):.3f}, +{(v710_oos.get('calmar', 0)/v62_oos.get('calmar', 0)-1)*100:+.1f}%), DD -{v710_dd_pct:.1f}%, 跨期稳健</p>
+    <p><b>核心</b>: 混合标准化 + 两阶段 CV + expanding window + β[t-1]</p>
+    <p><b>OOS</b>: ret {v710_oos.get('ann_return', 0)*100:+.2f}% / Sharpe {v710_oos.get('sharpe', 0):.2f} / DD -{v710_dd_pct:.1f}% / <b>Calmar {v710_oos.get('calmar', 0):.3f}</b></p>
   </div>
 """
-        v6_1_row = (
-            f"<tr><td>🎯 聪明 (IC 加权, baseline)</td><td>v6.1 IC12</td>"
-            f"<td>IC 加权, 自动剔除失效因子, DD -<b>{v61_dd_pct:.1f}%</b> (v7.10 已超越)</td>"
-            f"<td><b>{v61_cal:.3f}</b></td></tr>"
-        )
-    else:
-        v62_key_finding = ""
-        v62_strategy_card = ""
-        v710_strategy_card = ""
-        v6_1_row = ""
 
-    # ===== 8 张基础策略卡 (v0 - v5) + v5.1 + v6.1 IC12 + HS300 基准 =====
-    # 从 Stage 27 归档版恢复, 供主文件 (内部跟踪) 完整版使用
+    # ===== 策略卡 =====
     v00_oos = oos_metrics.get('v0.0 baseline', {})
     v01_oos = oos_metrics.get('v0.1 +VT', {})
     v02_oos = oos_metrics.get('v0.2 +TF', {})
     v10_oos = oos_metrics.get('v1.0 locked', {})
-    v3_oos  = oos_metrics.get('v3 (52 池)', {})
-    v4s_oos = oos_metrics.get('v4 style', {})
-    v4f_oos = oos_metrics.get('v4 factor', {})
     v5_oos  = oos_metrics.get('v5 量价', {})
     v51_oos_full = oos_metrics.get('v5.1 量价 (逆波动)', {})
 
@@ -1009,31 +870,11 @@ def main(include_strategies: bool = True):
     <p><b>OOS</b>: {_fmt_m(v10_oos)} — 风险调整冠军 (12 SmartBeta 子集, 口径 B)</p>
   </div>"""
 
-    v3_strategy_card = f"""
-  <div class="strategy-card">
-    <h4>v3 (52 池) <span class="legend-box legend-good">Stage 16A</span></h4>
-    <p><b>类型</b>: 多策略组合 | <b>子策略</b>: 动量(144d) + 均值反转(60d 反向+MA 金叉) + 行业轮动(60d 动量+加速度, 周度)</p>
-    <p><b>核心</b>: 三子策略互补, 动量抓趋势/反转抓修复/行业轮动抓短期切换, 子策略等权</p>
-    <p><b>OOS</b>: {_fmt_m(v3_oos)} — 最均衡</p>
-  </div>"""
+    v3_strategy_card = ""
 
-    v4_style_card = f"""
-  <div class="strategy-card">
-    <h4>v4 style <span class="legend-box legend-bad">Stage 18 ⚠️</span></h4>
-    <p><b>类型</b>: 风格轮动 | <b>池</b>: 5 风格组 (HS300/CSI500/ChiNext/STAR50/红利) | <b>信号</b>: 多窗口 (5/20/120/180) 动量</p>
-    <p><b>核心</b>: 多窗口动量排名 + 20% 红利底仓 + Top-2 精选 + Sideways 缩仓 50%</p>
-    <p><b>问题</b>: 5 风格组高度相关 (0.86-0.90), 选股 ≈ 噪声; 70% 时间是 sideways, 年化 -2.5%</p>
-    <p><b>OOS</b>: {_fmt_m(v4s_oos)} — 表现差</p>
-  </div>"""
+    v4_style_card = ""
 
-    v4_factor_card = f"""
-  <div class="strategy-card">
-    <h4>v4 factor <span class="legend-box legend-bad">Stage 18 ❌ 失效</span></h4>
-    <p><b>类型</b>: IC 因子择时 | <b>因子</b>: 5 个 (momentum/reversal/value/dividend/quality) | <b>权重</b>: max(0, IC+0.05)²</p>
-    <p><b>核心</b>: 滚动 IC 估计 + 因子特异性窗口 + Regime 条件化 (bull/bear/sideways)</p>
-    <p><b>问题</b>: IC 信噪比极差 (84-94% 低于 0.05 阈值); 70% 时间退化为单因子 (value only)</p>
-    <p><b>OOS</b>: {_fmt_m(v4f_oos)} — 完全失效</p>
-  </div>"""
+    v4_factor_card = ""
 
     v5_strategy_card = f"""
   <div class="strategy-card">
@@ -1045,34 +886,13 @@ def main(include_strategies: bool = True):
     <p><b>说明</b>: v5 已被 v5.1 (逆波动) 替代, 此卡保留作为演进基线</p>
   </div>"""
 
-    v51_strategy_card = f"""
-  <div class="strategy-card">
-    <h4>v5.1 量价 (逆波动) <span class="legend-box legend-good">Stage 23+ 推荐</span></h4>
-    <p><b>类型</b>: 11 量价因子 (同 v5) | <b>加权</b>: 逆波动 (60d 窗口, vol_floor=0.01, max_weight=0.25)</p>
-    <p><b>核心</b>: 等权 → 逆波动加权, T+1 调仓, 消融 look-ahead (Stage 24)</p>
-    <p><b>OOS</b>: {_fmt_m(v51_oos_full)}</p>
-    <p><b>说明</b>: 历史上绝对收益冠军 (年化 12.32%), 但 DD -18.04% 较大; 已被 v7.10 TV-PR (expanding-window OOS Calmar 0.662) 超越</p>
-  </div>"""
+    v51_strategy_card = ""
 
-    # v6.1 IC12 卡片 (Stage 27 RECOMMENDED)
     v61_strategy_card = ""
-    if v61_oos:
-        v61_strategy_card = f"""
-  <div class="strategy-card" style="background: #FFF8E1; border-color: #D4A017;">
-    <h4>v6.1 IC12 <span class="legend-box legend-good">Stage 27 BASELINE (v7.10 已超越)</span></h4>
-    <p><b>类型</b>: <b>v5 因子排序</b> + <b>IC 加权 (12 月 expanding)</b> + v5.1 逆波动加权</p>
-    <p><b>核心</b>: 用截至 d<sub>i-1</sub> 的 12 月 IC 加权替代等权, 给近期有效因子更高权重, 自动剔除失效因子 (负 IC)</p>
-    <p><b>OOS</b>: ret {v61_oos['ann_return']*100:+.2f}% / Sharpe {v61_oos['sharpe']:.2f} / DD {v61_oos['max_dd']*100:.2f}% / <b>Calmar {v61_oos['calmar']:.3f}</b> ⭐</p>
-    <p><b>稳定性</b>: 跨期稳健, DD -15.4% (v5.1.1 -18.0%); Stage 31 起降为 BASELINE, v7.10 已超越 (expanding-window OOS Calmar 0.662)</p>
-  </div>"""
 
     # ===== v9 阶段策略卡片 (2021-08 ~ 2026-05, 247 周) =====
     v9_galaxy_oos = oos_metrics.get('银河方案-动态仓位', {})
-    v9_mf_oos = oos_metrics.get('中信多因子选股', {})
     v9_gf_oos = oos_metrics.get('银河因子配置', {})
-    v9_aw_oos = oos_metrics.get('中信里昂全天候', {})
-    v9_ma_oos = oos_metrics.get('中信大类资产配置', {})
-    v9_rt_oos = oos_metrics.get('中信行业轮动', {})
 
     # 概览卡片
     v9_overview_card = f"""
@@ -1097,16 +917,6 @@ def main(include_strategies: bool = True):
     <p><b>设计动机</b>: Brinson 归因证实仓位是 #1 alpha 源; 银河选股本身仅 +1.28% 4.8 年累计, 但叠加动态仓位后 Sharpe 暴增 0.85</p>
   </div>"""
 
-    # D2: 中信多因子选股
-    if v9_mf_oos:
-        v9_mf_card = f"""
-  <div class="strategy-card" style="background: #E0F0FF; border-color: #1E90FF;">
-    <h4>📈 中信多因子选股 <span class="legend-box legend-best">⭐ v9 中信最优 Sharpe 0.615</span></h4>
-    <p><b>类型</b>: 5 风格因子横截面打分 (mom/vol/qual/size/value_reversal) + Top-K=10 候选 + 底仓</p>
-    <p><b>核心</b>: <code>score = z(mom) - z(vol) + z(qual) - z(size) + z(value_reversal)</code>, 每周选 Top-10 候选, softmax 加权 (候选池 50% 权重), 剩余 33 个等权</p>
-    <p><b>OOS</b>: ret {v9_mf_oos['ann_return']*100:+.2f}% / Sharpe {v9_mf_oos['sharpe']:.3f} / DD {v9_mf_oos['max_dd']*100:.2f}% / <b>Calmar {v9_mf_oos['calmar']:.3f}</b></p>
-    <p><b>中信组对比</b>: 优于中信里昂 (0.348), 中信大类 (0.249), 中信行业轮动 (0.280)</p>
-  </div>"""
 
     # D3: 银河因子配置 (银河方案的基础)
     if v9_gf_oos:
@@ -1120,39 +930,8 @@ def main(include_strategies: bool = True):
     <p><b>说明</b>: 固定仓位版本 (无 pos 公式) 仅 0.386, 但叠加动态仓位后变 1.230</p>
   </div>"""
 
-    # D4: 中信里昂全天候
-    if v9_aw_oos:
-        v9_aw_card = f"""
-  <div class="strategy-card" style="background: #FFF8DC; border-color: #DAA520;">
-    <h4>🌤 中信里昂全天候 <span class="legend-box legend-good">v9 抗宏观周期 (Sharpe 0.348)</span></h4>
-    <p><b>类型</b>: 风险平价 × 增长/通胀象限 (4 资产类 × 4 象限)</p>
-    <p><b>核心</b>: 风险平价基础 + 4 象限 (↑G↓I 加股 / ↑G↑I 平衡 / ↓G↑I 防御 / ↓G↓I 防御+长债)</p>
-    <p><b>资产分类</b>: broad (宽基) / sector (23 行业) / overseas (12 海外) / gold (3 黄金)</p>
-    <p><b>OOS</b>: ret {v9_aw_oos['ann_return']*100:+.2f}% / Sharpe {v9_aw_oos['sharpe']:.3f} / DD {v9_aw_oos['max_dd']*100:.2f}% / <b>Calmar {v9_aw_oos['calmar']:.3f}</b></p>
-  </div>"""
 
-    # D5: 中信大类资产配置
-    if v9_ma_oos:
-        v9_ma_card = f"""
-  <div class="strategy-card" style="background: #F5F5F5; border-color: #708090;">
-    <h4>🏛 中信大类资产配置 <span class="legend-box legend-bench">v9 战术配置 (Sharpe 0.249)</span></h4>
-    <p><b>类型</b>: 5 宏观因子 z-score 战术倾斜 | <b>风险资产占比</b>: 30% - 80% 线性插值</p>
-    <p><b>5 因子方向</b>: 增长 (+) / 通胀 (中性, 排除) / 信贷 (-) / 汇率 (-) / 利率 (+)</p>
-    <p><b>核心</b>: 滚动 z-score (52 周) → 综合得分 → 风险资产权重 + 黄金作为防御资产</p>
-    <p><b>OOS</b>: ret {v9_ma_oos['ann_return']*100:+.2f}% / Sharpe {v9_ma_oos['sharpe']:.3f} / DD {v9_ma_oos['max_dd']*100:.2f}% / <b>Calmar {v9_ma_oos['calmar']:.3f}</b></p>
-    <p><b>说明</b>: 文档 53 标注 IC 多为负, 5 因子方向需修正</p>
-  </div>"""
 
-    # D6: 中信行业轮动
-    if v9_rt_oos:
-        v9_rt_card = f"""
-  <div class="strategy-card" style="background: #FFE8D6; border-color: #FFA07A;">
-    <h4>🔄 中信行业轮动 <span class="legend-box legend-bench">v9 行业 ETF (Sharpe 0.280)</span></h4>
-    <p><b>类型</b>: 23 行业 ETF 内动量 + 质量打分 + Top-K 高配</p>
-    <p><b>核心</b>: <code>sector_score = z(动量) - z(波动率)</code>, Top-5 行业 5x 权重, 其他 0.5x</p>
-    <p><b>OOS</b>: ret {v9_rt_oos['ann_return']*100:+.2f}% / Sharpe {v9_rt_oos['sharpe']:.3f} / DD {v9_rt_oos['max_dd']*100:.2f}% / <b>Calmar {v9_rt_oos['calmar']:.3f}</b></p>
-    <p><b>说明</b>: 文档 53 标注信号较嘈杂, 在 23 个小 ETF 上选优不稳定; 表现优于等权基准但 DD 较大</p>
-  </div>"""
 
     # v10 策略卡片
     v10_dm_oos = oos_metrics.get('v10 DualMom (4资产)', {})
@@ -1354,32 +1133,18 @@ def main(include_strategies: bool = True):
 <section id="strategies">
   <h2>v0 - v10 策略简述 (按时间顺序)</h2>
   <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 v10 动态权重方案 (OOS Calmar 1.753), 完整记录量化策略演进轨迹.</p>
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段 (Stage 8 - 22): CICC → v5 量价</h3>
+  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段: v0 → v5</h3>
   {v0_strategy_card}
   {v01_strategy_card}
   {v02_strategy_card}
   {v1_strategy_card}
-  {v3_strategy_card}
-  {v4_style_card}
-  {v4_factor_card}
   {v5_strategy_card}
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🚀 加权与风控阶段 (Stage 23+ - 26): v5.1 → v6 TF</h3>
-  {v51_strategy_card}
-  {v6_strategy_card}
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🎯 智能加权阶段 (Stage 27 - 31): v6.1 IC12 → v6.2 ir_expanding → v7.10 TV-PR (标准化+CV)</h3>
-  {v61_strategy_card}
-  {v62_strategy_card}
+
   {v710_strategy_card}
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📊 v8 阶段 (Jump Model 仓位调节)</h3>
-  <p style="font-size:13px;color:#888;">v8 通过 Jump Model 实现牛熊状态检测 (DD_10/Sortino_20/Sortino_60 → bull/bear), OOS Sharpe 1.485 (方案B), MaxDD -12.3%. 详见 docs/46-v8_ml_design.md.</p>
-  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🏆 v9 阶段 (2021-08~2026-05, 247 周, 43 ETF): 银河方案 + 中信 4 策略</h3>
+  <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🏆 v9 阶段: 银河方案</h3>
   {v9_overview_card}
   {v9_galaxy_card}
-  {v9_mf_card}
   {v9_gf_card}
-  {v9_aw_card}
-  {v9_ma_card}
-  {v9_rt_card}
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">🎯 v10 阶段 (独立策略 + Vol-parity 组合 + 动态权重)</h3>
   {v10_cards}
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📊 基准</h3>
@@ -1480,7 +1245,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   <div class="methodology">
     <b>主池 44 只</b> (来自 <code>common/universe.py</code>): 6 只 A 股宽基 + 20 只 A 股行业 + 5 只港股 + 6 只商品 + 6 只海外 + 1 只国债<br>
     <b>SmartBeta 8 只</b> (来自 <code>v4/universe_v4.py</code>): 红利低波/低波/质量/价值/现金流等<br>
-    <b>例外</b>: v4 子策略固定使用 12 只 SmartBeta (设计意图) | v5 使用 44 只 OHLCV (需要 volume 数据)
+<b>v5</b>: 使用 44 只 OHLCV (需要 volume 数据)
   </div>
 
   <h3>2. 统一时间区间</h3>
