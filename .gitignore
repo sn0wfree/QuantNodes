@@ -162,15 +162,9 @@ frontend/.env.development
 # Test screenshots
 tests/screenshots/
 
-# Graphify cache (regeneratable, large)
-graphify-out/cache/
-graphify-out/.graphify_labels.json
-graphify-out/converted/
-# graph.json (~21MB) and manifest.json (~144KB) are regeneratable via
-# `graphify update .` (AST-only, no API cost). Keep only the human-readable
-# GRAPH_REPORT.md and .graphify_root in VCS so PRs stay reviewable.
-graphify-out/graph.json
-graphify-out/manifest.json
+# graphify-out: 只跟踪 GRAPH_REPORT.md (人工可读报告), 其余忽略
+graphify-out/*
+!graphify-out/GRAPH_REPORT.md
 
 # Local DB connection config (use conn.ini.template as starting point)
 conn.ini
