@@ -1,0 +1,5 @@
+strategy,cost_bp,commission_bp,slippage_bp,cost_rate_per_turnover,avg_weekly_turnover,annualized_cost_bp,annualized_cost_pct,desc
+v8+v9 macro 5bp (NEW),5,2.5,2.5,0.0005,0.3,78.0,0.78,"commission + slippage, 各一半"
+v8+v9 macro 5bp (NEW),10,5.0,5.0,0.001,0.3,156.0,1.56,"commission + slippage, 各一半"
+v8+v9 macro 5bp (NEW),15,7.5,7.5,0.0015,0.3,234.0,2.34,"commission + slippage, 各一半"
+v8+v9 macro 5bp (NEW),20,10.0,10.0,0.002,0.3,312.0,3.12,"commission + slippage, 各一半"

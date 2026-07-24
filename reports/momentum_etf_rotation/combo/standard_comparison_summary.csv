@@ -1,0 +1,9 @@
+Period,Top5_Sharpe,Best_Sharpe_Strategy,Best_Sharpe_Value,Worst_Sharpe_Strategy,Worst_Sharpe_Value,Median_Sharpe
+Full Sample,v0.1 +VT / v1.0 locked / v5.1 量价 (逆波动) / v7.10 TV-PR (5bp) / v8 method_b (有未来),v8 method_b (有未来),1.2058196032502286,v4 factor,0.0951641765192138,0.8782088523005485
+OOS 22-26,v1.0 locked / v3 (52 池) / v7.10 TV-PR (5bp) / ⭐ v8+v9 macro 5bp (NEW) / v8+v9 macro 10bp (NEW),v1.0 locked,1.5958457381865871,v4 factor,-0.18149254319786282,0.9160185484190954
+2018 贸易战大跌,v0.0 baseline / v0.2 +TF / v5 量价 / v5.1 量价 (逆波动) / v6 全风控,v5 量价,0.0,v4 style,-1.7531940412916065,-1.4997716542202473
+2019 春燥行情,v8 method_b (有未来) / v8 per-asset 5bp / ⭐ v8+v9 macro 5bp (NEW) / 沪深300 (benchmark),沪深300 (benchmark),5.519645075060071,v5.1 量价 (逆波动),2.443793731199892,3.877966307073348
+2020 疫情牛,v5 量价 / v5.1 量价 (逆波动) / v9 银河方案-动态仓位 / v9 银河因子配置 / v9 等权基准 / 沪深300 (benchmark),v5.1 量价 (逆波动),3.9924891917142284,v0.2 +TF,1.971634766586598,2.988845042120469
+2021 白马崩盘,v0.2 +TF / v5 量价 / v5.1 量价 (逆波动) / v6 全风控 / v8 method_b (有未来),v6 全风控,0.47170037603318293,v4 style,-1.9347481046306014,-1.4136790197840667
+2022 慢熊,v7.10 TV-PR (5bp) / v8 prob 3state 10bp / v8 method_b (有未来) / ⭐ v8+v9 macro 5bp (NEW) / v8+v9 macro 10bp (NEW),v8 method_b (有未来),0.6079456693841024,v0.0 baseline,-1.7403502452558257,-0.31401371567092473
+2023 慢熊延续,v0.0 baseline / v0.1 +VT / v0.2 +TF / v1.0 locked / v3 (52 池),v0.2 +TF,2.5669824932993297,v4 style,-1.195636447022592,0.15265725459029486

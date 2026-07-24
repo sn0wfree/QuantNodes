@@ -1,0 +1,14 @@
+config,smooth,cost_bp,ann_return,vol,sharpe,max_drawdown,calmar,turnover
+v7_14_baseline,False,0,0.2268,0.2022,1.1218,-0.2831,0.8012,47.28
+v7_14_baseline,False,10,0.1631,0.202,0.8073,-0.3038,0.5368,47.28
+v7_14_baseline,False,20,0.1026,0.2021,0.5076,-0.3241,0.3165,47.28
+v8_method_b_no_smooth,False,0,0.1804,0.1214,1.4853,-0.123,1.4668,29.6
+v8_method_b_no_smooth,False,10,0.149,0.1212,1.2293,-0.1378,1.0813,29.6
+v8_method_b_no_smooth,False,20,0.1185,0.1211,0.9781,-0.1524,0.7774,29.6
+v8_method_b_smooth,True,0,0.1846,0.1406,1.3128,-0.1154,1.599,18.89
+v8_method_b_smooth,True,10,0.1641,0.1405,1.1683,-0.1186,1.3843,18.89
+v8_method_b_smooth,True,20,0.144,0.1404,1.0257,-0.1238,1.1628,18.89
+v8_method_b_no_smooth_cost10,False,10,0.149,0.1212,1.2293,-0.1378,1.0813,29.6
+v8_method_b_smooth_cost10,True,10,0.1641,0.1405,1.1683,-0.1186,1.3843,18.89
+v8_method_b_no_smooth,False,20,0.1185,0.1211,0.9781,-0.1524,0.7774,29.6
+v8_method_b_smooth,True,20,0.144,0.1404,1.0257,-0.1238,1.1628,18.89

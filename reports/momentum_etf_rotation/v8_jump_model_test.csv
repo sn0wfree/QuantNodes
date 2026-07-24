@@ -1,0 +1,7 @@
+asset,code,type,asset_type,annret_buyhold,vol_buyhold,sharpe_buyhold,maxdd_buyhold,calmar_buyhold,annret_periodic,vol_periodic,sharpe_periodic,maxdd_periodic,calmar_periodic,bear_periodic,time,oos_start,oos_end,oos_days,oos_years,annret_composite,vol_composite,sharpe_composite_periodic,maxdd_composite_periodic,calmar_composite,annret_enhanced,vol_enhanced,sharpe_enhanced_periodic,maxdd_enhanced_periodic,calmar_enhanced,composite_trigger_periodic,enhanced_trigger_periodic
+沪深300,510300,single,equity,0.0376,0.1927,0.195,-0.3077,0.1222,0.1156,0.1416,0.8162,-0.156,0.7406,70.48249763481552,20.203328371047974,,,,,,,,,,,,,,,,
+中证500,510500,single,equity,0.0879,0.2304,0.3814,-0.3405,0.258,0.0984,0.2003,0.4914,-0.3287,0.2994,36.80227057710501,20.13680624961853,,,,,,,,,,,,,,,,
+创业板,159915,single,equity,0.1176,0.3168,0.3711,-0.4633,0.2537,0.0743,0.2893,0.2569,-0.4632,0.1604,27.90917691579943,20.248120307922363,,,,,,,,,,,,,,,,
+国债,511260,single,bond,0.044,0.0222,1.9778,-0.0225,1.9575,0.0438,0.0177,2.4697,-0.0144,3.041,45.411542100283825,20.84335470199585,,,,,,,,,,,,,,,,
+黄金,518880,single,commodity,0.2107,0.1817,1.1599,-0.3038,0.6934,0.1674,0.1558,1.0741,-0.2318,0.722,39.54588457899716,20.2270450592041,,,,,,,,,,,,,,,,
+等权组合,"510300,510500,159915,511260,518880",composite,,0.1113,0.1484,0.7497,-0.1843,0.6036,,,,,,,,2022-02-17,2026-06-30,1058.0,4.198412698412699,0.0599,0.1103,0.5431,-0.1742,0.3441,0.0789,0.1108,0.7124,-0.1485,0.5317,69.28166351606805,63.61058601134215
