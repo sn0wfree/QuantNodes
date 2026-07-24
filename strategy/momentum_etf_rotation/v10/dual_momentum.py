@@ -128,7 +128,13 @@ def compute_nav(
             if len(wk) >= LOOKBACK_WEEKS:
                 curr_weights = dual_momentum_signal(wk, LOOKBACK_WEEKS)
             else:
-                curr_weights = prev_weights.copy()
+                # 预热期: 1/4 等权分配给 4 资产, 剩 3/4 买 511260 国债
+                n_assets = len(daily_prices.columns)
+                curr_weights = pd.Series(0.0, index=daily_prices.columns)
+                curr_weights[BOND_CODE] = 0.75
+                for col in daily_prices.columns:
+                    if col != BOND_CODE:
+                        curr_weights[col] = 0.25 / (n_assets - 1)
         else:
             curr_weights = prev_weights.copy()
 

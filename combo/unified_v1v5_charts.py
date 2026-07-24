@@ -359,7 +359,7 @@ def chart_portfolio_combos(navs_A):
 def chart_monthly_distribution(navs):
     fig = go.Figure()
     for col in navs.columns:
-        monthly = navs[col].resample("ME").last().pct_change().dropna()
+        monthly = navs[col].resample("M").last().pct_change().dropna()
         if len(monthly) < 3:
             continue
         fig.add_trace(go.Box(

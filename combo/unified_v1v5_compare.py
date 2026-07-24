@@ -346,7 +346,7 @@ def v5_52(close_52, ohlcv_44, top_n=5):
     )
 
     dates = close_52.index
-    rebal_dates = dates.to_series().resample("ME").last().index
+    rebal_dates = dates.to_series().resample("M").last().index
     rebal_set = set(d for d in rebal_dates if d in dates)
 
     cfg = IndustryRotationV5Config(top_n=top_n)
@@ -395,11 +395,22 @@ def v5_1_52(close_52, ohlcv_44, top_n=5):
     )
 
     dates = close_52.index
-    rebal_dates = dates.to_series().resample("ME").last().index
+    rebal_dates = dates.to_series().resample("M").last().index
     rebal_set = set(d for d in rebal_dates if d in dates)
 
     cfg = IndustryRotationV5_1Config(top_n=top_n)
     factor_panel = compute_all_factors_panel(ohlcv_44, cfg.factor_cfg)
+
+    # 预热期权重: 1/4 等权 + 3/4 国债 (511260)
+    BOND_CODE = "511260"
+    all_codes = list(close_52.columns)
+    n_non_bond = len([c for c in all_codes if c != BOND_CODE])
+    warmup_weights = {}
+    for c in all_codes:
+        if c == BOND_CODE:
+            warmup_weights[c] = 0.75
+        else:
+            warmup_weights[c] = 0.25 / n_non_bond if n_non_bond else 0.0
 
     nav = np.ones(len(dates))
     last_weights = {}
@@ -441,9 +452,17 @@ def v5_1_52(close_52, ohlcv_44, top_n=5):
                 if total > 0:
                     last_weights = {k: v / total for k, v in last_weights.items()}
 
+        # 权重选择: 调仓日的有信号权重 或 预热期权重
         if last_weights:
+            active_weights = last_weights
+        elif i <= 252:
+            active_weights = warmup_weights
+        else:
+            active_weights = {}
+
+        if active_weights:
             daily_ret = 0.0
-            for code, w in last_weights.items():
+            for code, w in active_weights.items():
                 if code in close_52.columns:
                     p_t = close_52[code].iloc[i]
                     p_prev = close_52[code].iloc[i - 1]

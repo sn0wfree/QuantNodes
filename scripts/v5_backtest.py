@@ -73,7 +73,7 @@ def backtest_v5(panel, cfg, freq="M"):
     """
     dates = panel.index
     if freq == "M":
-        rebal_dates = dates.to_series().resample("ME").last().index
+        rebal_dates = dates.to_series().resample("M").last().index
     else:
         rebal_dates = dates.to_series().resample(freq).last().index
     rebal_set = set(d for d in rebal_dates if d in dates)
@@ -123,10 +123,12 @@ def backtest_v5_1(panel, cfg, freq="M"):
     """v5.1 逆波动率加权回测.
 
     与 backtest_v5 唯一区别: 用 inverse_vol_weights_v5_1 替代等权.
+
+    预热期 (前 252 天): 1/4 等权买全部 44 ETF, 3/4 买 511260 国债
     """
     dates = panel.index
     if freq == "M":
-        rebal_dates = dates.to_series().resample("ME").last().index
+        rebal_dates = dates.to_series().resample("M").last().index
     else:
         rebal_dates = dates.to_series().resample(freq).last().index
     rebal_set = set(d for d in rebal_dates if d in dates)
@@ -137,6 +139,17 @@ def backtest_v5_1(panel, cfg, freq="M"):
     )
     factor_panel = compute_all_factors_panel(panel, cfg.factor_cfg)
     print(f"[v5.1] {len(factor_panel)} codes 因子 panel 准备好")
+
+    # 预热期权重: 1/4 等权 + 3/4 国债 (511260)
+    all_codes = list(panel.columns.get_level_values(0).unique())
+    BOND_CODE = "511260"
+    n_non_bond = len([c for c in all_codes if c != BOND_CODE])
+    warmup_weights: dict[str, float] = {}
+    for c in all_codes:
+        if c == BOND_CODE:
+            warmup_weights[c] = 0.75
+        else:
+            warmup_weights[c] = 0.25 / n_non_bond
 
     nav = np.ones(len(dates))
     last_weights: dict[str, float] = {}
@@ -183,9 +196,17 @@ def backtest_v5_1(panel, cfg, freq="M"):
                     "chosen": chosen,
                 })
 
+        # 权重选择: 调仓日的有信号权重 或 预热期权重
         if last_weights:
+            active_weights = last_weights
+        elif i <= 252:
+            active_weights = warmup_weights
+        else:
+            active_weights = {}
+
+        if active_weights:
             daily_ret = 0.0
-            for code, w in last_weights.items():
+            for code, w in active_weights.items():
                 if code in panel.columns.get_level_values(0):
                     p_t = panel[code]["close"].iloc[i]
                     p_prev = panel[code]["close"].iloc[i - 1]
@@ -225,8 +246,8 @@ def main():
           f"DD={m['max_dd']*100:.2f}%  Calmar={m['calmar']:.3f}  ⭐")
 
     print("\n  Year-by-year (v5 / v5.1):")
-    yearly5 = nav_v5.resample("YE").last() / nav_v5.resample("YE").first() - 1
-    yearly51 = nav_v51.resample("YE").last() / nav_v51.resample("YE").first() - 1
+    yearly5 = nav_v5.resample("Y").last() / nav_v5.resample("Y").first() - 1
+    yearly51 = nav_v51.resample("Y").last() / nav_v51.resample("Y").first() - 1
     for (y5, r5), (y51, r51) in zip(yearly5.items(), yearly51.items()):
         print(f"    {y5.year}: v5={r5*100:+6.2f}%   v5.1={r51*100:+6.2f}%   "
               f"diff={(r51-r5)*100:+5.2f}pp")

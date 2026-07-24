@@ -81,7 +81,7 @@ def metrics(nav):
 
 
 def yearly_returns(nav):
-    yr = nav.resample("YE").last() / nav.resample("YE").first() - 1
+    yr = nav.resample("Y").last() / nav.resample("Y").first() - 1
     return {d.year: float(v) for d, v in yr.items()}
 
 
@@ -121,7 +121,7 @@ def make_expanded_pool():
 def backtest_v5(panel_close, panel_ohlcv, top_n=5):
     """用 close 面板 + OHLCV 回测 v5 (等权, 论文做法, 保留旧实现)."""
     dates = panel_close.index
-    rebal_dates = dates.to_series().resample("ME").last().index
+    rebal_dates = dates.to_series().resample("M").last().index
     rebal_set = set(d for d in rebal_dates if d in dates)
 
     from QuantNodes.strategy.momentum_etf_rotation.v5 import (
@@ -168,7 +168,7 @@ def backtest_v5(panel_close, panel_ohlcv, top_n=5):
 def backtest_v5_1(panel_close, panel_ohlcv, top_n=5):
     """v5.1: 11 量价因子 + 逆波动率加权 (与 v1/v3 一致)."""
     dates = panel_close.index
-    rebal_dates = dates.to_series().resample("ME").last().index
+    rebal_dates = dates.to_series().resample("M").last().index
     rebal_set = set(d for d in rebal_dates if d in dates)
 
     from QuantNodes.strategy.momentum_etf_rotation.v5 import (
