@@ -1,0 +1,1554 @@
+"""Run all 101 alphas in batch mode — v2 (recipe-based refactor).
+
+PR6: v2 rewired to use the new modular framework (PR1-PR5). Internals are
+now thin re-exports / shims; the heavy lifting is in:
+  - QuantNodes.research.core         (PaperPipeline, PaperRecipe)
+  - QuantNodes.research.signal_source (TrackBSignalSource for 101 alphas)
+  - QuantNodes.research.backtest      (QuantNodesBacktest)
+  - QuantNodes.research.sink         (SingleJsonSink, YamlDuckdbSink, BatchSummarySink)
+  - QuantNodes.research.reporting    (BatchAggregator, BatchReporter, BatchSerializer)
+  - QuantNodes.research.data_source.akshare_h5 (AkShareH5DataSource)
+
+CLI args + output file names/contents are byte-equal to pre-PR6 v2:
+  - output_dir/single_factor_<NNN>.json     (one per alpha)
+  - output_dir/multi_alpha_001_to_101.json  (batch summary)
+  - output_dir/multi_alpha_summary.md       (batch summary table)
+  - factors_dir/<strategy_dir>/stk_alpha_NNN_HASH/factor.{yaml,duckdb}
+
+M4.6 caller-async化 (PR6.10):
+  - `run()` 改 async driver, 主循环 + batch 操作全部 await sink async API
+  - 保留 `run_one_factor(idx)` sync alias (PR0 老 fixture 兼容 — `patch.object(FactorStage, 'run_one_factor', ...)`)
+  - 新增 `--stream-mode` flag → `BatchSummarySink.stream_write_async` (NDJSON streaming)
+  - parallel 模式 (--workers > 1) 改 `asyncio.gather` + `asyncio.Semaphore`
+  - 单 LLM codegen 保持 sync (LLM client sync 仍 — 内部包 `to_thread` 不必要)
+  - strategy_library 调用走 `await asyncio.to_thread(self._persist_strategy_sync, fr)`
+
+Usage:
+  python scripts/run_101_alphas_v2.py                  # run all (async driver)
+  python scripts/run_101_alphas_v2.py --start 1 --end 5
+  python scripts/run_101_alphas_v2.py --skip-existing
+  python scripts/run_101_alphas_v2.py --max-failures 5
+  python scripts/run_101_alphas_v2.py --stream-mode    # NDJSON streaming
+  python scripts/run_101_alphas_v2.py --workers 3     # async parallel
+
+设计文档: docs/designs/run_101_alphas_v2_design.md (§17.6 PR6)
+"""
+from __future__ import annotations
+
+__all__ = [
+    # Config
+    "RunConfig",
+    # Base classes
+    "BaseStage",
+    # Concrete stages (shims — kept for backward compat)
+    "PaperStage",
+    "MetaStage",
+    "FactorRunner",
+    "FactorStage",
+    # Reporting (re-exported from reporting/)
+    "BatchAggregator",
+    "BatchReporter",
+    "BatchSerializer",
+    # Stateless utilities
+    "preload_market_data",
+    "build_long_dataframe",
+    "load_formula_brief",
+]
+
+import argparse
+import asyncio
+import hashlib
+import logging
+import time
+from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from typing import Any, AsyncIterator
+
+import polars as pl
+
+try:
+    from llmwikify.foundation.logging import setup_logging, log_timing
+except ImportError:
+    # Fallback: define no-op shims if llmwikify logging is not available
+    def setup_logging(*_args, **_kwargs):  # type: ignore[no-redef]
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+    def log_timing(logger=None):  # type: ignore[no-redef]
+        def decorator(func):
+            return func
+        return decorator
+
+from QuantNodes.research.codegen.agent.hook import UnifiedHook
+import logging
+
+# L2: FactorResult imported at top (was inside methods in PR6).
+from QuantNodes.research.backtest.base import FactorResult
+
+from QuantNodes.research.codegen.llm_code import SYSTEM_PROMPT_CODE, build_llm_client, execute_code, extract_python, validate_safety, validate_syntax
+
+
+# L1: ReAct codegen moved out (PR8). Re-exported here for backward compat.
+from QuantNodes.research.codegen.react_runner import ReActProgressHook, llm_code_react
+
+from QuantNodes.research.factor import ResultFactory
+
+from QuantNodes.research.pipeline.backtest_extract import safe_float
+
+from QuantNodes.research.pipeline.data_loader import derive_input_columns, load_and_build_df, wide_from_long, write_factor_h5
+
+from QuantNodes.research.pipeline.score import compute_score, compute_status
+
+from QuantNodes.research.pipeline.stages.codegen import llm_code_oneshot
+
+from QuantNodes.research.reporting.aggregator import BatchAggregator
+
+from QuantNodes.research.reporting.reporter import BatchReporter
+
+from QuantNodes.research.reporting.serializer import BatchSerializer
+from QuantNodes.research.signal_source.bridge import classify_name as _classify_name_v2
+
+
+# ─── Constants ───────────────────────────────────────────────────────
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_STAGE_NAMES: dict[int, str] = {-1: "llm", 0: "extract", 1: "syntax", 2: "safety", 3: "execute"}
+
+# ─── Logger ──────────────────────────────────────────────────────────
+
+setup_logging(
+    log_dir=PROJECT_ROOT / "scripts" / "output",
+    log_file="run_101_alphas_v2.log",
+    force=True,
+)
+logger = logging.getLogger("run_101_alphas_v2")
+
+# ── 并发控制 ──────────────────────────────────────────────
+_llm_semaphore = __import__("threading").Semaphore(3)  # api.minimaxi.com ≤3 并发
+_print_lock = __import__("threading").Lock()
+
+
+@dataclass(slots=True)
+class RunConfig:
+    """Centralized configuration for batch alpha runs."""
+
+    data_path: Path = field(default_factory=lambda: Path.home() / ".llmwikify" / "akshare_cache" / "quantnodes_h5_long")
+    track_b_path: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "papers" / "101_alphas_minimal" / "track_b_checkpoint.json")
+    output_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "scripts" / "output")
+    date_beg: int = 20200101
+    date_end: int = 20241231
+    sample_index: str = "all"
+    paper_id: str = "101_alphas_minimal"
+    wiki_id: str = "default"
+    max_repair_rounds: int = 3
+    temperature: float = 0.3
+    h5_filename: str = "stk_daily.h5"
+    factors_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "quant" / "factors")
+
+    # ── 业务配置（参数化）──
+    strategy_dir: str = "101_alphas"
+    asset_type: str = "stock"
+    category: str = "formulaic"
+    frequency: str = "日频"
+    nan_meaning: str = "上市不足或窗口期数据不足"
+    business_constraints: str = "支持日频调仓, T+1 信号"
+    pass_threshold: int = 60
+    hedge: str = "equal"
+    adj_mode: str = "M-end"
+    groups: int = 5
+    factor_direction: int = 1
+    output_format: list[str] = field(default_factory=lambda: ["parquet", "json"])
+    min_group_size: int = 3
+
+    # ── Stage 1: Paper extraction ──
+    paper_path: Path | None = None
+    paper_output_root: Path | None = None
+    run_pass2: bool = True
+
+    # ── Stage 2: Factor processing ──
+    alpha_start: int = 1
+    alpha_end: int = 101
+    skip_existing: bool = False
+    max_failures: int = 999
+    delay: float = 3.0
+    no_delay: bool = False
+    timeout: int = 180
+    workers: int = 1
+
+    # ── M3.4: Stage 3 Strategy sink (off = backward compatible) ──
+    strategy_mode: str = "off"  # off | per_alpha | after_batch
+    strategies_dir: Path | None = None  # default: PROJECT_ROOT / "quant" / "strategies"
+
+    # ── M4.6: NDJSON streaming for batch summary (off = backward compatible) ──
+    stream_mode: bool = False  # if True, BatchSummarySink.stream_write_async (NDJSON)
+
+    # ── Stage 2b: LLM extraction ──
+    llm_extract: bool = False
+
+    # ── Logging ──
+    log_file: Path | None = None
+
+    @property
+    def report_dir(self) -> Path:
+        return self.output_dir / "report"
+
+    @property
+    def effective_strategies_dir(self) -> Path:
+        """Resolve strategies_dir with fallback to PROJECT_ROOT/quant/strategies."""
+        return self.strategies_dir or (PROJECT_ROOT / "quant" / "strategies")
+
+    @property
+    def date_beg_iso(self) -> str:
+        s = str(self.date_beg)
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+
+    @property
+    def date_end_iso(self) -> str:
+        s = str(self.date_end)
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}"
+
+
+# ─── Data loading (re-exported from scripts for backward compat) ──────
+
+
+def preload_market_data(data_path: Path, h5_filename: str = "stk_daily.h5") -> dict:
+    """Load all H5 keys once → dict of wide DataFrames.
+
+    M1.3: thin wrapper that delegates to `pipeline.data_loader._preload_h5_keys`
+    to remove the 8-key dict literal that was duplicated between this script and
+    `QuantNodes.research.pipeline.data_loader.load_and_build_df`.
+
+    Kept here for backward compat (legacy imports).
+    New code should use QuantNodes.research.data_source.akshare_h5.AkShareH5DataSource.
+    """
+    from QuantNodes.research.pipeline.data_loader import _preload_h5_keys
+    return _preload_h5_keys(data_path, h5_filename)
+
+
+@log_timing(logger=logger)
+def build_long_dataframe(data_cache: dict) -> pl.DataFrame:
+    """Convert cached wide DataFrames → single polars long DataFrame."""
+    def wide_to_long(wide, name: str) -> pl.DataFrame:
+        long = wide.stack().reset_index()
+        long.columns = ["date", "code", name]
+        return pl.from_pandas(long)
+
+    result = wide_to_long(data_cache["close"], "close")
+    for col in ("open", "high", "low", "volume", "returns", "vwap", "industry"):
+        result = result.join(wide_to_long(data_cache[col], col), on=["date", "code"])
+    return result.sort(["date", "code"])
+
+
+def load_formula_brief(alpha_index: int, track_b_path: Path) -> tuple[str, str]:
+    """Load factor_name and formula_brief from track_b_checkpoint.json.
+
+    Re-exported for backward compat. New code should use
+    QuantNodes.research.signal_source.track_b.TrackBSignalSource.
+    """
+    import json as _json
+    track_b = _json.loads(track_b_path.read_text(encoding="utf-8"))
+    alpha = next(s for s in track_b["pass1_signals"] if s["index"] == alpha_index)
+    return f"alpha-{alpha_index:03d}", alpha["formula_brief"]
+
+
+# Note: ReActProgressHook + llm_code_react imported at top (see L1 re-export)
+
+# ════════════════════════════════════════════════════════════════════
+# Stage classes (shims — kept for backward compat)
+# ════════════════════════════════════════════════════════════════════
+
+
+class BaseStage(ABC):
+    """Base stage abstract class (shim — re-exported from core)."""
+
+    __slots__ = ("config", "t0")
+    label: str = "base"
+
+    def __init__(self, config: RunConfig) -> None:
+        self.config = config
+        self.t0: float = 0.0
+
+    @abstractmethod
+    def run(self) -> Any: ...
+
+    def _log_start(self) -> None:
+        self.t0 = time.monotonic()
+        logger.info("[%s] starting", self.label)
+
+    def _log_done(self) -> None:
+        elapsed: float = time.monotonic() - self.t0
+        logger.info("[%s] done (%.1fs)", self.label, elapsed)
+
+
+class PaperStage(BaseStage):
+    """Stage 1: paper PDF → track_b_checkpoint.json (shim)."""
+
+    __slots__ = ()
+    label = "paper"
+
+    def run(self) -> Path:
+        from QuantNodes.research.paper_understanding.llm_extraction.orchestrator import run_one_paper
+
+        self._log_start()
+        if not self.config.paper_path or not self.config.paper_path.exists():
+            raise FileNotFoundError(f"Paper not found: {self.config.paper_path}")
+        output_root: Path = self.config.paper_output_root or PROJECT_ROOT / "quant" / "papers"
+        logger.info("[paper] Paper: %s", self.config.paper_path)
+        summary = run_one_paper(
+            paper_id=self.config.paper_id,
+            source_path=self.config.paper_path,
+            output_root=output_root,
+            run_pass2=self.config.run_pass2,
+        )
+        if not summary.get("success"):
+            raise RuntimeError(f"Paper extraction failed: {summary.get('error')}")
+        track_b_path: Path = output_root / self.config.paper_id / "track_b_checkpoint.json"
+        if not track_b_path.exists():
+            raise FileNotFoundError("track_b_checkpoint.json not found after extraction")
+        logger.info("[paper] Success: %d signals extracted", summary["n_signals"])
+        self._log_done()
+        return track_b_path
+
+
+class MetaStage(BaseStage):
+    """Stage 2b: alpha JSONs → L2-L6 metadata (shim)."""
+
+    __slots__ = ()
+    label = "meta"
+
+    def run(self) -> None:
+        available: list[int] = self._find_available()
+        if not available:
+            logger.warning("[meta] No single_factor_NNN.json found in output/")
+            logger.warning("[meta] Run Stage 2 first (without --llm-extract)")
+            return
+        self._log_meta_overview(available)
+        results: list[dict] = self._call_extractor(available)
+        self._log_done_results(results)
+        self._log_done()
+
+    def _find_available(self) -> list[int]:
+        """Backward-compat shim (Bug 9 test fixture). Uses os.scandir."""
+        import os as _os
+        indices: list[int] = list(range(self.config.alpha_start, self.config.alpha_end + 1))
+        logger.info("[meta] Starting LLM extraction: alpha %d-%d", self.config.alpha_start, self.config.alpha_end)
+        logger.info("[meta] Output dir: %s", self.config.output_dir)
+        try:
+            with _os.scandir(self.config.output_dir) as it:
+                existing = {e.name for e in it if e.is_file()}
+        except FileNotFoundError:
+            return []
+        return [i for i in indices if f"single_factor_{i:03d}.json" in existing]
+
+    def _log_meta_overview(self, available: list[int]) -> None:
+        logger.info("[meta] Available: %d alphas with JSON (%s...)", len(available), available[:5])
+        logger.info("[meta] L5 hypothesis_testing skipped (requires FastAPI server)")
+
+    def _call_extractor(self, available: list[int]) -> list[dict]:
+        from QuantNodes.research.factor_extractor import extract_batch
+
+        return extract_batch(available, output_dir=self.config.output_dir, max_workers=3)
+
+    def _log_done_results(self, results: list[dict]) -> None:
+        success = [r for r in results if r.get("status") == "success"]
+        failed = [r for r in results if r.get("status") != "success"]
+        logger.info("[meta] Complete: %d/%d success", len(success), len(results))
+        for r in failed:
+            logger.warning("[meta] Failed: alpha-%03d: %s", r["alpha_index"], (r.get("error", "?") or "")[:80])
+
+
+class FactorRunner(BaseStage):
+    """Single alpha runner (shim — kept for backward compat).
+
+    PR6: class retained for legacy imports. Heavy internals (run_one_factor,
+    _load_formula, _generate_code, etc.) are no longer used internally —
+    see FactorStage below for the new recipe-based orchestration, or use
+    the new QuantNodes.research.core.PaperPipeline directly.
+
+    Backward-compat methods retained: _fail_result (used by Bug 5 test
+    and other legacy callers).
+    """
+
+    __slots__ = ("df_pl", "data_cache")
+    label = "factor"
+
+    def __init__(self, config: RunConfig) -> None:
+        super().__init__(config)
+        self.df_pl: pl.DataFrame | None = None
+        self.data_cache: dict | None = None
+
+    @abstractmethod
+    def run(self) -> Any: ...
+
+    def _fail_result(
+        self,
+        alpha_index: int, stage: str, error: str,
+        t0: float, *, code: str | None = None, **extra: Any,
+    ) -> dict:
+        """Backward-compat shim (Bug 5 test fixture). Returns the same dict
+        shape that pre-PR6 v2 produced."""
+        result: dict = {
+            "status": "failed",
+            "alpha_index": alpha_index,
+            "stage": stage,
+            "error": error,
+            "code": code,
+            "code_chars": len(code) if code else 0,
+            "ic_mean": None,
+            "icir": None,
+            "ic_winrate": None,
+            "elapsed_sec": time.monotonic() - t0,
+        }
+        result.update(extra)
+        return result
+
+    def _generate_code(
+        self, factor_name: str, formula_brief: str,
+        df_pl: pl.DataFrame, use_react: bool = True,
+    ) -> tuple[str | None, pl.Series | None, str | None, str]:
+        """Backward-compat shim (PR0 test fixture). ReAct or 1-shot codegen."""
+        llm = build_llm_client()
+        if use_react:
+            code, factor_series, error, _react_meta = self._llm_code_react(
+                factor_name, formula_brief, df_pl, llm,
+            )
+            return code, factor_series, error, "react"
+        code, factor_series, error, stage_idx = llm_code_oneshot(
+            factor_name=factor_name,
+            formula_brief=formula_brief,
+            df_pl=df_pl,
+            llm=llm,
+            temperature=self.config.temperature,
+        )
+        return code, factor_series, error, _STAGE_NAMES.get(stage_idx, "unknown")
+
+    def _llm_code_react(
+        self, factor_name: str, formula_brief: str,
+        df_pl: pl.DataFrame, llm: Any,
+    ) -> tuple[str | None, pl.Series | None, str | None, dict]:
+        """Backward-compat shim (PR0 test fixture). Thin wrapper around new top-level llm_code_react (L1: no RunConfig dep)."""
+        return llm_code_react(
+            factor_name, formula_brief, df_pl, llm,
+            max_repair_rounds=self.config.max_repair_rounds,
+            temperature=self.config.temperature,
+        )
+
+    def _load_formula(self, alpha_index: int) -> tuple[str, str]:
+        """Backward-compat shim (PR0 test fixture). Step 1 of run_one_factor."""
+        return load_formula_brief(alpha_index, self.config.track_b_path)
+
+    def _log_backtest_metrics(self, alpha_index: int, backtest: dict) -> None:
+        """Backward-compat shim (PR0 test fixture)."""
+        logger.info(
+            "[alpha-%03d] backtest: IC=%.4f, ICIR=%.4f, WinRate=%.1f%%",
+            alpha_index,
+            backtest.get("ic_mean", 0),
+            backtest.get("icir", 0),
+            (backtest.get("win_rate", 0) or 0) * 100,
+        )
+
+    def _success_result(
+        self, alpha_index: int, factor_name: str, formula_brief: str,
+        code: str, factor_series: pl.Series, h5_path: Path,
+        backtest: dict, t0: float,
+    ) -> dict:
+        """Backward-compat shim (PR0 test fixture). Build success result dict."""
+        elapsed: float = time.monotonic() - t0
+        return {
+            "status": "success",
+            "alpha_index": alpha_index,
+            "factor_name": factor_name,
+            "formula_brief": formula_brief,
+            "code": code,
+            "code_chars": len(code),
+            "factor_series_len": len(factor_series),
+            "factor_series_dtype": str(factor_series.dtype),
+            "h5_path": str(h5_path),
+            "ic_mean": backtest.get("ic_mean"),
+            "icir": backtest.get("icir"),
+            "ic_winrate": backtest.get("win_rate"),
+            "elapsed_sec": elapsed,
+        }
+
+    def _fail_codegen_result(
+        self, alpha_index: int, stage: str, error: str,
+        code: str | None, t0: float,
+    ) -> dict:
+        """Backward-compat shim (PR0 test fixture). Build codegen-fail result dict."""
+        return {
+            "status": "failed",
+            "alpha_index": alpha_index,
+            "stage": stage,
+            "error": error,
+            "code": code,
+            "code_chars": len(code) if code else 0,
+            "ic_mean": None,
+            "icir": None,
+            "ic_winrate": None,
+            "elapsed_sec": time.monotonic() - t0,
+        }
+
+    def _fail_pipeline_result(
+        self, alpha_index: int, code: str, exc: Exception, t0: float,
+    ) -> dict:
+        """Backward-compat shim (PR0 test fixture). Build pipeline-fail result dict."""
+        import traceback
+        tb: str = traceback.format_exc()
+        return {
+            "status": "failed",
+            "alpha_index": alpha_index,
+            "stage": "pipeline",
+            "error": f"{type(exc).__name__}: {exc}",
+            "traceback": tb[-1500:],
+            "code": code,
+            "code_chars": len(code) if code else 0,
+            "ic_mean": None,
+            "icir": None,
+            "ic_winrate": None,
+            "elapsed_sec": time.monotonic() - t0,
+        }
+
+    # ── L2: FactorResult-returning variants (used by FactorStage internally) ──
+    # PR9a: moved to `QuantNodes.research.factor.ResultFactory`.
+    # Use `self._factory.success(...)` etc. (initialized in FactorStage.__init__).
+
+
+class FactorStage(FactorRunner):
+    """Stage 2: batch alpha processing (shim — orchestrates PaperPipeline).
+
+    PR6: replaced class internals with PaperRecipe + PaperPipeline (PR1).
+    Kept as a class for backward compat (legacy code can still call
+    `FactorStage(config).run()`). All actual work delegated to the
+    modular framework.
+    """
+
+    __slots__ = ("results", "batch_t0", "_single_sink", "_yaml_sink", "_summary_sink", "_factory", "_record_stage", "_failures_ref", "_engine")
+    label = "factor"
+
+    def __init__(self, config: RunConfig) -> None:
+        super().__init__(config)
+        # L2: state now stores FactorResult objects (not dicts) so that
+        # Sinks can be called directly without dict→FactorResult conversion.
+        self.results: list[FactorResult] = []
+        # PR9c: failures is now a property reading self._failures_ref[0]
+        # (Python has no mutable int; RecordStage mutates the [0] slot).
+        self._failures_ref: list[int] = [0]
+        self.batch_t0: float = 0.0
+        # PR6: sinks (lazy-init in run() OR _write_single_json)
+        self._single_sink: Any = None
+        self._yaml_sink: Any = None
+        self._summary_sink: Any = None
+        # PR9a: shared result factory (extracted from FactorRunner's L2 methods)
+        self._factory: ResultFactory = ResultFactory()
+        # PR9c: record stage (per-signal state + log + persist + outcome)
+        # Lazily inited in run() because it needs _single_sink.
+        self._record_stage: Any = None
+        # PR9c L4: QuantNodes backtest engine (replaces inline backtest).
+        self._engine: Any = None  # QuantNodesBacktest, lazy import in run()
+
+    @property
+    def failures(self) -> int:
+        """PR9c: read-only view into _failures_ref[0] (mutable int wrapper)."""
+        return self._failures_ref[0]
+
+    async def run(self) -> list[FactorResult]:
+        """Async driver — orchestrate batch alpha processing using modular sinks.
+
+        PR6: Same control flow as pre-PR6 v2 (skip_existing / serial / parallel
+        / write_summary), but persistence delegated to the new Sinks:
+          - SingleJsonSink     → single_factor_NNN.json
+          - YamlDuckdbSink     → factors/<dir>/factor.{yaml,duckdb}
+          - BatchSummarySink   → multi_alpha_001_to_101.{json,md}
+                                       (or .ndjson if --stream-mode)
+
+        M4.6 caller-async化 (PR6.10):
+          - 主循环 + batch 操作全部 await sink async API
+          - parallel 模式 (--workers > 1) 改 asyncio.gather + Semaphore
+          - stream_mode 时调 BatchSummarySink.stream_write_async (NDJSON)
+          - 单 LLM codegen 保持 sync (LLM client sync 仍)
+          - 同步入口 run_one_factor(idx) 保留 (老 PR0 fixture 兼容)
+
+        L2: Returns list[FactorResult] (was list[dict]). Sinks can be called
+        directly with these objects, no manual dict→FactorResult conversion.
+        """
+        self._init_sinks_and_engine()
+        self._log_config()
+        self._preload_data()
+        skip: set[int] = self._process_skip_existing()
+        to_run: list[int] = self._compute_to_run(skip)
+        logger.info("[factor] To run: %d alphas", len(to_run))
+        if self.config.workers <= 1:
+            await self._run_serial_async(to_run)
+        else:
+            await self._run_parallel_async(to_run)
+        # M3.4: aggregate composite strategy (mode=after_batch only)
+        await self._persist_batch_strategy_async(self.results)
+        await self._write_summary_async()
+        self._log_done()
+        return self.results
+
+    def _init_sinks_and_engine(self) -> None:
+        """Sync setup: instantiate 3 sinks + record_stage + backtest engine.
+
+        Extracted from the old sync run() body. Called by async run() at the
+        start. Can also be called directly by tests (e.g. test_strategy_sink
+        uses _MockFactorStage shim, but production code uses this).
+        """
+        self._log_start()
+        self.batch_t0 = time.monotonic()
+        BatchReporter.log_banner()
+
+        # PR6: instantiate the 3 new sinks (PR4) — replaces inline writes
+        from QuantNodes.research.sink import BatchSummarySink, SingleJsonSink, YamlDuckdbSink
+
+        self._single_sink = SingleJsonSink(output_dir=self.config.output_dir)
+        self._yaml_sink = YamlDuckdbSink(
+            factors_dir=self.config.factors_dir,
+            strategy_dir=self.config.strategy_dir,
+            config=self.config,
+        )
+        self._summary_sink = BatchSummarySink(
+            output_dir=self.config.output_dir,
+            paper_id=self.config.paper_id,
+            json_filename="multi_alpha_001_to_101.json",  # v2-specific name
+            md_filename="multi_alpha_summary.md",         # v2-specific name
+        )
+        # PR9c: initialize record stage (per-signal state + log + persist + outcome)
+        from QuantNodes.research.factor import RecordStage
+
+        self._record_stage = RecordStage(
+            single_sink=self._single_sink,
+            results=self.results,
+            failures=self._failures_ref,
+        )
+        # PR9c L4: initialize QuantNodes backtest engine (replaces inline backtest)
+        from QuantNodes.research.backtest import QuantNodesBacktest
+
+        self._engine = QuantNodesBacktest(config=self.config)
+
+    def _log_config(self) -> None:
+        logger.info("[factor] Data path: %s", self.config.data_path)
+        logger.info("[factor] Track B: %s", self.config.track_b_path)
+        logger.info("[factor] Date range: %d - %d", self.config.date_beg, self.config.date_end)
+        logger.info("[factor] Sample index: %s", self.config.sample_index)
+        logger.info("[factor] H5 filename: %s", self.config.h5_filename)
+        logger.info("[factor] Workers: %d", self.config.workers)
+
+    def _preload_data(self) -> None:
+        """Preload H5 keys (legacy v2 step — now AkShareH5DataSource handles it)."""
+        if self.data_cache is None and self.config.data_path:
+            self.data_cache = preload_market_data(
+                self.config.data_path, self.config.h5_filename,
+            )
+            logger.info("[factor] Preloaded %d H5 keys", len(self.data_cache))
+
+    def _process_skip_existing(self) -> set[int]:
+        """PR9b: delegate to SkipLoader (was inline logic).
+
+        Returns:
+            Set of idx with cached results. Side effect: appends cached
+            FactorResults to self.results.
+        """
+        from QuantNodes.research.factor import SkipLoader
+
+
+        loader = SkipLoader(
+            output_dir=self.config.output_dir,
+            alpha_start=self.config.alpha_start,
+            alpha_end=self.config.alpha_end,
+            skip_existing=self.config.skip_existing,
+        )
+        skip = loader.scan()
+        if skip:
+            logger.info(
+                "[factor] Skipping %d alphas: %s...",
+                len(skip), sorted(skip)[:10],
+            )
+            self.results.extend(loader.load(skip, self._factory))
+        return skip
+
+    def _compute_to_run(self, skip: set[int]) -> list[int]:
+        """Return alpha indices to run (excluding skipped ones)."""
+        return [idx for idx in range(self.config.alpha_start, self.config.alpha_end + 1)
+                if idx not in skip]
+
+    def _run_one_with_codegen(self, idx: int) -> FactorResult:
+        """Sync alias — old tests do `patch.object(FactorStage, 'run_one_factor', ...)`.
+
+        M4.6: full body factored into `run_one_factor()` (sync) and
+        `_run_one_with_codegen_async()` (async). This sync alias preserves
+        the byte-equal sync codegen path for PR0 test fixtures.
+        """
+        return self.run_one_factor(idx)
+
+    async def _run_one_with_codegen_async(self, idx: int) -> FactorResult:
+        """M4.6 async variant of run_one_factor — used by run() async driver.
+
+        Same body as `run_one_factor` but with await on sink writes
+        (_persist_via_sink_async) and strategy_library (to_thread wrapper).
+        The LLM codegen step is sync (LLM client sync 仍), but it's not
+        a problem because the event loop is single-threaded; one alpha
+        at a time, parallel mode uses asyncio.gather + Semaphore.
+        """
+        import traceback
+        t0 = time.monotonic()
+        try:
+            config = self.config
+            # Step 1: load formula
+            factor_name, formula_brief = load_formula_brief(idx, config.track_b_path)
+            logger.info("[alpha-%03d] formula_brief: %s", idx, formula_brief[:80])
+            # Step 2: ensure df_pl
+            df_pl = self.df_pl
+            if df_pl is None:
+                self._preload_data()
+                df_pl = build_long_dataframe(self.data_cache)
+                self.df_pl = df_pl
+            # Step 3: LLM codegen (ReAct) — SYNC (LLM client sync)
+            # M4.6: when called from async driver, we need to run the codegen
+            # in a worker thread because `llm_code_react` internally calls
+            # `asyncio.run()`. Workers have their own (empty) event loop, so
+            # `asyncio.run()` works. The main event loop is unblocked.
+            code, factor_series, error, stage = await asyncio.to_thread(
+                self._generate_code,
+                factor_name, formula_brief, df_pl,
+            )
+            if error is not None:
+                logger.warning("[alpha-%03d] failed at %s: %s", idx, stage, error[:100])
+                result: FactorResult = self._factory.fail_codegen(
+                    alpha_index=idx, stage=stage, error=error, code=code, t0=t0,
+                )
+            else:
+                # Step 4: H5 + Step 5: backtest + Step 6: metrics
+                import re
+                import numpy as np
+                unique_vals = factor_series.drop_nulls().unique()
+                if len(unique_vals) <= 2:
+                    logger.warning("[alpha] constant/binary factor detected (%d unique values), adding noise", len(unique_vals))
+                    noise = pl.Series("__noise", np.random.uniform(-1e-7, 1e-7, len(factor_series)))
+                    factor_series = factor_series.cast(pl.Float64) + noise
+                factor_wide = wide_from_long(df_pl, factor_series)
+                safe_factor_name = re.sub(r"[^A-Za-z0-9_]", "_", factor_name)
+                h5_path = write_factor_h5(factor_wide, safe_factor_name, config.data_path)
+                logger.info("[alpha] h5: written %s", h5_path)
+                backtest_signal = self._factory.build_signal(idx, factor_name, formula_brief)
+                backtest = self._engine.run(
+                    code=code, h5_path=h5_path, signal=backtest_signal,
+                )
+                if backtest.get("error"):
+                    logger.warning(
+                        "[alpha-%03d] failed at pipeline: %s",
+                        idx, backtest["error"][:100],
+                    )
+                    result = self._factory.fail_pipeline(
+                        alpha_index=idx, code=code,
+                        exc=RuntimeError(backtest["error"]), t0=t0,
+                    )
+                else:
+                    logger.info(
+                        "[alpha-%03d] backtest: IC=%.4f, ICIR=%.4f, WinRate=%.1f%%",
+                        idx, backtest.get("ic_mean", 0), backtest.get("icir", 0),
+                        (backtest.get("win_rate", 0) or 0) * 100,
+                    )
+                    success_fr = self._factory.success(
+                        alpha_index=idx, factor_name=factor_name,
+                        formula_brief=formula_brief, code=code,
+                        factor_series=factor_series, h5_path=h5_path,
+                        backtest=backtest, t0=t0,
+                        long_df=df_pl,
+                    )
+                    # Step 7: persist YAML + DuckDB via YamlDuckdbSink — ASYNC
+                    await self._persist_via_sink_async(success_fr)
+                    # M3.4: persist strategy YAML + DuckDB (mode=per_alpha only) — ASYNC
+                    await self._persist_strategy_async(success_fr)
+                    result = success_fr
+                    logger.info("[alpha-%03d] success (%.1fs)", idx, time.monotonic() - t0)
+            return result
+        except Exception as exc:
+            logger.warning("[alpha-%03d] EXCEPTION: %s: %s", idx, type(exc).__name__, str(exc)[:100])
+            return self._factory.fail_codegen(
+                alpha_index=idx, stage="wrapper",
+                error=f"{type(exc).__name__}: {exc}", code=None, t0=t0,
+            )
+
+    def run_one_factor(self, idx: int) -> FactorResult:
+        """Backward-compat alias for _run_one_with_codegen (PR0 test fixture).
+
+        Old tests use `patch.object(FactorStage, 'run_one_factor', ...)` —
+        keep the method name so patches work. Tests return FactorResult
+        mocks (PR0 tests updated to FactorResult in L2).
+
+        M4.6: still sync — async driver goes through `_run_one_with_codegen_async`.
+        The body is byte-equal to the pre-M4.6 implementation (sync codegen
+        + sync sink + sync strategy_library). The async version differs only
+        in the sink write calls (`write_one_async` vs `write_one`).
+        """
+        import traceback
+        t0 = time.monotonic()
+        try:
+            config = self.config
+            # Step 1: load formula
+            factor_name, formula_brief = load_formula_brief(idx, config.track_b_path)
+            logger.info("[alpha-%03d] formula_brief: %s", idx, formula_brief[:80])
+            # Step 2: ensure df_pl
+            df_pl = self.df_pl
+            if df_pl is None:
+                self._preload_data()
+                df_pl = build_long_dataframe(self.data_cache)
+                self.df_pl = df_pl
+            # Step 3: LLM codegen (ReAct)
+            code, factor_series, error, stage = self._generate_code(
+                factor_name, formula_brief, df_pl,
+            )
+            if error is not None:
+                logger.warning("[alpha-%03d] failed at %s: %s", idx, stage, error[:100])
+                # PR9a: result factory (was _fail_codegen_fr)
+                result: FactorResult = self._factory.fail_codegen(
+                    alpha_index=idx, stage=stage, error=error, code=code, t0=t0,
+                )
+            else:
+                # Step 4: H5 + Step 5: backtest + Step 6: metrics
+                import re
+
+                import numpy as np
+                unique_vals = factor_series.drop_nulls().unique()
+                if len(unique_vals) <= 2:
+                    logger.warning("[alpha] constant/binary factor detected (%d unique values), adding noise", len(unique_vals))
+                    noise = pl.Series("__noise", np.random.uniform(-1e-7, 1e-7, len(factor_series)))
+                    factor_series = factor_series.cast(pl.Float64) + noise
+                factor_wide = wide_from_long(df_pl, factor_series)
+                safe_factor_name = re.sub(r"[^A-Za-z0-9_]", "_", factor_name)
+                h5_path = write_factor_h5(factor_wide, safe_factor_name, config.data_path)
+                logger.info("[alpha] h5: written %s", h5_path)
+                # PR9c L4-minimal: delegate backtest to QuantNodesBacktest (PR3).
+                # engine.run() handles the QuantNodes pipeline internally and
+                # returns metrics dict (or {"error": ...} on failure).
+                backtest_signal = self._factory.build_signal(idx, factor_name, formula_brief)
+                backtest = self._engine.run(
+                    code=code, h5_path=h5_path, signal=backtest_signal,
+                )
+                if backtest.get("error"):
+                    logger.warning(
+                        "[alpha-%03d] failed at pipeline: %s",
+                        idx, backtest["error"][:100],
+                    )
+                    # PR9a: result factory (was _fail_pipeline_fr)
+                    result = self._factory.fail_pipeline(
+                        alpha_index=idx, code=code,
+                        exc=RuntimeError(backtest["error"]), t0=t0,
+                    )
+                else:
+                    logger.info(
+                        "[alpha-%03d] backtest: IC=%.4f, ICIR=%.4f, WinRate=%.1f%%",
+                        idx, backtest.get("ic_mean", 0), backtest.get("icir", 0),
+                        (backtest.get("win_rate", 0) or 0) * 100,
+                    )
+                    # PR9a: result factory (was _success_fr)
+                    success_fr = self._factory.success(
+                        alpha_index=idx, factor_name=factor_name,
+                        formula_brief=formula_brief, code=code,
+                        factor_series=factor_series, h5_path=h5_path,
+                        backtest=backtest, t0=t0,
+                        long_df=df_pl,  # M1.2: enable sink to compute factor_wide
+                    )
+                    # Step 7: persist YAML + DuckDB via YamlDuckdbSink (PR4)
+                    self._persist_via_sink(success_fr)
+                    # M3.4: persist strategy YAML + DuckDB (mode=per_alpha only)
+                    self._persist_strategy(success_fr)
+                    result = success_fr
+                    logger.info("[alpha-%03d] success (%.1fs)", idx, time.monotonic() - t0)
+            return result
+        except Exception as exc:
+            logger.warning("[alpha-%03d] EXCEPTION: %s: %s", idx, type(exc).__name__, str(exc)[:100])
+            # PR9a: result factory (was _fail_codegen_fr)
+            return self._factory.fail_codegen(
+                alpha_index=idx, stage="wrapper",
+                error=f"{type(exc).__name__}: {exc}", code=None, t0=t0,
+            )
+
+    def _generate_code(self, factor_name: str, formula_brief: str, df_pl) -> tuple:
+        """Step 3: LLM code generation (ReAct or 1-shot)."""
+        llm = build_llm_client()
+        code, factor_series, error, _react_meta = llm_code_react(
+            factor_name, formula_brief, df_pl, llm,
+            max_repair_rounds=self.config.max_repair_rounds,
+            temperature=self.config.temperature,
+        )
+        return code, factor_series, error, "react"
+
+    def _fail_codegen_result(self, alpha_index, stage, error, code, t0) -> dict:
+        return {
+            "status": "failed", "alpha_index": alpha_index,
+            "stage": stage, "error": error,
+            "code": code, "code_chars": len(code) if code else 0,
+            "ic_mean": None, "icir": None, "ic_winrate": None,
+            "elapsed_sec": time.monotonic() - t0,
+        }
+
+    def _persist_factor(self, factor_name, code, formula_brief, backtest, h5_path, alpha_index, config):
+        """DEPRECATED in PR6: kept for shim backward compat. Use _persist_via_sink instead."""
+        from QuantNodes.research.pipeline.persist import persist_code_to_yaml
+
+        _, factor_dir = persist_code_to_yaml(
+            factor_name=factor_name, code=code, formula_brief=formula_brief,
+            backtest=backtest, h5_path=str(h5_path), code_chars=len(code),
+            config=config, alpha_index=alpha_index,
+        )
+        return factor_dir
+
+    def _save_to_duckdb(self, factor_dir, alpha_index, backtest, factor_wide, config):
+        """DEPRECATED in PR6: kept for shim backward compat. Use _persist_via_sink instead."""
+        from QuantNodes.research.persist.factor_library import save_backtest_duckdb
+
+        run_id = f"pipeline_a_{alpha_index:03d}"
+        if factor_dir:
+            rel_path = str(factor_dir.relative_to(config.factors_dir))
+        else:
+            rel_path = f"alpha_{alpha_index:03d}"
+        save_backtest_duckdb(
+            factor_name=rel_path, run_id=run_id, backtest=backtest,
+            factor_wide=factor_wide, factors_dir=config.factors_dir,
+        )
+
+    def _persist_via_sink(self, fr: FactorResult) -> None:
+        """L2: write YAML + DuckDB via YamlDuckdbSink (PR4) — takes FactorResult.
+
+        L2: now takes FactorResult directly (was 5 positional args + 20-line
+        dict construction). The caller (run_one_factor) already has a
+        FactorResult from _success_fr.
+        """
+        try:
+            self._yaml_sink.write_one(fr)
+        except Exception as exc:
+            logger.warning("[sink] YamlDuckdbSink.write_one failed for %s: %s", fr.signal.id, exc)
+
+    async def _persist_via_sink_async(self, fr: FactorResult) -> None:
+        """M4.6 async variant — YamlDuckdbSink.write_one_async.
+
+        Same body as _persist_via_sink but awaits sink async API.
+        The actual I/O is offloaded to a thread pool via
+        ``asyncio.to_thread(self.write_one, fr)`` (default in Sink Protocol).
+        """
+        try:
+            await self._yaml_sink.write_one_async(fr)
+        except Exception as exc:
+            logger.warning(
+                "[sink] YamlDuckdbSink.write_one_async failed for %s: %s",
+                fr.signal.id, exc,
+            )
+
+    # ── M3.4: Strategy sink ────────────────────────────────────────
+
+    @staticmethod
+    def _alpha_to_signal_type(name: str) -> str:
+        """Heuristic: factor name → SIGNAL_NODE_REGISTRY key.
+
+        SignalV2 (PR6): The heuristic now delegates to
+        `QuantNodes.research.signal_source.bridge.classify_name` for the
+        single source of truth. Behavior is byte-equal to the prior
+        inline implementation — branch order preserved.
+
+        101 alphas are all rank-based cross-sectional factors → most fall
+        through to ``factor_rank`` (the only rank-based key in the
+        registry). For names containing signal-typed tokens (rsi / ma /
+        volatility / momentum) we map to the corresponding builtin.
+        """
+        return _classify_name_v2(name).value
+
+    @staticmethod
+    def _safe_strategy_name(s: str) -> str:
+        """Sanitize a strategy-name fragment to [A-Za-z0-9_]."""
+        import re as _re
+        return _re.sub(r"[^A-Za-z0-9_]", "_", s)
+
+    def _strategy_name_for(self, fr: FactorResult) -> str:
+        """Naming: ``{paper_id}_{idx:03d}_{signal_type}``."""
+        idx = fr.signal.metadata.get("alpha_index")
+        if idx is None:
+            idx = fr.signal.metadata.get("index", 0)
+        return f"{self.config.paper_id}_{int(idx):03d}_{self._alpha_to_signal_type(fr.signal.name)}"
+
+    def _persist_strategy(self, fr: FactorResult) -> None:
+        """M3.4: sync alias — wraps ``_persist_strategy_sync`` for backward compat.
+
+        M4.6: full body factored into ``_persist_strategy_sync``. The async
+        driver goes through ``_persist_strategy_async`` (which uses
+        ``asyncio.to_thread`` to offload this sync body to a thread pool,
+        keeping the event loop responsive).
+        """
+        self._persist_strategy_sync(fr)
+
+    def _persist_strategy_sync(self, fr: FactorResult) -> None:
+        """M3.4: write per-factor strategy YAML + DuckDB via strategy_library.
+
+        Triggered only when ``config.strategy_mode == 'per_alpha'`` and
+        ``fr.status == 'success'``. Builds a 4-layer strategy dict from
+        FactorResult + backtest metrics, then delegates to
+        ``QuantNodes.research.persist.strategy_library``.
+
+        Errors are logged but never raised (sink is best-effort, must
+        not abort the factor batch).
+        """
+        if self.config.strategy_mode != "per_alpha":
+            return
+        if fr.status != "success":
+            return
+        try:
+            from QuantNodes.research.persist import strategy_library as sl
+
+            bt = fr.backtest or {}
+            signal_type = self._alpha_to_signal_type(fr.signal.name)
+            strategy_name = self._strategy_name_for(fr)
+
+            data = {
+                "strategy": {
+                    "name": strategy_name,
+                    "name_cn": f"Alpha-{fr.signal.name} {signal_type}",
+                    "signal_type": signal_type,
+                    "asset_type": self.config.asset_type.lower() if hasattr(self.config, "asset_type") else "stk",
+                    "category": "alpha_generated",
+                    "status": "已注册",
+                    "l1": {
+                        "description": (
+                            f"Auto-derived from 101-alpha backtest. "
+                            f"Factor: {fr.signal.name}. "
+                            f"IC={bt.get('ic_mean', 0):.4f}, "
+                            f"ICIR={bt.get('icir', 0):.4f}"
+                        ),
+                        "signal_params": {
+                            "ic_mean": bt.get("ic_mean"),
+                            "icir": bt.get("icir"),
+                            "win_rate": bt.get("win_rate"),
+                            "rank_period": 20,
+                            "factor_col": fr.signal.name,
+                            "factor_direction": self.config.factor_direction,
+                        },
+                    },
+                    "l2": {
+                        "factors": [fr.signal.id],
+                        "factor_dir": str(self.config.strategy_dir),
+                    },
+                    "l3": {
+                        "backtest": {
+                            "ic_mean": bt.get("ic_mean"),
+                            "icir": bt.get("icir"),
+                            "rank_ic_mean": bt.get("rank_ic_mean"),
+                            "rank_icir": bt.get("rank_icir"),
+                            "win_rate": bt.get("win_rate"),
+                            "annual_return": bt.get("annual_return"),
+                            "longshort_max_dd": bt.get("longshort_max_dd"),
+                        },
+                    },
+                    "l4": {
+                        "created_by": "run_101_alphas_v2",
+                        "paper_id": self.config.paper_id,
+                        "alpha_source": fr.signal.id,
+                    },
+                },
+                "backtest": {
+                    "status": "success",
+                    "sharpe_ratio": bt.get("icir"),  # use icir as proxy
+                    "max_drawdown": bt.get("longshort_max_dd"),
+                    "win_rate": bt.get("win_rate"),
+                    "total_return": bt.get("annual_return"),
+                    "n_trades": 0,
+                    "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+                "meta": {
+                    "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "run_id": f"alpha_{fr.signal.metadata.get('alpha_index', 0):03d}",
+                },
+            }
+
+            log = sl.write_strategy_yaml(
+                name=strategy_name,
+                data=data,
+                strategies_dir=self.config.effective_strategies_dir,
+            )
+            run_id = f"alpha_{fr.signal.metadata.get('alpha_index', 0):03d}"
+            sl.save_backtest_duckdb(
+                strategy_name=strategy_name,
+                run_id=run_id,
+                backtest=data["backtest"],
+                strategies_dir=self.config.effective_strategies_dir,
+            )
+            logger.info("[strategy] %s → %s", run_id, log)
+        except Exception as exc:
+            logger.warning(
+                "[strategy] persist failed for %s: %s: %s",
+                fr.signal.id, type(exc).__name__, exc,
+            )
+
+    async def _persist_strategy_async(self, fr: FactorResult) -> None:
+        """M4.6 async variant — delegates to ``_persist_strategy_sync`` via to_thread.
+
+        strategy_library is sync I/O (YAML + DuckDB writes). ``to_thread``
+        offloads to the default thread pool so the event loop stays
+        responsive (parallel mode workers don't block on I/O).
+        """
+        if self.config.strategy_mode != "per_alpha":
+            return
+        if fr.status != "success":
+            return
+        await asyncio.to_thread(self._persist_strategy_sync, fr)
+
+    def _persist_batch_strategy(self, results: list[FactorResult]) -> None:
+        """Sync alias — wraps ``_persist_batch_strategy_sync`` for backward compat.
+
+        M4.6: full body factored. The async driver goes through
+        ``_persist_batch_strategy_async`` (which uses ``asyncio.to_thread``).
+        """
+        self._persist_batch_strategy_sync(results)
+
+    def _persist_batch_strategy_sync(self, results: list[FactorResult]) -> None:
+        """M3.4: write composite strategy YAML aggregating all successful alphas.
+
+        Triggered only when ``config.strategy_mode == 'after_batch'``.
+        Skips silently if 0 successes. Aggregates with equal weights
+        (signal_composite).
+        """
+        if self.config.strategy_mode != "after_batch":
+            return
+        successes = [r for r in results if r.status == "success"]
+        if not successes:
+            logger.info("[strategy] no successful alphas; skipping composite")
+            return
+        try:
+            from QuantNodes.research.persist import strategy_library as sl
+
+            composite_name = f"{self.config.paper_id}_composite"
+            n = len(successes)
+            weight = 1.0 / n
+            weights: dict[str, float] = {}
+            factor_refs: list[str] = []
+            aggregate = {
+                "n_factors": n,
+                "ic_mean_sum": 0.0,
+                "icir_sum": 0.0,
+                "win_rate_sum": 0.0,
+            }
+            for r in successes:
+                fname = r.signal.name
+                weights[fname] = weight
+                factor_refs.append(r.signal.id)
+                bt = r.backtest or {}
+                aggregate["ic_mean_sum"] += float(bt.get("ic_mean") or 0.0)
+                aggregate["icir_sum"] += float(bt.get("icir") or 0.0)
+                aggregate["win_rate_sum"] += float(bt.get("win_rate") or 0.0)
+
+            data = {
+                "strategy": {
+                    "name": composite_name,
+                    "name_cn": f"{self.config.paper_id} 复合策略",
+                    "signal_type": "signal_composite",
+                    "asset_type": self.config.asset_type.lower() if hasattr(self.config, "asset_type") else "stk",
+                    "category": "alpha_composite",
+                    "status": "已注册",
+                    "l1": {
+                        "description": (
+                            f"Composite of {n} successful alphas from "
+                            f"{self.config.paper_id}. Equal-weighted."
+                        ),
+                        "config": {
+                            "weights": weights,
+                            "n_factors": n,
+                        },
+                    },
+                    "l2": {
+                        "factors": factor_refs,
+                        "weighting": "equal",
+                    },
+                    "l3": {
+                        "backtest_summary": {
+                            "n_factors": n,
+                            "avg_ic_mean": aggregate["ic_mean_sum"] / n,
+                            "avg_icir": aggregate["icir_sum"] / n,
+                            "avg_win_rate": aggregate["win_rate_sum"] / n,
+                        },
+                    },
+                    "l4": {
+                        "created_by": "run_101_alphas_v2",
+                        "paper_id": self.config.paper_id,
+                        "composite_mode": "equal_weight",
+                    },
+                },
+                "meta": {
+                    "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "n_success": n,
+                    "n_total": len(results),
+                },
+            }
+
+            log = sl.write_strategy_yaml(
+                name=composite_name,
+                data=data,
+                strategies_dir=self.config.effective_strategies_dir,
+            )
+            logger.info("[strategy] composite: %s", log)
+        except Exception as exc:
+            logger.warning(
+                "[strategy] batch persist failed: %s: %s",
+                type(exc).__name__, exc,
+            )
+
+    async def _persist_batch_strategy_async(self, results: list[FactorResult]) -> None:
+        """M4.6 async variant — delegates to sync body via to_thread.
+
+        The composite strategy is computed in-memory and written once at
+        end-of-batch. ``to_thread`` offloads sync I/O to a worker thread
+        so the event loop stays responsive.
+        """
+        if self.config.strategy_mode != "after_batch":
+            return
+        await asyncio.to_thread(self._persist_batch_strategy_sync, results)
+
+    def _run_one_with_recording(self, idx: int) -> FactorResult:
+        """Sync alias — wraps ``_run_one_with_recording_async`` for backward compat.
+
+        M4.6: full body factored into the async version. The sync wrapper
+        is kept for tests that do `patch.object(FactorStage, '_run_one_with_recording', ...)`
+        or for callers that need a sync entry.
+        """
+        # NB: the sync path goes through the sync codegen + sync record_sync
+        elapsed_cum: float = time.monotonic() - self.batch_t0
+        logger.info("[factor] alpha-%03d: starting (elapsed: %.0fs, failures: %d)",
+                    idx, elapsed_cum, self.failures)
+        result = self.run_one_factor(idx)
+        self._record_stage.record_sync(result, elapsed_cum)
+        return result
+
+    async def _run_one_with_recording_async(self, idx: int) -> FactorResult:
+        """M4.6 async serial path — no locks, single thread (event loop).
+
+        PR9c: delegates record step to RecordStage (was inline _record_one).
+        M4.6: record is async; sink writes use write_one_async.
+        """
+        elapsed_cum: float = time.monotonic() - self.batch_t0
+        logger.info("[factor] alpha-%03d: starting (elapsed: %.0fs, failures: %d)",
+                    idx, elapsed_cum, self.failures)
+        result = await self._run_one_with_codegen_async(idx)
+        await self._record_stage.record(result, elapsed_cum)
+        return result
+
+    def _run_serial(self, to_run: list[int]) -> None:
+        """Sync alias — uses ``_run_one_with_recording`` (sync) for backward compat."""
+        for idx in to_run:
+            self._run_one_with_recording(idx)
+            if self.failures >= self.config.max_failures:
+                logger.warning("[factor] Reached max failures (%d), stopping", self.config.max_failures)
+                break
+            if idx < self.config.alpha_end and self.config.delay > 0 and not self.config.no_delay:
+                time.sleep(self.config.delay)
+
+    async def _run_serial_async(self, to_run: list[int]) -> None:
+        """M4.6 async serial path — single-threaded event loop."""
+        for idx in to_run:
+            await self._run_one_with_recording_async(idx)
+            if self.failures >= self.config.max_failures:
+                logger.warning("[factor] Reached max failures (%d), stopping", self.config.max_failures)
+                break
+            if idx < self.config.alpha_end and self.config.delay > 0 and not self.config.no_delay:
+                await asyncio.sleep(self.config.delay)
+
+    def _run_parallel(self, to_run: list[int]) -> None:
+        """Sync alias — uses ThreadPoolExecutor for backward compat (PR9c behavior)."""
+        logger.info("[factor] Using %d concurrent workers (sync thread pool)", self.config.workers)
+        with ThreadPoolExecutor(max_workers=self.config.workers) as pool:
+            futures = {pool.submit(self._run_one_safe, idx): idx for idx in to_run}
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    future.result(timeout=self.config.timeout + 60)
+                except Exception as exc:
+                    logger.warning("[factor] alpha-%03d: EXCEPTION: %s: %s",
+                                   idx, type(exc).__name__, str(exc)[:100])
+                    self._handle_parallel_failure(idx, type(exc).__name__, str(exc))
+
+    async def _run_parallel_async(self, to_run: list[int]) -> None:
+        """M4.6 async parallel path — uses asyncio.gather + asyncio.Semaphore.
+
+        Replaces the sync ThreadPoolExecutor with asyncio-native scheduling.
+        Each worker calls _run_one_with_recording_async (which awaits sink
+        write_one_async and RecordStage.record). The default thread pool
+        offloads sync I/O via asyncio.to_thread inside the sink Protocol.
+        """
+        logger.info("[factor] Using %d concurrent workers (async)", self.config.workers)
+        sem = asyncio.Semaphore(self.config.workers)
+
+        async def worker(idx: int) -> FactorResult:
+            async with sem:
+                return await self._run_one_with_recording_async(idx)
+
+        # gather with return_exceptions so one failure doesn't abort all
+        results = await asyncio.gather(
+            *(worker(idx) for idx in to_run),
+            return_exceptions=True,
+        )
+        for idx, res in zip(to_run, results):
+            if isinstance(res, Exception):
+                logger.warning(
+                    "[factor] alpha-%03d: EXCEPTION: %s: %s",
+                    idx, type(res).__name__, str(res)[:100],
+                )
+                await self._handle_parallel_failure_async(idx, type(res).__name__, str(res))
+
+    def _run_one_safe(self, idx: int) -> FactorResult:
+        """Sync parallel path: lock only around RecordStage.record_sync (not codegen).
+
+        PR9c: delegates record step to RecordStage (was inline _record_one).
+        Bug 3 fix: LLM call is OUTSIDE the lock window.
+        M4.6: uses record_sync (sync wrapper) for backward compat.
+        """
+        with _llm_semaphore:
+            result = self._run_one_with_codegen(idx)
+            elapsed_cum = time.monotonic() - self.batch_t0
+            with _print_lock:
+                self._record_stage.record_sync(result, elapsed_cum)
+            return result
+
+    def _handle_parallel_failure(self, idx: int, stage: str, error: str) -> None:
+        """Sync alias — wraps ``_handle_parallel_failure_async`` for backward compat.
+
+        M4.6: full body factored into the async version. The sync wrapper
+        is kept for tests that use sync paths.
+        """
+        # Build synthetic FactorResult (sync; pure in-memory)
+        result: FactorResult = FactorResult(
+            signal=self._factory.build_signal(idx),
+            status="failed",
+            stage=stage,
+            error=error[:200],
+            code=None,
+            code_chars=0,
+            backtest={},
+            elapsed_sec=0.0,
+        )
+        self.results.append(result)
+        self._failures_ref[0] += 1
+        if self._single_sink is not None:
+            try:
+                self._single_sink.write_one(result)
+            except Exception as exc:
+                logger.warning(
+                    "[sink] SingleJsonSink.write_one failed for %s: %s",
+                    result.signal.id, exc,
+                )
+
+    async def _handle_parallel_failure_async(self, idx: int, stage: str, error: str) -> None:
+        """M4.6 async variant — same body as sync, but with await sink.write_one_async."""
+        result: FactorResult = FactorResult(
+            signal=self._factory.build_signal(idx),
+            status="failed",
+            stage=stage,
+            error=error[:200],
+            code=None,
+            code_chars=0,
+            backtest={},
+            elapsed_sec=0.0,
+        )
+        self.results.append(result)
+        self._failures_ref[0] += 1
+        if self._single_sink is not None:
+            try:
+                await self._single_sink.write_one_async(result)
+            except Exception as exc:
+                logger.warning(
+                    "[sink] SingleJsonSink.write_one_async failed for %s: %s",
+                    result.signal.id, exc,
+                )
+
+    def _write_summary(self) -> None:
+        """Sync alias — wraps ``_write_summary_async`` for backward compat.
+
+        M4.6: full body factored. The async wrapper handles stream-mode
+        switching (--stream-mode → BatchSummarySink.stream_write_async).
+        """
+        if self._summary_sink is not None:
+            self._summary_sink.write_batch(self.results)
+        total_elapsed: float = time.monotonic() - self.batch_t0
+        logger.info("[factor] Total elapsed: %.1fs (%.1f min)", total_elapsed, total_elapsed / 60)
+        logger.info("[factor] Results saved to: %s", self.config.output_dir)
+
+    async def _write_summary_async(self) -> None:
+        """M4.6 async batch summary — NDJSON streaming if --stream-mode else JSON+MD.
+
+        Stream-mode uses ``BatchSummarySink.stream_write_async`` (M4.4 NDJSON
+        support) which yields an AsyncIterator[FactorResult] and writes one
+        JSON record per line. Default mode uses ``write_batch_async`` for
+        byte-equal JSON+MD summary (same as pre-M4.6 behavior).
+        """
+        if self._summary_sink is not None:
+            if self.config.stream_mode:
+                ndjson_path = await self._summary_sink.stream_write_async(
+                    self._iter_results_async(),
+                    ndjson_filename="multi_alpha_001_to_101.ndjson",
+                )
+                logger.info("[summary] NDJSON streaming → %s", ndjson_path)
+            else:
+                await self._summary_sink.write_batch_async(self.results)
+        total_elapsed: float = time.monotonic() - self.batch_t0
+        logger.info("[factor] Total elapsed: %.1fs (%.1f min)", total_elapsed, total_elapsed / 60)
+        logger.info("[factor] Results saved to: %s", self.config.output_dir)
+
+    async def _iter_results_async(self) -> AsyncIterator[FactorResult]:
+        """Async generator over self.results — used by stream_write_async.
+
+        NDJSON streaming yields one result per line. Currently we just yield
+        in-order from self.results; the BatchSummarySink consumes and writes
+        one line per yield.
+        """
+        for r in self.results:
+            yield r
+
+
+def main() -> None:
+    global logger
+
+    parser = argparse.ArgumentParser(description="Batch run 101 alphas (v2)")
+
+    # Stage 1: Paper extraction
+    parser.add_argument("--paper-path", type=Path, default=None, help="Path to paper PDF (triggers Stage 1)")
+    parser.add_argument("--paper-output-root", type=Path, default=None, help="Output root for paper extraction (default: quant/papers/)")
+    parser.add_argument("--no-pass2", action="store_true", help="Skip Track B Pass 2 (only extract formulas)")
+
+    # Stage 2: Factor processing
+    parser.add_argument("--start", type=int, default=1, help="First alpha index (default: 1)")
+    parser.add_argument("--end", type=int, default=101, help="Last alpha index (default: 101)")
+    parser.add_argument("--skip-existing", action="store_true", help="Skip alphas that already have output JSON")
+    parser.add_argument("--max-failures", type=int, default=999, help="Stop after N failures (default: unlimited)")
+    parser.add_argument("--rounds", type=int, default=3, help="Max ReAct repair rounds (default: 3)")
+    parser.add_argument("--delay", type=float, default=3.0, help="Seconds to sleep between alpha runs (default: 3.0)")
+    parser.add_argument("--no-delay", action="store_true", help="Disable inter-alpha delay (for testing only)")
+    parser.add_argument("--timeout", type=int, default=180, help="Per-alpha timeout in seconds (default: 180)")
+    parser.add_argument("--workers", type=int, default=1, help="Number of concurrent workers (default: 1, max: 3)")
+
+    # Stage 2b: LLM metadata extraction
+    parser.add_argument("--llm-extract", action="store_true", help="Stage 2b: LLM extract L2-L6 metadata")
+
+    # Logging
+    parser.add_argument("--log-file", type=Path, default=None, help="Log file path (default: scripts/output/run_101_alphas_v2.log)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable debug logging")
+
+    # Common
+    parser.add_argument("--output-dir", type=Path, default=None, help="Output directory for JSON results (default: scripts/output)")
+    parser.add_argument("--data-path", type=Path, default=None, help="Path to H5 data directory")
+    parser.add_argument("--track-b", type=Path, default=None, help="Path to track_b_checkpoint.json (default: auto)")
+    parser.add_argument("--date-beg", type=int, default=20200101, help="Backtest start date YYYYMMDD (default: 20200101)")
+    parser.add_argument("--date-end", type=int, default=20241231, help="Backtest end date YYYYMMDD (default: 20241231)")
+    parser.add_argument("--sample-index", type=str, default="all", help="Sample index: all/HS300/ZZ500 (default: all)")
+    parser.add_argument("--paper-id", type=str, default="101_alphas_minimal", help="Paper ID")
+    parser.add_argument("--wiki-id", type=str, default="default", help="Wiki ID")
+    parser.add_argument("--h5-filename", type=str, default="stk_daily.h5", help="H5 filename (default: stk_daily.h5)")
+    parser.add_argument("--strategy-dir", type=str, default="101_alphas", help="Output subdirectory (default: 101_alphas)")
+    parser.add_argument("--groups", type=int, default=5, help="Number of groups (default: 5)")
+    parser.add_argument("--factor-direction", type=int, default=1, help="Factor direction: 1 or -1 (default: 1)")
+    parser.add_argument("--hedge", type=str, default="equal", help="Hedge mode (default: equal)")
+    parser.add_argument("--adj-mode", type=str, default="M-end", help="Adjustment mode (default: M-end)")
+    parser.add_argument("--min-group-size", type=int, default=3, help="Minimum group size (default: 3)")
+    parser.add_argument("--factors-dir", type=Path, default=None, help="Base factors directory")
+
+    # M3.4: Strategy sink mode — off|per_alpha|after_batch. Off = backward compatible.
+    parser.add_argument(
+        "--strategy-mode",
+        choices=["off", "per_alpha", "after_batch"],
+        default="off",
+        help="Strategy layer integration mode (default: off = no strategy sink)",
+    )
+    parser.add_argument(
+        "--strategies-dir",
+        type=Path,
+        default=None,
+        help="Output base dir for strategies (default: PROJECT_ROOT/quant/strategies)",
+    )
+
+    # M4.6: NDJSON streaming for batch summary.
+    # Off = backward compatible (writes multi_alpha_001_to_101.{json,md}).
+    # On = BatchSummarySink.stream_write_async (NDJSON, one result per line).
+    parser.add_argument(
+        "--stream-mode",
+        action="store_true",
+        help="Use BatchSummarySink.stream_write_async (NDJSON streaming) for summary",
+    )
+    args = parser.parse_args()
+
+    # Re-initialize logger with user-specified log file
+    log_path: Path = Path(args.log_file) if args.log_file else PROJECT_ROOT / "scripts" / "output" / "run_101_alphas_v2.log"
+    setup_logging(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        log_dir=log_path.parent,
+        log_file=log_path.name,
+        force=True,
+    )
+    logger = logging.getLogger("run_101_alphas_v2")
+
+    config = RunConfig(
+        # Paper extraction
+        paper_path=args.paper_path,
+        paper_output_root=args.paper_output_root,
+        run_pass2=not args.no_pass2,
+
+        # Batch processing
+        alpha_start=args.start,
+        alpha_end=args.end,
+        skip_existing=args.skip_existing,
+        max_failures=args.max_failures,
+        delay=args.delay,
+        no_delay=args.no_delay,
+        timeout=args.timeout,
+        workers=min(args.workers, 3),
+
+        # LLM extraction
+        llm_extract=args.llm_extract,
+
+        # Logging
+        log_file=log_path,
+
+        # Common
+        data_path=args.data_path or Path.home() / ".llmwikify" / "akshare_cache" / "quantnodes_h5_long",
+        track_b_path=args.track_b or PROJECT_ROOT / "quant" / "papers" / "101_alphas_minimal" / "track_b_checkpoint.json",
+        output_dir=args.output_dir or PROJECT_ROOT / "scripts" / "output",
+        date_beg=args.date_beg,
+        date_end=args.date_end,
+        sample_index=args.sample_index,
+        paper_id=args.paper_id,
+        wiki_id=args.wiki_id,
+        max_repair_rounds=args.rounds,
+        h5_filename=args.h5_filename,
+        strategy_dir=args.strategy_dir,
+        groups=args.groups,
+        factor_direction=args.factor_direction,
+        hedge=args.hedge,
+        adj_mode=args.adj_mode,
+        min_group_size=args.min_group_size,
+        factors_dir=args.factors_dir or PROJECT_ROOT / "quant" / "factors",
+
+        # M3.4: strategy-mode wiring (default off = backward compatible)
+        strategy_mode=getattr(args, "strategy_mode", "off"),
+        strategies_dir=getattr(args, "strategies_dir", None),
+
+        # M4.6: NDJSON streaming (default off = backward compatible)
+        stream_mode=getattr(args, "stream_mode", False),
+    )
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("RunConfig: %s", config)
+
+    # ── Stage 1: Paper extraction (optional) ──
+    track_b_path = args.track_b
+    if config.paper_path:
+        track_b_path = PaperStage(config).run()
+
+    # Update config with resolved track_b_path
+    if track_b_path:
+        config = replace(config, track_b_path=track_b_path)
+
+    # ── Stage 2: Factor processing (async driver, M4.6 PR6.10) ──
+    if not config.llm_extract:
+        asyncio.run(FactorStage(config).run())
+
+    # ── Stage 2b: LLM metadata extraction ──
+    if config.llm_extract:
+        MetaStage(config).run()
+
+
+if __name__ == "__main__":
+    main()
