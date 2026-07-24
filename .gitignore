@@ -183,6 +183,12 @@ data/high_freq_macro/v7_6_pv_weekly/
 data/real/*.parquet
 data/*.xlsx
 
+# Chinese futures data (regeneratable from source)
+data/chinese_futures/
+
+# Cache files (regeneratable)
+data/cache/
+
 # Chart cache (regeneratable)
 combo/_chart_cache/
 
