@@ -651,17 +651,23 @@ def main(include_strategies: bool = True):
     oos = navs_A.loc[OOS_START:]  # DataFrame (用于表格)
     oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}  # dict (用于显示)
 
-    # 用 v56 数据替换 v7.10 TV-PR
+    # 用 v56 数据加载 v7.10 TV-PR (无条件加入 navs_A, 即使 unified_v1v5 中没有同名列)
     v710_v56_path = OUT_DIR / "v7_10_nav_v56.parquet"
     if v710_v56_path.exists():
         v710_v56 = pd.read_parquet(v710_v56_path)
+        v710_target = "v7.10 TV-PR (标准化+CV)"
+        v710_src_col = None
         for col in v710_v56.columns:
-            new_col = col.replace(' (v56)', '').replace('v7.10 TV-PR', 'v7.10 TV-PR (标准化+CV)')
-            # 找到 unified 中的对应列并替换
-            for orig_col in navs_A.columns:
-                if 'v7.10' in orig_col:
-                    navs_A[orig_col] = v710_v56[col].reindex(navs_A.index)
-                    print(f"[curve] {orig_col} 已用 v56 数据更新")
+            cand = col.replace(' (v56)', '').replace('v7.10 TV-PR', v710_target).strip()
+            if cand == v710_target:
+                v710_src_col = col
+                break
+        if v710_src_col is None and len(v710_v56.columns) >= 1:
+            v710_src_col = v710_v56.columns[0]
+        if v710_src_col is not None:
+            navs_A[v710_target] = v710_v56[v710_src_col].reindex(navs_A.index)
+            cal = metrics(navs_A[v710_target].loc[OOS_START:])['calmar'] if len(navs_A[v710_target].loc[OOS_START:]) > 0 else 0.0
+            print(f"[curve] {v710_target:30s} 已加入 (v56): OOS Calmar={cal:.3f}")
         oos_metrics = {col: metrics(navs_A[col].loc[OOS_START:]) for col in navs_A.columns}
 
 
@@ -771,7 +777,7 @@ def main(include_strategies: bool = True):
     v9_overview_card = f"""
   <div class="strategy-card" style="background: linear-gradient(135deg, #FFE0EC 0%, #E0F0FF 100%); border-color: #FF1493;">
     <h4>📌 v9 阶段总览 (2021-08 ~ 2026-05, 247 周, 43 ETF)</h4>
-    <p><b>核心成果</b>: 9 个策略完整落地 (原版 5 + 中信 4); <b>银河方案-动态仓位</b> Sharpe 0.88 / Calmar 0.633</p>
+    <p><b>核心成果</b>: 10 个策略完整落地 (原版 5 + 中信 4 + v7.10); <b>银河方案-动态仓位</b> Sharpe 0.88 / Calmar 0.633</p>
     <p><b>Brinson 归因</b> (docs/51): 仓位效应贡献 +7.80% (71%), 选股效应 +1.28% (12%), 交互效应 +1.87% (17%)</p>
     <p><b>全面战胜基准</b>: v9 头牌 Sharpe 0.88 vs 等权基准 0.45 (+0.43)</p>
     <p><b>分阶段稳定性</b>: 熊市段 (2021-2022) 仓位 +2.75%/选股 -1.25%; 震荡段 (2022-2024) 仓位 +3.30%/选股 +3.17%; 牛市段 (2024-2026) 仓位 +1.74%</p>
