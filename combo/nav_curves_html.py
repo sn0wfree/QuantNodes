@@ -59,12 +59,12 @@ COLORS = {
 STAGE_MAP = {
     "v1.0 locked":      "v1.0 (斜率×R² 混合, 锁定)",
     "v5.1 量价 (逆波动)": "v5.1 升级, 逆波动加权",
-    "v7.10 TV-PR (标准化+CV)":       "v7.10 TV-PR: 时变 β_t, expanding-window OOS Calmar 0.662",
+    "v7.10 TV-PR (标准化+CV)":       "v7.10 TV-PR: 时变 β_t, expanding-window OOS Calmar 0.918",
     # === v9 阶段 ===
-    "银河方案-动态仓位":  "v9 头牌: 动态仓位, OOS Sharpe 1.230",
+    "银河方案-动态仓位":  "v9 头牌: 动态仓位, OOS Calmar 0.633",
     # === v10 阶段 ===
-    "v10 DualMom (4资产)":       "v10 DualMom: 全球4资产轮动, OOS Sharpe 0.904",
-    "v10 4策略Vol-parity":       "v10 4策略Vol-parity, OOS Calmar 1.117",
+    "v10 DualMom (4资产)":       "v10 DualMom: 全球4资产轮动, OOS Sharpe 0.84",
+    "v10 4策略Vol-parity":       "v10 4策略Vol-parity, OOS Calmar 1.141",
     "v10-DynD 信号加权":         "v10-DynD: 信号加权, OOS Calmar 1.753",
 }
 
@@ -771,9 +771,9 @@ def main(include_strategies: bool = True):
     v9_overview_card = f"""
   <div class="strategy-card" style="background: linear-gradient(135deg, #FFE0EC 0%, #E0F0FF 100%); border-color: #FF1493;">
     <h4>📌 v9 阶段总览 (2021-08 ~ 2026-05, 247 周, 43 ETF)</h4>
-    <p><b>核心成果</b>: 9 个策略完整落地 (原版 5 + 中信 4); <b>银河方案-动态仓位</b> Sharpe 1.230 创历史新高</p>
+    <p><b>核心成果</b>: 9 个策略完整落地 (原版 5 + 中信 4); <b>银河方案-动态仓位</b> Sharpe 0.88 / Calmar 0.633</p>
     <p><b>Brinson 归因</b> (docs/51): 仓位效应贡献 +7.80% (71%), 选股效应 +1.28% (12%), 交互效应 +1.87% (17%)</p>
-    <p><b>全面战胜基准</b>: v9 头牌 Sharpe 1.230 vs 等权基准 0.248 (+0.982)</p>
+    <p><b>全面战胜基准</b>: v9 头牌 Sharpe 0.88 vs 等权基准 0.45 (+0.43)</p>
     <p><b>分阶段稳定性</b>: 熊市段 (2021-2022) 仓位 +2.75%/选股 -1.25%; 震荡段 (2022-2024) 仓位 +3.30%/选股 +3.17%; 牛市段 (2024-2026) 仓位 +1.74%</p>
     <p><b>关键文档</b>: docs/54-v1_v9_strategy_summary.md / docs/51-v9_brinson_attribution.md / docs/52-v9_citic_strategies.md / docs/53-v9_strategy_factor_analysis.md</p>
   </div>"""
@@ -782,7 +782,7 @@ def main(include_strategies: bool = True):
     if v9_galaxy_oos:
         v9_galaxy_card = f"""
   <div class="strategy-card" style="background: #FFE4F1; border-color: #FF1493;">
-    <h4>🌟 银河方案-动态仓位 <span class="legend-box legend-best">⭐ v9 头牌 OOS Sharpe 1.230</span></h4>
+    <h4>🌟 银河方案-动态仓位 <span class="legend-box legend-best">⭐ v9 头牌 OOS Sharpe 0.88</span></h4>
     <p><b>类型</b>: 银河证券因子配置 (17 宏观因子 + 熵权 + 风险预算) × <b>动态仓位</b></p>
     <p><b>核心公式</b>: <code>pos_t = (0.7 - 0.5 × z_score).clip(0.2, 1.0)</code>, 其中 z_score 是 factor_score 的 52 周滚动 z</p>
     <p><b>Brinson 归因</b>: 仓位贡献 <b>+7.80%</b> (71%), 选股 <b>+1.28%</b> (12%), 交互 <b>+1.87%</b> (17%)</p>
@@ -1065,10 +1065,10 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 <div class="key-finding">
   <strong>核心发现 (OOS 2022-2026):</strong><br>
   • <b>v10 最优</b>: v10-DynD 信号加权 — OOS Calmar <b>1.753</b><br>
-  • <b>v10 4策略Vol-parity</b>: v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12% — OOS Calmar <b>1.117</b>, Sharpe 1.304<br>
-  • <b>v1.0 locked (历史稳健)</b>: OOS Calmar 1.791, Sharpe 1.51, DD -1.94% (VT 控波动优势)<br>
-  • <b>v7.10 TV-PR (进取最优)</b>: expanding-window OOS Calmar 0.662, Sharpe 0.779, DD -20.2%<br>
-  • <b>v9 银河方案-动态仓位</b>: OOS Sharpe 1.230, Brinson 归因 71% 仓位 alpha<br>
+  • <b>v10 4策略Vol-parity</b>: v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12% — OOS Calmar <b>1.141</b>, Sharpe 1.34<br>
+  • <b>v1.0 locked (历史稳健)</b>: OOS Calmar 1.733, Sharpe 1.44, DD -1.94% (VT 控波动优势)<br>
+  • <b>v7.10 TV-PR (进取最优)</b>: expanding-window OOS Calmar 0.918, Sharpe 0.96, DD -20.5%<br>
+  • <b>v9 银河方案-动态仓位</b>: OOS Sharpe 0.88, Calmar 0.633, Brinson 归因 71% 仓位 alpha<br>
   • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
   • <b>推荐</b>: v10-DynD (最优) 或 v10 4策略Vol-parity (均衡), 保守用 v1.0 locked
 </div>
@@ -1076,7 +1076,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 <div class="key-finding" style="background: linear-gradient(135deg, #E8F5E9 0%, #E3F2FD 100%); border-left-color: #E91E63; margin-top: 12px;">
   <strong>🏆 v10 阶段 (2026-07-24): 独立策略 + Vol-parity + 动态权重</strong><br>
   • <b>3 个独立策略</b>: DualMom (全球4资产轮动) 等<br>
-  • <b>4策略Vol-parity</b>: v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12% — 波动率倒数配权, OOS Calmar 1.117<br>
+  • <b>4策略Vol-parity</b>: v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12% — 波动率倒数配权, OOS Calmar 1.141<br>
   • <b>5 个动态权重方案</b>: A 市场状态 / B 波动率 / C 回撤控制 / D 信号加权 / E 混合 — 全部优于静态基线<br>
   • <b>最优</b>: v10-DynD 信号加权 Calmar 1.753<br>
   • <b>Bug修复</b>: DualMom/EPO 周频NAV→日频, metrics() 年化因子 52→252, 指标修正
@@ -1158,7 +1158,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
     <tr><td>2022-10-31</td><td>2022 反弹</td><td>10 月后政策预期转向, 风险偏好回升</td><td>v3 反弹 +25%, v1.0 +5% (VT 仍保守)</td></tr>
     <tr><td>2024-09-23</td><td>政策利好</td><td>央行/证监会组合政策, 股市快速反弹</td><td>v5 量价 +35% (年化), v3 +12%, v1.0 仅 +5% (VT 限制)</td></tr>
     <tr><td>2025-09-30</td><td>2025 Q3 末</td><td>市场震荡上行, 风格分化</td><td>v5 +32.29% (年度最佳), v1.0 +5.26% (低波动防御)</td></tr>
-    <tr><td>2026-07-24</td><td>v10 上线</td><td>4策略Vol-parity + 动态权重</td><td>v10-DynD Calmar 1.753, 4策略Vol-parity Calmar 1.117</td></tr>
+    <tr><td>2026-07-24</td><td>v10 上线</td><td>4策略Vol-parity + 动态权重</td><td>v10-DynD Calmar 1.753, 4策略Vol-parity Calmar 1.141</td></tr>
   </table>
 </section>
 
@@ -1169,9 +1169,9 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   <table>
     <tr><th>风险偏好</th><th>推荐策略</th><th>理由</th><th>OOS Calmar</th></tr>
     <tr><td>🏆 最优</td><td>v10-DynD 信号加权</td><td>动量Sharpe动态配权</td><td><b>1.753</b></td></tr>
-    <tr><td>⚖️ 均衡</td><td>v10 4策略Vol-parity</td><td>4独立策略波动率平价, Sharpe 1.304</td><td><b>1.117</b></td></tr>
-    <tr><td>🛡️ 历史稳健</td><td>v1.0 locked</td><td>VT 控波动, DD -1.94%</td><td>1.791</td></tr>
-    <tr><td>🚀 进取</td><td>v7.10 TV-PR</td><td>17 macro + 19 量价, expanding-window OOS</td><td>0.662</td></tr>
+    <tr><td>⚖️ 均衡</td><td>v10 4策略Vol-parity</td><td>4独立策略波动率平价, Sharpe 1.34</td><td><b>1.141</b></td></tr>
+    <tr><td>🛡️ 历史稳健</td><td>v1.0 locked</td><td>VT 控波动, DD -1.94%</td><td>1.733</td></tr>
+    <tr><td>🚀 进取</td><td>v7.10 TV-PR</td><td>17 macro + 19 量价, expanding-window OOS</td><td>0.918</td></tr>
     <tr><td>📊 基准</td><td>HS300</td><td>被动指数, 无主动管理成本</td><td>{hs300_oos['calmar']:.3f}</td></tr>
   </table>
 
@@ -1179,7 +1179,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   <div class="methodology">
     <b>🏆 v10-DynD 信号加权</b> (最优推荐) — OOS Calmar <b>1.753</b><br>
     <br>
-    <b>🏆 v10 4策略Vol-parity</b> (均衡推荐) — v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12%, OOS Calmar <b>1.117</b>, Sharpe 1.304<br>
+    <b>🏆 v10 4策略Vol-parity</b> (均衡推荐) — v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12%, OOS Calmar <b>1.141</b>, Sharpe 1.34<br>
     优势: 4个独立策略 (相关性 -0.005~0.682) 波动率倒数配权, DD 仅 -7.08%<br>
     <br>
     <b>v1.0 80% + v7.10 20%</b> (保守+进攻) — 兼顾低 DD 与高 α<br>
