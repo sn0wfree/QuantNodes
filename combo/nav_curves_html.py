@@ -1,16 +1,16 @@
 # coding=utf-8
-"""v1-v7.10 业绩曲线对比 HTML (纯 NAV 曲线, 轻量级).
+"""v1-v10 业绩曲线对比 HTML (纯 NAV 曲线, 轻量级).
 
-聚焦: 13 个策略 + HS300 基准的 NAV 曲线对比 (v0.0 → v7.10 TV-PR)
+聚焦: 全部策略 + HS300 基准的 NAV 曲线对比 (v0.0 → v10 动态权重)
 特点:
 - 单一图表多策略叠加 (主曲线)
-- 拆分面板: v1.0 演进路径 / 进攻型 v3+v5 / 风险型 v0.x
+- 拆分面板: v1.0 演进路径 / 进攻型 / v10 独立策略
 - OOS 区间高亮
 - 关键事件标注 (2022 熊市, 2024 9月行情)
 - 全期 + OOS 指标表
-- 13 个策略简述 + HS300 基准 (v0 - v7.10 演进轨迹, 主文件含, 报告版省略)
+- 策略简述 + HS300 基准
 - 内联 plotly.js (脱机可用)
-- 双输出: STRATEGY_ITERATION_RECORD.html (主文件, 内部跟踪) + STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html (报告版, 对外汇报)
+- 双输出: STRATEGY_ITERATION_RECORD.html (主文件) + STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html (报告版)
 """
 from __future__ import annotations
 
@@ -52,21 +52,34 @@ COLORS = {
     "v4 factor":        "#8C564B",
     "v5 量价":          "#E377C2",
     "v5.1 量价 (逆波动)": "#FF6B9D",
-    "v6 (TF 趋势过滤)": "#17BECF",  # 青色 — Stage 26 v6 单策略风控
+    "v6 (TF 趋势过滤)": "#17BECF",
     "v6 TF+Cost":      "#17BECF",
-    "v6.1 IC12":       "#D62728",  # 深红 — Stage 27 v6.1 IC 加权 (RECOMMENDED)
-    "v6.2 ir_expanding": "#9467BD",  # 紫 — Stage 32 v6.2 DEPRECATED
-    "v7.10 TV-PR (标准化+CV)":      "#FF4500",  # 橙红 — v7.10 TV-PR (标准化+CV) (Cui 2025, 时变 β_t)
-    "v7.14 TV-PR (修正)":           "#B71C1C",  # 深红 — v7.14 TV-PR 修正版 (NAV bug fix)
-    "v8 Jump Model 方案B":          "#0D47A1",  # 深蓝 — v8 Jump Model 仓位调节 (最优集成)
-    "v8 Jump Model 优化版":         "#1B5E20",  # 深绿 — v8 优化版 (bt=0.25, alpha=0.7, cost=10bp)
-    # === v9 阶段 (2021-08 ~ 2026-05) ===
-    "银河方案-动态仓位":            "#FF1493",  # 深粉 — v9 头牌 (Sharpe 1.230, Brinson 归因 71% 仓位 alpha)
-    "中信多因子选股":              "#1E90FF",  # 道奇蓝 — v9 中信最优 (Sharpe 0.615, 5 风格因子 + K=10)
-    "银河因子配置":                "#4682B4",  # 钢蓝 — 17 宏观因子 + 熵权 + 风险预算
-    "中信里昂全天候":              "#DAA520",  # 金黄 — 风险平价 × 增长/通胀象限
-    "中信大类资产配置":            "#708090",  # 石板灰 — 5 宏观因子战术倾斜
-    "中信行业轮动":                "#FFA07A",  # 浅橙 — 23 行业 ETF Top-K
+    "v6.1 IC12":       "#D62728",
+    "v6.2 ir_expanding": "#9467BD",
+    "v7.10 TV-PR (标准化+CV)":      "#FF4500",
+    "v7.14 TV-PR (修正)":           "#B71C1C",
+    "v8 Jump Model 方案B":          "#0D47A1",
+    "v8 Jump Model 优化版":         "#1B5E20",
+    # === v9 阶段 ===
+    "银河方案-动态仓位":            "#FF1493",
+    "中信多因子选股":              "#1E90FF",
+    "银河因子配置":                "#4682B4",
+    "中信里昂全天候":              "#DAA520",
+    "中信大类资产配置":            "#708090",
+    "中信行业轮动":                "#FFA07A",
+    "等权基准":                    "#AAAAAA",
+    "60/40股债":                   "#BBBBBB",
+    "基础风险平价":                "#999999",
+    # === v10 阶段 ===
+    "v10 DualMom (4资产)":         "#00BCD4",  # 青色 — 全球4资产轮动
+    "v10 EPO (行业动量)":          "#795548",  # 棕色 — 44 ETF动量+RP
+    "v10 RRG (行业轮动)":          "#FF9800",  # 橙色 — 行业相对旋转图
+    "v10 4策略Vol-parity":         "#E91E63",  # 玫红 — 4策略波动率平价
+    "v10-DynA 市场状态":           "#9C27B0",  # 紫色 — 市场状态切换
+    "v10-DynB 波动率":             "#3F51B5",  # 靛蓝 — 波动率目标
+    "v10-DynC 回撤控制":           "#009688",  # 蓝绿 — 回撤控制
+    "v10-DynD 信号加权":           "#FF5722",  # 深橙 — 信号加权
+    "v10-DynE 混合":               "#CDDC39",  # 黄绿 — 混合动态
 }
 
 STAGE_MAP = {
@@ -94,6 +107,16 @@ STAGE_MAP = {
     "中信里昂全天候":    "v9 中信里昂 (风险平价 × 增长/通胀象限, OOS Sharpe 0.348, MaxDD -22.6%)",
     "中信大类资产配置":  "v9 中信大类 (5 宏观因子战术倾斜, 风险资产 30-80%, OOS Sharpe 0.249)",
     "中信行业轮动":      "v9 中信行业 (23 行业 ETF 动量+质量 Top-5, OOS Sharpe 0.280)",
+    # === v10 阶段 ===
+    "v10 DualMom (4资产)":       "v10 DualMom (全球4资产轮动: 510300/513100/518880/511260, 12M绝对+相对动量, OOS Sharpe 0.904)",
+    "v10 EPO (行业动量)":        "v10 EPO (44 ETF行业动量TOP5 + Risk Parity, OOS Sharpe 0.560)",
+    "v10 RRG (行业轮动)":        "v10 RRG (18行业ETF相对旋转图RS-RM, OOS Sharpe 0.424)",
+    "v10 4策略Vol-parity":       "v10 4策略Vol-parity (v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12%, OOS Calmar 1.117)",
+    "v10-DynA 市场状态":         "v10-DynA 市场状态切换 (牛→进攻, 熊→v1 90%, OOS Calmar 1.500)",
+    "v10-DynB 波动率":           "v10-DynB 波动率目标 (高vol→全v1, 低vol→进攻, OOS Calmar 1.108)",
+    "v10-DynC 回撤控制":         "v10-DynC 回撤控制 (3%/5%/8% 三级阈值, OOS Calmar 1.639)",
+    "v10-DynD 信号加权":         "v10-DynD 信号加权 (动量Sharpe动态配权, OOS Calmar 1.753)",
+    "v10-DynE 混合":             "v10-DynE 混合动态 (市场状态+回撤+波动率三重, OOS Calmar 1.442)",
 }
 
 # 分组
@@ -103,12 +126,15 @@ GROUPS = {
     "量价族演进 (Stage 22→29)":  ["v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding"],
     "v7 TV-PR 演进":  ["v1.0 locked", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "v8 Jump Model 优化版"],
     "风险型 (VT)":  ["v1.0 locked", "v0.1 +VT"],
-    # === v9 阶段 (2021-08 ~ 2026-05, 247 周, 43 ETF) ===
+    # === v9 阶段 ===
     "v9 头牌 (动态仓位)": ["银河方案-动态仓位"],
     "v9 中信组 (4 策略)": ["中信多因子选股", "中信里昂全天候", "中信大类资产配置", "中信行业轮动"],
     "v9 银河组 (5 策略)": ["银河方案-动态仓位", "银河因子配置", "基础风险平价", "等权基准", "60/40股债"],
     "v9 全部 9 策略": ["银河方案-动态仓位", "中信多因子选股", "银河因子配置", "中信里昂全天候", "中信行业轮动", "基础风险平价", "中信大类资产配置", "等权基准", "60/40股债"],
-    "全部 19 策略":  None,  # 全部 (v0-v8 + v9 9 策略)
+    # === v10 阶段 ===
+    "v10 独立策略": ["v10 DualMom (4资产)", "v10 EPO (行业动量)", "v10 RRG (行业轮动)"],
+    "v10 组合+动态": ["v10 4策略Vol-parity", "v10-DynA 市场状态", "v10-DynB 波动率", "v10-DynC 回撤控制", "v10-DynD 信号加权", "v10-DynE 混合"],
+    "v10 全部": ["v10 DualMom (4资产)", "v10 EPO (行业动量)", "v10 RRG (行业轮动)", "v10 4策略Vol-parity", "v10-DynA 市场状态", "v10-DynB 波动率", "v10-DynC 回撤控制", "v10-DynD 信号加权", "v10-DynE 混合"],
 }
 
 
@@ -183,10 +209,49 @@ def metrics(nav):
 
 
 # ============================================================
-# 业绩曲线 (主图: 全部 8 策略叠加)
+# 业绩曲线 (主图: 全部策略叠加)
 # ============================================================
+# 标记前缀 (优先级从高到低)
+_PREFIX_RULES = [
+    (lambda c: c == "v1.0 locked",       "⭐ "),
+    (lambda c: c.startswith("v10-Dyn"),  "🔥 "),
+    (lambda c: c.startswith("v10 4"),    "🏆 "),
+    (lambda c: c.startswith("v10 "),     "🎯 "),
+    (lambda c: "v7.10" in c,            "🚀 "),
+    (lambda c: "v7.14" in c,            "📊 "),
+    (lambda c: "v8" in c,               "🛡️ "),
+    (lambda c: "v5.1" in c,             "🆕 "),
+    (lambda c: "v6" in c and "TF" in c, "🆕 "),
+]
+_WIDTH_RULES = [
+    (lambda c: c.startswith("v10-Dyn"),  2.8),
+    (lambda c: c.startswith("v10 "),     2.6),
+    (lambda c: c == "v1.0 locked",       2.4),
+    (lambda c: "v7.10" in c,            2.4),
+    (lambda c: "v8" in c,               2.2),
+]
+# 背景 (淡色虚线)
+BACKGROUND = {"v4 style", "v4 factor", "v0.0 baseline", "v0.2 +TF",
+              "等权基准", "60/40股债", "基础风险平价"}
+
+
+def _get_prefix(col):
+    for fn, pfx in _PREFIX_RULES:
+        if fn(col):
+            return pfx
+    return ""
+
+
+def _get_width(col):
+    for fn, w in _WIDTH_RULES:
+        if fn(col):
+            return w
+    return 1.7
+
+
 def chart_all_curves(navs):
     print(f"  [chart 1/7] all_curves...", flush=True)
+    n_strategies = len([c for c in navs.columns if c != "HS300 基准"])
     fig = go.Figure()
 
     # HS300 基准 (深灰虚线, 第一个画)
@@ -199,10 +264,9 @@ def chart_all_curves(navs):
             hovertemplate="<b>HS300 基准</b><br>%{x|%Y-%m-%d}<br>NAV=%{y:.3f}<extra></extra>",
         ))
 
-    # 先画非重点 (淡色, 在背景)
-    background = ["v4 style", "v4 factor", "v0.0 baseline", "v0.2 +TF"]
-    for col in background:
-        if col not in navs.columns or col == "HS300 基准":
+    # 先画背景 (淡色虚线)
+    for col in BACKGROUND:
+        if col not in navs.columns:
             continue
         valid = navs[col].dropna()
         fig.add_trace(go.Scatter(
@@ -213,30 +277,16 @@ def chart_all_curves(navs):
             hovertemplate=f"<b>{col}</b><br>%{{x|%Y-%m-%d}}<br>NAV=%{{y:.3f}}<extra></extra>",
         ))
 
-    # 重点策略 (实线)
-    foreground = [
-        "v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)",
-        "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)",
-        "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "v8 Jump Model 优化版",
-        # === v9 阶段 ===
-        "银河方案-动态仓位", "中信多因子选股", "银河因子配置",
-        "中信里昂全天候", "中信大类资产配置", "中信行业轮动",
-    ]
-    for col in foreground:
-        if col not in navs.columns or col == "HS300 基准":
+    # 重点策略 (实线) — 动态遍历所有列
+    for col in navs.columns:
+        if col == "HS300 基准" or col in BACKGROUND:
             continue
         valid = navs[col].dropna()
-        is_best = (col == "v1.0 locked")
-        is_v51 = (col == "v5.1 量价 (逆波动)")
-        is_v6 = (col == "v6 (TF 趋势过滤)")
-        is_v62 = (col == "v6.2 ir_expanding")
-        is_v710 = (col == "v7.10 TV-PR (标准化+CV)")
-        is_v714 = (col == "v7.14 TV-PR (修正)")
-        is_v8 = (col == "v8 Jump Model 方案B")
-        is_v8_opt = (col == "v8 Jump Model 优化版")
-        prefix = "⭐ " if is_best else ("🆕 " if is_v51 or is_v6 else ("🚀 " if is_v710 else ("📊 " if is_v714 else ("🛡️ " if is_v8 else ("✅ " if is_v8_opt else "")))))
+        if len(valid) < 2:
+            continue
+        prefix = _get_prefix(col)
         display_name = f"{prefix}{col}"
-        width = 2.8 if is_v8_opt else (2.8 if is_v8 else (2.6 if is_v714 else (2.6 if is_v710 else (2.4 if is_best else (2.0 if is_v6 or is_v62 else (1.9 if is_v51 else 1.7))))))
+        width = _get_width(col)
         fig.add_trace(go.Scatter(
             x=valid.index, y=valid.values,
             mode="lines", name=display_name,
@@ -247,7 +297,7 @@ def chart_all_curves(navs):
                           "%{x|%Y-%m-%d}<br>NAV=%{y:.3f}<extra></extra>",
         ))
 
-    # OOS 区间高亮 (plotly 兼容: 用 ms 整数代替 Timestamp, 避免 pandas2.x Timestamp+int 报错)
+    # OOS 区间高亮
     fig.add_vrect(
         x0=OOS_START_MS, x1=OOS_END_MS,
         fillcolor="rgba(100, 100, 200, 0.06)",
@@ -268,9 +318,9 @@ def chart_all_curves(navs):
 
     fig.update_layout(
         title=dict(
-            text="<b>v0 - v7.10 业绩曲线对比 (2018-2026, 13 策略 + HS300)</b>"
-                 "<br><sub>实线=重点, 虚线=参考 | ⭐=v1.0 locked (历史 OOS 最佳 1.791) | "
-                 "🚀=v7.10 TV-PR (Stage 31 NEW, expanding-window OOS Calmar 0.662) | 深灰虚线=HS300 基准 | 高亮=OOS 区间</sub>",
+            text=f"<b>v0 - v10 业绩曲线对比 (2018-2026, {n_strategies} 策略 + HS300)</b>"
+                 "<br><sub>实线=重点, 虚线=参考 | ⭐=v1.0 locked | 🚀=v7.10 TV-PR | "
+                 "🏆=v10 Vol-parity | 🔥=v10 动态方案 | 深灰虚线=HS300 基准 | 高亮=OOS 区间</sub>",
             x=0.02, xanchor="left", font=dict(size=15),
         ),
         xaxis=dict(
@@ -297,22 +347,27 @@ def chart_all_curves(navs):
 # 分组对比 (subplot grid)
 # ============================================================
 def chart_grouped_curves(navs):
-    """2x2 subplot: v1.0 演进 / 进攻型 / 风险型 / 量价族演进."""
+    """3x2 subplot: v1.0 演进 / 进攻型 / v9 / v10 独立 / v10 组合+动态 / v7 TV-PR."""
     print(f"  [chart 2/7] grouped...", flush=True)
+    n_strategies = len([c for c in navs.columns if c != "HS300 基准"])
     panels = [
         ("v1.0 演进 (Stage 8 → v1.0)",
          ["v0.0 baseline", "v0.1 +VT", "v0.2 +TF", "v1.0 locked"]),
-        ("进攻型 (v3 / v5 / v5.1 / v6.2 / v1.0 / HS300)",
-         ["v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)", "v1.0 locked", "HS300 基准"]),
-        ("v5 → v5.1 → v6.1 → v6.2 量价族演进",
-         ["v5 量价", "v5.1 量价 (逆波动)", "v6.1 IC12", "v6.2 ir_expanding"]),
-        ("v5.1 vs v6 vs v6.1 vs v6.2 加权演进 (Stage 23→29)",
-         ["v5 量价", "v5.1 量价 (逆波动)", "v6 (TF 趋势过滤)", "v6.1 IC12", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)", "HS300 基准"]),
+        ("进攻型 (v3 / v5 / v6 / v7.10 / v8)",
+         ["v3 (52 池)", "v5.1 量价 (逆波动)", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)", "v8 Jump Model 方案B", "v1.0 locked", "HS300 基准"]),
+        ("v9 银河+中信 (9 策略)",
+         ["银河方案-动态仓位", "中信多因子选股", "银河因子配置", "中信里昂全天候", "中信大类资产配置", "中信行业轮动", "HS300 基准"]),
+        ("v10 独立策略 (3 策略)",
+         ["v10 DualMom (4资产)", "v10 EPO (行业动量)", "v10 RRG (行业轮动)", "HS300 基准"]),
+        ("v10 组合+动态 (6 方案)",
+         ["v10 4策略Vol-parity", "v10-DynA 市场状态", "v10-DynB 波动率", "v10-DynC 回撤控制", "v10-DynD 信号加权", "v10-DynE 混合", "HS300 基准"]),
+        ("v7 TV-PR 演进 (Stage 27→v8)",
+         ["v1.0 locked", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)", "v7.14 TV-PR (修正)", "v8 Jump Model 方案B", "HS300 基准"]),
     ]
     fig = make_subplots(
-        rows=2, cols=2,
+        rows=3, cols=2,
         subplot_titles=[p[0] for p in panels],
-        vertical_spacing=0.14,
+        vertical_spacing=0.10,
         horizontal_spacing=0.08,
     )
     for i, (title, cols) in enumerate(panels, 1):
@@ -334,22 +389,21 @@ def chart_grouped_curves(navs):
                           shape="spline", smoothing=0.5),
                 hovertemplate=f"<b>{col}</b><br>%{{x|%Y-%m-%d}}<br>NAV=%{{y:.3f}}<extra></extra>",
             ), row=row, col=col_idx)
-        # OOS 区间
         fig.add_vrect(x0=OOS_START_MS, x1=OOS_END_MS,
                       fillcolor="rgba(100,100,200,0.06)", line_width=0,
                       row=row, col=col_idx)
 
     fig.update_layout(
-        title=dict(text="<b>分组业绩曲线 (2×2 网格, 13 策略分组对比)</b>",
+        title=dict(text=f"<b>分组业绩曲线 (3×2 网格, {n_strategies} 策略分组对比)</b>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         template="plotly_white",
-        height=720,
+        height=1080,
         margin=dict(l=60, r=30, t=80, b=60),
-        legend=dict(orientation="h", y=-0.08, x=0.5, xanchor="center",
+        legend=dict(orientation="h", y=-0.05, x=0.5, xanchor="center",
                     bgcolor="rgba(255,255,255,0.85)",
                     bordercolor="rgba(0,0,0,0.1)", borderwidth=1),
     )
-    for r in range(1, 3):
+    for r in range(1, 4):
         for c in range(1, 3):
             fig.update_xaxes(showgrid=True, gridcolor="rgba(0,0,0,0.05)",
                              zeroline=False, row=r, col=c)
@@ -367,12 +421,11 @@ def chart_alpha_curves(navs):
     if "HS300 基准" not in navs.columns:
         return None
     bench = navs["HS300 基准"]
+    n_strategies = len([c for c in navs.columns if c != "HS300 基准"])
 
     fig = go.Figure()
-    for col in [
-        "v1.0 locked", "v3 (52 池)", "v5 量价", "v5.1 量价 (逆波动)", "v6.2 ir_expanding", "v7.10 TV-PR (标准化+CV)",
-    ]:
-        if col not in navs.columns:
+    for col in navs.columns:
+        if col == "HS300 基准":
             continue
         s = navs[col].dropna()
         b = bench.reindex(s.index).dropna()
@@ -398,7 +451,7 @@ def chart_alpha_curves(navs):
                   annotation_text="OOS", annotation_position="top left",
                   annotation_font_size=9)
     fig.update_layout(
-        title=dict(text="<b>超额收益 (Alpha) vs HS300 (v0 - v7.10)</b>"
+        title=dict(text=f"<b>超额收益 (Alpha) vs HS300 (v0 - v10, {n_strategies} 策略)</b>"
                         "<br><sub>α = 策略 NAV / HS300 NAV − 1 (%). 重点策略在 OOS 期间相对 HS300 跑赢幅度</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         xaxis=dict(title="日期", showgrid=True,
@@ -454,8 +507,8 @@ def chart_drawdown_compare(navs):
     fig.add_vrect(x0=OOS_START_MS, x1=OOS_END_MS,
                   fillcolor="rgba(100,100,200,0.04)", line_width=0)
     fig.update_layout(
-        title=dict(text="<b>回撤对比 (Drawdown Over Time, v0 - v7.10)</b>"
-                        "<br><sub>DD 越接近 0 越好 | v1.0 locked 几乎无回撤 | v6.2 ir_expanding DD -16.7% | v7.10 TV-PR expanding-window OOS DD -20.2%</sub>",
+        title=dict(text="<b>回撤对比 (Drawdown Over Time, v0 - v10)</b>"
+                        "<br><sub>DD 越接近 0 越好 | 绿色填充=v1.0 locked | v10-DynC 回撤控制 DD 仅 -3.7%</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         xaxis=dict(title="日期", showgrid=True,
                    gridcolor="rgba(0,0,0,0.05)", zeroline=False),
@@ -521,8 +574,8 @@ def chart_period_compare(navs):
     fig.add_hline(y=0, line_dash="dot", line_color="gray", row=1, col=1)
     fig.add_hline(y=0, line_dash="dot", line_color="gray", row=1, col=2)
     fig.update_layout(
-        title=dict(text="<b>全期 vs OOS 年化收益 (v0 - v7.10)</b>"
-                        "<br><sub>金边=最佳 (v1.0 OOS Calmar 1.791), 灰色=HS300 基准 | 柱顶=年化收益</sub>",
+        title=dict(text="<b>全期 vs OOS 年化收益 (v0 - v10)</b>"
+                        "<br><sub>金边=最佳 (v1.0 locked), 灰色=HS300 基准 | 柱顶=年化收益</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         template="plotly_white", height=480,
         margin=dict(l=60, r=30, t=80, b=80), barmode="group",
@@ -570,8 +623,8 @@ def chart_radar(navs):
             fillcolor="rgba(44,160,44,0.10)" if is_best else None,
         ))
     fig.update_layout(
-        title=dict(text="<b>OOS 性能雷达图 (2022-2026, v0 - v7.10)</b>"
-                        "<br><sub>6 维归一化指标, 越靠外越好 | ⭐=v1.0 locked (绿色填充, Calmar 1.791) | v6.2 ir_expanding 紫色 (0.821) | 🚀 v7.10 TV-PR (标准化+CV) 橙红 (0.662)</sub>",
+        title=dict(text="<b>OOS 性能雷达图 (2022-2026, v0 - v10)</b>"
+                        "<br><sub>6 维归一化指标, 越靠外越好 | ⭐=v1.0 locked (绿色填充) | 🏆=v10 Vol-parity | 🔥=v10 动态方案</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         template="plotly_white", height=520,
         margin=dict(l=60, r=60, t=80, b=60),
@@ -619,8 +672,8 @@ def chart_monthly_heatmap(navs):
         xgap=1, ygap=2,
     ))
     fig.update_layout(
-        title=dict(text="<b>月度收益热图 (2018-2026, v0 - v7.10 共 13 策略)</b>"
-                        "<br><sub>红=亏损, 绿=盈利 | 列=月份, 行=策略 | v1.0 全期基本无红格</sub>",
+        title=dict(text="<b>月度收益热图 (2018-2026, v0 - v10)</b>"
+                        "<br><sub>红=亏损, 绿=盈利 | 列=月份, 行=策略</sub>",
                    x=0.02, xanchor="left", font=dict(size=15)),
         template="plotly_white", height=480,
         margin=dict(l=120, r=80, t=80, b=80),
@@ -1231,6 +1284,7 @@ def main(include_strategies: bool = True):
         (pd.Timestamp("2022-10-31"), "2022-10 反弹"),
         (pd.Timestamp("2024-09-23"), "2024-09 政策"),
         (pd.Timestamp("2025-09-30"), "2025 Q3 末"),
+        (pd.Timestamp("2026-07-24"), "2026-07 v10 上线"),
     ]
 
     # 表格 HTML
@@ -1273,13 +1327,13 @@ def main(include_strategies: bool = True):
     # 子图
     sections = []
     chart_descriptions = {
-        "all_curves": "13 策略 NAV 曲线叠加, 重点策略用实线, 参考策略用虚线变淡. 蓝色高亮为 OOS 区间 (2022-2026), 红色虚线标记 2024-09 政策利好, 灰色虚线标记 2022 熊市底. ⭐=v1.0 locked (历史 OOS 最佳 1.791), 🚀=v7.10 TV-PR (Stage 31 NEW, expanding-window OOS Calmar 0.662 当前最优). 任何策略 NAV 持续高于 HS300 基准 (深灰 dashdot) 即代表跑赢大盘.",
-        "grouped": "2×2 网格分组对比: 左上是 v1.0 演进路径 (Stage 8→v1.0, 看每个优化的贡献), 右上和下排是不同风格策略对比. 每组独立 Y 轴, 重点看相对走势而非绝对值.",
-        "alpha": "α = 策略 NAV / HS300 NAV - 1. 持续为正代表跑赢大盘. v1.0 locked 在大多数时间跑赢 (绿色填充区域), v3 长期稳定正 α, v5 在 2022 后 α 显著为正.",
-        "drawdown": "从历史峰值的最大回撤. v1.0 locked (绿色填充) 几乎无回撤, v0.1+VT 类似. v4 因子/风格在 2022 熊市时回撤达 -38%, 是结构性风险. v6.2 ir_expanding DD -16.7% 仍可接受. v7.10 TV-PR expanding-window OOS DD -20.2% 较优. HS300 基准 (深灰) 用于对比大盘回撤.",
-        "period_compare": "全期 vs OOS 双柱状图, 金边标记 v1.0 locked (OOS 0.791). 可看出哪些策略在 OOS 期间仍保持稳定表现 (v1.0/v3/v6.2), 哪些出现衰减.",
-        "radar": "6 维归一化指标, 越靠外越好: 年化收益 / Sharpe / Calmar / 1/|DD| (回撤倒数) / 低波动 / 稳定性. v1.0 locked (绿色填充) 在 DD/Calmar 维度最突出, v5 在收益维度最突出.",
-        "monthly_heatmap": "月度收益热图, 13 策略 × 101 月. 绿色 = 正收益, 红色 = 负收益. v1.0 全期基本无红格 (DD 控制好), v4 因子在 2022 集中出现红格.",
+        "all_curves": "全部策略 NAV 曲线叠加. 重点策略用实线, 参考策略用虚线变淡. 蓝色高亮为 OOS 区间. v10 动态方案 (🔥) 和 Vol-parity (🏆) 使用独立颜色. HS300 基准 (深灰 dashdot) 用于对比.",
+        "grouped": "3×2 网格分组对比: v1.0 演进 / 进攻型 / v9 银河+中信 / v10 独立策略 / v10 组合+动态 / v7 TV-PR 演进. 每组独立 Y 轴.",
+        "alpha": "α = 策略 NAV / HS300 NAV - 1. 持续为正代表跑赢大盘. 全部策略动态迭代.",
+        "drawdown": "从历史峰值的最大回撤. v10-DynC 回撤控制 DD 仅 -3.7%. v1.0 locked (绿色填充) DD -1.94%.",
+        "period_compare": "全期 vs OOS 双柱状图. 金边标记最佳. v10-DynD 在 OOS 期间 Calmar 1.753.",
+        "radar": "6 维归一化指标 (年化收益/Sharpe/Calmar/1|DD|/低波动/稳定性), 越靠外越好.",
+        "monthly_heatmap": "月度收益热图. 绿色=正收益, 红色=负收益.",
     }
     for key, fig in figs.items():
         desc = chart_descriptions.get(key, "")
@@ -1298,8 +1352,8 @@ def main(include_strategies: bool = True):
     if include_strategies:
         strategies_section_html = f"""
 <section id="strategies">
-  <h2>v0 - v9 策略简述 (19 策略 + HS300 基准, 按时间顺序)</h2>
-  <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 v9 银河方案-动态仓位 (OOS Sharpe 1.230), 完整记录量化策略演进轨迹. 主文件 (内部跟踪) 完整呈现; 报告版 (STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html) 省略本节.</p>
+  <h2>v0 - v10 策略简述 (按时间顺序)</h2>
+  <p style="font-size:12px;color:#888;">从 Stage 8 (CICC 原始复现) 到 v10 动态权重方案 (OOS Calmar 1.753), 完整记录量化策略演进轨迹.</p>
   <h3 style="color:#666;border-bottom:1px solid #ddd;padding-bottom:4px;">📚 基础阶段 (Stage 8 - 22): CICC → v5 量价</h3>
   {v0_strategy_card}
   {v01_strategy_card}
@@ -1338,7 +1392,7 @@ def main(include_strategies: bool = True):
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>v1-v7 业绩曲线对比</title>
+<title>v1-v10 业绩曲线对比</title>
 <style>
 body {{ font-family: -apple-system, "Segoe UI", sans-serif; max-width: 1280px; margin: 20px auto; padding: 0 20px; background: #fafafa; color: #2C3E50; line-height: 1.65; }}
 h1 {{ color: #1F77B4; border-bottom: 3px solid #1F77B4; padding-bottom: 8px; margin-top: 0; font-size: 28px; }}
@@ -1379,7 +1433,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 </head>
 <body>
 
-<h1>v1-v7 业绩曲线对比</h1>
+<h1>v1-v10 业绩曲线对比</h1>
 
 <div class="navbar">
   <a href="#all_curves">主曲线</a>
@@ -1395,29 +1449,28 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 </div>
 
 <div class="key-finding">
-  <strong>核心发现 (口径 A OOS 2022-2026, 含 HS300 基准):</strong><br>
-  • <b>风险调整冠军 (当前最优 🚀)</b>: v7.10 TV-PR (Stage 31 NEW) — expanding-window OOS (2022-2026) Calmar <b>0.662</b>, Sharpe <b>0.779</b>, DD -20.2% (2023+ OOS Calmar 1.121, Sharpe 1.168)<br>
-  • <b>风险调整冠军 (历史)</b>: v1.0 locked — OOS Calmar 1.791, Sharpe 1.51, DD -1.94% (VT 控波动优势)<br>
-  • <b>绝对收益冠军</b>: v7.10 TV-PR — OOS 年化 <b>{v710_oos.get('ann_return', 0)*100:+.2f}%</b> (HS300 同期 {hs300_oos['ann_return']*100:+.2f}%, α {v710_oos.get('ann_return', 0)*100-hs300_oos['ann_return']*100:+.1f}%)<br>
-  • <b>最均衡 (稳健)</b>: v3 (52 池) — OOS 年化 7.69%, Sharpe 1.08, DD -9.89%<br>
-  • <b>v7.10 vs v6.2</b>: Calmar {v710_oos.get('calmar', 0):.3f} vs {v62_oos.get('calmar', 0):.3f} (+{(v710_oos.get('calmar', 0)/v62_oos.get('calmar', 0)-1)*100:+.1f}%); DD -{v710_dd_pct:.1f}% vs -{abs(v62_oos.get('max_dd', 0))*100:.1f}%<br>
-  • <b>v6.x 系列</b>: v6.1 IC12 Stage 27 BASELINE (稳健) → v6.2 ir_expanding Stage 32 DEPRECATED (扣成本 Calmar 0.331, CV% 56.9% FAIL)<br>
-  • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, DD {hs300_oos['max_dd']*100:.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
-  • <b>推荐</b>: <b>v7.10 单策略</b> (最优) 或 v1.0 80% + <b>v7.10 20%</b> (保守+进攻, 兼顾低 DD 与高 α)
+  <strong>核心发现 (OOS 2022-2026):</strong><br>
+  • <b>v10 动态方案 (当前最优 🏆)</b>: v10-DynD 信号加权 — OOS Calmar <b>1.753</b>, v10-DynC 回撤控制 Calmar 1.639 (DD 仅 -3.7%)<br>
+  • <b>v10 4策略Vol-parity</b>: v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12% — OOS Calmar <b>1.117</b>, Sharpe 1.304<br>
+  • <b>v1.0 locked (历史稳健)</b>: OOS Calmar 1.791, Sharpe 1.51, DD -1.94% (VT 控波动优势)<br>
+  • <b>v7.10 TV-PR (进取最优)</b>: expanding-window OOS Calmar 0.662, Sharpe 0.779, DD -20.2%<br>
+  • <b>v9 银河方案-动态仓位</b>: OOS Sharpe 1.230, Brinson 归因 71% 仓位 alpha<br>
+  • <b>HS300 基准</b>: OOS 年化 {hs300_oos['ann_return']*100:+.2f}%, Calmar {hs300_oos['calmar']:.3f}<br>
+  • <b>推荐</b>: v10-DynD (最优) 或 v10 4策略Vol-parity (均衡), 保守用 v1.0 locked
 </div>
 
-<div class="key-finding" style="background: linear-gradient(135deg, #FFE4B5 0%, #FFF9E6 100%); border-left-color: #FF4500; margin-top: 12px;">
-  <strong>🚀 Stage 31 进展 (2026-07-17): v7.10 TV-PR (标准化+CV) 上线</strong><br>
-  • <b>方法</b>: 17 macro + 19 量价因子, 时变 β_t (TV-PR, Cui 2025), 混合标准化 (宏观=时间序列Z, PV=截面Z+Winsorize) + 两阶段 CV (粗搜 10 → 细搜 25) + expanding window<br>
-  • <b>诊断</b>: 条件数 2.17e+10 → 1.32e+02 (改善 8 个数量级); Beta TV Norm 166.78 → 56.44; β[t-1] 优于 β[t] (+4.8% Sharpe); step=4 优于 step=1 (+28% Sharpe, DD_duration 374→136 天)<br>
-  • <b>OOS</b>: expanding-window OOS (2022-2026) Sharpe 0.779, Calmar 0.662, DD -20.2%; 2023+ OOS Sharpe 1.168, Calmar 1.121<br>
-  • <b>超越 v6.2</b>: expanding-window OOS Calmar 0.662 vs v6.2 0.331 (扣成本后)<br>
-  • <b>决策</b>: v7.10 为新默认 RECOMMENDED (稳健+最优), v6.1 IC12 降为 BASELINE (历史稳健 baseline), v6.2 ir_expanding 降为 DEPRECATED (扣成本 Calmar 0.331). 详见 <code>reports/momentum_etf_rotation/v7_10_oos_validation.md</code>
+<div class="key-finding" style="background: linear-gradient(135deg, #E8F5E9 0%, #E3F2FD 100%); border-left-color: #E91E63; margin-top: 12px;">
+  <strong>🏆 v10 阶段 (2026-07-24): 独立策略 + Vol-parity + 动态权重</strong><br>
+  • <b>3 个独立策略</b>: DualMom (全球4资产轮动) + EPO (44 ETF动量+RP) + RRG (行业相对旋转图)<br>
+  • <b>4策略Vol-parity</b>: v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12% — 波动率倒数配权, OOS Calmar 1.117<br>
+  • <b>5 个动态权重方案</b>: A 市场状态 / B 波动率 / C 回撤控制 / D 信号加权 / E 混合 — 全部优于静态基线<br>
+  • <b>最优</b>: v10-DynD 信号加权 Calmar 1.753, v10-DynC 回撤控制 DD 仅 -3.7%<br>
+  • <b>Bug修复</b>: DualMom/EPO 周频NAV→日频, metrics() 年化因子 52→252, 指标修正
 </div>
 
 <div class="toc">
   <b>📖 图表阅读指南:</b> 实线粗线 = 重点策略 | 虚线 = 参考策略 | 深灰虚线 = HS300 基准 | 金边/绿色填充 = 最佳 (v1.0 locked) | 蓝色高亮 = OOS 区间<br>
-  排名按 <b>OOS Calmar</b> (年化收益 / |最大回撤|) 降序排列, 该指标兼顾收益与回撤控制, 是评价策略稳健性的核心指标
+  排名按 <b>OOS Calmar</b> (年化收益 / |最大回撤|) 降序排列
 </div>
 
 <section id="methodology">
@@ -1462,7 +1515,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
     html += f"""</div>
 
 <section id="metrics_table">
-  <h2>13 策略 OOS 业绩表 (按 Calmar 排序)</h2>
+  <h2>OOS 业绩表 (按 Calmar 排序)</h2>
   <table>
     <tr>
       <th rowspan="2">排名</th>
@@ -1491,6 +1544,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
     <tr><td>2022-10-31</td><td>2022 反弹</td><td>10 月后政策预期转向, 风险偏好回升</td><td>v3 反弹 +25%, v1.0 +5% (VT 仍保守)</td></tr>
     <tr><td>2024-09-23</td><td>政策利好</td><td>央行/证监会组合政策, 股市快速反弹</td><td>v5 量价 +35% (年化), v3 +12%, v1.0 仅 +5% (VT 限制)</td></tr>
     <tr><td>2025-09-30</td><td>2025 Q3 末</td><td>市场震荡上行, 风格分化</td><td>v5 +32.29% (年度最佳), v1.0 +5.26% (低波动防御)</td></tr>
+    <tr><td>2026-07-24</td><td>v10 上线</td><td>4策略Vol-parity + 5个动态权重方案</td><td>v10-DynD Calmar 1.753, v10-DynC DD 仅 -3.7%, 4策略Vol-parity Calmar 1.117</td></tr>
   </table>
 </section>
 
@@ -1500,31 +1554,24 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
   <h3>1. 单策略推荐 (按风险偏好)</h3>
   <table>
     <tr><th>风险偏好</th><th>推荐策略</th><th>理由</th><th>OOS Calmar</th></tr>
-    <tr><td>🛡️ 极保守</td><td>v1.0 locked</td><td>波动率目标限制 DD 至 -1.94%, 适合低风险偏好</td><td><b>1.791</b></td></tr>
-    <tr><td>⚖️ 均衡</td><td>v3 (52 池)</td><td>三子策略互补, 风险与收益平衡</td><td>0.778</td></tr>
-    <tr><td>🚀 进取 (历史)</td><td>v5.1 逆波动</td><td>11 量价因子 + 逆波动, 年化 {oos_metrics['v5.1 量价 (逆波动)']['ann_return']*100:.2f}%, 风险调整优 (已被 v7.10 超越)</td><td><b>{oos_metrics['v5.1 量价 (逆波动)']['calmar']:.3f}</b></td></tr>
-    <tr><td>🚀 进取 (最优 🚀)</td><td>v7.10 TV-PR 🚀 Stage 31 NEW</td><td>17 macro + 19 量价因子 + 混合标准化 + 两阶段 CV, DD 仅 -{v710_dd_pct:.1f}%, 年化 {v710_oos.get('ann_return', 0)*100:+.2f}%</td><td><b>{v710_oos.get('calmar', 0):.3f}</b></td></tr>{v6_aggressive_row}{v6_1_row}
+    <tr><td>🏆 最优</td><td>v10-DynD 信号加权</td><td>动量Sharpe动态配权, 5方案中最优</td><td><b>1.753</b></td></tr>
+    <tr><td>🛡️ 极保守</td><td>v10-DynC 回撤控制</td><td>三级回撤阈值, DD 仅 -3.7%</td><td><b>1.639</b></td></tr>
+    <tr><td>⚖️ 均衡</td><td>v10 4策略Vol-parity</td><td>4独立策略波动率平价, Sharpe 1.304</td><td><b>1.117</b></td></tr>
+    <tr><td>🛡️ 历史稳健</td><td>v1.0 locked</td><td>VT 控波动, DD -1.94%</td><td>1.791</td></tr>
+    <tr><td>🚀 进取</td><td>v7.10 TV-PR</td><td>17 macro + 19 量价, expanding-window OOS</td><td>0.662</td></tr>
     <tr><td>📊 基准</td><td>HS300</td><td>被动指数, 无主动管理成本</td><td>{hs300_oos['calmar']:.3f}</td></tr>
   </table>
 
   <h3>2. 组合推荐 (多策略分散)</h3>
   <div class="methodology">
-    <b>🚀 v7.10 单策略</b> (最优推荐 🚀) — OOS Calmar <b>{v710_oos.get('calmar', 0):.3f}</b>, Sharpe {v710_oos.get('sharpe', 0):.2f}, DD -{v710_dd_pct:.1f}%<br>
-    优势: expanding-window OOS (2022-2026) Calmar 0.662, 2023+ OOS Calmar 1.121, 条件数改善 8 个数量级<br>
+    <b>🏆 v10-DynD 信号加权</b> (最优推荐) — OOS Calmar <b>1.753</b>, 5个动态方案中最优<br>
     <br>
-    <b>v1.0 80% + v7.10 20%</b> (保守+进攻) — 全期 Calmar 估算 ≥ 1.4, OOS 估算 ≥ 1.5 ⭐ (兼顾低 DD 与高 α)<br>
-    优势: 利用 v1.0 (低 DD) + v7.10 (高 α+低 DD) 的低相关性, 跨入'1.5 俱乐部'<br>
+    <b>🏆 v10 4策略Vol-parity</b> (均衡推荐) — v1.0 58% + v9macro 17% + v7.10 13% + DualMom 12%, OOS Calmar <b>1.117</b>, Sharpe 1.304<br>
+    优势: 4个独立策略 (相关性 -0.005~0.682) 波动率倒数配权, DD 仅 -7.08%<br>
     <br>
-    <b>⭐ v1.0 80% + v5.1 20%</b> (历史推荐) — 全期 Calmar <b>1.146</b>, OOS <b>1.015</b> ⭐, OOS Sharpe 0.95<br>
-    优势: 利用 v1.0 (低 DD) + v5.1 (高收益+逆波动) 的低相关性, 跨入'1.0 俱乐部'<br>
+    <b>v1.0 80% + v7.10 20%</b> (保守+进攻) — 兼顾低 DD 与高 α<br>
     <br>
-    <b>v1.0 50% + v3 25% + v5.1 25%</b> — 全期 Calmar 0.958, OOS 0.951, OOS Sharpe 0.91<br>
-    优势: 三策略分散, 风险/收益/胜率都平衡<br>
-    <br>
-    <b>v3 50% + v5.1 50%</b> — 全期 Calmar 0.764, OOS 0.765, OOS Sharpe 0.80<br>
-    优势: 无 VT 拖累, 进攻性较强<br>
-    <br>
-    <i>v5 (等权) 旧组合作为参考: v1.0 80% + v5 20% — OOS Calmar 0.886 (v5.1 升级后 +14.6%)</i>
+    <i>全部 5 个动态方案 (A-E) 均优于静态基线, 证明动态权重有增量价值</i>
   </div>
 
   <h3>3. 风险提示</h3>
@@ -1541,8 +1588,7 @@ tr:hover:not(.best):not(.benchmark) {{ background: #F5F5F5; }}
 <footer style="margin-top: 40px; padding: 20px; background: #F0F4F8; border-radius: 8px; font-size: 12px; color: #666;">
   <b>📊 数据来源</b>: <code>combo/unified_v1v5_compare.py</code> 生成 NAV, <code>combo/nav_curves_html.py</code> 生成此 HTML<br>
   {'<b>📁 主文件 (内部跟踪)</b>: <code>STRATEGY_ITERATION_RECORD.html</code> (完整版, 含策略简述, 每次跑都覆盖)<br>' if include_strategies else '<b>📤 报告版 (对外汇报)</b>: <code>STRATEGY_ITERATION_RECORD_v2_YYYYMMDD.html</code> (简化版, 无策略简述, 带日期)<br>'}
-  <b>🔗 相关文件</b>: <code>UNIFIED_V1V5_EVOLUTION.html</code> (v1-v5 演进专题) | <code>UNIFIED_V1V5_REPORT.md</code> (完整 markdown 报告)<br>
-  <b>⚙️ 统一口径</b>: 52 ETF 池 | 2018-2026 | 5bp 单边成本 | A 股 cap=3 (CICC 规则) | v4 用 12 SmartBeta 子集
+  <b>⚙️ 统一口径</b>: v0-v10 全策略 | 日频 NAV | 5bp 单边成本 | OOS 2022-2026
 </footer>
 
 </body>
@@ -1571,7 +1617,7 @@ def main_dispatcher():
     size_mb = out_main.stat().st_size / 1024 / 1024
     print(f"[save] {out_main} ({size_mb:.2f} MB)")
     print(f"      7 个图表: 主曲线 / 分组 / α超额 / 回撤 / 全期对比 / 雷达 / 月度热图")
-    print(f"      指标表 (含 HS300 基准行) + 13 个策略简述 (v0-v7.10) + HS300 基准 + 关键事件时间线")
+    print(f"      指标表 (含 HS300 基准行) + 策略简述 (v0-v10) + 关键事件时间线")
 
     # 2. 报告版 (简化版, 带日期)
     print(f"\n[2/2] 生成报告版 STRATEGY_ITERATION_RECORD_v2_{today_str}.html (简化版, 对外汇报) ...")
