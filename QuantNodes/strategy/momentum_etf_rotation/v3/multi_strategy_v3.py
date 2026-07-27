@@ -32,8 +32,6 @@ from ..common.metrics import performance_metrics_legacy as performance_metrics
 from .industry_rotation_v3 import (
     IndustryRotationConfig,
     IndustryRotationSubStrategy,
-    get_industry_codes,
-    get_rebalance_dates,
 )
 from .reversion_v3 import ReversionConfig, ReversionSubStrategy
 from .sub_strategy_v3 import SubStrategy, SubStrategyConfig, SubStrategyResult

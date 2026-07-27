@@ -8,7 +8,6 @@ from itertools import permutations
 # from QuantOPT.constraints.constraints import create_constraints_holder
 
 
-import random
 import warnings
 
 warnings.filterwarnings('ignore')
@@ -69,7 +68,6 @@ class RiskParity(BaseModels):
     @classmethod
     def run_opt(cls, stockpool: (list, np.array), cov, bounds, constraints, method=None, **kwargs):
         """
-        
         :param stockpool: the stockpool
         :param bounds: the bounds of weight
         :param constraints: the constraints of weight

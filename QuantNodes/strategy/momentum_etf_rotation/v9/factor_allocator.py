@@ -5,13 +5,12 @@
     消费/内需: 宏观增长因子, 宏观通胀因子_生活端
     出口/外部: 宏观汇率因子, dxy_logret, cn_us_spread
     工业/生产: 宏观通胀因子_生产端
-    信贷/金融: 信用利差因子, 无风险收益率, real_rate, 
+    信贷/金融: 信用利差因子, 无风险收益率, real_rate,
                期限利差因子_债, 期限利差因子_股
     风险/情绪: vix, vix_rank20, tf_dummy, gold_oil_corr
 """
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from .factor_galaxy import galaxy_factor_allocation
@@ -85,7 +84,7 @@ def run_factor_allocator(
     return weights, factor_score, betas, macro_aligned
 
 
-def get_category_exposures(weights: pd.DataFrame, 
+def get_category_exposures(weights: pd.DataFrame,
                             cat_returns: pd.DataFrame) -> pd.DataFrame:
     """计算各宏观类别的风险贡献."""
     common = weights.index.intersection(cat_returns.index)

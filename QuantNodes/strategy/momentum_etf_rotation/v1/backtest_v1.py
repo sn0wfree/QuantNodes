@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -14,7 +13,6 @@ from .portfolio_v1 import (
     RotationConfig_v1,
     apply_stops_v1,
     equal_weights_v1,
-    inverse_vol_weights_v1,
     select_and_weight_v1,
 )
 
@@ -108,7 +106,6 @@ def run_equal_weight_baseline_v1(
     cfg: BacktestConfig_v1 | None = None,
 ) -> RotationBacktestResult_v1:
     """v1 等权 baseline."""
-    from ..common.metrics import compute_metrics as pm
     cfg = cfg or BacktestConfig_v1()
     rot = cfg.rotation
     etf = etf_nav.dropna(how="all")

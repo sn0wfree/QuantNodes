@@ -21,7 +21,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
-import numpy as np
 import pandas as pd
 
 from ..v4.sub_strategy_v4 import SubStrategyConfig
@@ -29,7 +28,6 @@ from ..v5.industry_factors import FactorEngineConfig
 from ..v5.industry_rotation_v5 import (
     IndustryRotationV5SubStrategy,
     compute_composite_factor,
-    cross_section_zscore,
 )
 from ..v5.industry_rotation_v5_1 import inverse_vol_weights_v5_1
 

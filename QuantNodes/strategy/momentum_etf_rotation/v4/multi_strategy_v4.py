@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .regime_detector_v4 import RegimeDetector
@@ -40,8 +40,7 @@ from .factor_timing_v4 import (
 )
 from .smart_beta_v4 import SmartBetaConfig, SmartBetaSubStrategy
 from .style_rotation_v4 import StyleRotationConfig, StyleRotationSubStrategy
-from .sub_strategy_v4 import SubStrategy, SubStrategyConfig, SubStrategyResult
-from .universe_v4 import ALL_V4_CODES, load_smartbeta_panel
+from .sub_strategy_v4 import SubStrategyResult
 from .industry_rotation_v4 import IndustryRotationConfig, IndustryRotationV4
 
 logger = logging.getLogger(__name__)

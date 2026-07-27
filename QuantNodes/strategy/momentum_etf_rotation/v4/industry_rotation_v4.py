@@ -14,8 +14,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Sequence
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -23,8 +22,6 @@ import pandas as pd
 from .sub_strategy_v4 import SubStrategy, SubStrategyResult
 from .universe_v4 import (
     SECTOR_CODES,
-    DEFENSIVE_SECTOR_CODES,
-    GROWTH_SECTOR_CODES,
 )
 
 logger = logging.getLogger(__name__)

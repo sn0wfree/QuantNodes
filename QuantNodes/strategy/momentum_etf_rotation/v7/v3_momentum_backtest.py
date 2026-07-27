@@ -11,16 +11,11 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .macro_substrategy_v7_3 import V7_3Config, run_v7_3_backtest, BOND_INDICES
-from .data_loader import INDEX_COLS
+from .macro_substrategy_v7_3 import V7_3Config, run_v7_3_backtest
 from .momentum_overlay import (
-    EQUITY_INDICES, COMMODITY_INDICES, MOMENTUM_UNIVERSE,
     apply_momentum_tilt_a,
     add_momentum_factor_to_panel,
 )
-from .factor_risk_parity import FactorRiskParityOptimizer
-from .bootstrap_lasso import BootstrapLassoMapping
-from .macro_substrategy_v7_3 import symmetry_full_window, V7_3SubStrategy
 
 
 def v3_momentum_config(
@@ -136,7 +131,6 @@ def run_v3_momentum_backtest(
         w_momentum_df.index.name = "rebalance_date"
 
         # 用倾斜后的权重重新计算收益
-        from .macro_substrategy_v7_3 import BOND_INDICES as _BOND
         cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000.0
         weight_dates = sorted(w_momentum_df.index)
 

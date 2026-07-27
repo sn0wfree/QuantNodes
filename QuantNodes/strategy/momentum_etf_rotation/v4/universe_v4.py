@@ -14,10 +14,9 @@ Smart β 代理: 从行业 ETF 中用价值/质量因子筛选 (Stage 27 新增)
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Mapping
 
 import numpy as np
 import pandas as pd

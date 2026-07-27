@@ -113,7 +113,7 @@ __all__ = [
     "format_metrics_table", "is_positive_definite", "kelly_audit",
     "ledoit_wolf_shrinkage", "load_bond_etf_nav", "load_etf_nav_panel",
     "marginal_contribution", "period_contribution",
-    "reconstruct_daily_weights", "risk_contribution",
+    "reconstruct_daily_weights", "risk_contribution", "brinson_risk_contribution",
     "risk_parity_objective", "rp_risk_contribution",
     "run_full_validation", "sample_covariance",
     "solve_max_diversification", "solve_risk_parity",

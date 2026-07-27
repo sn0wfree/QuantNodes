@@ -20,7 +20,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
 
 import numpy as np
 import pandas as pd
@@ -32,12 +31,8 @@ from .lw_factor_timing import (
 )
 from .factor_timing_v4 import (
     FactorTimingConfig,
-    aggregate_factor_to_etf,
-    backtest_factor_timing,
-    compute_factor_weights,
     get_active_factors,
 )
-from .universe_v4 import ALL_V4_CODES
 
 
 @dataclass

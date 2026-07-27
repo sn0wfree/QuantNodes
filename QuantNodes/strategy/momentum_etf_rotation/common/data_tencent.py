@@ -35,7 +35,6 @@ REQUEST_TIMEOUT = 15
 
 def _market_of(code: str) -> str:
     """根据 ETF code 前缀判断市场.
-    
     ETF 代码约定:
       5xxxxx → sh (上海)
       1xxxxx → sz (深圳)

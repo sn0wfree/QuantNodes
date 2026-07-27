@@ -10,14 +10,13 @@ OOS 测试: 2022-02-17 ~ 2026-06-30 (4.2 年)
 """
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[4]
 HF_DIR = REPO / "data" / "high_freq_macro"
 
-from .jump_model import jump_model_rolling, JUMP_PENALTY_MAP, TRAIN_WINDOW_MAP, RETRAIN_EVERY_MAP
+from .jump_model import jump_model_rolling
 from .signal_composer import (
     ASSET_CLASSES,
     compute_composite_signal,
@@ -270,7 +269,7 @@ def backtest_v8_integration(
         weekly_weights: 周频权重
         adjusted_weights: 调整后的权重
     """
-    from ..v7.adapters import get_strategy, load_v7_14_data_uniform
+    from ..v7.adapters import load_v7_14_data_uniform
     from ..v7.macro_substrategy_v7_6 import (
         V7_6Config, construct_portfolio_components,
     )

@@ -31,7 +31,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Any
+from typing import Callable
 import itertools
 
 import numpy as np

@@ -19,7 +19,6 @@ import pandas as pd
 
 from ..common.universe import ETFPool
 from .momentum_v1 import (
-    rank_by_momentum_v1,
     rank_pctl_v1,
     realized_vol_v1,
     below_ma_v1,

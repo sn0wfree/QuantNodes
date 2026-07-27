@@ -83,7 +83,7 @@ class ValidationReport:
     def to_markdown(self) -> str:
         """生成完整报告 (与 data/real/validation_report.md 格式一致)."""
         lines = [
-            f"# 策略抗过拟合检验报告 — MomentumETFRotation",
+            "# 策略抗过拟合检验报告 — MomentumETFRotation",
             "",
             "## 总结",
             f"{'✅' if self.failed == 0 else '❌'} {self.passed}/{self.total} 检验通过",

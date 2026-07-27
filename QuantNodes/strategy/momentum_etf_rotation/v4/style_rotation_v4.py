@@ -26,17 +26,14 @@ Stage 18 升级 (基于 v4 诊断研究 SUB_STRATEGY_DIAGNOSTIC.md):
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
-import numpy as np
 import pandas as pd
 
 from .universe_v4 import (
     STYLE_GROUP_CODES,
-    STYLE_GROUP_METAS,
     StyleGroup,
-    load_smartbeta_panel,
 )
 from .sub_strategy_v4 import (
     SubStrategy,
@@ -674,7 +671,7 @@ class AssetClassRotation(SubStrategy):
         }
 
         # 按大类分组
-        from .universe_v4 import classify_43_etf, AssetClass
+        from .universe_v4 import classify_43_etf
         ac_of_codes = classify_43_etf(list(codes))
 
         # 计算每类内的 ETF

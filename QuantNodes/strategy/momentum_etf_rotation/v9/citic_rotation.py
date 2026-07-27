@@ -115,11 +115,11 @@ if __name__ == '__main__':
     weights, score = build_rotation_weights(etf_clean, top_k=5)
     print(f"权重时序: {weights.shape}")
     print(f"权重总和: {weights.sum(axis=1).describe()[['min', 'max']]}")
-    print(f"\nTop-K 行业被选次数 (从 score > 0 + top 5 入选):")
+    print("\nTop-K 行业被选次数 (从 score > 0 + top 5 入选):")
     etf_cls = classify_etf(etf_clean.columns.tolist())
     sector_codes = [c for c, cat in etf_cls.items() if cat == 'sector']
     print(weights[sector_codes].mean().sort_values(ascending=False).head(10))
-    print(f"\n非行业类别平均权重:")
+    print("\n非行业类别平均权重:")
     for cat in ['broad', 'overseas', 'gold']:
         codes = [c for c, k in etf_cls.items() if k == cat]
         if codes:

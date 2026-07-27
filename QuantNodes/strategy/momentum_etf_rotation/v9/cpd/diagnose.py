@@ -36,7 +36,7 @@ def generate_markdown_report(
     report.append("# v9 当前周期状态诊断报告")
     report.append(f"> **报告日期**: {state.report_date.strftime('%Y-%m-%d') if state.report_date else 'N/A'}")
     report.append(f"> **数据截至**: {state.data_through.strftime('%Y-%m-%d') if state.data_through is not None else 'N/A'}")
-    report.append(f"> **关联**: docs/49-v9_cycle_timing.md, docs/49a-v9_cycle_diagnosis.md")
+    report.append("> **关联**: docs/49-v9_cycle_timing.md, docs/49a-v9_cycle_diagnosis.md")
     report.append("")
     report.append("---")
     report.append("")
@@ -136,7 +136,7 @@ def generate_markdown_report(
     report.append("")
     report.append("### 5.1 大盘择时")
     report.append("")
-    report.append(f"| 信号 | 当前 |")
+    report.append("| 信号 | 当前 |")
     report.append("|------|------|")
     report.append(f"| 大盘信号 | {state.v9_signal} |")
     report.append(f"| 总分 | {state.total_score:.1f} |")
@@ -486,7 +486,7 @@ footer {{ text-align: center; color: #64748b; font-size: 12px; margin-top: 32px;
         </div>
     </div>
 
-    {f'''
+    {'''
     <div class="row">
         <div class="card" style="grid-column: span 2;">
             <div class="card-title">🌊 历史美林时钟阶段</div>
@@ -497,7 +497,7 @@ footer {{ text-align: center; color: #64748b; font-size: 12px; margin-top: 32px;
     </div>
     ''' if phase_chart_data else ''}
 
-    {f'''
+    {'''
     <div class="row">
         <div class="card" style="grid-column: span 2;">
             <div class="card-title">📊 多周期 IMF 分解</div>
@@ -508,7 +508,7 @@ footer {{ text-align: center; color: #64748b; font-size: 12px; margin-top: 32px;
     </div>
     ''' if imf_chart_data else ''}
 
-    {f'''
+    {'''
     <div class="row">
         <div class="card" style="grid-column: span 2;">
             <div class="card-title">📈 沪深300等权历史 NAV</div>

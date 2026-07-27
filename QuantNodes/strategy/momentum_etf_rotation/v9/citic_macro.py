@@ -171,11 +171,11 @@ if __name__ == '__main__':
     weights, meta = run_macro_allocation(etf_clean, macro)
     print(f"权重时序: {weights.shape}")
     print(f"权重总和: {weights.sum(axis=1).describe()[['min', 'max']]}")
-    print(f"\nmacro_score 统计:")
+    print("\nmacro_score 统计:")
     print(meta['macro_score'].describe())
-    print(f"\n战术 tilt 范围 (broad 类别):")
+    print("\n战术 tilt 范围 (broad 类别):")
     broad_codes = [c for c, cat in meta['classification'].items() if cat == 'broad']
     if broad_codes:
         print(meta['tactical_tilt'][broad_codes[0]].describe())
-    print(f"\nTop-10 平均权重:")
+    print("\nTop-10 平均权重:")
     print(weights.mean(axis=0).sort_values(ascending=False).head(10))

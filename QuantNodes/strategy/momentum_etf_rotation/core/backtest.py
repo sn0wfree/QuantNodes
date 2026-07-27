@@ -13,26 +13,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
 
 from ..common.fixed_income_plus import (
-    FixedIncomePlus,
-    FixedIncomePlusConfig,
     FixedIncomePlusResult,
 )
 from ..common.metrics import performance_metrics_legacy as performance_metrics
 from .portfolio import (
-    DiversificationCaps,
     PortfolioState,
     RotationConfig,
     apply_stops,
     apply_vol_targeting,
     calculate_turnover_cost,
     equal_weights,
-    inverse_vol_weights,
     select_and_weight,
 )
 from ..common.universe import ETFPool

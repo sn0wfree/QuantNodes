@@ -1,7 +1,6 @@
 # coding=utf-8
 """v2 Strategy — momentum + stops + VT."""
 from __future__ import annotations
-import pandas as pd
 from ..common.strategy_engine import BaseStrategy
 
 

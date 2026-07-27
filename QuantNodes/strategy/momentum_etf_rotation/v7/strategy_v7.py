@@ -2,7 +2,6 @@
 """v7 Strategy — TV-PR 因子择时 (expanding_window_tvpr, OOS)."""
 from __future__ import annotations
 import numpy as np
-import pandas as pd
 from ..common.strategy_engine import BaseStrategy
 
 

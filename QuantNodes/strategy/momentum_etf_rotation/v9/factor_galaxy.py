@@ -160,7 +160,7 @@ def risk_budget_weights(
         weights: (T, N) 归一化权重
     """
     if target_budget is None:
-        target_budget = {c: 1.0 / len(asset_returns.columns) 
+        target_budget = {c: 1.0 / len(asset_returns.columns)
                          for c in asset_returns.columns}
 
     target_series = pd.Series(target_budget)

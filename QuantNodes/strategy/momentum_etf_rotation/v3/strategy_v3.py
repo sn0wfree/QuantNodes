@@ -1,7 +1,6 @@
 # coding=utf-8
 """v3 Strategy — momentum + reversion + industry rotation."""
 from __future__ import annotations
-import pandas as pd
 from ..common.strategy_engine import BaseStrategy
 
 

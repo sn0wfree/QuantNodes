@@ -210,7 +210,7 @@ def print_ic_table(
     # 截面因子
     cs_names = [f for f in factor_names if f not in time_series_factors]
     if cs_names:
-        print(f"\n  截面因子 IC:")
+        print("\n  截面因子 IC:")
         print(f"  {'因子':<30} {'IC_mean':>10} {'IC_std':>10} {'ICIR':>10} {'pct_pos':>10}")
         print(f"  {'-'*70}")
         for k, fname in enumerate(factor_names):
@@ -224,7 +224,7 @@ def print_ic_table(
     # 时序因子
     ts_names = [f for f in factor_names if f in time_series_factors]
     if ts_names:
-        print(f"\n  时序因子 IC:")
+        print("\n  时序因子 IC:")
         print(f"  {'因子':<30} {'IC(Pearson)':>14} {'p-value':>10}")
         print(f"  {'-'*54}")
         for k, fname in enumerate(factor_names):

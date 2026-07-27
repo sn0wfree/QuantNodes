@@ -16,18 +16,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
-import numpy as np
 import pandas as pd
 
 from ..v4.sub_strategy_v4 import SubStrategyConfig
 from ..v5.industry_factors import FactorEngineConfig
 from ..v5.industry_rotation_v5 import (
-    IndustryRotationV5SubStrategy,
     compute_composite_factor,
 )
-from ..v5.industry_rotation_v5_1 import inverse_vol_weights_v5_1
 from .factor_orthogonal import (
-    get_factor_ir_order,
     get_factor_ir_order_expanding,
     get_factor_ir_order_warmup,
     orthogonalize_factor_panel,
@@ -37,13 +33,12 @@ from .factor_orthogonal import (
 from .factor_weighting import (
     compute_ic_timeseries,
     compute_factor_weights,
-    compute_softmax_weights,
     align_weights_with_rebal_dates,
     DEFAULT_HORIZON_DAYS,
     MIN_MONTHS_FOR_IC,
     DEFAULT_SMOOTH_WINDOW,
 )
-from .industry_rotation_v6_1 import V6_1Config, V6_1SubStrategy
+from .industry_rotation_v6_1 import V6_1SubStrategy
 
 
 # ============================================================

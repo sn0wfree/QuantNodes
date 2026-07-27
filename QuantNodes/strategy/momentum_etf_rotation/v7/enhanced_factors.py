@@ -21,7 +21,7 @@
 参考:
   - Amihud (2002) "Illiquidity and stock returns"
   - Ang et al. (2006) "The cross-section of volatility and expected returns"
-  - Bali et al. (2011) "Maxing out" 
+  - Bali et al. (2011) "Maxing out"
   - George & Hwang (2004) "The 52-week high and momentum investing"
 """
 from __future__ import annotations
@@ -424,7 +424,7 @@ def load_dxy_factor() -> pd.DataFrame:
     if cache_v1.exists():
         return pd.read_parquet(cache_v1)
 
-    raise FileNotFoundError(f"DXY 数据不存在")
+    raise FileNotFoundError("DXY 数据不存在")
 
 
 def load_vix_factor() -> pd.DataFrame:

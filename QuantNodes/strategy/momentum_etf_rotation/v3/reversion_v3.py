@@ -23,13 +23,12 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
-import numpy as np
 import pandas as pd
 
-from ..common.universe import Category, ETFPool
+from ..common.universe import ETFPool
 from .sub_strategy_v3 import (
     SubStrategy,
     SubStrategyConfig,

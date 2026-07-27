@@ -215,8 +215,8 @@ if __name__ == '__main__':
     print(f"  前 5 个 columns: {list(weights.columns[:5])}")
     print(f"  前 5 个 index: {list(weights.index[:5])}")
     print(f"\n权重总和: {weights.sum(axis=1).describe()}")
-    print(f"\n象限分布:")
+    print("\n象限分布:")
     print(meta['quadrant']['quadrant'].value_counts())
-    print(f"\n分类示例:")
+    print("\n分类示例:")
     for code in list(meta['classification'].keys())[:10]:
         print(f"  {code} -> {meta['classification'][code]}")

@@ -5,12 +5,11 @@
 """
 from __future__ import annotations
 
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
 
-from .universe import Category, ETFPool
+from .universe import ETFPool
 
 
 # 周期定义 (来自 period_contribution.csv)

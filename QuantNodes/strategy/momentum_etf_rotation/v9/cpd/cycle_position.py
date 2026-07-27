@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from typing import Optional
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -15,13 +14,10 @@ import pandas as pd
 from .merrill_clock import (
     detect_merrill_phase_with_confidence,
     get_recommended_allocation,
-    MERRILL_PHASE_NAMES,
-    MERRILL_PHASE_NAMES_CN,
 )
 from .pring_cycles import (
     pring_decennial_position,
     pring_decennial_seasonality,
-    PRING_SEASONALITY_CN,
 )
 
 

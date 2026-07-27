@@ -47,10 +47,8 @@ import pandas as pd
 from .factor_ic import (
     FACTOR_NAMES,
     factor_ic_at,
-    factor_ic_rolling_mean,
-    rolling_factor_ic,
 )
-from .universe_v4 import ALL_V4_CODES, SMART_BETA_CODES, STYLE_GROUP_CODES
+from .universe_v4 import ALL_V4_CODES
 
 
 @dataclass

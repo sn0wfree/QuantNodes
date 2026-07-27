@@ -27,11 +27,9 @@ from .momentum_v2 import (
     compute_momentum_score_v2 as compute_momentum_score,
     distance_to_52w_high_v2 as distance_to_52w_high,
     fused_signal_v2 as fused_signal,
-    hybrid_momentum_score_v2 as hybrid_momentum_score,
     pairwise_corr_v2 as pairwise_corr,
     rank_pctl_v2 as rank_pctl,
     realized_vol_v2 as realized_vol,
-    slope_r2_score_v2 as slope_r2_score,
 )
 from ..common.universe import ETFPool
 

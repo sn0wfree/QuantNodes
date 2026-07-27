@@ -31,7 +31,6 @@ from ..v4.sub_strategy_v4 import SubStrategyConfig
 from ..v5.industry_factors import FactorEngineConfig
 from ..v5.industry_rotation_v5 import (
     IndustryRotationV5SubStrategy,
-    compute_composite_factor,
 )
 from ..v5.industry_rotation_v5_1 import inverse_vol_weights_v5_1
 

@@ -17,7 +17,6 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Callable
 from pathlib import Path
 
@@ -96,7 +95,7 @@ def load_v7_3_data_uniform() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
     返回 (T_weekly, 13, K) 格式, 因子广播到所有资产.
     """
     from .data_loader import (
-        load_factor_returns, INDEX_COLS, FACTOR_COLS,
+        load_factor_returns,
     )
 
     factor_returns = load_factor_returns()  # (T, 8) 周频因子对数收益
@@ -347,7 +346,7 @@ def make_v7_3_backtest_fn(version: str = "v7.3") -> Callable:
     factor_panel (T_weekly, 8) 周对数收益, 季度调仓.
     """
     from .data_loader import (
-        load_index_panel, FACTOR_COLS, INDEX_COLS,
+        load_index_panel, FACTOR_COLS,
     )
     from .macro_substrategy_v7_3 import (
         V7_3Config, run_v7_3_backtest,

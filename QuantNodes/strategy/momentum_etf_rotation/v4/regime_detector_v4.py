@@ -27,9 +27,7 @@ import numpy as np
 import pandas as pd
 
 from .universe_v4 import (
-    ALL_V4_CODES,
     STYLE_GROUP_CODES,
-    StyleGroup,
 )
 
 logger = logging.getLogger(__name__)
@@ -134,7 +132,7 @@ def _build_features(
     # 7. 20d 横截面相关性 (市场一致性, 高相关 = 趋势明确)
     # 简化: 用 ETF 收益的平均自相关性代替
     correlation = log_ret.rolling(feature_window).apply(
-        lambda x: np.corrcoef(np.arange(len(x)), x.values)[0, 1] 
+        lambda x: np.corrcoef(np.arange(len(x)), x.values)[0, 1]
         if len(x) > 10 else 0.0, raw=False
     ).mean(axis=1)
     correlation.name = "correlation"
@@ -183,7 +181,7 @@ def detect_regime_simple(
     sub = nav_df[valid].copy()
     # 填充 0 值 (避免除零)
     sub = sub.replace(0, np.nan).ffill().fillna(0)
-    
+
     if sub.empty or len(sub) < long_window + 10:
         return pd.Series(dtype=int)
 

@@ -12,10 +12,9 @@ Stage 27 重构:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
-import numpy as np
 import pandas as pd
 
 from .universe_v4 import (
@@ -25,7 +24,6 @@ from .universe_v4 import (
     SECTOR_CODES,
     DEFENSIVE_SECTOR_CODES,
     select_smart_beta_proxy,
-    select_defensive_smart_beta,
     SmartBetaFactor,
 )
 from .sub_strategy_v4 import (

@@ -15,10 +15,8 @@ secid 格式:
 """
 from __future__ import annotations
 
-import json
 import logging
 import time
-from pathlib import Path
 
 import pandas as pd
 import requests

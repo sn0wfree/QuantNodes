@@ -33,10 +33,7 @@ REAL_DIR = REPO / "data" / "real"
 
 # 复用 v7.3 的数据加载函数
 from .data_loader import (
-    FACTOR_COLS,
     EXPANDED_COLS,
-    EQUITY_ETF_COLS,
-    COMMODITY_ETF_COLS,
     EXPANDED_BOND_INDICES,
     load_macro_factors,
 )
@@ -44,7 +41,6 @@ from .data_loader import (
 # 复用 v5 的因子计算
 from ..v5.industry_factors import (
     FactorEngineConfig,
-    compute_all_factors_panel,
 )
 
 # 增强因子
