@@ -5,7 +5,7 @@
 
 用法:
     from QuantNodes.strategy.momentum_etf_rotation.common.backtest_config import (
-        BacktestConfig, CostConfig, VolTargetingConfig, TrendFilterConfig, StopLossConfig,
+        BacktestConfig, CostConfig, VolTargeting, TrendFilter, StopLossConfig,
     )
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ class CostConfig:
 
 
 @dataclass
-class VolTargetingConfig:
+class VolTargeting:
     """波动率目标配置 (v2/v6 用)."""
     enabled: bool = False
     target_vol: float = 0.15         # 目标年化波动率
@@ -45,12 +45,18 @@ class VolTargetingConfig:
 
 
 @dataclass
-class TrendFilterConfig:
-    """趋势过滤配置 (v2/v6/v7 用)."""
+class TrendFilter:
+    """趋势过滤器 (Stage 9-B): 基于基准指数均线的熊市减仓.
+
+    启用时, 当 benchmark (默认沪深300) 跌破 ma_window 日均线时,
+    整体仓位按 exposure_bear 缩放 (剩余仓位建议转债券).
+    """
     enabled: bool = False
-    benchmark_col: str | None = None # 基准列名 (None=用组合 NAV)
+    benchmark_code: str = "510300"   # 沪深300
     ma_window: int = 200             # MA 窗口 (天)
-    bear_exposure: float = 0.5       # 熊市暴露比例
+    exposure_bull: float = 1.0       # 多头满仓
+    exposure_bear: float = 0.5       # 熊市半仓
+    bond_code: str = "511260"        # 国债 ETF (熊市配置)
 
 
 @dataclass
@@ -89,8 +95,8 @@ class BacktestConfig:
     cost: CostConfig = field(default_factory=CostConfig)
 
     # 风控
-    vol_targeting: VolTargetingConfig = field(default_factory=VolTargetingConfig)
-    trend_filter: TrendFilterConfig = field(default_factory=TrendFilterConfig)
+    vol_targeting: VolTargeting = field(default_factory=VolTargeting)
+    trend_filter: TrendFilter = field(default_factory=TrendFilter)
     stop_loss: StopLossConfig = field(default_factory=StopLossConfig)
 
     # 执行

@@ -33,6 +33,7 @@ from .momentum import (
     yang_zhang_vol,
 )
 from ..common.universe import ETFPool
+from ..common.backtest_config import CostConfig as CostModel, VolTargeting, TrendFilter
 
 
 # ----------------------------------------------------------------------------
@@ -63,36 +64,8 @@ class DiversificationCaps:
 
 
 # ----------------------------------------------------------------------------
-# 策略参数
+# 策略参数 (TrendFilter, VolTargeting, CostModel 统一来自 common/backtest_config)
 # ----------------------------------------------------------------------------
-@dataclass
-class TrendFilter:
-    """趋势过滤器 (Stage 9-B): 基于基准指数均线的熊市减仓.
-
-    启用时, 当 benchmark (默认沪深300) 跌破 ma_window 日均线时,
-    整体仓位按 exposure_bear 缩放 (剩余仓位建议转债券).
-    """
-    enabled: bool = False
-    benchmark_code: str = "510300"  # 沪深300
-    ma_window: int = 200
-    exposure_bull: float = 1.0      # 多头满仓
-    exposure_bear: float = 0.5      # 熊市半仓
-    bond_code: str = "511260"       # 国债 ETF (熊市配置)
-
-
-@dataclass
-class VolTargeting:
-    """波动率目标 (Stage 9-C): 将组合波动率缩放到目标水平.
-
-    在每个调仓日计算 lookback 日实际波动率, 用 target_vol / realized_vol
-    缩放权重. 限制在 [min_scale, max_scale] 区间内.
-    """
-    enabled: bool = False
-    target_vol: float = 0.10  # 目标年化波动 10%
-    lookback: int = 60        # 波动率窗口
-    min_scale: float = 0.3    # 最小保留 30% 仓位
-    max_scale: float = 1.5    # 最大加仓 150%
-
 
 @dataclass
 class ConcentrationCaps:
@@ -108,18 +81,6 @@ class ConcentrationCaps:
     top_n_total_max: float = 0.45   # Top 3 ETF 合计上限 (默认 45%)
     top_n_count: int = 3
     category_max: float = 0.40      # 单类别合计上限 (默认 40%)
-
-
-@dataclass
-class CostModel:
-    """交易成本模型 (Stage 13): 模拟实盘交易成本.
-
-    cost = turnover × (commission + slippage × impact_factor)
-    """
-    enabled: bool = False
-    commission_bp: float = 5.0       # 佣金 (基点, 万 5 = 5 bp)
-    slippage_bp: float = 10.0       # 滑点 (基点)
-    impact_factor: float = 0.1       # 冲击成本因子 (基于换手率)
 
 
 def calculate_turnover_cost(turnover: float, cost: CostModel) -> float:
@@ -181,7 +142,7 @@ class RotationConfig:
     concentration: ConcentrationCaps = field(default_factory=ConcentrationCaps)
 
     # 交易成本 (Stage 13)
-    cost_model: "CostModel" = field(default_factory=CostModel)
+    cost_model: CostModel = field(default_factory=CostModel)
 
     # Regime 检测 (Stage 9-D): 延迟 import 避免循环依赖
     regime_detector: "RegimeDetector | None" = None

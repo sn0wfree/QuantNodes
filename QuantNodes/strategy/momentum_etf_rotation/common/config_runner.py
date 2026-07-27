@@ -18,7 +18,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from .backtest_config import CostConfig, VolTargetingConfig, TrendFilterConfig, StopLossConfig
+from .backtest_config import CostConfig, VolTargeting, TrendFilter, StopLossConfig
 from .strategy_engine import StrategyEngine, BacktestResult
 
 
@@ -165,7 +165,7 @@ def create_engine(cfg: dict) -> StrategyEngine:
 
     vt = None
     if vt_cfg.get("enabled"):
-        vt = VolTargetingConfig(
+        vt = VolTargeting(
             enabled=True,
             target_vol=vt_cfg.get("target_vol", 0.15),
             lookback=vt_cfg.get("lookback", 60),
@@ -175,10 +175,10 @@ def create_engine(cfg: dict) -> StrategyEngine:
 
     tf = None
     if tf_cfg.get("enabled"):
-        tf = TrendFilterConfig(
+        tf = TrendFilter(
             enabled=True,
             ma_window=tf_cfg.get("ma_window", 200),
-            bear_exposure=tf_cfg.get("bear_exposure", 0.5),
+            exposure_bear=tf_cfg.get("exposure_bear", 0.5),
         )
 
     sl = None

@@ -10,11 +10,11 @@ from .backtest_config import (
     BacktestConfig,
     CostConfig,
     StopLossConfig,
-    TrendFilterConfig,
-    VolTargetingConfig,
+    TrendFilter,
+    VolTargeting,
 )
 from .backtest_engine import BacktestCallbacks, BacktestResult, run_backtest
-from .strategy_engine import BaseStrategy, StrategyEngine, BacktestResult as StrategyResult
+from .strategy_engine import BaseStrategy, StrategyEngine
 from .backtest_utils import (
     apply_max_weight,
     calculate_turnover,
@@ -97,7 +97,7 @@ __all__ = [
     # Backtest engine
     "BacktestCallbacks", "BacktestConfig", "BacktestResult", "run_backtest",
     # Config
-    "CostConfig", "DrawdownConfig", "StopLossConfig", "TrendFilterConfig", "VolTargetingConfig",
+    "CostConfig", "DrawdownConfig", "StopLossConfig", "TrendFilter", "VolTargeting",
     # Utils
     "apply_max_weight", "calculate_turnover", "calculate_turnover_cost",
     "generate_rebalance_dates", "normalize_weights",

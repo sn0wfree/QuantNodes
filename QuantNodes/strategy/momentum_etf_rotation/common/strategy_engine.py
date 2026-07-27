@@ -10,19 +10,19 @@
             return {"510300": 0.5, "518880": 0.5}
 
     engine = StrategyEngine(
-        vol_targeting=VolTargetingConfig(enabled=True, target_vol=0.15),
+        vol_targeting=VolTargeting(enabled=True, target_vol=0.15),
     )
     result = engine.run(etf_nav, MyStrategy(), rebal_freq="M")
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
 from .backtest_config import (
-    CostConfig, VolTargetingConfig, TrendFilterConfig, StopLossConfig,
+    CostConfig, VolTargeting, TrendFilter, StopLossConfig,
 )
+from .backtest_engine import BacktestResult
 from .backtest_utils import calculate_turnover, generate_rebalance_dates
 from .metrics import performance_metrics_legacy as performance_metrics
 
@@ -53,18 +53,7 @@ class BaseStrategy:
 
 
 # ============================================================
-# 2. 结果
-# ============================================================
-@dataclass
-class BacktestResult:
-    nav_daily: pd.Series
-    weights_history: list[tuple[pd.Timestamp, dict[str, float]]] = field(default_factory=list)
-    rebalance_dates: list[pd.Timestamp] = field(default_factory=list)
-    metrics: dict = field(default_factory=dict)
-
-
-# ============================================================
-# 3. 通用引擎
+# 2. 通用引擎
 # ============================================================
 class StrategyEngine:
     """通用回测引擎.
@@ -175,7 +164,7 @@ class StrategyEngine:
             if nav_history.iloc[-1] < ma:
                 # 熊市: 缩减权重
                 bond = "511260"
-                equity_exposure = self.trend_filter.bear_exposure
+                equity_exposure = self.trend_filter.exposure_bear
                 weights = {k: v * equity_exposure for k, v in weights.items()}
                 weights[bond] = weights.get(bond, 0) + (1 - equity_exposure)
 
