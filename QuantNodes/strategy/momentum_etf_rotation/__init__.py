@@ -77,12 +77,12 @@ from .portfolio import (  # 与 v2/portfolio_v2.py 同义
     inverse_vol_weights,
     equal_weights,
 )
-from .fi_plus import (
+from .common.fixed_income_plus import (
     FixedIncomePlus,
     FixedIncomePlusConfig,
     FixedIncomePlusResult,
-    performance_metrics,
 )
+from .common.metrics import performance_metrics_legacy as performance_metrics
 from .backtest import (
     BacktestConfig,
     RotationBacktestResult,
@@ -95,6 +95,7 @@ from .strategy_versions import (
     v0_0_baseline, v0_1_vt_only, v0_2_tf_only, v0_3_vt_cost, v0_4_hybrid,
     v1_0, VERSIONS, LATEST, get_version,
 )
+
 
 # ─── v3 (Stage 16A, 多策略组合 — 新建) ──────────────────────
 from .v3 import (

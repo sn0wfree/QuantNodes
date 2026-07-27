@@ -13,33 +13,36 @@
 """
 from __future__ import annotations
 
-import numpy as np
+from pathlib import Path
+
 import pandas as pd
 
 from .config_v10 import RiskLayerConfig
 
+REPO = Path(__file__).resolve().parents[4]
+REAL_DIR = REPO / "data" / "real" / "per_etf"
 
-def _resample_to_daily(returns_df: pd.DataFrame) -> pd.DataFrame:
-    """周频 → 日频 (Jump Model 需要).
 
-    将周收益扩展为日收益 (假设均匀分布):
-        daily_ret = (1 + weekly_ret) ** (1/5) - 1
-    """
-    # 简单近似: 周收益 / 5 (不能用幂分解因为会重复计收益)
-    daily_ret = returns_df / 5
-    # 扩展到日频索引
-    daily_index = pd.date_range(
-        start=returns_df.index.min(),
-        end=returns_df.index.max() + pd.Timedelta(days=6),
-        freq='B',
-    )
-    daily_df = pd.DataFrame(index=daily_index[:len(returns_df) * 5], columns=returns_df.columns)
-    # 按周填充
-    for i, week_end in enumerate(returns_df.index):
-        if i * 5 >= len(daily_df):
-            break
-        daily_df.iloc[i * 5: (i + 1) * 5] = returns_df.loc[week_end].values
-    return daily_df.fillna(0).infer_objects()
+def _load_daily_nav(codes: list[str]) -> pd.DataFrame:
+    """直接加载日频 NAV 数据."""
+    navs = {}
+    for code in codes:
+        path = REAL_DIR / f"{code}.parquet"
+        if path.exists():
+            df = pd.read_parquet(path)
+            if 'close' in df.columns:
+                navs[code] = df['close']
+    if not navs:
+        return pd.DataFrame()
+    return pd.DataFrame(navs)
+
+
+def _load_daily_returns(codes: list[str]) -> pd.DataFrame:
+    """加载日频收益数据."""
+    nav = _load_daily_nav(codes)
+    if nav.empty:
+        return pd.DataFrame()
+    return nav.pct_change().fillna(0)
 
 
 def _compute_bear_probability_from_states(
@@ -47,7 +50,6 @@ def _compute_bear_probability_from_states(
     window: int = 60,
 ) -> pd.Series:
     """从状态序列计算滚动 bear 概率."""
-    # states: 0=bull, 1=bear
     bear_indicator = (states == 1).astype(float)
     bear_prob = bear_indicator.rolling(window, min_periods=window // 2).mean()
     return bear_prob.fillna(0)
@@ -73,25 +75,29 @@ def compute_bear_probability(
         jump_model_periodic_retrain,
     )
 
-    # 简化版: 用日频收益 (从周频扩展)
-    # 注: 完整版需要日频数据, 这里用周频代理
-    # 取等权市场组合作为 Jump Model 输入
-    market_returns = returns_df.mean(axis=1)
+    # 直接加载日频收益数据
+    codes = returns_df.columns.tolist()
+    daily_returns = _load_daily_returns(codes)
+
+    if daily_returns.empty:
+        # 回退到周频数据
+        market_returns = returns_df.mean(axis=1)
+    else:
+        # 使用日频数据的等权组合收益
+        market_returns = daily_returns.mean(axis=1)
 
     try:
-        # 复用 v8 jump_model_periodic_retrain (支持 equity/bond/commodity)
         states = jump_model_periodic_retrain(
             returns=market_returns,
             asset_type=cfg.asset_type,
             jump_penalty=cfg.jump_penalty,
-            train_window=cfg.train_window if cfg.train_window else 200,  # 周 → 周窗口
-            retrain_every=cfg.retrain_every if cfg.retrain_every else 13,  # 周
+            train_window=cfg.train_window if cfg.train_window else 1000,  # 1000 天 ≈ 200 周
+            retrain_every=cfg.retrain_every if cfg.retrain_every else 65,  # 65 天 ≈ 13 周
             n_iter=cfg.n_iter,
             n_restarts=cfg.n_restarts,
             show_progress=False,
         )
-    except Exception as e:
-        # Jump Model 失败时返回中性
+    except Exception:
         return pd.Series(0.0, index=returns_df.index)
 
     # 对齐到周频

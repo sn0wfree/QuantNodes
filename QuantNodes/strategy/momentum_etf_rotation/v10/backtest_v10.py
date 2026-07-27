@@ -8,7 +8,7 @@
     2. 非调仓日: 用前一日权重累积
     3. 调仓成本: 5bp 单边
     4. NAV 计算: 含成本
-    5. 业绩指标: Sharpe, Calmar, MaxDD, AnnRet, Vol, WinRate
+    5. 业绩指标: 委托给 common.metrics.compute_metrics
 """
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
+
+from ..common.metrics import compute_metrics
 
 from .config_v10 import V10Config
 from .v10_strategy import V10Strategy
@@ -52,43 +54,27 @@ def _safe_ret_value(r: float, max_ret: float = 0.5) -> float:
 
 
 def _performance_metrics(nav: pd.Series, freq: str = 'W') -> dict:
-    """计算业绩指标 (复用 v9 backtest.compute_metrics)."""
-    n = len(nav)
-    if n < 2:
-        return {}
+    """计算业绩指标 (委托给 common.metrics.compute_metrics).
 
+    兼容 freq='W' / 'D' / 'M' 字符串参数.
+    """
     freq_map = {"D": 252, "W": 52, "M": 12}
     periods = freq_map.get(freq, 52)
 
-    ret = nav.pct_change().dropna()
-    if len(ret) < 2:
-        return {"ann_return": 0.0}
+    base = compute_metrics(nav, freq=periods)
 
-    total_ret = nav.iloc[-1] / nav.iloc[0] - 1
-    n_years = n / periods
-    ann_ret = (1 + total_ret) ** (1 / n_years) - 1 if n_years > 0 else 0
-
-    ann_vol = ret.std() * np.sqrt(periods)
-    sharpe = (ret.mean() * periods) / ann_vol if ann_vol > 0 else 0
-
-    running_max = nav.cummax()
-    drawdown = nav / running_max - 1
-    max_dd = float(drawdown.min())
-
-    calmar = ann_ret / abs(max_dd) if max_dd < 0 else 0
-
-    win_rate = (ret > 0).sum() / len(ret) if len(ret) > 0 else 0
+    total_ret = float(nav.iloc[-1] / nav.iloc[0] - 1) if not nav.empty else 0.0
 
     return {
-        "ann_return": float(ann_ret),
-        "total_return": float(total_ret),
-        "ann_vol": float(ann_vol),
-        "sharpe": float(sharpe),
-        "max_drawdown": float(max_dd),
-        "calmar": float(calmar),
-        "win_rate": float(win_rate),
-        "final_nav": float(nav.iloc[-1]),
-        "n_periods": int(n),
+        "ann_return": base["AnnRet"],
+        "total_return": total_ret,
+        "ann_vol": base["Vol"],
+        "sharpe": base["Sharpe"],
+        "max_drawdown": base["MaxDD"],
+        "calmar": base["Calmar"],
+        "win_rate": base["WinRate"],
+        "final_nav": float(nav.iloc[-1]) if not nav.empty else 0.0,
+        "n_periods": int(len(nav)),
     }
 
 

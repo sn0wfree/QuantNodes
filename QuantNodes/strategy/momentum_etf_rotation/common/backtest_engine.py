@@ -271,8 +271,8 @@ def run_backtest(
     nav_daily = pd.Series(nav_arr, index=dates, name="nav")
 
     # 4. 计算指标 (日频 NAV)
-    from ..fi_plus import performance_metrics
-    metrics = performance_metrics(nav_daily)
+    from .metrics import compute_metrics
+    metrics = compute_metrics(nav_daily)
 
     return BacktestResult(
         nav_daily=nav_daily,

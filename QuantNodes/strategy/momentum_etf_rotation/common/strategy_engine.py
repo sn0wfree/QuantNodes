@@ -24,6 +24,7 @@ from .backtest_config import (
     CostConfig, VolTargetingConfig, TrendFilterConfig, StopLossConfig,
 )
 from .backtest_utils import calculate_turnover, generate_rebalance_dates
+from .metrics import performance_metrics_legacy as performance_metrics
 
 
 # ============================================================
@@ -144,7 +145,6 @@ class StrategyEngine:
                     nav[i] = 1.0 if i == 0 else nav[i - 1]
 
         nav_s = pd.Series(nav, index=dates, name="nav")
-        from ..fi_plus import performance_metrics
         return BacktestResult(
             nav_daily=nav_s,
             weights_history=w_hist,

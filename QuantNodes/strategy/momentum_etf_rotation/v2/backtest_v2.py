@@ -18,12 +18,12 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-from .fi_plus_v2 import (
+from ..common.fixed_income_plus import (
     FixedIncomePlus,
     FixedIncomePlusConfig,
     FixedIncomePlusResult,
-    performance_metrics,
 )
+from ..common.metrics import performance_metrics_legacy as performance_metrics
 from ..common.universe import ETFPool
 from .portfolio_v2 import (
     DiversificationCaps,

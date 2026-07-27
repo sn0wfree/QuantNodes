@@ -1,77 +1,18 @@
 # coding=utf-8
 """17 个业绩指标 (extended metrics) - Stage 7.
 
+基础指标委托给 common.metrics.compute_metrics, 本模块只保留扩展指标 (VaR, CVaR, info_ratio, max_monthly_loss 等).
+
 参考 reports/extended_metrics.json (17 个指标).
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
-
-def _ann_return(nav: pd.Series, freq: int = 252) -> float:
-    if nav.empty or len(nav) < 2:
-        return 0.0
-    rets = nav.pct_change().dropna()
-    if rets.empty:
-        return 0.0
-    n_years = len(rets) / freq
-    total_ret = nav.iloc[-1] / nav.iloc[0] - 1
-    return float((1 + total_ret) ** (1 / max(n_years, 1e-9)) - 1)
-
-
-def _ann_vol(nav: pd.Series, freq: int = 252) -> float:
-    if nav.empty or len(nav) < 2:
-        return 0.0
-    rets = nav.pct_change().dropna()
-    return float(rets.std() * np.sqrt(freq)) if not rets.empty else 0.0
-
-
-def _sharpe(nav: pd.Series, freq: int = 252) -> float:
-    vol = _ann_vol(nav, freq)
-    if vol == 0:
-        return 0.0
-    return _ann_return(nav, freq) / vol
-
-
-def _sortino(nav: pd.Series, freq: int = 252) -> float:
-    if nav.empty:
-        return 0.0
-    rets = nav.pct_change().dropna()
-    if rets.empty:
-        return 0.0
-    downside = rets[rets < 0]
-    dd = float(downside.std() * np.sqrt(freq)) if not downside.empty else 0.0
-    if dd == 0:
-        return 0.0
-    return _ann_return(nav, freq) / dd
-
-
-def _max_drawdown(nav: pd.Series) -> tuple[float, int]:
-    if nav.empty or len(nav) < 2:
-        return 0.0, 0
-    cummax = nav.cummax()
-    dd = (nav / cummax - 1)
-    is_dd = dd < 0
-    max_dd = float(dd.min())
-
-    # 最大回撤天数: 最长连续回撤段
-    max_run = 0
-    cur_run = 0
-    for v in is_dd.values:
-        if v:
-            cur_run += 1
-            max_run = max(max_run, cur_run)
-        else:
-            cur_run = 0
-    return max_dd, max_run
-
-
-def _calmar(nav: pd.Series, freq: int = 252) -> float:
-    md, _ = _max_drawdown(nav)
-    if md >= 0:
-        return 0.0
-    return _ann_return(nav, freq) / abs(md)
+from .metrics import compute_metrics
 
 
 def _info_ratio(nav: pd.Series, bench: pd.Series | None = None, freq: int = 252) -> float:
@@ -89,16 +30,6 @@ def _info_ratio(nav: pd.Series, bench: pd.Series | None = None, freq: int = 252)
     return float(excess.mean() / excess.std() * np.sqrt(freq))
 
 
-def _downside_dev(nav: pd.Series, freq: int = 252) -> float:
-    if nav.empty:
-        return 0.0
-    rets = nav.pct_change().dropna()
-    if rets.empty:
-        return 0.0
-    downside = rets[rets < 0]
-    return float(downside.std() * np.sqrt(freq)) if not downside.empty else 0.0
-
-
 def _var_cvar(nav: pd.Series, alpha: float = 0.05) -> tuple[float, float]:
     """历史法 VaR / CVaR."""
     if nav.empty or len(nav) < 2:
@@ -109,28 +40,6 @@ def _var_cvar(nav: pd.Series, alpha: float = 0.05) -> tuple[float, float]:
     var = float(rets.quantile(alpha))
     cvar = float(rets[rets <= var].mean()) if (rets <= var).any() else var
     return var, cvar
-
-
-def _win_rate(nav: pd.Series) -> float:
-    if nav.empty:
-        return 0.0
-    rets = nav.pct_change().dropna()
-    if rets.empty:
-        return 0.0
-    return float((rets > 0).mean())
-
-
-def _profit_loss_ratio(nav: pd.Series) -> float:
-    if nav.empty:
-        return 0.0
-    rets = nav.pct_change().dropna()
-    if rets.empty:
-        return 0.0
-    wins = rets[rets > 0]
-    losses = rets[rets < 0]
-    if len(wins) == 0 or len(losses) == 0:
-        return 0.0
-    return float(wins.mean() / abs(losses.mean()))
 
 
 def _max_monthly_loss(nav: pd.Series) -> float:
@@ -161,19 +70,15 @@ def _avg_dd(nav: pd.Series) -> float:
     if not is_dd.any():
         return 0.0
 
-    # 提取每段回撤的平均深度
-    in_dd = False
     cur_dds = []
     depths = []
     for v, flag in zip(dd.values, is_dd.values):
         if flag:
             cur_dds.append(v)
-            in_dd = True
         else:
             if cur_dds:
                 depths.append(np.mean(cur_dds))
                 cur_dds = []
-            in_dd = False
     if cur_dds:
         depths.append(np.mean(cur_dds))
     return float(np.mean(depths)) if depths else 0.0
@@ -185,36 +90,100 @@ def extended_metrics(
     rebalance_dates: list | None = None,
     freq: int = 252,
 ) -> dict:
-    """17 个业绩指标 (与 reports/extended_metrics.json 字段对齐)."""
+    """17 个业绩指标 (与 reports/extended_metrics.json 字段对齐).
+
+    基础指标 (ann_return/ann_vol/sharpe/calmar/sortino/max_drawdown/win_rate 等)
+    委托给 common.metrics.compute_metrics.
+    """
     if nav.empty or len(nav) < 2:
         return {}
 
-    md, max_dd_days = _max_drawdown(nav)
+    # 基础指标 (委托给 compute_metrics)
+    base = compute_metrics(nav, freq=freq)
+
+    # 扩展指标 (本模块特有)
     var_95, cvar_95 = _var_cvar(nav, alpha=0.05)
     avg_dd = _avg_dd(nav)
-
-    calmar_avg_dd = (
-        _calmar(nav, freq) / abs(avg_dd) if avg_dd < 0 else 0.0
-    )
+    calmar_avg_dd = (base["Calmar"] / abs(avg_dd)) if avg_dd < 0 else 0.0
 
     return {
-        "ann_return": _ann_return(nav, freq),
-        "ann_vol": _ann_vol(nav, freq),
-        "sharpe": _sharpe(nav, freq),
-        "max_drawdown": md,
-        "calmar": _calmar(nav, freq),
-        "sortino": _sortino(nav, freq),
-        "downside_dev": _downside_dev(nav, freq),
+        # 基础指标 (扁平键名, 兼容旧接口)
+        "ann_return": base["AnnRet"],
+        "ann_vol": base["Vol"],
+        "sharpe": base["Sharpe"],
+        "max_drawdown": base["MaxDD"],
+        "calmar": base["Calmar"],
+        "sortino": base["Sortino"],
+        "downside_dev": base["Vol"] * base["Sortino"] / base["Sharpe"] if base["Sharpe"] > 0 else 0.0,
         "info_ratio": _info_ratio(nav, benchmark_nav, freq),
-        "win_rate": _win_rate(nav),
-        "profit_loss_ratio": _profit_loss_ratio(nav),
-        "max_dd_duration": max_dd_days,
+        "win_rate": base["WinRate"],
+        "profit_loss_ratio": base["PayoffRatio"],
+        "max_dd_duration": base["MaxDDDays"],
         "calmar_avg_dd": calmar_avg_dd,
         "var_95": var_95,
         "cvar_95": cvar_95,
         "ann_turnover": 0.0,  # 占位, 未建模
         "max_monthly_loss": _max_monthly_loss(nav),
         "profit_months_ratio": _profit_months_ratio(nav),
+    }
+
+
+def kelly_audit(nav: pd.Series, freq: int = 252) -> dict:
+    """Kelly 比例审计 (来自 10_TURTLE_TRADING_MATHEMATICS.md ACT-2).
+
+    计算:
+        max_log_growth = Sharpe²/2 (满 Kelly 理论增长率)
+        actual_log_growth = ln(1 + CAGR)
+        kelly_fraction = actual / max (当前 sizing 位置)
+
+    返回:
+        dict with keys:
+            sharpe: Sharpe 比率
+            cagr: 年化收益率
+            max_log_growth: 满 Kelly 理论增长率
+            actual_log_growth: 实际对数增长率
+            kelly_fraction: 当前 Kelly 比例
+            status: "SAFE" (<50%) | "CAUTION" (50-80%) | "OVER-KELLY" (>80%)
+    """
+    if nav.empty or len(nav) < 2:
+        return {
+            "sharpe": 0.0,
+            "cagr": 0.0,
+            "max_log_growth": 0.0,
+            "actual_log_growth": 0.0,
+            "kelly_fraction": 0.0,
+            "status": "UNKNOWN",
+        }
+
+    # 委托给公共指标模块
+    base = compute_metrics(nav, freq=freq)
+    sharpe = base["Sharpe"]
+    cagr = base["AnnRet"]
+
+    # 满 Kelly 理论增长率
+    max_log_growth = sharpe**2 / 2
+
+    # 实际对数增长率
+    actual_log_growth = np.log(1 + cagr) if cagr > -1 else float('-inf')
+
+    # Kelly 比例
+    kelly_fraction = actual_log_growth / max_log_growth if max_log_growth > 0 else 0.0
+
+    # 状态判断
+    if kelly_fraction < 0.5:
+        status = "SAFE"
+    elif kelly_fraction < 0.8:
+        status = "CAUTION"
+    else:
+        status = "OVER-KELLY"
+
+    return {
+        "sharpe": sharpe,
+        "cagr": cagr,
+        "max_log_growth": max_log_growth,
+        "actual_log_growth": actual_log_growth,
+        "kelly_fraction": kelly_fraction,
+        "status": status,
     }
 
 
@@ -286,4 +255,5 @@ def format_metrics_table(
 __all__ = [
     "extended_metrics",
     "format_metrics_table",
+    "kelly_audit",
 ]

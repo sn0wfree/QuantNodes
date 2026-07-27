@@ -108,7 +108,7 @@ def run_equal_weight_baseline_v1(
     cfg: BacktestConfig_v1 | None = None,
 ) -> RotationBacktestResult_v1:
     """v1 等权 baseline."""
-    from ..common.fi_plus import performance_metrics as pm
+    from ..common.metrics import compute_metrics as pm
     cfg = cfg or BacktestConfig_v1()
     rot = cfg.rotation
     etf = etf_nav.dropna(how="all")

@@ -22,7 +22,7 @@ from ..common.covariance import (
     ledoit_wolf_shrinkage,
     sample_covariance,
 )
-from .fi_plus_v2 import (
+from ..common.fixed_income_plus import (
     FixedIncomePlus,
     FixedIncomePlusConfig,
     FixedIncomePlusResult,

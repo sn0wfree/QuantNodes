@@ -136,7 +136,7 @@ def main():
     for name, w in strategies.items():
         nav = run_backtest_daily(w, returns_daily)
         navs[name] = nav
-        metrics = compute_factor_metrics(w, returns_daily)
+        metrics = compute_factor_metrics(w, returns_daily, freq='D')
         metrics['strategy'] = name
         results.append(metrics)
 

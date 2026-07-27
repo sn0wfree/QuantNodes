@@ -232,6 +232,203 @@ def realized_vol(
     return pd.Series({c: _col_std(log_ret[c]) for c in log_ret.columns})
 
 
+def yang_zhang_vol(
+    ohlcv_df: pd.DataFrame,
+    as_of: pd.Timestamp | None = None,
+    window: int = 20,
+) -> pd.Series:
+    """Yang-Zhang 波动率估计量 (年化, × √252).
+
+    使用 OHLC 四价, 对漂移无偏 (Rogers-Satchell 部分消除线性趋势项).
+
+    公式:
+        σ²_YZ = σ²_overnight + σ²_open_to_close + σ²_RS
+        σ²_RS = Σ [ln(H/C)·ln(H/O) + ln(L/C)·ln(L/O)] / N
+
+    Args:
+        ohlcv_df: 多级 columns DataFrame, 第一级为 code, 第二级为 {open, high, low, close}
+        as_of: 截止日期 (默认最新)
+        window: 回看窗口 (默认 20, 信息量 ≈ 100 日 close-close)
+
+    Returns:
+        pd.Series, index=code, values=年化波动率
+    """
+    if as_of is None:
+        as_of = ohlcv_df.index.max()
+
+    vols = {}
+    for code in ohlcv_df.columns.get_level_values(0).unique():
+        try:
+            sub = ohlcv_df[code].loc[:as_of].iloc[-window:]
+            if len(sub) < 10:
+                vols[code] = float("nan")
+                continue
+
+            # 提取 OHLC
+            if isinstance(sub.columns, pd.MultiIndex):
+                # 如果是多级 columns，尝试提取
+                close = sub["close"] if "close" in sub.columns else sub.iloc[:, 3]
+                high = sub["high"] if "high" in sub.columns else sub.iloc[:, 1]
+                low = sub["low"] if "low" in sub.columns else sub.iloc[:, 2]
+                open_ = sub["open"] if "open" in sub.columns else sub.iloc[:, 0]
+            else:
+                # 假设列顺序为 [open, high, low, close, volume]
+                open_ = sub.iloc[:, 0]
+                high = sub.iloc[:, 1]
+                low = sub.iloc[:, 2]
+                close = sub.iloc[:, 3]
+
+            # Rogers-Satchell 部分 (漂移无关)
+            rs = (np.log(high / close) * np.log(high / open_) +
+                  np.log(low / close) * np.log(low / open_))
+            rs_var = rs.mean()
+
+            # Overnight 部分
+            overnight = np.log(open_ / close.shift(1))
+            overnight_var = overnight.var()
+
+            # Open-to-close 部分
+            open_to_close = np.log(close / open_)
+            oc_var = open_to_close.var()
+
+            # Yang-Zhang 方差
+            yz_var = overnight_var + oc_var + rs_var
+
+            if yz_var <= 0:
+                vols[code] = float("nan")
+            else:
+                vols[code] = float(np.sqrt(yz_var * 252))
+
+        except Exception:
+            vols[code] = float("nan")
+
+    return pd.Series(vols)
+
+
+def realized_vol_with_ohlcv(
+    ohlcv_df: pd.DataFrame,
+    as_of: pd.Timestamp | None = None,
+    window: int = 20,
+    method: str = "yang_zhang",
+) -> pd.Series:
+    """带 OHLC 的波动率估计 (支持多种方法).
+
+    Args:
+        ohlcv_df: OHLCV 面板 (多级 columns: code × {open, high, low, close, volume})
+        as_of: 截止日期
+        window: 回看窗口
+        method: "yang_zhang" | "parkinson" | "garman_klass" | "close_only"
+
+    Returns:
+        pd.Series, index=code, values=年化波动率
+    """
+    if as_of is None:
+        as_of = ohlcv_df.index.max()
+
+    if method == "yang_zhang":
+        return yang_zhang_vol(ohlcv_df, as_of, window)
+    elif method == "parkinson":
+        return _parkinson_vol(ohlcv_df, as_of, window)
+    elif method == "garman_klass":
+        return _garman_klass_vol(ohlcv_df, as_of, window)
+    else:
+        # fallback 到 close-only (原 realized_vol)
+        if isinstance(ohlcv_df.columns, pd.MultiIndex):
+            close_df = ohlcv_df.xs("close", level=1, axis=1)
+        else:
+            close_df = ohlcv_df
+        return realized_vol(close_df, as_of, window)
+
+
+def _parkinson_vol(
+    ohlcv_df: pd.DataFrame,
+    as_of: pd.Timestamp | None = None,
+    window: int = 20,
+) -> pd.Series:
+    """Parkinson 波动率估计量 (基于 high-low, 年化).
+
+    公式: σ² = (1/4ln2) · E[ln²(H/L)]
+    """
+    if as_of is None:
+        as_of = ohlcv_df.index.max()
+
+    vols = {}
+    for code in ohlcv_df.columns.get_level_values(0).unique():
+        try:
+            sub = ohlcv_df[code].loc[:as_of].iloc[-window:]
+            if len(sub) < 10:
+                vols[code] = float("nan")
+                continue
+
+            if isinstance(sub.columns, pd.MultiIndex):
+                high = sub["high"] if "high" in sub.columns else sub.iloc[:, 1]
+                low = sub["low"] if "low" in sub.columns else sub.iloc[:, 2]
+            else:
+                high = sub.iloc[:, 1]
+                low = sub.iloc[:, 2]
+
+            log_hl = np.log(high / low)
+            pk_var = (log_hl ** 2).mean() / (4 * np.log(2))
+
+            if pk_var <= 0:
+                vols[code] = float("nan")
+            else:
+                vols[code] = float(np.sqrt(pk_var * 252))
+
+        except Exception:
+            vols[code] = float("nan")
+
+    return pd.Series(vols)
+
+
+def _garman_klass_vol(
+    ohlcv_df: pd.DataFrame,
+    as_of: pd.Timestamp | None = None,
+    window: int = 20,
+) -> pd.Series:
+    """Garman-Klass 波动率估计量 (基于 OHLC, 年化).
+
+    公式: σ² = 0.5·ln²(H/L) - (2ln2-1)·ln²(C/O)
+    """
+    if as_of is None:
+        as_of = ohlcv_df.index.max()
+
+    vols = {}
+    for code in ohlcv_df.columns.get_level_values(0).unique():
+        try:
+            sub = ohlcv_df[code].loc[:as_of].iloc[-window:]
+            if len(sub) < 10:
+                vols[code] = float("nan")
+                continue
+
+            if isinstance(sub.columns, pd.MultiIndex):
+                close = sub["close"] if "close" in sub.columns else sub.iloc[:, 3]
+                high = sub["high"] if "high" in sub.columns else sub.iloc[:, 1]
+                low = sub["low"] if "low" in sub.columns else sub.iloc[:, 2]
+                open_ = sub["open"] if "open" in sub.columns else sub.iloc[:, 0]
+            else:
+                open_ = sub.iloc[:, 0]
+                high = sub.iloc[:, 1]
+                low = sub.iloc[:, 2]
+                close = sub.iloc[:, 3]
+
+            log_hl = np.log(high / low)
+            log_co = np.log(close / open_)
+
+            gk_var = 0.5 * (log_hl ** 2) - (2 * np.log(2) - 1) * (log_co ** 2)
+            gk_var = gk_var.mean()
+
+            if gk_var <= 0:
+                vols[code] = float("nan")
+            else:
+                vols[code] = float(np.sqrt(gk_var * 252))
+
+        except Exception:
+            vols[code] = float("nan")
+
+    return pd.Series(vols)
+
+
 def below_ma(
     nav_df: pd.DataFrame,
     code: str,

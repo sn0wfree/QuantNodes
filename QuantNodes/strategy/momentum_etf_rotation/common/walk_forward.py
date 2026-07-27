@@ -37,7 +37,7 @@ import itertools
 import numpy as np
 import pandas as pd
 
-from ..fi_plus import performance_metrics
+from .metrics import compute_metrics as performance_metrics
 
 
 # ============================================================

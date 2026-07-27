@@ -162,25 +162,19 @@ def _combine_sub_results(
 
 
 def _performance_metrics(nav: pd.Series) -> dict:
-    """计算关键业绩指标."""
-    n = len(nav)
-    if n < 2:
-        return {}
-    ann_ret = (nav.iloc[-1] / nav.iloc[0]) ** (252 / n) - 1
-    daily_ret = nav.pct_change().dropna()
-    if len(daily_ret) < 2:
-        return {"ann_return": float(ann_ret)}
-    ann_vol = daily_ret.std() * np.sqrt(252)
-    sharpe = (daily_ret.mean() * 252) / ann_vol if ann_vol > 0 else 0
-    max_dd = float((nav / nav.cummax() - 1).min())
-    calmar = ann_ret / abs(max_dd) if max_dd < 0 else 0
+    """计算关键业绩指标 (委托给公共模块)."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+    from QuantNodes.strategy.momentum_etf_rotation.common.metrics import compute_metrics
+    result = compute_metrics(nav)
     return {
-        "ann_return": float(ann_ret),
-        "ann_vol": float(ann_vol),
-        "sharpe": float(sharpe),
-        "max_drawdown": float(max_dd),
-        "calmar": float(calmar),
-        "final_nav": float(nav.iloc[-1]),
+        "ann_return": result["AnnRet"],
+        "ann_vol": result["Vol"],
+        "sharpe": result["Sharpe"],
+        "max_drawdown": result["MaxDD"],
+        "calmar": result["Calmar"],
+        "final_nav": result.get("Final", nav.iloc[-1]),
     }
 
 

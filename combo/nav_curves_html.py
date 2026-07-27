@@ -83,34 +83,24 @@ GROUPS = {
 
 
 # ============================================================
-# 工具
+# 工具 (委托给公共模块)
 # ============================================================
 def ann_return(nav):
-    """年化收益 = (终值/初值) ^ (252 / 实际交易日数) - 1 (trading days 口径).
-
-    与 Stage 27 v6_2 ablation 的 (prod(1+r))^(252/n) - 1 一致.
-    实际交易日数取 len(valid) - 1 (即两个端点之间的 trading day 数).
-    """
-    valid = nav.dropna()
-    if len(valid) < 2:
-        return 0.0
-    r = valid.iloc[-1] / valid.iloc[0]
-    n = len(valid) - 1  # 实际 trading days 区间长度
-    return float(r ** (252 / n) - 1) if n > 0 else 0.0
+    """年化收益 (委托给 common.metrics)."""
+    from QuantNodes.strategy.momentum_etf_rotation.common.metrics import compute_metrics
+    return compute_metrics(nav)['AnnRet']
 
 
 def max_dd(nav):
-    valid = nav.dropna()
-    if len(valid) < 2:
-        return 0.0
-    return float((valid / valid.cummax() - 1.0).min())
+    """最大回撤 (委托给 common.metrics)."""
+    from QuantNodes.strategy.momentum_etf_rotation.common.metrics import compute_metrics
+    return compute_metrics(nav)['MaxDD']
 
 
 def sharpe(nav):
-    rets = nav.pct_change().dropna()
-    if len(rets) < 2 or rets.std() == 0:
-        return 0.0
-    return float(rets.mean() / rets.std() * np.sqrt(252))
+    """Sharpe ratio (委托给 common.metrics)."""
+    from QuantNodes.strategy.momentum_etf_rotation.common.metrics import compute_metrics
+    return compute_metrics(nav)['Sharpe']
 
 
 def _extract_chart_title(figure) -> str:
@@ -135,20 +125,16 @@ def _extract_chart_title(figure) -> str:
 
 
 def metrics(nav):
-    valid = nav.dropna()
-    if len(valid) < 2:
-        return {"ann_return": 0, "ann_vol": 0, "sharpe": 0,
-                "max_dd": 0, "calmar": 0, "final": 0}
-    rets = valid.pct_change().dropna()
-    ar = ann_return(valid)
-    dd = max_dd(valid)
+    """统一指标计算 (委托给 common.metrics.compute_metrics)."""
+    from QuantNodes.strategy.momentum_etf_rotation.common.metrics import compute_metrics
+    result = compute_metrics(nav)
     return {
-        "ann_return": ar,
-        "ann_vol": float(rets.std() * np.sqrt(252)),
-        "sharpe": sharpe(valid),
-        "max_dd": dd,
-        "calmar": ar / abs(dd) if dd != 0 else 0.0,
-        "final": float(valid.iloc[-1]),
+        "ann_return": result["AnnRet"],
+        "ann_vol": result["Vol"],
+        "sharpe": result["Sharpe"],
+        "max_dd": result["MaxDD"],
+        "calmar": result["Calmar"],
+        "final": float(nav.dropna().iloc[-1]) if not nav.dropna().empty else 0.0,
     }
 
 

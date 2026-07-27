@@ -16,7 +16,7 @@ import pandas as pd
 REPO = Path("/home/ll/Public/QuantNodes")
 sys.path.insert(0, str(REPO))
 
-from QuantNodes.strategy.momentum_etf_rotation.fi_plus import performance_metrics
+from QuantNodes.strategy.momentum_etf_rotation.common.metrics import performance_metrics_legacy as performance_metrics
 from QuantNodes.strategy.momentum_etf_rotation.v7.macro_substrategy_v7_6 import (
     V7_6Config, construct_portfolio_components,
 )

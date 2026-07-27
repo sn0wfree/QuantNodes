@@ -28,19 +28,7 @@ import numpy as np
 import pandas as pd
 
 from ..common.universe import ETFPool
-from ..common.extended_metrics import extended_metrics
-
-
-def performance_metrics(nav: pd.Series) -> dict:
-    """v3 局部包装: 调用 extended_metrics 但只取核心字段."""
-    em = extended_metrics(nav)
-    return {
-        "ann_return": em.get("ann_return", 0.0),
-        "ann_vol": em.get("ann_vol", 0.0),
-        "sharpe": em.get("sharpe", 0.0),
-        "max_drawdown": em.get("max_drawdown", 0.0),
-        "calmar": em.get("calmar", 0.0),
-    }
+from ..common.metrics import performance_metrics_legacy as performance_metrics
 from .industry_rotation_v3 import (
     IndustryRotationConfig,
     IndustryRotationSubStrategy,

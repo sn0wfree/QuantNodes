@@ -26,11 +26,11 @@ warnings.filterwarnings("ignore")
 
 REPO = Path("/home/ll/Public/QuantNodes")
 sys.path.insert(0, str(REPO))
-
 from combo.load_unified_data import load_unified_data
 from QuantNodes.strategy.momentum_etf_rotation.common.universe import (
     Category, ETFMeta, ETFPool, DEFAULT_POOL,
 )
+from QuantNodes.strategy.momentum_etf_rotation.common.metrics import compute_metrics
 from QuantNodes.strategy.momentum_etf_rotation.portfolio import (
     RotationConfig, DiversificationCaps, TrendFilter, VolTargeting, CostModel,
 )
@@ -50,47 +50,43 @@ END = "2026-06-30"
 OOS_START = "2022-01-01"
 COST_BPS = 5.0  # 5 bp 单边 (口径 A)
 
+
 # ============================================================
-# 工具函数
+# 工具函数 (委托给公共模块)
 # ============================================================
 def ann_return(nav):
-    valid = nav.dropna()
-    if len(valid) < 2:
-        return 0.0
-    r = valid.iloc[-1] / valid.iloc[0]
-    n = (valid.index[-1] - valid.index[0]).days / 365.25
-    return float(r ** (1 / n) - 1) if n > 0 else 0.0
+    """年化收益 (委托给 common.metrics)."""
+    m = compute_metrics(nav)
+    return m['AnnRet']
 
 
 def max_dd(nav):
-    valid = nav.dropna()
-    if len(valid) < 2:
-        return 0.0
-    pk = valid.cummax()
-    return float((valid / pk - 1.0).min())
+    """最大回撤 (委托给 common.metrics)."""
+    m = compute_metrics(nav)
+    return m['MaxDD']
 
 
 def sharpe(rets):
+    """Sharpe ratio (从收益序列计算, 委托给公共模块)."""
     if len(rets) < 2 or rets.std() == 0:
         return 0.0
-    return float(rets.mean() / rets.std() * np.sqrt(252))
+    # 从收益序列重建 NAV 来调用 compute_metrics
+    nav = (1 + rets).cumprod()
+    m = compute_metrics(nav)
+    return m['Sharpe']
 
 
 def metrics(nav):
-    valid = nav.dropna()
-    if len(valid) < 2:
-        return {"ann_return": 0.0, "ann_vol": 0.0, "sharpe": 0.0,
-                "max_dd": 0.0, "calmar": 0.0, "final": float(nav.iloc[-1]) if pd.notna(nav.iloc[-1]) else 0.0}
-    rets = valid.pct_change().dropna()
-    ar = ann_return(valid)
-    dd = max_dd(valid)
+    """统一指标计算 (委托给 common.metrics.compute_metrics)."""
+    result = compute_metrics(nav)
+    # 转换为旧接口格式 (兼容调用方)
     return {
-        "ann_return": ar,
-        "ann_vol": float(rets.std() * np.sqrt(252)),
-        "sharpe": sharpe(rets),
-        "max_dd": dd,
-        "calmar": ar / abs(dd) if dd != 0 else 0.0,
-        "final": float(valid.iloc[-1]),
+        "ann_return": result["AnnRet"],
+        "ann_vol": result["Vol"],
+        "sharpe": result["Sharpe"],
+        "max_dd": result["MaxDD"],
+        "calmar": result["Calmar"],
+        "final": float(nav.dropna().iloc[-1]) if not nav.dropna().empty else 0.0,
     }
 
 
@@ -149,9 +145,9 @@ def cicc_caps():
 
 
 def v0_baseline_52(pool, etf_nav, cost_enabled=True):
-    """v0.0 baseline (Stage 8) 在 52 池中: 144d 动量, 无增强."""
+    """v0.0 baseline (Stage 8) 在 52 池中: 90d 动量, 无增强."""
     cfg = RotationConfig(
-        lookback=144, top_n=10,
+        lookback=90, top_n=10,
         diversification=cicc_caps(),
         weight_method="inv_vol",
         vol_window=21,
@@ -168,7 +164,7 @@ def v0_baseline_52(pool, etf_nav, cost_enabled=True):
 def v0_1_vt_only_52(pool, etf_nav, cost_enabled=True):
     """v0.1 + VT (Stage 9-C) 在 52 池中."""
     cfg = RotationConfig(
-        lookback=144, top_n=10,
+        lookback=90, top_n=10,
         diversification=cicc_caps(),
         weight_method="inv_vol",
         vol_targeting=VolTargeting(enabled=True, target_vol=0.15,
@@ -186,7 +182,7 @@ def v0_1_vt_only_52(pool, etf_nav, cost_enabled=True):
 def v0_2_tf_only_52(pool, etf_nav, cost_enabled=True):
     """v0.2 + TF (Stage 9-B) 在 52 池中."""
     cfg = RotationConfig(
-        lookback=144, top_n=10,
+        lookback=90, top_n=10,
         diversification=cicc_caps(),
         weight_method="inv_vol",
         trend_filter=TrendFilter(enabled=True, benchmark_code="510300",

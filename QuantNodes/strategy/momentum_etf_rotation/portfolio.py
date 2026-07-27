@@ -27,11 +27,10 @@ from .momentum import (
     compute_momentum_score,
     distance_to_52w_high,
     fused_signal,
-    hybrid_momentum_score,
     pairwise_corr,
     rank_pctl,
     realized_vol,
-    slope_r2_score,
+    yang_zhang_vol,
 )
 from .common.universe import ETFPool
 
@@ -217,11 +216,29 @@ def inverse_vol_weights(
     as_of: pd.Timestamp,
     vol_window: int = 21,
     floor: float = 1e-4,
+    ohlcv_df: pd.DataFrame | None = None,
+    vol_method: str = "yang_zhang",
 ) -> dict[str, float]:
-    """权重 ∝ 1/σ_i, σ 为年化已实现波动率 (CICC 伪代码窗口=21)."""
+    """权重 ∝ 1/σ_i, σ 为年化已实现波动率 (CICC 伪代码窗口=21).
+
+    Args:
+        nav_df: close 价格面板 (fallback 用)
+        codes: 标的代码列表
+        as_of: 截止日期
+        vol_window: 波动率窗口 (默认 21)
+        floor: 最小权重阈值
+        ohlcv_df: OHLCV 面板 (可选, 优先使用 yang_zhang_vol)
+        vol_method: 波动率方法 ("yang_zhang" | "close_only")
+    """
     if not codes:
         return {}
-    vols = realized_vol(nav_df, as_of=as_of, window=vol_window).reindex(list(codes))
+
+    # 优先使用 OHLC 数据计算 YZ 波动率
+    if ohlcv_df is not None and vol_method == "yang_zhang":
+        vols = yang_zhang_vol(ohlcv_df, as_of=as_of, window=vol_window).reindex(list(codes))
+    else:
+        vols = realized_vol(nav_df, as_of=as_of, window=vol_window).reindex(list(codes))
+
     vols = vols.fillna(vols.median() if not vols.empty and vols.median() > 0 else 1.0)
     inv = 1.0 / vols
     inv[inv < floor] = 0.0
@@ -558,12 +575,40 @@ def vol_targeting_scale(
     lookback: int,
     min_scale: float,
     max_scale: float,
+    ohlcv_df: pd.DataFrame | None = None,
+    code: str | None = None,
+    vol_method: str = "yang_zhang",
 ) -> float:
     """计算当前应缩放系数.
 
     scale = clip(target_vol / realized_vol, min_scale, max_scale)
     realized_vol 为 lookback 日年化波动率 (× √252).
+
+    Args:
+        nav: close 价格序列 (单个标的)
+        target_vol: 目标波动率
+        lookback: 回看窗口
+        min_scale: 最小缩放系数
+        max_scale: 最大缩放系数
+        ohlcv_df: OHLCV 面板 (可选, 优先使用 yang_zhang_vol)
+        code: 标的代码 (使用 ohlcv_df 时必需)
+        vol_method: 波动率方法 ("yang_zhang" | "close_only")
     """
+    # 优先使用 OHLC 数据计算 YZ 波动率
+    if ohlcv_df is not None and code is not None and vol_method == "yang_zhang":
+        try:
+            sub = ohlcv_df[code]
+            if len(sub) >= lookback:
+                vols = yang_zhang_vol(ohlcv_df, as_of=nav.index[-1], window=lookback)
+                if code in vols.index:
+                    realized_vol = vols[code]
+                    if not np.isnan(realized_vol) and realized_vol > 0:
+                        scale = target_vol / realized_vol
+                        return float(np.clip(scale, min_scale, max_scale))
+        except Exception:
+            pass
+
+    # Fallback 到 close-only (原逻辑)
     rets = nav.pct_change().dropna()
     if len(rets) < lookback:
         return 1.0

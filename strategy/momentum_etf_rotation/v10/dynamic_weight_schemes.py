@@ -10,10 +10,15 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+# 确保能导入公共模块
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+from QuantNodes.strategy.momentum_etf_rotation.common.metrics import compute_metrics
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 log = logging.info
@@ -42,10 +47,9 @@ def load_navs() -> pd.DataFrame:
     navs['v9macro'] = pd.read_parquet(REPO / 'reports/momentum_etf_rotation/combo/v9_macro_best_C5.parquet')['nav']
     navs['DualMom'] = pd.read_parquet(REPO / 'reports/momentum_etf_rotation/v10/dual_momentum_nav.parquet').iloc[:, 0]
 
-    # 统一到日频
-    df = pd.DataFrame()
-    for name, nav in navs.items():
-        df[name] = nav.resample('D').ffill()
+    # 对齐到公共交易日 (所有源已经是交易日频率)
+    df = pd.DataFrame(navs)
+    df = df.dropna()
     return df
 
 
@@ -292,36 +296,17 @@ def scheme_e_hybrid(prices: pd.DataFrame) -> pd.DataFrame:
 
 
 def metrics(nav: pd.Series, ps: str = '2022-01-01', pe: str = '2026-05-29') -> dict:
-    """计算标准指标."""
+    """计算标准指标 (委托给公共模块)."""
     seg = nav.loc[ps:pe].dropna()
     if len(seg) < 20:
         return None
-
-    rets = seg.pct_change().dropna()
-    total = seg.iloc[-1] / seg.iloc[0] - 1
-    days = (seg.index[-1] - seg.index[0]).days
-    n_years = days / 365.25
-    ann_ret = (1 + total) ** (1 / max(n_years, 0.01)) - 1
-    vol = float(rets.std() * np.sqrt(252))
-    sharpe = ann_ret / vol if vol > 0 else 0
-
-    neg = rets[rets < 0]
-    dv = float(neg.std() * np.sqrt(252)) if len(neg) > 1 else 0
-    sortino = ann_ret / dv if dv > 1e-9 else 0
-
-    peak = seg.cummax()
-    maxdd = float((seg / peak - 1).min())
-    calmar = ann_ret / abs(maxdd) if maxdd < -1e-6 else 0
-
-    uw = (seg < peak).astype(int)
-    mdd_days = int(uw.groupby((uw != uw.shift()).cumsum()).sum().max()) if uw.any() else 0
-
-    wr = float((rets > 0).mean())
-
+    result = compute_metrics(seg)
+    # 转换为旧接口格式 (兼容调用方)
     return {
-        'Sharpe': sharpe, 'Sortino': sortino, 'Calmar': calmar,
-        'AnnRet': ann_ret, 'Vol': vol, 'MaxDD': maxdd,
-        'MaxDDDays': mdd_days, 'WinRate': wr,
+        'Sharpe': result['Sharpe'], 'Sortino': result['Sortino'],
+        'Calmar': result['Calmar'], 'AnnRet': result['AnnRet'],
+        'Vol': result['Vol'], 'MaxDD': result['MaxDD'],
+        'MaxDDDays': result['MaxDDDays'], 'WinRate': result['WinRate'],
     }
 
 

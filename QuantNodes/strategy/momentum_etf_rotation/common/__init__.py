@@ -1,8 +1,8 @@
 # coding=utf-8
-"""共享代码: v1-v7 共用的基础设施.
+"""共享代码: v1-v10 共用的基础设施.
 
 包含: ETF 池, 数据加载, 评估指标, 回测引擎.
-不包含: 版本特定的策略逻辑 (在 v1/-v7/ 中).
+不包含: 版本特定的策略逻辑 (在 v1/-v10/ 中).
 """
 from __future__ import annotations
 
@@ -43,7 +43,9 @@ from .covariance import (
     sample_covariance,
 )
 from .data import load_bond_etf_nav, load_etf_nav_panel
-from .extended_metrics import extended_metrics, format_metrics_table
+from .extended_metrics import extended_metrics, format_metrics_table, kelly_audit
+from .metrics import compute_metrics, detect_freq, performance_metrics_legacy, format_metrics_table as fmt_table
+from .drawdown_controller import DrawdownConfig, DrawdownState, drawdown_multiplier
 from .regime_detector import RegimeDetector
 from .risk_parity import (
     risk_contribution as rp_risk_contribution,
@@ -79,26 +81,28 @@ from .walk_forward import (
 )
 
 __all__ = [
-    # Strategy engine (新)
+    # Metrics (统一指标计算)
+    "compute_metrics", "detect_freq", "fmt_table", "performance_metrics_legacy",
+    # Strategy engine
     "BaseStrategy", "StrategyEngine", "StrategyResult",
-    # Backtest engine (旧, 兼容)
+    # Backtest engine
     "BacktestCallbacks", "BacktestConfig", "BacktestResult", "run_backtest",
     # Config
-    "CostConfig", "StopLossConfig", "TrendFilterConfig", "VolTargetingConfig",
+    "CostConfig", "DrawdownConfig", "StopLossConfig", "TrendFilterConfig", "VolTargetingConfig",
     # Utils
     "apply_max_weight", "calculate_turnover", "calculate_turnover_cost",
     "generate_rebalance_dates", "normalize_weights",
     # Universe
     "Category", "DEFAULT_POOL", "ETFCategorizer", "ETFMeta", "ETFPool",
     # Others
-    "RegimeDetector",
+    "DrawdownState", "RegimeDetector",
     "ValidationConfig", "ValidationReport", "ValidationResult",
     "ablation", "brinson_attribution", "CATEGORIES",
     "category_contribution", "condition_number", "CovMethod",
-    "diagonal_covariance", "estimate_covariance", "etf_contribution",
-    "extended_metrics", "ewma_covariance", "format_metrics_table",
-    "is_positive_definite", "ledoit_wolf_shrinkage",
-    "load_bond_etf_nav", "load_etf_nav_panel",
+    "diagonal_covariance", "drawdown_multiplier", "estimate_covariance",
+    "etf_contribution", "extended_metrics", "ewma_covariance",
+    "format_metrics_table", "is_positive_definite", "kelly_audit",
+    "ledoit_wolf_shrinkage", "load_bond_etf_nav", "load_etf_nav_panel",
     "marginal_contribution", "period_contribution",
     "reconstruct_daily_weights", "risk_contribution",
     "risk_parity_objective", "rp_risk_contribution",

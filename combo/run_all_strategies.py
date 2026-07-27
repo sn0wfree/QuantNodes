@@ -18,10 +18,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+REPO = Path("/home/ll/Public/QuantNodes")
+sys.path.insert(0, str(REPO))
 
 from combo.load_unified_data import load_unified_data, ALL_52, SMARTBETA_8, MAIN_44
 from QuantNodes.strategy.momentum_etf_rotation.common.universe import ETFPool, Category, ETFMeta
+from QuantNodes.strategy.momentum_etf_rotation.common.metrics import compute_metrics
 from QuantNodes.strategy.momentum_etf_rotation.v3.multi_strategy_v3 import (
     MultiStrategyConfig,
     run_multi_strategy_backtest,
@@ -47,37 +49,11 @@ OOS_START = "2022-01-01"
 
 
 # ============================================================
-# 指标计算
+# 指标计算 (委托给公共模块)
 # ============================================================
-def ann_return(nav):
-    r = nav.iloc[-1] / nav.iloc[0]
-    n = (nav.index[-1] - nav.index[0]).days / 365.25
-    return float(r ** (1 / n) - 1) if n > 0 else 0.0
-
-
-def max_dd(nav):
-    pk = nav.cummax()
-    return float((nav / pk - 1.0).min())
-
-
-def sharpe(rets):
-    if rets.std() == 0:
-        return 0.0
-    return float(rets.mean() / rets.std() * np.sqrt(252))
-
-
 def metrics(nav):
-    rets = nav.pct_change().dropna()
-    ar = ann_return(nav)
-    dd = max_dd(nav)
-    return {
-        "ann_return": ar,
-        "ann_vol": float(rets.std() * np.sqrt(252)),
-        "sharpe": sharpe(rets),
-        "max_dd": dd,
-        "calmar": ar / abs(dd) if dd != 0 else 0.0,
-        "final": float(nav.iloc[-1]),
-    }
+    """统一指标计算 (委托给 common.metrics.compute_metrics)."""
+    return compute_metrics(nav)
 
 
 def yearly_returns(nav):
@@ -443,8 +419,8 @@ def main():
     print("-" * 65)
     for col in navs.columns:
         m = metrics(navs[col])
-        print(f"{col:<20s} {m['ann_return']*100:6.2f}% {m['ann_vol']*100:6.2f}% "
-              f"{m['sharpe']:6.2f} {m['max_dd']*100:7.2f}% {m['calmar']:6.3f}")
+        print(f"{col:<20s} {m['AnnRet']*100:6.2f}% {m['Vol']*100:6.2f}% "
+              f"{m['Sharpe']:6.2f} {m['MaxDD']*100:7.2f}% {m['Calmar']:6.3f}")
 
     # 年度收益
     print(f"\n{'年度收益':}")
@@ -472,8 +448,8 @@ def main():
     print("-" * 65)
     for col in oos.columns:
         m = metrics(oos[col])
-        print(f"{col:<20s} {m['ann_return']*100:6.2f}% {m['ann_vol']*100:6.2f}% "
-              f"{m['sharpe']:6.2f} {m['max_dd']*100:7.2f}% {m['calmar']:6.3f}")
+        print(f"{col:<20s} {m['AnnRet']*100:6.2f}% {m['Vol']*100:6.2f}% "
+              f"{m['Sharpe']:6.2f} {m['MaxDD']*100:7.2f}% {m['Calmar']:6.3f}")
 
     # 相关性
     print(f"\n{'='*70}")
@@ -509,8 +485,8 @@ def main():
     print("-" * 75)
     for name, nav in combos.items():
         m = metrics(nav)
-        print(f"{name:<30s} {m['ann_return']*100:6.2f}% {m['ann_vol']*100:6.2f}% "
-              f"{m['sharpe']:6.2f} {m['max_dd']*100:7.2f}% {m['calmar']:6.3f}")
+        print(f"{name:<30s} {m['AnnRet']*100:6.2f}% {m['Vol']*100:6.2f}% "
+              f"{m['Sharpe']:6.2f} {m['MaxDD']*100:7.2f}% {m['Calmar']:6.3f}")
 
     oos_combos = {k: v.loc[OOS_START:] for k, v in combos.items()}
     print(f"\nOOS ({OOS_START}~{END}):")
@@ -518,8 +494,8 @@ def main():
     print("-" * 75)
     for name, nav in oos_combos.items():
         m = metrics(nav)
-        print(f"{name:<30s} {m['ann_return']*100:6.2f}% {m['ann_vol']*100:6.2f}% "
-              f"{m['sharpe']:6.2f} {m['max_dd']*100:7.2f}% {m['calmar']:6.3f}")
+        print(f"{name:<30s} {m['AnnRet']*100:6.2f}% {m['Vol']*100:6.2f}% "
+              f"{m['Sharpe']:6.2f} {m['MaxDD']*100:7.2f}% {m['Calmar']:6.3f}")
 
     # 保存
     out_dir = REPO / "reports" / "momentum_etf_rotation" / "combo"

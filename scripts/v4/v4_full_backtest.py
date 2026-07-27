@@ -114,7 +114,7 @@ def compute_all_metrics(nav: pd.Series, name: str) -> dict:
     """计算完整业绩指标."""
     # 从 NAV 计算收益
     returns = nav.pct_change().fillna(0)
-    metrics = compute_metrics(returns, freq="W")
+    metrics = compute_metrics(returns, freq="D")
     return metrics
 
 
