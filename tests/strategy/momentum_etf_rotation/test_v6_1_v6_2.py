@@ -26,7 +26,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
 
-from QuantNodes.strategy.momentum_etf_rotation.v6_1.factor_weighting import (
+from QuantNodes.strategy.momentum_etf_rotation.v6.factor_weighting import (
     compute_cross_section_ic,
     compute_ic_timeseries,
     compute_factor_weights,
@@ -34,12 +34,12 @@ from QuantNodes.strategy.momentum_etf_rotation.v6_1.factor_weighting import (
     DEFAULT_HORIZON_DAYS,
     MIN_MONTHS_FOR_IC,
 )
-from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import (
+from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import (
     get_factor_ir_order,
     orthogonalize_factor_panel,
 )
-from QuantNodes.strategy.momentum_etf_rotation.v6_1 import V6_1Config, run_v6_1_backtest
-from QuantNodes.strategy.momentum_etf_rotation.v6_2 import V6_2Config, run_v6_2_backtest
+from QuantNodes.strategy.momentum_etf_rotation.v6 import V6_1Config, run_v6_1_backtest
+from QuantNodes.strategy.momentum_etf_rotation.v6 import V6_2Config, run_v6_2_backtest
 
 
 # ============================================================
@@ -111,7 +111,7 @@ class TestComputeSoftmaxWeights:
 
     def test_rows_normalize_to_one(self):
         """每行权重和 = 1."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_1.factor_weighting import compute_softmax_weights
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_weighting import compute_softmax_weights
         dates = pd.bdate_range("2024-01-01", periods=8)
         ir = pd.DataFrame({
             "f1": [0.6, 0.7, 0.5, 0.8, 0.6, 0.7, 0.5, 0.6],
@@ -126,7 +126,7 @@ class TestComputeSoftmaxWeights:
 
     def test_min_ir_threshold_filters_noise(self):
         """|IR| < 阈值的因子权重=0."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_1.factor_weighting import compute_softmax_weights
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_weighting import compute_softmax_weights
         dates = pd.bdate_range("2024-01-01", periods=5)
         ir = pd.DataFrame({
             "strong": [0.8, 0.7, 0.6, 0.7, 0.8],   # |IR| > 0.5
@@ -142,7 +142,7 @@ class TestComputeSoftmaxWeights:
 
     def test_sharpness_concentration(self):
         """sharpness 越大, 权重越集中 (近 argmax)."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_1.factor_weighting import compute_softmax_weights
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_weighting import compute_softmax_weights
         dates = pd.bdate_range("2024-01-01", periods=3)
         ir = pd.DataFrame({
             "f1": [1.0, 1.0, 1.0],
@@ -159,7 +159,7 @@ class TestComputeSoftmaxWeights:
 
     def test_all_zero_ir_degrades_to_equal(self):
         """全部 IR 都低于阈值 → 退化为等权."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_1.factor_weighting import compute_softmax_weights
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_weighting import compute_softmax_weights
         dates = pd.bdate_range("2024-01-01", periods=3)
         ir = pd.DataFrame({
             "f1": [0.3, 0.3, 0.3],   # |IR| < 0.5
@@ -172,7 +172,7 @@ class TestComputeSoftmaxWeights:
 
     def test_no_data_returns_empty(self):
         """空 DataFrame → 空 DataFrame."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_1.factor_weighting import compute_softmax_weights
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_weighting import compute_softmax_weights
         w = compute_softmax_weights(pd.DataFrame(), sharpness=3.0)
         assert w.empty
 
@@ -182,7 +182,7 @@ class TestPredefinedFactorOrder:
 
     def test_factor_order_is_immutable_tuple(self):
         """预定义顺序应是 immutable tuple."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import PREDEFINED_FACTOR_ORDER
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import PREDEFINED_FACTOR_ORDER
         assert isinstance(PREDEFINED_FACTOR_ORDER, tuple)
         # 尝试修改应报错
         try:
@@ -193,12 +193,12 @@ class TestPredefinedFactorOrder:
 
     def test_factor_order_has_11_factors(self):
         """预定义顺序应包含 11 个因子."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import PREDEFINED_FACTOR_ORDER
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import PREDEFINED_FACTOR_ORDER
         assert len(PREDEFINED_FACTOR_ORDER) == 11
 
     def test_factor_order_financial_order(self):
         """预定义顺序应按: 动量 → 反转 → 多空 → 量价."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import PREDEFINED_FACTOR_ORDER
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import PREDEFINED_FACTOR_ORDER
         # 位置 0,1 应为动量族
         assert "f1_second_mom" in PREDEFINED_FACTOR_ORDER[:2]
         assert "f2_mom_term" in PREDEFINED_FACTOR_ORDER[:2]
@@ -307,7 +307,7 @@ class TestGetFactorIROrder:
         # 多个 rebal_dates 给出 IC 多样本; 现在函数忽略 IR, 返回预定义顺序
         rebal_dates = list(synthetic_close.index[::5])
         # 给真正的 11 因子名 (合成数据中是 f1_test, 但应该不出现)
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import PREDEFINED_FACTOR_ORDER
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import PREDEFINED_FACTOR_ORDER
         # 传 11 个全部因子, 看返回是否 = PREDEFINED
         order = get_factor_ir_order(
             synthetic_factor_panel, synthetic_close,
@@ -317,7 +317,7 @@ class TestGetFactorIROrder:
 
     def test_returns_subset_of_predefined(self, synthetic_close, synthetic_factor_panel):
         """[Stage 28] 子集查询应返回在预定义顺序中存在的因子."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import PREDEFINED_FACTOR_ORDER
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import PREDEFINED_FACTOR_ORDER
         subset = ["f1_second_mom", "f3_amt_vol"]
         order = get_factor_ir_order(
             synthetic_factor_panel, synthetic_close,
@@ -335,7 +335,7 @@ class TestGetFactorIROrder:
 
     def test_none_factors_returns_full(self, synthetic_close, synthetic_factor_panel):
         """[Stage 28] factors=None 时返回完整预定义顺序."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import PREDEFINED_FACTOR_ORDER
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import PREDEFINED_FACTOR_ORDER
         order = get_factor_ir_order(
             synthetic_factor_panel, synthetic_close,
             [], None,
@@ -465,7 +465,7 @@ class TestGetFactorIROrderExpanding:
 
     def test_returns_dict_per_rebalance_date(self, synthetic_close, synthetic_factor_panel):
         """返回 dict[date] -> order, key 是 rebalance_date."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import (
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import (
             get_factor_ir_order_expanding,
         )
         rebal_dates = list(synthetic_close.index[::5])
@@ -484,7 +484,7 @@ class TestGetFactorIROrderExpanding:
 
         算法: d_i 的 IR 用 d_{i-1} 及之前的 past dates, 不含 d_i 之后.
         """
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import (
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import (
             get_factor_ir_order_expanding,
         )
         # 构造 2 个 ETF, f1 反向 (f1 高 → 收益低)
@@ -504,7 +504,7 @@ class TestGetFactorIROrderExpanding:
 
     def test_min_periods_fallback_factors_order(self, synthetic_close, synthetic_factor_panel):
         """min_periods 不足时 fallback 用 factors 原顺序 (冷启动保护)."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import (
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import (
             get_factor_ir_order_expanding,
         )
         factors_subset = ["f1_test", "fake1", "fake2"]
@@ -571,7 +571,7 @@ class TestOrthogonalizeFactorPanelQR:
 
     def test_runs(self, synthetic_close, synthetic_factor_panel):
         """QR 分解正交化能跑通."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import (
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import (
             orthogonalize_factor_panel_qr,
         )
         rebal_dates = list(synthetic_close.index[::5])
@@ -603,7 +603,7 @@ class TestV62SortMethod:
     def test_ir_full_raises(self):
         """sort_method='ir_full' 在生产路径应抛 NotImplementedError."""
         cfg = V6_2Config(sort_method="ir_full")
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2 import (
+        from QuantNodes.strategy.momentum_etf_rotation.v6 import (
             run_v6_2_backtest,
         )
         import pytest
@@ -616,7 +616,7 @@ class TestGetFactorIROrderWarmup:
 
     def test_returns_ordered_list(self, synthetic_close, synthetic_factor_panel):
         """返回 list[str], 长度等于 factors 数量, 按 IR 降序."""
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import (
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import (
             get_factor_ir_order_warmup,
         )
         rebal_dates = list(synthetic_close.index[::2])
@@ -642,7 +642,7 @@ class TestGetFactorIROrderWarmup:
         """[关键] warmup-IR 仅用 rebal_dates 的前 warmup_months 个月, 不含未来."""
         # 此测试已通过 test_returns_ordered_list 间接验证;
         # 显式断言: 当 warmup_months=1, 只用 1 个 rebalance_date
-        from QuantNodes.strategy.momentum_etf_rotation.v6_2.factor_orthogonal import (
+        from QuantNodes.strategy.momentum_etf_rotation.v6.factor_orthogonal import (
             get_factor_ir_order_warmup,
         )
         rebal_dates = list(synthetic_close.index[::3])

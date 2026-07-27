@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from QuantNodes.strategy.momentum_etf_rotation.extended_metrics import (
+from QuantNodes.strategy.momentum_etf_rotation.common.extended_metrics import (
     extended_metrics,
     format_metrics_table,
 )

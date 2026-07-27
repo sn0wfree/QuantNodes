@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from QuantNodes.strategy.momentum_etf_rotation.data import (
+from QuantNodes.strategy.momentum_etf_rotation.common.data import (
     DEFAULT_DATA_DIR,
     get_fetch_status,
     list_available_etfs,

@@ -34,7 +34,7 @@ def get_factor_ir_order_deprecated(
     Returns:
         list[str]  按 IR 降序排, 剔除 IR<=0 因子
     """
-    from QuantNodes.strategy.momentum_etf_rotation.v6_1.factor_weighting import (
+    from QuantNodes.strategy.momentum_etf_rotation.v6.factor_weighting import (
         compute_cross_section_ic,
     )
 

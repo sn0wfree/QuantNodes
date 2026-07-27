@@ -15,7 +15,7 @@ from QuantNodes.strategy.momentum_etf_rotation import (
     run_rotation_backtest,
     performance_metrics,
 )
-from QuantNodes.strategy.momentum_etf_rotation.regime_detector import (
+from QuantNodes.strategy.momentum_etf_rotation.common.regime_detector import (
     RegimeDetector,
     RegimeParams,
     HMMRegimeDetector,

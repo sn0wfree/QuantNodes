@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from QuantNodes.strategy.momentum_etf_rotation.contribution import (
+from QuantNodes.strategy.momentum_etf_rotation.common.contribution import (
     DEFAULT_PERIODS,
     category_contribution,
     etf_contribution,
@@ -15,7 +15,7 @@ from QuantNodes.strategy.momentum_etf_rotation.contribution import (
     reconstruct_daily_weights,
     risk_contribution,
 )
-from QuantNodes.strategy.momentum_etf_rotation.universe import (
+from QuantNodes.strategy.momentum_etf_rotation.common.universe import (
     Category, ETFMeta, ETFPool,
 )
 

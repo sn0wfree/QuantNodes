@@ -6,11 +6,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from QuantNodes.strategy.momentum_etf_rotation.brinson import (
+from QuantNodes.strategy.momentum_etf_rotation.common.brinson import (
     CATEGORIES,
     brinson_attribution,
 )
-from QuantNodes.strategy.momentum_etf_rotation.universe import (
+from QuantNodes.strategy.momentum_etf_rotation.common.universe import (
     Category, ETFMeta, ETFPool,
 )
 

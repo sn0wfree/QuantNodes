@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from .universe import ETFPool
+from .backtest_config import BacktestConfig
 
 
 @dataclass

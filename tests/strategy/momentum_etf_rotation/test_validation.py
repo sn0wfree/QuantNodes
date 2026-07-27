@@ -11,8 +11,8 @@ from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
     DiversificationCaps,
     RotationConfig,
 )
-from QuantNodes.strategy.momentum_etf_rotation.universe import DEFAULT_POOL
-from QuantNodes.strategy.momentum_etf_rotation.validation import (
+from QuantNodes.strategy.momentum_etf_rotation.common.universe import DEFAULT_POOL
+from QuantNodes.strategy.momentum_etf_rotation.common.validation import (
     ValidationConfig,
     ValidationReport,
     ablation,

@@ -66,8 +66,8 @@ class StrategyEngine:
 
     def __init__(
         self,
-        vol_targeting: VolTargetingConfig | None = None,
-        trend_filter: TrendFilterConfig | None = None,
+        vol_targeting: VolTargeting | None = None,
+        trend_filter: TrendFilter | None = None,
         stop_loss: StopLossConfig | None = None,
     ):
         self.vol_targeting = vol_targeting
