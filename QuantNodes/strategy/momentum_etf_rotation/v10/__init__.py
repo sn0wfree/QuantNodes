@@ -1,74 +1,51 @@
 # coding=utf-8
-"""v10 自上而下完备资产配置框架.
+"""v10 主体策略 — 4 策略 Vol-parity 组合 (生产版).
 
-5 层架构 (基于 docs/57 用户确认版):
-  Layer 1: 宏观择时 (5 因子 + 熵权 + TV-PR 可选)
-  Layer 2A: 行业轮动 (regime 条件 + 相关约束)
-  Layer 2B: 风格轮动 (IC 驱动, 复用 v4 factor_timing)
-  Layer 2C: 因子选股 (5 因子 + K=10, 复用 v9 citic_multifactor)
-  Layer 3: 风险控制 (Jump Model, 复用 v8)
-  Layer 4: 动态仓位 (pos + bear_prob 双控)
-  Layer 5: 组合构建 (RP × tilt × pos)
+包含:
+  - dual_momentum.py:        Antonacci GEM 模型 4 大类资产轮动
+  - dynamic_weight_schemes.py:  5 方案动态权重 (Static/A/B/C/D/E) + Vol-parity 组合
+  - epo_momentum.py:        EPO 动量策略
+  - rrg_rotation.py:        RRG 四象限轮动
 
-核心贡献来源:
-  P0 #1: 动态仓位 (v9 银河方案, Brinson 71% alpha)
-  P0 #2: Jump Model 牛熊 (v8, Sharpe 1.485)
-  P1 #3: 5 风格因子横截面打分 (v9 中信多因子, +0.37)
-  P1 #5: TV-PR 时变β (v7, +0.15)
-  P2 #8: IC 驱动因子择时 (v4, +0.10)
+历史:
+  - 5 层架构实验版 (从 v10 分离) 已迁移到 v11 (2026-07-27)
+  - 4 策略 Vol-parity 仍是生产首选 (OOS Calmar 1.43)
 """
 from __future__ import annotations
 
-from .config_v10 import (
-    V10Config,
-    MacroLayerConfig,
-    IndustryLayerConfig,
-    StyleLayerConfig,
-    FactorLayerConfig,
-    RiskLayerConfig,
-    PositionLayerConfig,
-    PortfolioLayerConfig,
+# 4 策略主体
+from .dynamic_weight_schemes import (
+    load_navs,
+    compute_nav,
+    metrics,
+    scheme_a_regime,
+    scheme_b_vol_target,
+    scheme_c_drawdown,
+    scheme_d_signal_weighted,
+    scheme_e_hybrid,
+    BASE_WEIGHTS,
+    STRATS,
+    main as dynamic_main,
 )
-from .macro_layer import MacroLayer, compute_macro_signal
-from .industry_layer import IndustryLayer, compute_industry_tilt
-from .style_layer import StyleLayer, compute_style_weights
-from .factor_layer import FactorLayer, compute_factor_tilt
-from .risk_layer import RiskLayer, compute_bear_probability
-from .position_layer import PositionLayer, compute_dynamic_position
-from .portfolio_layer import PortfolioLayer, build_final_weights
-from .v10_strategy import V10Strategy, run_v10
-from .backtest_v10 import run_v10_backtest, V10BacktestResult
+from .dual_momentum import (
+    main as dual_momentum_main,
+    load_etf_daily,
+    load_all_assets_daily,
+    load_all_assets_weekly,
+    dual_momentum_signal,
+    compute_nav as dual_compute_nav,
+    metrics as dual_metrics,
+)
+from .epo_momentum import main as epo_main
+from .rrg_rotation import main as rrg_main
 
 __all__ = [
-    # 配置
-    "V10Config",
-    "MacroLayerConfig",
-    "IndustryLayerConfig",
-    "StyleLayerConfig",
-    "FactorLayerConfig",
-    "RiskLayerConfig",
-    "PositionLayerConfig",
-    "PortfolioLayerConfig",
-    # 层
-    "MacroLayer",
-    "IndustryLayer",
-    "StyleLayer",
-    "FactorLayer",
-    "RiskLayer",
-    "PositionLayer",
-    "PortfolioLayer",
-    # 函数
-    "compute_macro_signal",
-    "compute_industry_tilt",
-    "compute_style_weights",
-    "compute_factor_tilt",
-    "compute_bear_probability",
-    "compute_dynamic_position",
-    "build_final_weights",
-    # 主入口
-    "V10Strategy",
-    "run_v10",
-    # 回测
-    "run_v10_backtest",
-    "V10BacktestResult",
+    # 4 策略主体 (dynamic_weight_schemes)
+    "load_navs", "compute_nav", "metrics",
+    "scheme_a_regime", "scheme_b_vol_target", "scheme_c_drawdown",
+    "scheme_d_signal_weighted", "scheme_e_hybrid",
+    "BASE_WEIGHTS", "STRATS",
+    "dynamic_main", "dual_momentum_main", "epo_main", "rrg_main",
+    "load_etf_daily", "load_all_assets_daily", "load_all_assets_weekly",
+    "dual_momentum_signal", "dual_compute_nav", "dual_metrics",
 ]

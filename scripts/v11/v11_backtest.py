@@ -1,13 +1,21 @@
 # coding=utf-8
 """scripts/v11/v11_backtest.py — v11 完整回测 (真实数据 + ACT-1/2/3).
 
-基于 scripts/v10/v10_backtest.py 修改, 添加 OHLCV 数据加载.
+吸收自:
+  - scripts/v10/v10_backtest.py (5 层 + 周/月调仓对比) [已迁移, 删除]
+  - scripts/v10/v10_compare.py (v11 vs v9 多策略对比) [已迁移, 删除]
+  - scripts/v10/v10_tvpr_sensitivity.py (TV-PR 权重敏感性) [后续 step]
+
+基于 scripts/v10/v10_backtest.py 修改, 添加 OHLCV 数据加载 + ACT-1/2/3.
 
 用法:
-    python3 scripts/v11/v11_backtest.py
+    python3 scripts/v11/v11_backtest.py                     # 默认: W 调仓完整回测
+    python3 scripts/v11/v11_backtest.py --mode compare      # v10 W vs v11 W vs v11 M
+    python3 scripts/v11/v11_backtest.py --freq D            # 单次回测 (日频)
 """
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -25,7 +33,6 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams["font.sans-serif"] = ["SimHei", "WenQuanYi Micro Hei", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
-from QuantNodes.strategy.momentum_etf_rotation.v10.backtest_v10 import run_v10_backtest
 from QuantNodes.strategy.momentum_etf_rotation.v11 import V11Config, run_v11_backtest
 
 
@@ -74,14 +81,12 @@ def run_backtest_for_freq(returns_df, macro_df, ohlcv_df, freq, version='v11'):
     print(f"{'=' * 70}")
 
     try:
-        if version == 'v10':
-            cfg = V10Config()
-            cfg.rebal_freq = freq
-            result = run_v10_backtest(returns_df, macro_df, cfg)
-        else:
-            cfg = V11Config()
-            cfg.rebal_freq = freq
-            result = run_v11_backtest(returns_df, macro_df, ohlcv_df, cfg)
+        if version == 'v10_5layer':
+            print("v10 5 层架构已迁移到 v11, 请用 --version v11 跑 v10 配置.")
+            return None
+        cfg = V11Config()
+        cfg.rebal_freq = freq
+        result = run_v11_backtest(returns_df, macro_df, ohlcv_df, cfg)
         return result
     except Exception as e:
         import traceback
@@ -90,12 +95,18 @@ def run_backtest_for_freq(returns_df, macro_df, ohlcv_df, freq, version='v11'):
         return None
 
 
-def main():
+def main(mode='compare'):
+    """v11 回测主入口.
+
+    Args:
+        mode: 'compare' = v11 W vs v11 M 对比 (默认)
+              'single' = 单调仓频率回测
+    """
     output_dir = REPO / "reports" / "momentum_etf_rotation" / "v11"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print("v11 完整回测 (v10 + ACT-1/2/3, 真实数据)")
+    print("v11 完整回测 (5 层架构 + ACT-1/2/3, 真实数据)")
     print("=" * 70)
 
     # 加载数据
@@ -106,9 +117,32 @@ def main():
     print(f"OHLCV: {ohlcv_df.shape[0]} 周, {ohlcv_df.shape[1] // 5} 代码 × 5 字段")
     print(f"时间: {etf_returns.index.min()} ~ {etf_returns.index.max()}")
 
-    # === v10 回测 (周频) ===
-    result_v10_W = run_backtest_for_freq(etf_returns, macro_df, ohlcv_df, 'W', 'v10')
+    if mode == 'single':
+        return run_single_mode(etf_returns, macro_df, ohlcv_df, output_dir)
+    elif mode == 'compare':
+        return run_compare_mode(etf_returns, macro_df, ohlcv_df, output_dir)
+    else:
+        print(f"未知 mode: {mode}")
+        return
 
+
+def run_single_mode(etf_returns, macro_df, ohlcv_df, output_dir):
+    """单次回测 (默认周频)."""
+    result_v11_W = run_backtest_for_freq(etf_returns, macro_df, ohlcv_df, 'W', 'v11')
+    if result_v11_W is None:
+        print("回测失败")
+        return
+
+    results = [{"版本": "v11", "调仓频率": "W", **result_v11_W.metrics}]
+    df_results = pd.DataFrame(results)
+    print(df_results.to_string(index=False))
+    df_results.to_csv(output_dir / "v11_backtest_results.csv", index=False)
+    print(f"\n保存: {output_dir / 'v11_backtest_results.csv'}")
+    _plot_single(result_v11_W, output_dir)
+
+
+def run_compare_mode(etf_returns, macro_df, ohlcv_df, output_dir):
+    """对比: v11 W vs v11 M (吸收自 v10_backtest.py)."""
     # === v11 回测 (周频) ===
     result_v11_W = run_backtest_for_freq(etf_returns, macro_df, ohlcv_df, 'W', 'v11')
 
@@ -121,15 +155,10 @@ def main():
     print("=" * 70)
 
     results = []
-    if result_v10_W is not None:
-        m = result_v10_W.metrics
-        results.append({"版本": "v10", "调仓频率": "W", **m})
     if result_v11_W is not None:
-        m = result_v11_W.metrics
-        results.append({"版本": "v11", "调仓频率": "W", **m})
+        results.append({"版本": "v11", "调仓频率": "W", **result_v11_W.metrics})
     if result_v11_M is not None:
-        m = result_v11_M.metrics
-        results.append({"版本": "v11", "调仓频率": "M", **m})
+        results.append({"版本": "v11", "调仓频率": "M", **result_v11_M.metrics})
 
     if not results:
         print("回测全部失败")
@@ -147,39 +176,37 @@ def main():
 
     # NAV 对比
     ax = axes[0]
-    if result_v10_W is not None:
-        ax.plot(result_v10_W.nav.index, result_v10_W.nav.values, 
-                label='v10 (W)', linewidth=2, alpha=0.8)
     if result_v11_W is not None:
-        ax.plot(result_v11_W.nav.index, result_v11_W.nav.values, 
+        ax.plot(result_v11_W.nav.index, result_v11_W.nav.values,
                 label='v11 (W)', linewidth=2, alpha=0.8)
     if result_v11_M is not None:
-        ax.plot(result_v11_M.nav.index, result_v11_M.nav.values, 
+        ax.plot(result_v11_M.nav.index, result_v11_M.nav.values,
                 label='v11 (M)', linewidth=2, alpha=0.8, linestyle='--')
-    ax.set_title('NAV Curve: v10 vs v11', fontsize=14)
+    ax.set_title('v11 NAV Curve: W vs M', fontsize=14)
     ax.set_ylabel('NAV')
     ax.legend()
     ax.grid(True, alpha=0.3)
 
     # 仓位曲线
     ax = axes[1]
-    if result_v10_W is not None and result_v10_W.position_size is not None:
-        ax.plot(result_v10_W.position_size.index, result_v10_W.position_size.values,
-                label='v10 position (W)', linewidth=1.5, alpha=0.8)
     if result_v11_W is not None and result_v11_W.position_size is not None:
         ax.plot(result_v11_W.position_size.index, result_v11_W.position_size.values,
                 label='v11 position (W)', linewidth=1.5, alpha=0.8)
+    if result_v11_M is not None and result_v11_M.position_size is not None:
+        ax.plot(result_v11_M.position_size.index, result_v11_M.position_size.values,
+                label='v11 position (M)', linewidth=1.5, alpha=0.8, linestyle='--')
     ax.set_title('Dynamic Position Size', fontsize=14)
     ax.set_ylabel('Position Size')
     ax.set_ylim(0, 1.05)
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    # DD 控制器乘数 (v11 only)
+    # DD 控制器乘数 (v11 only, if wired in)
     ax = axes[2]
-    if result_v11_W is not None and result_v11_W.dd_multipliers is not None:
-        ax.plot(result_v11_W.dd_multipliers.index, result_v11_W.dd_multipliers.values,
-                label='v11 DD multiplier (W)', linewidth=1.5, alpha=0.8, color='red')
+    dd_m = getattr(result_v11_W, 'dd_multipliers', None) if result_v11_W is not None else None
+    if dd_m is not None:
+        ax.plot(dd_m.index, dd_m.values, label='v11 DD multiplier (W)',
+                linewidth=1.5, alpha=0.8, color='red')
     ax.set_title('Drawdown Controller Multiplier (v11)', fontsize=14)
     ax.set_ylabel('Multiplier')
     ax.set_ylim(0, 1.05)
@@ -192,11 +219,12 @@ def main():
     plt.close()
 
     # === Kelly 审计报告 ===
-    if result_v11_W is not None and result_v11_W.kelly_result:
+    kelly = getattr(result_v11_W, 'kelly_result', None) if result_v11_W is not None else None
+    if kelly:
         print(f"\n{'=' * 70}")
         print("v11 Kelly 审计 (ACT-2)")
         print("=" * 70)
-        for k, v in result_v11_W.kelly_result.items():
+        for k, v in kelly.items():
             print(f"  {k}: {v}")
 
     # === 输出 Markdown 报告 ===
@@ -227,16 +255,15 @@ def main():
             f"{row['win_rate']:.2%} | {row['total_return']:.2%} |"
         )
 
-    if result_v11_W is not None and result_v11_W.kelly_result:
-        kr = result_v11_W.kelly_result
+    if kelly:
         report_lines.extend([
             "",
             "## Kelly 审计 (v11)",
             "",
-            f"- Sharpe: {kr.get('sharpe', 0):.3f}",
-            f"- CAGR: {kr.get('cagr', 0):.2%}",
-            f"- Kelly Fraction: {kr.get('kelly_fraction', 0):.1%}",
-            f"- Status: {kr.get('status', 'UNKNOWN')}",
+            f"- Sharpe: {kelly.get('sharpe', 0):.3f}",
+            f"- CAGR: {kelly.get('cagr', 0):.2%}",
+            f"- Kelly Fraction: {kelly.get('kelly_fraction', 0):.1%}",
+            f"- Status: {kelly.get('status', 'UNKNOWN')}",
         ])
 
     report_lines.extend([
@@ -254,5 +281,35 @@ def main():
     print(f"\n完成!")
 
 
+def _plot_single(result, output_dir):
+    """单调仓频率模式的画图."""
+    fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+
+    ax = axes[0]
+    if result.nav is not None:
+        ax.plot(result.nav.index, result.nav.values, linewidth=2, alpha=0.8)
+        ax.set_title(f'v11 NAV ({result.metrics.get("sharpe", 0):.3f} Sharpe)', fontsize=14)
+        ax.set_ylabel('NAV')
+        ax.grid(True, alpha=0.3)
+
+    ax = axes[1]
+    if result.position_size is not None:
+        ax.plot(result.position_size.index, result.position_size.values,
+                linewidth=1.5, alpha=0.8)
+        ax.set_title('Dynamic Position Size', fontsize=14)
+        ax.set_ylabel('Position Size')
+        ax.set_ylim(0, 1.05)
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(output_dir / "v11_backtest.png", dpi=120, bbox_inches='tight')
+    plt.close()
+
+
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='v11 backtest (5-layer + ACT-1/2/3)')
+    parser.add_argument('--mode', choices=['compare', 'single'], default='compare',
+                        help='compare: W vs M; single: single freq (default: compare)')
+    parser.add_argument('--freq', default='W', help='rebalance freq for single mode (default: W)')
+    args = parser.parse_args()
+    main(mode=args.mode)

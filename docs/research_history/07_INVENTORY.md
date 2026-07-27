@@ -78,8 +78,25 @@
 | `QuantNodes/strategy/momentum_etf_rotation/v10/epo_momentum.py` | - | EPO 动量 |
 | `QuantNodes/strategy/momentum_etf_rotation/v10/rrg_rotation.py` | - | RRG 四象限 |
 | `QuantNodes/strategy/momentum_etf_rotation/v10/dynamic_weight_schemes.py` | - | 5 方案动态权重 |
-| **`QuantNodes/strategy/momentum_etf_rotation/v10/portfolio_layer.py`** | - | **Vol-parity 4 策略组合（生产首选）** ⭐ |
-| **`QuantNodes/strategy/momentum_etf_rotation/v10/v10_strategy.py`** | 140 | **V10 5 层架构** ⭐ |
+
+**注**: `v10/` 现只保留 4 策略主体. 5 层架构已迁移到 `v11/`.
+
+### v11（5 层架构 + ACT-1/2/3, 从 v10 迁移）
+
+| 路径 | 用途 |
+|------|------|
+| `QuantNodes/strategy/momentum_etf_rotation/v11/config_v11.py` | V11Config + 所有 LayerConfig |
+| `QuantNodes/strategy/momentum_etf_rotation/v11/macro_layer.py` | Layer 1: 宏观择时 |
+| `QuantNodes/strategy/momentum_etf_rotation/v11/industry_layer.py` | Layer 2A: 行业轮动 |
+| `QuantNodes/strategy/momentum_etf_rotation/v11/style_layer.py` | Layer 2B: 风格轮动 |
+| `QuantNodes/strategy/momentum_etf_rotation/v11/factor_layer.py` | Layer 2C: 因子选股 |
+| `QuantNodes/strategy/momentum_etf_rotation/v11/risk_layer.py` | Layer 3: Jump Model |
+| `QuantNodes/strategy/momentum_etf_rotation/v11/risk_layer_v11.py` | ACT-2/3: Kelly + 回撤控制 |
+| `QuantNodes/strategy/momentum_etf_rotation/v11/position_layer.py` | Layer 4: 动态仓位 |
+| `QuantNodes/strategy/momentum_etf_rotation/v11/portfolio_layer.py` | Layer 5: 组合构建 |
+| **`QuantNodes/strategy/momentum_etf_rotation/v11/v11_strategy.py`** | V11 主入口 (5 层串联 + ACT-1/2/3) |
+| **`QuantNodes/strategy/momentum_etf_rotation/v11/backtest_v11.py`** | v11 回测引擎 |
+| `scripts/v11/v11_backtest.py` | v11 回测脚本 |
 
 ### 通用工具（`common/`）
 

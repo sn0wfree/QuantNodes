@@ -264,8 +264,11 @@ elif regime == 'bear':
 
 ## 七、文件结构
 
+> **历史注 (2026-07-27)**: 本设计 5 层架构代码已迁移到 `v11/`.
+> `v10/` 现在只保留 4 策略 Vol-parity 主体 (dual_momentum, dynamic_weight_schemes 等).
+
 ```
-QuantNodes/strategy/momentum_etf_rotation/v10/
+QuantNodes/strategy/momentum_etf_rotation/v10/  (5 层架构, 已迁移到 v11/)
 ├── __init__.py
 ├── macro_layer.py          # Layer 1: TV-PR + 银河因子配置
 ├── industry_rotation.py    # Layer 2A: 行业轮动 (加强版)

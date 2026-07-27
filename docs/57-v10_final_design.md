@@ -199,24 +199,27 @@ w_final = w_final / sum(w_final)
 
 ## 七、文件结构
 
+> **历史注 (2026-07-27)**: 本设计 5 层架构代码已迁移到 `v11/`.
+> `v10/` 现在只保留 4 策略 Vol-parity 主体.
+> `scripts/v10/v10_backtest.py` 等 5 层脚本已迁移到 `scripts/v11/v11_backtest.py`.
+
 ```
-QuantNodes/strategy/momentum_etf_rotation/v10/
+QuantNodes/strategy/momentum_etf_rotation/v11/  (5 层架构 + ACT-1/2/3, 从 v10 迁移)
 ├── __init__.py
-├── config_v10.py           # 配置中心 (所有可调参数)
+├── config_v11.py           # 配置中心 (所有可调参数)
 ├── macro_layer.py          # Layer 1: 宏观择时 (5 因子 + 熵权 + TV-PR)
 ├── industry_layer.py       # Layer 2A: 行业轮动
 ├── style_layer.py          # Layer 2B: 风格轮动 (IC 驱动)
 ├── factor_layer.py         # Layer 2C: 因子选股 (5 因子 + K=10)
 ├── risk_layer.py           # Layer 3: Jump Model 风险控制
+├── risk_layer_v11.py       # ACT-2/3: Kelly 审计 + 回撤控制 (v11 新增)
 ├── position_layer.py       # Layer 4: 动态仓位
 ├── portfolio_layer.py      # Layer 5: 组合构建
-├── v10_strategy.py         # 主入口: 5 层串联
-└── backtest_v10.py         # v10 回测引擎
+├── v11_strategy.py         # 主入口: 5 层串联 + ACT-1/2/3
+└── backtest_v11.py         # v11 回测引擎
 
-scripts/v10/
-├── v10_backtest.py         # 跑 v10 回测 (周+月)
-├── v10_compare.py          # 对比 v1-v9 (9 策略)
-└── v10_sensitivity.py      # v10 敏感性测试
+scripts/v11/
+└── v11_backtest.py         # v11 回测 + 对比 (吸收自 v10_backtest.py)
 ```
 
 ## 八、预期性能
