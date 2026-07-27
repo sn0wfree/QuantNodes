@@ -82,6 +82,7 @@ class TestStyleRotationV4:
         score = style_rotation_score(
             panel, panel.index[-1],
             {"a": ("510300",), "b": ("510500",), "c": ("159915",)},
+            lookback=60,
         )
         assert isinstance(score, pd.Series)
         assert len(score) == 3
@@ -96,6 +97,7 @@ class TestStyleRotationV4:
                 StyleGroup.MID_CAP: ("510500",),
                 StyleGroup.GROWTH: ("159915",),
             },
+            lookback=60,
         )
         top = select_top_styles(score, top_n=2)
         assert len(top) == 2
@@ -107,6 +109,7 @@ class TestStyleRotationV4:
         score = style_rotation_score(
             panel, panel.index[-1],
             {"a": ("510300",), "b": ("510500",)},
+            lookback=60,
         )
         top_styles = select_top_styles(score, top_n=2)
         picks = style_etf_picks(
@@ -218,7 +221,7 @@ class TestFactorTimingV4:
             "dividend": [0.0],
             "quality": [0.04],
         })
-        w = compute_factor_weights(ic, FactorTimingConfig(base=0.05, power=2.0))
+        w = compute_factor_weights(ic, FactorTimingConfig(base=0.05, power=2.0, factor_ic_threshold=0.0), regime="bear")
         assert abs(sum(w.values()) - 1.0) < 1e-6
         # value 应该有最高权重
         assert w["value"] > w["dividend"]
@@ -239,7 +242,7 @@ class TestFactorTimingV4:
             "momentum": [-0.10],  # 负 IC, 权重应被压低
             "value": [0.20],       # 正 IC, 高权重
         }, index=ALL_V4_CODES[:1])
-        w = compute_factor_weights(ic, FactorTimingConfig(base=0.0, power=2.0, min_weight=0.0))
+        w = compute_factor_weights(ic, FactorTimingConfig(base=0.0, power=2.0, min_weight=0.0), regime="bull")
         # momentum 应该是 0 (IC + base < 0)
         assert w["momentum"] == 0.0
         # value 应该是 1.0
@@ -252,7 +255,9 @@ class TestFactorTimingV4:
             start="2021-01-01", end="2025-12-31",
         )
         assert not ic.empty
-        assert set(ic.columns) == set(FACTOR_NAMES)
+        # use_low_vol=False (default) → low_vol excluded from active factors
+        assert set(ic.columns).issubset(set(FACTOR_NAMES))
+        assert "low_vol" not in ic.columns
 
 
 # ======================================================================

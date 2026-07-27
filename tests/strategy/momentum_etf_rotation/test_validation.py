@@ -43,7 +43,7 @@ def _make_panel(n_days: int = 1200, n_codes: int = 10, seed: int = 42) -> pd.Dat
 
 def _small_pool(n_codes: int = 5):
     """小池 (含足够类别) 用于快速测试."""
-    from QuantNodes.strategy.momentum_etf_rotation.universe import (
+    from QuantNodes.strategy.momentum_etf_rotation.common.universe import (
         Category, ETFMeta, ETFPool,
     )
     members = tuple(

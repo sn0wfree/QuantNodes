@@ -87,7 +87,7 @@ def run_rotation_backtest(
     # Stage 9-D: 训练 HMM regime 检测器
     detector = None
     if rot.regime_detector is not None and rot.regime_detector.enabled:
-        from .regime_detector import HMMRegimeDetector, get_regime_params
+        from ..common.regime_detector import HMMRegimeDetector, get_regime_params
         detector = HMMRegimeDetector(
             n_regimes=rot.regime_detector.n_regimes,
             lookback_train=rot.regime_detector.lookback_train,
