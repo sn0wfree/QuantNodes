@@ -170,6 +170,7 @@ def construct_portfolio_components(
     monday_open_returns: pd.DataFrame | None = None,
     use_latest_beta: bool = False,
     benchmark_daily: pd.Series | None = None,
+    daily_prices_override: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """根据 β_t 构造组合, 返回 (shares, prices, weights).
 
@@ -193,6 +194,7 @@ def construct_portfolio_components(
         monday_open_returns: (T, N) 周一开盘到周五收盘收益
         use_latest_beta: 是否用 β[t] (True) 还是 β[t-1] (False, 默认)
         benchmark_daily: 日频基准价格 (用于趋势过滤)
+        daily_prices_override: 测试用 — 跳过真实数据加载, 直接使用传入的日频价格
 
     Returns:
         shares: (T_daily, N) DataFrame, columns=Y.columns, index=日频工作日
@@ -205,18 +207,22 @@ def construct_portfolio_components(
     codes = list(Y.columns)
 
     # 加载日频价格 (NAV)
-    try:
-        daily_nav_panel = load_etf_nav_panel(codes=codes, end="2026-06-30")
-        available = [c for c in codes if c in daily_nav_panel.columns]
-        if len(available) < len(codes):
-            print(f"  Warning: {len(codes)-len(available)} codes missing in daily prices")
-        daily_prices = daily_nav_panel[available].copy()
-        daily_prices = daily_prices.ffill().dropna(how='all')
-    except Exception:
-        daily_ret = load_daily_etf_returns()
-        available = [c for c in codes if c in daily_ret.columns]
-        daily_prices = (1 + daily_ret[available]).cumprod()
-        daily_prices = daily_prices.ffill().dropna(how='all')
+    if daily_prices_override is not None:
+        # 测试模式: 跳过真实数据加载, 直接使用传入的合成价格
+        daily_prices = daily_prices_override.copy()
+    else:
+        try:
+            daily_nav_panel = load_etf_nav_panel(codes=codes, end="2026-06-30")
+            available = [c for c in codes if c in daily_nav_panel.columns]
+            if len(available) < len(codes):
+                print(f"  Warning: {len(codes)-len(available)} codes missing in daily prices")
+            daily_prices = daily_nav_panel[available].copy()
+            daily_prices = daily_prices.ffill().dropna(how='all')
+        except Exception:
+            daily_ret = load_daily_etf_returns()
+            available = [c for c in codes if c in daily_ret.columns]
+            daily_prices = (1 + daily_ret[available]).cumprod()
+            daily_prices = daily_prices.ffill().dropna(how='all')
 
     # 确保 prices 用日频索引
     daily_prices = daily_prices.reindex(columns=codes)
@@ -269,6 +275,10 @@ def compute_weekly_weights(
 
     pending_weights = None
 
+    # 周频 NAV 跟踪 (用于止损回撤检测)
+    _weekly_nav = 1.0
+    _weekly_nav_max = 1.0
+
     for t in range(1, T):
         # 1. 执行上周信号 (t-1 时生成的 pending_weights)
         if pending_weights is not None and len(pending_weights) > 0:
@@ -279,11 +289,26 @@ def compute_weekly_weights(
             if _stop_loss_active and _stop_loss_triggered:
                 weights_df.iloc[t, :] = 0.0
 
-        # 止损冷却递减
-        if _stop_loss_active and _stop_loss_triggered and _stop_loss_cooldown_remaining > 0:
-            _stop_loss_cooldown_remaining -= 1
-            if _stop_loss_cooldown_remaining <= 0:
-                _stop_loss_triggered = False
+        # 累计本周收益 → 更新周频 NAV
+        if t >= 1:
+            week_ret = 0.0
+            for code in codes:
+                w = weights_df.iloc[t, weights_df.columns.get_loc(code)]
+                if w != 0.0:
+                    r = Y.iloc[t].get(code, 0.0)
+                    if not np.isnan(r):
+                        week_ret += w * r
+            if _stop_loss_active or True:
+                _weekly_nav = _weekly_nav * (1.0 + week_ret)
+                _weekly_nav_max = max(_weekly_nav_max, _weekly_nav)
+                # 回撤检测
+                if _stop_loss_active and not _stop_loss_triggered:
+                    dd = _weekly_nav / _weekly_nav_max - 1.0
+                    if dd <= cfg.stop_loss_threshold:
+                        _stop_loss_triggered = True
+                        _stop_loss_cooldown_remaining = cfg.stop_loss_cooldown
+                        # 触发后重置基线: 退出后的新高将重新开始计算
+                        _weekly_nav_max = _weekly_nav
 
         # 2. 生成 t 时信号 (在 t+1 执行)
         if use_latest_beta:
@@ -332,6 +357,12 @@ def compute_weekly_weights(
                 ma = bm.iloc[-cfg.trend_filter_ma:].mean()
                 if bm.iloc[-1] < ma:
                     weights = weights * cfg.trend_filter_bear
+
+        # 止损冷却递减 (不再自动恢复)
+        if _stop_loss_active and _stop_loss_triggered and _stop_loss_cooldown_remaining > 0:
+            _stop_loss_cooldown_remaining -= 1
+            if _stop_loss_cooldown_remaining <= 0:
+                _stop_loss_triggered = False
 
         pending_weights = weights
 
@@ -385,6 +416,7 @@ def construct_portfolio(
     monday_open_returns: pd.DataFrame | None = None,
     use_latest_beta: bool = False,
     benchmark_daily: pd.Series | None = None,
+    daily_prices_override: pd.DataFrame | None = None,
 ) -> pd.Series | tuple[pd.Series, pd.DataFrame]:
     """根据 β_t 构造组合 (无未来函数版本) — 向后兼容封装.
 
@@ -398,6 +430,7 @@ def construct_portfolio(
         monday_open_returns=monday_open_returns,
         use_latest_beta=use_latest_beta,
         benchmark_daily=benchmark_daily,
+        daily_prices_override=daily_prices_override,
     )
 
     nav = generate_nav_from_shares(

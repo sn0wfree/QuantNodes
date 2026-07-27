@@ -50,6 +50,8 @@ from .macro_substrategy_v7_6 import (
     v7_6_no_pv,
     v7_6_with_stop_loss,
 )
+# ⚠️ DEPRECATED: v7.7 ML 子策略 (PyCaret) 已归档 (R2 ≈ 0, 实验失败)
+# 仅导出用于复现历史实验, 新策略不应使用
 from .macro_substrategy_v7_7 import (
     V7_7Config,
     run_v7_7_backtest,
