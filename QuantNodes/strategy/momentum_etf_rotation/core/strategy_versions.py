@@ -170,8 +170,8 @@ def v7_10_std_newλ(**overrides):
     Returns:
         V7_6Config 实例
     """
-    from .v7.macro_substrategy_v7_6 import V7_6Config
-    from .v7.data_loader_v7_6 import load_v7_10_data
+    from ..v7.macro_substrategy_v7_6 import V7_6Config
+    from ..v7.data_loader_v7_6 import load_v7_10_data
 
     cfg = V7_6Config(**overrides)
     cfg.lambda_tv = 0.06
