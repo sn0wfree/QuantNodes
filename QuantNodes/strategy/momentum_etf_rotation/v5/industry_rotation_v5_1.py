@@ -35,13 +35,10 @@ import pandas as pd
 
 from ..v4.sub_strategy_v4 import (
     SubStrategyConfig,
-    SubStrategyResult,
 )
 from ..v5.industry_factors import FactorEngineConfig
 from ..v5.industry_rotation_v5 import (
     IndustryRotationV5SubStrategy,
-    cross_section_zscore,
-    compute_composite_factor,
 )
 
 

@@ -24,16 +24,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 
 import numpy as np
 import pandas as pd
 
-from .backtest_config import BacktestConfig, CostConfig
+from .backtest_config import BacktestConfig
 from .backtest_utils import (
     apply_max_weight,
     calculate_turnover,
-    calculate_turnover_cost,
     generate_rebalance_dates,
     normalize_weights,
 )

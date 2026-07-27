@@ -18,7 +18,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -254,10 +253,6 @@ def validate_parameter_perturbation(
 ) -> ValidationResult:
     """参数扰动测试: lookback/corr_threshold/a_share_cap 扰动, Calmar > 阈值."""
     from dataclasses import replace
-    from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
-        DiversificationCaps,
-        RotationConfig,
-    )
     from QuantNodes.strategy.momentum_etf_rotation.core.backtest import (
         BacktestConfig, run_rotation_backtest,
     )
