@@ -45,8 +45,14 @@ from .industry_rotation_v5 import (
     cross_section_zscore,
     compute_composite_factor,
 )
+from .industry_rotation_v5_1 import (
+    IndustryRotationV5_1Config,
+    IndustryRotationV5_1SubStrategy,
+    inverse_vol_weights_v5_1,
+)
 
 __all__ = [
+    # v5 等权版
     "IndustryRotationV5Config",
     "IndustryRotationV5SubStrategy",
     "FactorEngineConfig",
@@ -66,4 +72,8 @@ __all__ = [
     "_price_volume_correlation",
     "_first_order_divergence",
     "_volume_range_codirection",
+    # v5.1 逆波动率版
+    "IndustryRotationV5_1Config",
+    "IndustryRotationV5_1SubStrategy",
+    "inverse_vol_weights_v5_1",
 ]

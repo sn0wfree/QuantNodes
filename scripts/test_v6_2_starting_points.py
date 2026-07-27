@@ -19,7 +19,7 @@ import pandas as pd
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
-from QuantNodes.strategy.momentum_etf_rotation.v6_2 import (
+from QuantNodes.strategy.momentum_etf_rotation.v6 import (
     V6_2Config,
     run_v6_2_backtest,
 )

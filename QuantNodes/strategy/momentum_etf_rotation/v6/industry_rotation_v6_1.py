@@ -31,7 +31,7 @@ from ..v5.industry_rotation_v5 import (
     compute_composite_factor,
     cross_section_zscore,
 )
-from ..v5_1.industry_rotation_v5_1 import inverse_vol_weights_v5_1
+from ..v5.industry_rotation_v5_1 import inverse_vol_weights_v5_1
 
 from .factor_weighting import (
     compute_ic_timeseries,

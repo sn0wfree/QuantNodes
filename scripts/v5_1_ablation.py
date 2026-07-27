@@ -25,7 +25,7 @@ from QuantNodes.strategy.momentum_etf_rotation.v5 import (
     IndustryRotationV5Config,
     IndustryRotationV5SubStrategy,
 )
-from QuantNodes.strategy.momentum_etf_rotation.v5_1 import (
+from QuantNodes.strategy.momentum_etf_rotation.v5 import (
     IndustryRotationV5_1Config,
     inverse_vol_weights_v5_1,
 )

@@ -33,7 +33,7 @@ from ..v5.industry_rotation_v5 import (
     IndustryRotationV5SubStrategy,
     compute_composite_factor,
 )
-from ..v5_1.industry_rotation_v5_1 import inverse_vol_weights_v5_1
+from ..v5.industry_rotation_v5_1 import inverse_vol_weights_v5_1
 
 
 @dataclass

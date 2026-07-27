@@ -25,7 +25,7 @@ from ..v5.industry_rotation_v5 import (
     IndustryRotationV5SubStrategy,
     compute_composite_factor,
 )
-from ..v5_1.industry_rotation_v5_1 import inverse_vol_weights_v5_1
+from ..v5.industry_rotation_v5_1 import inverse_vol_weights_v5_1
 from .factor_orthogonal import (
     get_factor_ir_order,
     get_factor_ir_order_expanding,
@@ -34,7 +34,7 @@ from .factor_orthogonal import (
     orthogonalize_factor_panel_qr,
     PREDEFINED_FACTOR_ORDER,
 )
-from ..v6_1.factor_weighting import (
+from .factor_weighting import (
     compute_ic_timeseries,
     compute_factor_weights,
     compute_softmax_weights,
@@ -43,7 +43,7 @@ from ..v6_1.factor_weighting import (
     MIN_MONTHS_FOR_IC,
     DEFAULT_SMOOTH_WINDOW,
 )
-from ..v6_1.industry_rotation_v6_1 import V6_1Config, V6_1SubStrategy
+from .industry_rotation_v6_1 import V6_1Config, V6_1SubStrategy
 
 
 # ============================================================

@@ -110,7 +110,7 @@ def get_factor_ir_order_warmup(
     [Phase 4 关键] 这个函数只用 warmup 期 (调仓日第 1..warmup_months 个) 的 IC,
     不含 OOS 期或调仓日序列外的任何数据. 完全无 look-ahead.
     """
-    from ..v6_1.factor_weighting import compute_cross_section_ic
+    from .factor_weighting import compute_cross_section_ic
 
     rebal_arr = list(rebalance_dates)
     warmup_window = rebal_arr[:warmup_months]
@@ -176,7 +176,7 @@ def get_factor_ir_order_expanding(
     [Phase 1 关键] 调仓日 d_i 的 IC 用 d_{i-1} 及之前的 past rebalance_dates,
     不含 d_i 之后的. 完全无 look-ahead.
     """
-    from ..v6_1.factor_weighting import compute_cross_section_ic
+    from .factor_weighting import compute_cross_section_ic
 
     out: dict[pd.Timestamp, list[str]] = {}
     rebal_arr = list(rebalance_dates)

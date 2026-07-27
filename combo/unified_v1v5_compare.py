@@ -386,7 +386,7 @@ def v5_1_52(close_52, ohlcv_44, top_n=5):
     from QuantNodes.strategy.momentum_etf_rotation.v5 import (
         compute_all_factors_panel, compute_composite_factor,
     )
-    from QuantNodes.strategy.momentum_etf_rotation.v5_1 import (
+    from QuantNodes.strategy.momentum_etf_rotation.v5 import (
         IndustryRotationV5_1Config, inverse_vol_weights_v5_1,
     )
 
