@@ -291,15 +291,3 @@ def compute_factor_metrics(
         return {'Sharpe': 0, 'Calmar': 0, 'MaxDD': 0, 'AnnRet': 0, 'Vol': 0, 'WinRate': 0}
 
     return compute_metrics(returns, freq=freq)
-    calmar = ann_ret / abs(max_dd) if abs(max_dd) > 1e-6 else 0
-
-    return {
-        'Sharpe': float(sharpe),
-        'Calmar': float(calmar),
-        'MaxDD': float(max_dd),
-        'AnnRet': float(ann_ret),
-        'Vol': float(returns.std() * np.sqrt(252)),
-        'WinRate': float((returns > 0).mean()),
-        'NAV_Final': float(nav.iloc[-1]),
-        'NAV_MaxDD': float(max_dd),
-    }

@@ -199,7 +199,7 @@ def fused_signal_v2(
     mom_max = mom.abs().max()
     mom_norm = mom / mom_max if mom_max > 0 else mom
 
-    dist = distance_to_52w_high(nav_df, as_of, window=window_52w)
+    dist = distance_to_52w_high_v2(nav_df, as_of, window=window_52w)
     dist_max = dist.abs().max()
     dist_norm = dist / dist_max if dist_max > 0 else dist
 

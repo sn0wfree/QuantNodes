@@ -22,7 +22,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
+
+if TYPE_CHECKING:
+    from .regime_detector_v4 import RegimeDetector
 
 import numpy as np
 import pandas as pd
@@ -427,7 +430,7 @@ def run_v4_mode(
     panel: pd.DataFrame,
     mode: str,
     factor_timing_cfg: FactorTimingConfig | None = None,
-    hmm_detector: "RegimeDetector | None" = None,
+    hmm_detector: RegimeDetector | None = None,
     hmm_regime_series: pd.Series | None = None,
 ) -> V4Result:
     """按 mode 跑 v4 回测 (便捷接口, Stage 27 支持外部传入 regime).

@@ -309,7 +309,7 @@ def select_and_weight_v2(
         )
         pctl = score.rank(method="average", pct=True)
     elif cfg.signal_type == "fused":
-        score = fused_signal_v2(
+        score = fused_signal(
             nav_df, cfg.lookback, as_of,
             fused_weight=cfg.signal_fused_weight,
             window_52w=cfg.signal_52w_window,
