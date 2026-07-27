@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from QuantNodes.strategy.momentum_etf_rotation.backtest import BacktestConfig
-from QuantNodes.strategy.momentum_etf_rotation.portfolio import (
+from QuantNodes.strategy.momentum_etf_rotation.core.backtest import BacktestConfig
+from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
     DiversificationCaps,
     RotationConfig,
 )

@@ -30,7 +30,7 @@ from QuantNodes.strategy.momentum_etf_rotation.risk_parity import (
     solve_max_diversification,
     risk_contribution,
 )
-from QuantNodes.strategy.momentum_etf_rotation.portfolio import (
+from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
     inverse_vol_weights,
     risk_parity_weights,
 )

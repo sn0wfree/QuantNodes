@@ -154,7 +154,7 @@ def validate_starting_points(
     vcfg: ValidationConfig | None = None,
 ) -> ValidationResult:
     """起点依赖测试: 在多个起点重跑回测, 检查 Calmar 变异系数."""
-    from QuantNodes.strategy.momentum_etf_rotation.backtest import (
+    from QuantNodes.strategy.momentum_etf_rotation.core.backtest import (
         run_rotation_backtest,
     )
     vcfg = vcfg or ValidationConfig()
@@ -215,7 +215,7 @@ def validate_rebalance_offsets(
     通过手动调整 BacktestConfig 中的 rebal_dates 实现 (限制性实现).
     退而求其次: 多次跑回测, 比较 NAV 总收益的稳定性.
     """
-    from QuantNodes.strategy.momentum_etf_rotation.backtest import (
+    from QuantNodes.strategy.momentum_etf_rotation.core.backtest import (
         run_rotation_backtest,
     )
     vcfg = vcfg or ValidationConfig()
@@ -253,11 +253,11 @@ def validate_parameter_perturbation(
 ) -> ValidationResult:
     """参数扰动测试: lookback/corr_threshold/a_share_cap 扰动, Calmar > 阈值."""
     from dataclasses import replace
-    from QuantNodes.strategy.momentum_etf_rotation.portfolio import (
+    from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
         DiversificationCaps,
         RotationConfig,
     )
-    from QuantNodes.strategy.momentum_etf_rotation.backtest import (
+    from QuantNodes.strategy.momentum_etf_rotation.core.backtest import (
         BacktestConfig, run_rotation_backtest,
     )
 
@@ -324,10 +324,10 @@ def ablation(
 ) -> ValidationResult:
     """消融实验: 关闭 4 条规则各做一次, 检查每关一项 Calmar 退化 ≥ 阈值."""
     from dataclasses import replace
-    from QuantNodes.strategy.momentum_etf_rotation.portfolio import (
+    from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
         DiversificationCaps,
     )
-    from QuantNodes.strategy.momentum_etf_rotation.backtest import (
+    from QuantNodes.strategy.momentum_etf_rotation.core.backtest import (
         BacktestConfig, run_rotation_backtest,
     )
 

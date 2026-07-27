@@ -118,7 +118,7 @@ def _create_pool(cfg: dict):
 
 def _create_rotation_config(cfg: dict):
     """从 YAML 创建 RotationConfig."""
-    from ..portfolio import RotationConfig, VolTargeting, CostModel
+    from ..core.portfolio import RotationConfig, VolTargeting, CostModel
     params = cfg.get("strategy_params", {})
     cost_cfg = cfg.get("cost", {})
     risk_cfg = cfg.get("risk", {})

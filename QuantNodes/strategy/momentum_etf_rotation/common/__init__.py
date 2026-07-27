@@ -79,6 +79,15 @@ from .walk_forward import (
     grid_search,
     walk_forward,
 )
+from .rd_utils import (
+    compute_weekly_metrics,
+    compute_daily_metrics,
+    compute_beta_stability,
+    compute_tv_norm,
+    compute_cross_sectional_ic,
+    compute_ic_summary,
+    align_daily_to_weekly,
+)
 
 __all__ = [
     # Metrics (统一指标计算)
@@ -113,4 +122,8 @@ __all__ = [
     # Walk-forward
     "GridSearchSpace", "WalkForwardConfig", "WalkForwardResult", "WalkResult",
     "concat_oos_nav", "grid_search", "walk_forward",
+    # R&D utils
+    "compute_weekly_metrics", "compute_daily_metrics", "compute_beta_stability",
+    "compute_tv_norm", "compute_cross_sectional_ic", "compute_ic_summary",
+    "align_daily_to_weekly",
 ]

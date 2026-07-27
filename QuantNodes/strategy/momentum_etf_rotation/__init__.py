@@ -54,11 +54,11 @@ from .common.risk_parity import (
 )
 
 # ─── v2 (默认, 当前增强版) ─────────────────────────────────
-from .momentum import (  # 与 v2/momentum_v2.py 同义
+from .core.momentum import (
     rank_by_momentum, rank_pctl, distance_to_52w_high,
     slope_r2_score, hybrid_momentum_score, compute_momentum_score,
 )
-from .portfolio import (  # 与 v2/portfolio_v2.py 同义
+from .core.portfolio import (
     DiversificationCaps,
     RotationConfig,
     PortfolioState,
@@ -83,7 +83,7 @@ from .common.fixed_income_plus import (
     FixedIncomePlusResult,
 )
 from .common.metrics import performance_metrics_legacy as performance_metrics
-from .backtest import (
+from .core.backtest import (
     BacktestConfig,
     RotationBacktestResult,
     CICC_BASELINES,
@@ -91,7 +91,7 @@ from .backtest import (
     run_equal_weight_baseline,
     run_rotation_backtest,
 )
-from .strategy_versions import (
+from .core.strategy_versions import (
     v0_0_baseline, v0_1_vt_only, v0_2_tf_only, v0_3_vt_cost, v0_4_hybrid,
     v1_0, VERSIONS, LATEST, get_version,
 )

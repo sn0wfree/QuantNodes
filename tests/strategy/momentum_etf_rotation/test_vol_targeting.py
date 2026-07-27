@@ -15,7 +15,7 @@ from QuantNodes.strategy.momentum_etf_rotation import (
     run_rotation_backtest,
     performance_metrics,
 )
-from QuantNodes.strategy.momentum_etf_rotation.portfolio import (
+from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
     PortfolioState,
     apply_vol_targeting,
     vol_targeting_scale,

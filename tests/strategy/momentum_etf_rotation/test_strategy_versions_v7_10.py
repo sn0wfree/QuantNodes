@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from QuantNodes.strategy.momentum_etf_rotation.strategy_versions import (
+from QuantNodes.strategy.momentum_etf_rotation.core.strategy_versions import (
     v7_10_std_newλ,
     get_version,
     VERSIONS,

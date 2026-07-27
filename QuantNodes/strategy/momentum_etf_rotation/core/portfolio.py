@@ -32,7 +32,7 @@ from .momentum import (
     realized_vol,
     yang_zhang_vol,
 )
-from .common.universe import ETFPool
+from ..common.universe import ETFPool
 
 
 # ----------------------------------------------------------------------------

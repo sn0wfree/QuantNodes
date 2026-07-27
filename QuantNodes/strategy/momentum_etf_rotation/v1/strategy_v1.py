@@ -11,7 +11,7 @@ class V1Strategy(BaseStrategy):
         self._pw, self._st = {}, None
 
     def compute_weights(self, date, pp, nav):
-        from ..portfolio import select_and_weight, apply_stops, equal_weights
+        from ..core.portfolio import select_and_weight, apply_stops, equal_weights
         if self._pw:
             self._st = apply_stops(pp, self.pool, self.rot, self._pw, date)
         else:
@@ -26,7 +26,7 @@ class V1Strategy(BaseStrategy):
         return w
 
     def on_risk_check(self, weights, nav, date):
-        from ..portfolio import apply_vol_targeting
+        from ..core.portfolio import apply_vol_targeting
         if self.rot.vol_targeting.enabled and self._st and len(nav) > 1:
             apply_vol_targeting(self.rot, nav, date, self._st)
             return self._st.weights

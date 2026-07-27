@@ -14,12 +14,12 @@ from QuantNodes.strategy.momentum_etf_rotation import (
     run_rotation_backtest,
     performance_metrics,
 )
-from QuantNodes.strategy.momentum_etf_rotation.momentum import (
+from QuantNodes.strategy.momentum_etf_rotation.core.momentum import (
     distance_to_52w_high,
     fused_signal,
     rank_by_momentum,
 )
-from QuantNodes.strategy.momentum_etf_rotation.portfolio import select_and_weight
+from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import select_and_weight
 
 
 def _make_panel(n_days: int = 600, seed: int = 42) -> pd.DataFrame:

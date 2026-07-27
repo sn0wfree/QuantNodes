@@ -16,7 +16,7 @@ from QuantNodes.strategy.momentum_etf_rotation import (
     run_rotation_backtest,
     performance_metrics,
 )
-from QuantNodes.strategy.momentum_etf_rotation.portfolio import calculate_turnover_cost
+from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import calculate_turnover_cost
 
 
 def _make_panel(n_days: int = 800, seed: int = 42) -> pd.DataFrame:

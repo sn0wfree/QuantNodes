@@ -15,7 +15,7 @@ from QuantNodes.strategy.momentum_etf_rotation import (
     run_rotation_backtest,
     performance_metrics,
 )
-from QuantNodes.strategy.momentum_etf_rotation.portfolio import (
+from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
     apply_stops,
     apply_trend_filter,
     check_trend_filter,
@@ -85,7 +85,7 @@ class TestApplyTrendFilter:
         """trend_filter disabled → 权重不变."""
         weights = {"518880": 0.5, "513100": 0.5}
         # 构造一个 fake state (ranked 是必填)
-        from QuantNodes.strategy.momentum_etf_rotation.portfolio import PortfolioState
+        from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import PortfolioState
         state = PortfolioState(date=panel.index[-1], ranked=[], chosen=[],
                                 weights=dict(weights))
         new_state = apply_trend_filter(panel, cfg_trend_disabled, panel.index[-1], state)
@@ -102,7 +102,7 @@ class TestApplyTrendFilter:
             lookback=120, top_n=5, min_history=120,
             trend_filter=TrendFilter(enabled=True, ma_window=200, exposure_bear=0.5),
         )
-        from QuantNodes.strategy.momentum_etf_rotation.portfolio import PortfolioState
+        from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import PortfolioState
         weights = {"518880": 0.5, "513100": 0.5}
         state = PortfolioState(date=panel_bull.index[-1], ranked=[], chosen=[],
                                 weights=dict(weights))
@@ -125,7 +125,7 @@ class TestApplyTrendFilter:
                 exposure_bear=0.5, bond_code="511260",
             ),
         )
-        from QuantNodes.strategy.momentum_etf_rotation.portfolio import PortfolioState
+        from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import PortfolioState
         weights = {"518880": 0.5, "513100": 0.5}
         state = PortfolioState(date=panel_bear.index[-1], ranked=[], chosen=[],
                                 weights=dict(weights))

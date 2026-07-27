@@ -16,7 +16,7 @@ from QuantNodes.strategy.momentum_etf_rotation import (
     run_rotation_backtest,
     performance_metrics,
 )
-from QuantNodes.strategy.momentum_etf_rotation.portfolio import (
+from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
     PortfolioState,
     _apply_concentration_caps,
     apply_concentration_caps,
@@ -122,7 +122,7 @@ class TestSelectAndWeightConcentration:
             ),
         )
         date = panel.index[-1]
-        from QuantNodes.strategy.momentum_etf_rotation.portfolio import select_and_weight
+        from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import select_and_weight
         s_no = select_and_weight(panel, DEFAULT_POOL, cfg_no, date)
         s_yes = select_and_weight(panel, DEFAULT_POOL, cfg_yes, date)
         max_no = max(s_no.weights.values()) if s_no.weights else 0
@@ -140,7 +140,7 @@ class TestSelectAndWeightConcentration:
             ),
         )
         date = panel.index[-1]
-        from QuantNodes.strategy.momentum_etf_rotation.portfolio import select_and_weight
+        from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import select_and_weight
         state = select_and_weight(panel, DEFAULT_POOL, cfg, date)
         # 总权重 ≤ 1.0 (允许持有现金)
         assert sum(state.weights.values()) <= 1.0 + 1e-6

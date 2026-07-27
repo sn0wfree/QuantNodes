@@ -15,7 +15,7 @@ from QuantNodes.strategy.momentum_etf_rotation import (
     run_rotation_backtest,
     performance_metrics,
 )
-from QuantNodes.strategy.momentum_etf_rotation.momentum import (
+from QuantNodes.strategy.momentum_etf_rotation.core.momentum import (
     slope_r2_score,
     hybrid_momentum_score,
     compute_momentum_score,

@@ -31,10 +31,10 @@ from QuantNodes.strategy.momentum_etf_rotation.common.universe import (
     Category, ETFMeta, ETFPool, DEFAULT_POOL,
 )
 from QuantNodes.strategy.momentum_etf_rotation.common.metrics import compute_metrics
-from QuantNodes.strategy.momentum_etf_rotation.portfolio import (
+from QuantNodes.strategy.momentum_etf_rotation.core.portfolio import (
     RotationConfig, DiversificationCaps, TrendFilter, VolTargeting, CostModel,
 )
-from QuantNodes.strategy.momentum_etf_rotation.backtest import (
+from QuantNodes.strategy.momentum_etf_rotation.core.backtest import (
     BacktestConfig, run_rotation_backtest,
 )
 from QuantNodes.strategy.momentum_etf_rotation.v3.multi_strategy_v3 import (

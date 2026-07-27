@@ -18,12 +18,12 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 
-from .common.fixed_income_plus import (
+from ..common.fixed_income_plus import (
     FixedIncomePlus,
     FixedIncomePlusConfig,
     FixedIncomePlusResult,
 )
-from .common.metrics import performance_metrics_legacy as performance_metrics
+from ..common.metrics import performance_metrics_legacy as performance_metrics
 from .portfolio import (
     DiversificationCaps,
     PortfolioState,
@@ -35,7 +35,7 @@ from .portfolio import (
     inverse_vol_weights,
     select_and_weight,
 )
-from .common.universe import ETFPool
+from ..common.universe import ETFPool
 
 
 @dataclass
