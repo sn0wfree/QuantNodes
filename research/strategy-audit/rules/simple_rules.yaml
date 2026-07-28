@@ -1,0 +1,143 @@
+version: "1.0"
+description: "Engine A static rules for quantnodes-strategy-audit. 17 rules covering look-ahead / nan_safe / standardize / oos_validation."
+
+rules:
+  - id: "lookahead.shift_negative"
+    description: "使用 .shift(-N) 引用未来 N 期数据"
+    pattern: "\\.shift\\(\\s*-([1-9]\\d*)\\s*\\)"
+    severity: CRITICAL
+    lesson: "L-20260720-1"
+    category: "lookahead"
+    auto_checkable: "static"
+
+  - id: "lookahead.full_sample_mean"
+    description: "全样本 .mean() / .std() / .var() 可能含未来"
+    pattern: "\\.(mean|std|var)\\(\\)"
+    severity: CRITICAL
+    lesson: "L-202"
+    category: "lookahead"
+    auto_checkable: "static"
+    skip_if_preceded_by: "\\.(rolling|expanding|ewm)"
+    skip_window_lines: 3
+
+  - id: "lookahead.standardscaler_default"
+    description: "sklearn StandardScaler 默认全样本 fit"
+    pattern: "StandardScaler\\(\\)"
+    severity: CRITICAL
+    lesson: "L-202"
+    category: "lookahead"
+    auto_checkable: "static"
+
+  - id: "lookahead.minmaxscaler_default"
+    description: "sklearn MinMaxScaler 默认全样本 fit"
+    pattern: "MinMaxScaler\\(\\)"
+    severity: HIGH
+    lesson: "L-202"
+    category: "lookahead"
+    auto_checkable: "static"
+
+  - id: "lookahead.train_test_split_leakage"
+    description: "train_test_split 使用 shuffle=True (时序数据应禁用)"
+    pattern: "train_test_split.*shuffle\\s*=\\s*True"
+    severity: HIGH
+    lesson: "L-204"
+    category: "lookahead"
+    auto_checkable: "static"
+
+  - id: "lookahead.shuffle_split_true"
+    description: "ShuffleSplit 默认 shuffle=True, 时序数据禁用"
+    pattern: "(ShuffleSplit|shuffle\\s*=\\s*True)"
+    severity: HIGH
+    lesson: "L-204"
+    category: "lookahead"
+    auto_checkable: "static"
+
+  - id: "nan_safe.bare_pct_change"
+    description: "裸 .pct_change() 调用, 默认填 0, 跨缺口收益有 NaN 风险"
+    pattern: "\\.pct_change\\(\\)"
+    severity: HIGH
+    lesson: "L-213"
+    category: "nan_safe"
+    auto_checkable: "static"
+    skip_if_followed_by: "\\.where\\("
+
+  - id: "nan_safe.fillna_zero"
+    description: "使用 .fillna(0) 处理收益, 会产生伪零收益"
+    pattern: "\\.fillna\\(\\s*0\\s*\\)"
+    severity: HIGH
+    lesson: "L-20260713-2"
+    category: "nan_safe"
+    auto_checkable: "static"
+
+  - id: "nan_safe.dropna_returns"
+    description: ".dropna() 直接丢弃收益数据, 可能丢失有效信息"
+    pattern: "\\.dropna\\(\\)"
+    severity: MEDIUM
+    lesson: "L-213"
+    category: "nan_safe"
+    auto_checkable: "static"
+    context_hint: ["return", "ret", "pct", "compute"]
+
+  - id: "nan_safe.interpolate_returns"
+    description: ".interpolate() 处理收益可能产生伪数据"
+    pattern: "\\.interpolate\\("
+    severity: MEDIUM
+    lesson: "L-213"
+    category: "nan_safe"
+    auto_checkable: "static"
+
+  - id: "standardize.full_sample_zscore_inline"
+    description: "内联全样本 Z-score: (X - X.mean()) / X.std()"
+    pattern: "\\(\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*-\\s*\\1\\.mean\\(\\)\\s*\\)\\s*/\\s*\\1\\.std\\(\\)"
+    severity: CRITICAL
+    lesson: "L-202"
+    category: "standardize"
+    auto_checkable: "static"
+
+  - id: "standardize.full_sample_zscore_var"
+    description: "全样本 Z-score 用 .var()"
+    pattern: "[A-Za-z_][A-Za-z0-9_]*\\s*/\\s*[A-Za-z_][A-Za-z0-9_]*\\.var\\(\\)"
+    severity: HIGH
+    lesson: "L-202"
+    category: "standardize"
+    auto_checkable: "static"
+
+  - id: "lookahead.data_shift_negative_index"
+    description: "data[t-1].shift(-N) 引用未来"
+    pattern: "\\[\\s*([^]]+)\\s*\\]\\.shift\\(\\s*-\\d+\\s*\\)"
+    severity: HIGH
+    lesson: "L-20260720-1"
+    category: "lookahead"
+    auto_checkable: "static"
+
+  - id: "oos.fit_transform_on_full"
+    description: "fit_transform 直接调用, 无 train/test split"
+    pattern: "\\.fit_transform\\("
+    severity: HIGH
+    lesson: "L-204"
+    category: "lookahead"
+    auto_checkable: "static"
+
+  - id: "metric.in_sample_eval"
+    description: "train_score / in_sample 可能误用"
+    pattern: "(train_score|in_sample)"
+    severity: MEDIUM
+    lesson: "L-201"
+    category: "evaluation"
+    auto_checkable: "static"
+
+  - id: "oos.full_sample_method"
+    description: "method='full' 或 method='admm' 是 DEPRECATED"
+    pattern: "method\\s*=\\s*[\"'](full|admm)[\"']"
+    severity: CRITICAL
+    lesson: "L-223"
+    category: "oos_validation"
+    auto_checkable: "static"
+
+  - id: "lookahead.full_dataset_iteration"
+    description: "for ... in range(0, len(data)) 可能遗漏 expanding window"
+    pattern: "for\\s+\\w+\\s+in\\s+range\\(\\s*0\\s*,\\s*len\\("
+    severity: MEDIUM
+    lesson: "L-204"
+    category: "lookahead"
+    auto_checkable: "static"

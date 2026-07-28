@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quantnodes-strategy-audit"
+version = "0.2.0"
+description = "量化策略审计工具 — 教训驱动 + 双引擎 (static + agent context provider) + 5 道闸门"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "QuantNodes Team"},
+]
+keywords = [
+    "quantitative",
+    "audit",
+    "backtest",
+    "look-ahead-bias",
+    "factor-analysis",
+    "skill",
+    "mcp",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+dependencies = [
+    "click>=8.0",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.0"]
+sarif = ["sarif-om>=1.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.0",
+]
+
+[project.scripts]
+quantnodes-audit = "quantnodes_strategy_audit.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sn0wfree/quantnodes-strategy-audit"
+Documentation = "https://quantnodes-strategy-audit.readthedocs.io"
+Issues = "https://github.com/sn0wfree/quantnodes-strategy-audit/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+quantnodes_strategy_audit = ["py.typed"]
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --strict-markers"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+]

@@ -1,0 +1,74 @@
+# Example: Adding a custom YAML rule
+
+This file shows how to add a new rule to `rules/simple_rules.yaml`.
+
+## Step 1: Open rules/simple_rules.yaml
+
+```bash
+$EDITOR rules/simple_rules.yaml
+```
+
+## Step 2: Add new rule
+
+```yaml
+rules:
+  # ... existing rules ...
+
+  # New rule: detect for-loops with hardcoded range(0, len(data))
+  - id: "lookahead.for_loop_full_range"
+    description: "for loop with range(0, len(data)) 可能遗漏 expanding window"
+    pattern: "for\\s+\\w+\\s+in\\s+range\\(\\s*0\\s*,\\s*len\\("
+    severity: MEDIUM
+    lesson: "L-204"
+    category: "lookahead"
+    auto_checkable: "static"
+```
+
+## Step 3: Test the rule
+
+```python
+from pathlib import Path
+from quantnodes_strategy_audit import StaticEngine
+
+engine = StaticEngine(Path("rules/simple_rules.yaml"))
+warnings = engine.scan_file(Path("my_strategy.py"))
+for w in warnings:
+    if w.detector == "lookahead.for_loop_full_range":
+        print(f"Found: {w.snippet}")
+```
+
+## Step 4: Add unit test
+
+```python
+# tests/engines/test_static_engine.py
+def test_detects_for_loop_full_range(self, rules_path: Path, tmp_path: Path):
+    code = "for i in range(0, len(data)):\n    process(i)\n"
+    f = tmp_path / "test.py"
+    f.write_text(code)
+    engine = StaticEngine(rules_path)
+    warnings = engine.scan_file(f)
+    assert any(w.detector == "lookahead.for_loop_full_range" for w in warnings)
+```
+
+## Step 5: Run tests
+
+```bash
+pytest tests/engines/test_static_engine.py -v
+ruff check src/ tests/
+```
+
+## Available Skip Conditions
+
+```yaml
+skip_if_preceded_by: "\\.rolling"     # Same line or preceding N lines
+skip_if_followed_by: "\\.where\\("    # Same line or following N lines
+skip_window_lines: 3                  # Default 3 lines
+context_hint: ["return", "pct"]        # Only trigger if keywords nearby
+```
+
+## Tips
+
+- Keep regex patterns simple and obvious
+- Always include `lesson:` to link to L-NNN documentation
+- Use `skip_*` liberally to reduce false positives
+- Add unit tests for each new rule
