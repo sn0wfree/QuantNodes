@@ -36,19 +36,23 @@ HF_DIR = ROOT / "data" / "high_freq_macro"
 
 
 # ============================================================
-# 1. 全期 OOS 回测
+# 1. 全期 OOS 回测 (有/无宏观)
 # ============================================================
-def run_full_backtest():
+def run_full_backtest(include_macro: bool = True):
     """全期回测 (2018-2026)."""
+    tag = "有宏观" if include_macro else "无宏观"
     print("=" * 60)
-    print("v7.10 test2: Rolling Window Z-score 全期回测")
+    print(f"v7.10 test2: Rolling Z-score 全期回测 ({tag})")
     print("=" * 60)
 
     X_raw, Y, codes = load_v7_9_data()
     factor_names = (HF_DIR / "v7_9_factor_names.csv").read_text().strip().split("\n")[1:]
 
-    X = standardize_v7_10_test2_correct(X_raw, factor_names)
-    print(f"X: {X.shape}, Y: {Y.shape}")
+    X = standardize_v7_10_test2_correct(X_raw, factor_names, include_macro=include_macro)
+    if not include_macro:
+        print(f"X: {X.shape} (宏观列已填 NaN)")
+    else:
+        print(f"X: {X.shape}")
 
     cfg = V7_6Config(lambda_tv=0.06, lambda_l1=0.105, method="expanding", min_history=52)
 
@@ -83,10 +87,11 @@ START_DATES = [
 ]
 
 
-def run_cv_test():
+def run_cv_test(include_macro: bool = True):
     """3 起点 CV% 测试."""
+    tag = "有宏观" if include_macro else "无宏观"
     print("\n" + "=" * 60)
-    print("v7.10 test2: Rolling Window Z-score CV% 测试")
+    print(f"v7.10 test2: Rolling Z-score CV% 测试 ({tag})")
     print("=" * 60)
 
     X_raw_full, Y_full, codes = load_v7_9_data()
@@ -102,7 +107,7 @@ def run_cv_test():
         X_truncated = X_raw_full[idx]
 
         # 独立标准化
-        X = standardize_v7_10_test2_correct(X_truncated, factor_names)
+        X = standardize_v7_10_test2_correct(X_truncated, factor_names, include_macro=include_macro)
         print(f"  数据: {len(Y)} 周, 标准化后 NaN 比例: {np.isnan(X).mean():.4f}")
 
         cfg = V7_6Config(lambda_tv=0.06, lambda_l1=0.105, method="expanding", min_history=52)
@@ -151,5 +156,7 @@ def run_cv_test():
 
 
 if __name__ == "__main__":
-    run_full_backtest()
-    run_cv_test()
+    for include_macro in [True, False]:
+        run_full_backtest(include_macro=include_macro)
+        run_cv_test(include_macro=include_macro)
+        print("\n" + "#" * 60 + "\n")

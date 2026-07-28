@@ -638,7 +638,11 @@ MACRO_ROLLING_RANK = {11}
 MACRO_ROLLING_RANK_WINDOW = 156  # 3 年 = 156 周
 
 
-def standardize_v7_10_test2_correct(X_panel: np.ndarray, factor_names: list[str]) -> np.ndarray:
+def standardize_v7_10_test2_correct(
+    X_panel: np.ndarray,
+    factor_names: list[str],
+    include_macro: bool = True,
+) -> np.ndarray:
     """v7.10 test2: Rolling Window 标准化 (消除未来函数, 改善早期稳定性).
 
     与 standardize_v7_10 的区别:
@@ -648,18 +652,25 @@ def standardize_v7_10_test2_correct(X_panel: np.ndarray, factor_names: list[str]
 
     处理顺序:
       1. Winsorize 极端偏度因子 (expanding quantile, 仅用 [0:t] 数据)
-      2. 宏观因子: rolling Z-score / rolling rank / 不标准化
+      2. 宏观因子: rolling Z-score / rolling rank / 不标准化 (可选)
       3. PV 因子: 截面 Z-score (无未来函数, 保持不变)
 
     Parameters:
         X_panel: (T, N, K) 因子面板 (v7.9 原始)
         factor_names: 因子名称列表
+        include_macro: 是否包含宏观因子 (默认 True)
+            True  = 36 因子 (17 宏观 + 19 PV)
+            False = 仅 PV 因子, 宏观列填 NaN
 
     Returns:
         X_std: 标准化后的因子面板
     """
     T, N, K = X_panel.shape
     X_std = X_panel.copy()
+
+    # include_macro=False 时, 宏观列填 NaN
+    if not include_macro:
+        X_std[:, :, :MACRO_K] = np.nan
 
     # ── Step 1: Winsorize 极端偏度因子 (expanding quantile) ──
     for k in range(K):
@@ -676,30 +687,31 @@ def standardize_v7_10_test2_correct(X_panel: np.ndarray, factor_names: list[str]
             q_high = np.quantile(valid, 0.99)
             X_std[t, :, k] = np.clip(X_std[t, :, k], q_low, q_high)
 
-    # ── Step 2: 宏观因子处理 ──
-    # 宏观因子在所有资产间共享同一值, 用第一个资产提取时序
-    for k in range(min(MACRO_K, K)):
-        if k in MACRO_SKIP_STANDARDIZATION:
-            continue  # k=10,13,14,16: 不标准化
+    # ── Step 2: 宏观因子处理 (可选) ──
+    if include_macro:
+        # 宏观因子在所有资产间共享同一值, 用第一个资产提取时序
+        for k in range(min(MACRO_K, K)):
+            if k in MACRO_SKIP_STANDARDIZATION:
+                continue  # k=10,13,14,16: 不标准化
 
-        series = X_std[:, 0, k].copy()  # (T,)
+            series = X_std[:, 0, k].copy()  # (T,)
 
-        if k in MACRO_ROLLING_RANK:
-            # k=11: rolling rank 归一化 [0,1], 窗口=156 周 (3 年)
-            rank_series = pd.Series(series)
-            rolling_rank = rank_series.rolling(
-                window=MACRO_ROLLING_RANK_WINDOW,
-                min_periods=MACRO_ROLLING_RANK_WINDOW,
-            ).apply(lambda x: pd.Series(x).rank().iloc[-1] / len(x), raw=False)
-            X_std[:, :, k] = rolling_rank.values[:, np.newaxis]
-        else:
-            # k=0-9,12,15: rolling Z-score, 窗口=52 周 (1 年)
-            s = pd.Series(series)
-            rolling_mean = s.rolling(window=52, min_periods=52).mean()
-            rolling_std = s.rolling(window=52, min_periods=52).std()
-            # Z-score
-            z = (s - rolling_mean) / rolling_std.replace(0, np.nan)
-            X_std[:, :, k] = z.values[:, np.newaxis]
+            if k in MACRO_ROLLING_RANK:
+                # k=11: rolling rank 归一化 [0,1], 窗口=156 周 (3 年)
+                rank_series = pd.Series(series)
+                rolling_rank = rank_series.rolling(
+                    window=MACRO_ROLLING_RANK_WINDOW,
+                    min_periods=MACRO_ROLLING_RANK_WINDOW,
+                ).apply(lambda x: pd.Series(x).rank().iloc[-1] / len(x), raw=False)
+                X_std[:, :, k] = rolling_rank.values[:, np.newaxis]
+            else:
+                # k=0-9,12,15: rolling Z-score, 窗口=52 周 (1 年)
+                s = pd.Series(series)
+                rolling_mean = s.rolling(window=52, min_periods=52).mean()
+                rolling_std = s.rolling(window=52, min_periods=52).std()
+                # Z-score
+                z = (s - rolling_mean) / rolling_std.replace(0, np.nan)
+                X_std[:, :, k] = z.values[:, np.newaxis]
 
     # ── Step 3: PV 因子 - 截面 Z-score (无未来函数, 保持不变) ──
     for t in range(T):
