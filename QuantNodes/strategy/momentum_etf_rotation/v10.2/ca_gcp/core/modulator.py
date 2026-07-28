@@ -22,9 +22,10 @@ def compute_systemic_stress(
     only on genuinely stressed days. This prevents over-widening
     intervals during ordinary market activity.
     """
-    cross_dispersion = returns.std(axis=1)
-    anomaly_count = (returns.abs() > (threshold_sigma * volatility)).sum(axis=1)
-    anomaly_frac = anomaly_count / returns.shape[1]
+    aligned_returns, aligned_vol = returns.align(volatility, join="inner", axis=1)
+    cross_dispersion = aligned_returns.std(axis=1)
+    anomaly_count = (aligned_returns.abs() > (threshold_sigma * aligned_vol)).sum(axis=1)
+    anomaly_frac = anomaly_count / aligned_returns.shape[1]
 
     a, b, c = -2.5, 1.0, 4.0
     z = a + b * cross_dispersion / (cross_dispersion.std() + 1e-8) + c * (
@@ -40,5 +41,6 @@ def apply_modulator(
     eta: float = 0.5,
 ) -> pd.DataFrame:
     """Multiply half-width by exp(eta * S)."""
-    factor = np.exp(eta * stress.reindex(half_width.index).fillna(0.0).values)
+    stress_aligned = stress.reindex(half_width.index).fillna(0.0)
+    factor = np.exp(eta * stress_aligned.values)
     return half_width.multiply(factor, axis=0)

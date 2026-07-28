@@ -6,7 +6,12 @@ import pandas as pd
 
 
 def _is_covered(actual: pd.DataFrame, lower: pd.DataFrame, upper: pd.DataFrame) -> pd.DataFrame:
-    return ((actual >= lower) & (actual <= upper)).astype(float)
+    common_cols = actual.columns.intersection(lower.columns).intersection(upper.columns)
+    common_idx = actual.index.intersection(lower.index).intersection(upper.index)
+    a = actual.loc[common_idx, common_cols]
+    l = lower.loc[common_idx, common_cols]
+    u = upper.loc[common_idx, common_cols]
+    return ((a >= l) & (a <= u)).astype(float)
 
 
 def compute_coverage_metrics(
@@ -27,8 +32,9 @@ def compute_coverage_metrics(
 
     extr = float("nan")
     if extreme_vol is not None:
-        mask = extreme_vol.reindex(covered.index).fillna(False).astype(bool)
-        if mask.any():
+        aligned_mask = extreme_vol.reindex(covered.index)
+        if aligned_mask.notna().any():
+            mask = aligned_mask.fillna(False).astype(bool)
             extr = float(covered.loc[mask].values.mean())
 
     return {

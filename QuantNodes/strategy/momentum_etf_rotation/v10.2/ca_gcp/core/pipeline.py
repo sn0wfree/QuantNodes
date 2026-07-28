@@ -107,8 +107,9 @@ class CAGCPipeline:
                 realized_window=self.config.realized_window,
             )
 
-        calib_sigma = volatility.reindex(index=returns_calib.index, columns=self.codes)
-        test_sigma = volatility.reindex(index=returns_test.index, columns=self.codes)
+        volatility = volatility.reindex(columns=self.codes)
+        calib_sigma = volatility.reindex(index=returns_calib.index)
+        test_sigma = volatility.reindex(index=returns_test.index)
 
         calib_resid = (returns_calib - point_forecasts_calib).abs()
         scores_calib = calib_resid / calib_sigma
