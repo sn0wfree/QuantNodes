@@ -133,6 +133,30 @@ adjusted_weights
 - 极端日（2022-10-31, 2022-11-01）大幅减仓规避底部回撤
 - 系统压力回归正常后逐步恢复
 
+### 3.3 真 v10 接入结果 (Phase 4 E)
+
+`experiments/08_v10_2_backtest.py` 用真 `v10.scheme_e_hybrid` 主体替换 mock：
+
+| 策略 | Rules | Sharpe | MaxDD | Calmar | 触发数 |
+|------|-------|--------|-------|--------|--------|
+| **v10 (scheme_e_hybrid)** | n/a | **1.15** | -3.1% | **2.01** | - |
+| v10.2 (+CA-GCP) | default | 0.06 | -5.0% | 0.09 | 108 |
+| v10.2 (+CA-GCP) | experimental | 0.02 | -5.6% | 0.04 | 108 |
+| v10.2 (warning only) | none | **1.15** | -3.1% | **2.01** | 108 |
+
+**关键发现**：CA-GCP 风控层**伤害**了 v10 而非帮助。
+
+**原因**：
+1. v10 (scheme_e_hybrid) 是**低风险策略**：vol 5.4%, MaxDD 3.1% — 已经非常稳健
+2. CA-GCP 是基于 ETF 池（38 ETF）训练的，**信号与 v10 4 策略组合的暴露不对齐**
+3. 系统压力调制器对 v10 的 sub-strategy NAVs 不敏感（v10 用 NAV 而非 ETF returns）
+4. 风控层在 v10 已经很稳的时候加了不必要的减仓
+
+**建议**：
+- **v10.2 不推荐作为 v10 + 自动减仓的方案**
+- CA-GCP 在 v10 的**正确用途**是**预警系统**（仅 monitoring，不减仓）
+- 对真正高 vol 的策略（如 ETF-only momentum）CA-GCP 风控才有效
+
 ---
 
 ## 四、局限与未来工作

@@ -27,7 +27,7 @@ def compute_systemic_stress(
     anomaly_count = (aligned_returns.abs() > (threshold_sigma * aligned_vol)).sum(axis=1)
     anomaly_frac = anomaly_count / aligned_returns.shape[1]
 
-    a, b, c = -2.5, 1.0, 4.0
+    a, b, c = -4.0, 1.5, 4.0
     z = a + b * cross_dispersion / (cross_dispersion.std() + 1e-8) + c * (
         anomaly_frac - anomaly_frac.mean()
     ) / (anomaly_frac.std() + 1e-8)
