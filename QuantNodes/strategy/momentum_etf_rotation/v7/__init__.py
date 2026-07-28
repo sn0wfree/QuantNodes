@@ -43,6 +43,10 @@ from .macro_substrategy_v7_3 import (
     compute_trend_score,
 )
 from .symmetry import RollingSymmetry
+# ⚠️ DEPRECATED: v7.10 TV-PR 全样本标准化含未来函数 (2026-07-28 修复)
+# 修复前: OOS Sharpe 1.017, CV% 16.6% PASS
+# 修复后: OOS Sharpe -0.670, CV% 111.6% DEPRECATED
+# 业绩全部来自全样本 mean/std/quantile 偷看未来数据
 from .macro_substrategy_v7_6 import (
     V7_6Config,
     run_v7_6_backtest,
