@@ -626,6 +626,96 @@ def standardize_v7_10(X_panel: np.ndarray, factor_names: list[str]) -> np.ndarra
     return X_std
 
 
+# ============================================================
+# test2: Rolling Window 标准化 (宏观因子 rolling Z-score/rank)
+# ============================================================
+
+# 不需要标准化的宏观因子索引 (已经是 0-1 排名或 0/1 虚拟变量或 -1~1 相关系数)
+MACRO_SKIP_STANDARDIZATION = {10, 13, 14, 16}  # vix_rank20, real_rate_rank20, tf_dummy, gold_oil_corr
+
+# 3 年滚动排名的因子 (k=11: real_rate 水平值)
+MACRO_ROLLING_RANK = {11}
+MACRO_ROLLING_RANK_WINDOW = 156  # 3 年 = 156 周
+
+
+def standardize_v7_10_test2_correct(X_panel: np.ndarray, factor_names: list[str]) -> np.ndarray:
+    """v7.10 test2: Rolling Window 标准化 (消除未来函数, 改善早期稳定性).
+
+    与 standardize_v7_10 的区别:
+      - 宏观因子: 不再用全样本或 expanding Z-score, 改为 rolling(52) Z-score
+      - k=11 (real_rate): 改为 rolling(156) rank 归一化 [0,1]
+      - k=10,13,14,16: 不标准化 (已是 rank/dummy/corr)
+
+    处理顺序:
+      1. Winsorize 极端偏度因子 (expanding quantile, 仅用 [0:t] 数据)
+      2. 宏观因子: rolling Z-score / rolling rank / 不标准化
+      3. PV 因子: 截面 Z-score (无未来函数, 保持不变)
+
+    Parameters:
+        X_panel: (T, N, K) 因子面板 (v7.9 原始)
+        factor_names: 因子名称列表
+
+    Returns:
+        X_std: 标准化后的因子面板
+    """
+    T, N, K = X_panel.shape
+    X_std = X_panel.copy()
+
+    # ── Step 1: Winsorize 极端偏度因子 (expanding quantile) ──
+    for k in range(K):
+        fname = factor_names[k] if k < len(factor_names) else f"f{k}"
+        if fname not in SKEWED_FACTORS:
+            continue
+
+        for t in range(T):
+            vals = X_std[:t + 1, :, k].ravel()
+            valid = vals[~np.isnan(vals)]
+            if len(valid) < 20:
+                continue
+            q_low = np.quantile(valid, 0.01)
+            q_high = np.quantile(valid, 0.99)
+            X_std[t, :, k] = np.clip(X_std[t, :, k], q_low, q_high)
+
+    # ── Step 2: 宏观因子处理 ──
+    # 宏观因子在所有资产间共享同一值, 用第一个资产提取时序
+    for k in range(min(MACRO_K, K)):
+        if k in MACRO_SKIP_STANDARDIZATION:
+            continue  # k=10,13,14,16: 不标准化
+
+        series = X_std[:, 0, k].copy()  # (T,)
+
+        if k in MACRO_ROLLING_RANK:
+            # k=11: rolling rank 归一化 [0,1], 窗口=156 周 (3 年)
+            rank_series = pd.Series(series)
+            rolling_rank = rank_series.rolling(
+                window=MACRO_ROLLING_RANK_WINDOW,
+                min_periods=MACRO_ROLLING_RANK_WINDOW,
+            ).apply(lambda x: pd.Series(x).rank().iloc[-1] / len(x), raw=False)
+            X_std[:, :, k] = rolling_rank.values[:, np.newaxis]
+        else:
+            # k=0-9,12,15: rolling Z-score, 窗口=52 周 (1 年)
+            s = pd.Series(series)
+            rolling_mean = s.rolling(window=52, min_periods=52).mean()
+            rolling_std = s.rolling(window=52, min_periods=52).std()
+            # Z-score
+            z = (s - rolling_mean) / rolling_std.replace(0, np.nan)
+            X_std[:, :, k] = z.values[:, np.newaxis]
+
+    # ── Step 3: PV 因子 - 截面 Z-score (无未来函数, 保持不变) ──
+    for t in range(T):
+        for k in range(MACRO_K, K):
+            vals = X_std[t, :, k]
+            valid = vals[~np.isnan(vals)]
+            if len(valid) <= 1:
+                continue
+            mean_cs = np.mean(valid)
+            std_cs = np.std(valid)
+            if std_cs > 1e-10:
+                X_std[t, :, k] = (X_std[t, :, k] - mean_cs) / std_cs
+
+    return X_std
+
+
 def generate_v7_10_data() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
     """生成 v7.10 数据 (v7.9 + 混合标准化).
 
