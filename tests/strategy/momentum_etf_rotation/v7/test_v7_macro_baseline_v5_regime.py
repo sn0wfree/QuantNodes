@@ -40,9 +40,7 @@ from QuantNodes.strategy.momentum_etf_rotation.v7 import (
     apply_trend_score_filter,
     compute_trend_score,
     run_v7_3_backtest,
-    load_factor_returns,
-    load_index_panel,
-    load_expanded_panel,
+    load_aligned_prices,
     load_benchmark_price,
     EXPANDED_COLS,
     EQUITY_ETF_COLS,
@@ -150,25 +148,19 @@ class TestV5StopLossBacktest:
     @pytest.fixture(scope="class")
     def nav_v4(self) -> pd.Series:
         """v4 expanded+TF NAV (对照组)."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()
-        benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v4_expanded(), benchmark)
+        data = load_aligned_prices(pool="expanded")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v4_expanded(), data["benchmark"])
 
     @pytest.fixture(scope="class")
     def nav_v5(self) -> pd.Series:
         """v5 expanded+TF+stop loss NAV."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()
-        benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_stop_loss(), benchmark)
+        data = load_aligned_prices(pool="expanded")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v5_stop_loss(), data["benchmark"])
 
     def test_v5_deterministic(self, nav_v5) -> None:
-        """v5 (stop loss) 同参数 → 同 NAV."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()
-        benchmark = load_benchmark_price()
-        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v5_stop_loss(), benchmark)
+        """v5 (stop loss) 同参数 -> 同 NAV."""
+        data = load_aligned_prices(pool="expanded")
+        nav_again = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v5_stop_loss(), data["benchmark"])
         np.testing.assert_array_almost_equal(nav_v5.values, nav_again.values, decimal=8)
 
     def test_v5_has_nav(self, nav_v5) -> None:
@@ -357,28 +349,19 @@ class TestV6TFScoreBacktest:
     @pytest.fixture(scope="class")
     def nav_v2(self) -> pd.Series:
         """v2 二值 TF (对照组, 13 indices)."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()  # 用 56 资产但 v2 配置用 13
-        # 修正: v2 应该用 13 indices
-        from QuantNodes.strategy.momentum_etf_rotation.v7 import load_index_panel
-        idx_ret_13 = load_index_panel()
-        benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret_13, factor_ret, v7_macro_baseline_v2_tf(), benchmark)
+        data_idx = load_aligned_prices(pool="index")
+        return run_v7_3_backtest(data_idx["asset_prices"], data_idx["factor_nav"], v7_macro_baseline_v2_tf(), data_idx["benchmark"])
 
     @pytest.fixture(scope="class")
     def nav_v6_score(self) -> pd.Series:
         """v6 连续 TF Score (56 assets)."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()
-        benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v6_tf_score(), benchmark)
+        data = load_aligned_prices(pool="expanded")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v6_tf_score(), data["benchmark"])
 
     def test_v6_score_deterministic(self, nav_v6_score) -> None:
-        """v6 同参数 → 同 NAV."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()
-        benchmark = load_benchmark_price()
-        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v6_tf_score(), benchmark)
+        """v6 同参数 -> 同 NAV."""
+        data = load_aligned_prices(pool="expanded")
+        nav_again = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v6_tf_score(), data["benchmark"])
         np.testing.assert_array_almost_equal(nav_v6_score.values, nav_again.values, decimal=8)
 
     def test_v6_score_has_nav(self, nav_v6_score) -> None:
@@ -449,25 +432,19 @@ class TestV7RollingBacktest:
     @pytest.fixture(scope="class")
     def nav_v2(self) -> pd.Series:
         """v2 二值 TF + expanding LASSO (对照组, 13 indices)."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
-        benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v2_tf(), benchmark)
+        data = load_aligned_prices(pool="index")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v2_tf(), data["benchmark"])
 
     @pytest.fixture(scope="class")
     def nav_v7_rolling(self) -> pd.Series:
         """v7 二值 TF + rolling LASSO 156 周 (3 年)."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
-        benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v7_rolling(), benchmark)
+        data = load_aligned_prices(pool="index")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v7_rolling(), data["benchmark"])
 
     def test_v7_rolling_deterministic(self, nav_v7_rolling) -> None:
-        """同参数 → 同 NAV."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
-        benchmark = load_benchmark_price()
-        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v7_rolling(), benchmark)
+        """同参数 -> 同 NAV."""
+        data = load_aligned_prices(pool="index")
+        nav_again = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v7_rolling(), data["benchmark"])
         np.testing.assert_array_almost_equal(nav_v7_rolling.values, nav_again.values, decimal=8)
 
     def test_v7_rolling_has_nav(self, nav_v7_rolling) -> None:

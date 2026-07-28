@@ -15,12 +15,9 @@ import pandas as pd
 import pytest
 
 from QuantNodes.strategy.momentum_etf_rotation.v7 import (
-    V7_3Config,
     v7_macro_baseline,
     run_v7_3_backtest,
-    load_factor_returns,
-    load_index_panel,
-    INDEX_COLS,
+    load_aligned_prices,
 )
 
 
@@ -71,10 +68,9 @@ class TestV7MacroBaselineIntegration:
     def test_v7_baseline_data_load(self) -> None:
         """baseline 配置能成功加载 13 指数 + 9 因子."""
         cfg = v7_macro_baseline()
-        idx_ret = load_index_panel()
-        fac_ret = load_factor_returns()
-        assert all(c in idx_ret.columns for c in cfg.index_pool)
-        assert all(c in fac_ret.columns for c in cfg.factor_cols)
+        data = load_aligned_prices(pool="index")
+        assert all(c in data["asset_prices"].columns for c in cfg.index_pool)
+        assert all(c in data["factor_nav"].columns for c in cfg.factor_cols)
 
 
 # ============================================================================
@@ -84,17 +80,15 @@ class TestV7MacroBaselineIntegration:
 class TestV7MacroBaselineReproducibility:
     @pytest.fixture(scope="class")
     def nav(self) -> pd.Series:
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
+        data = load_aligned_prices(pool="index")
         cfg = v7_macro_baseline()
-        return run_v7_3_backtest(idx_ret, factor_ret, cfg)
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], cfg)
 
     def test_baseline_deterministic(self, nav: pd.Series) -> None:
         """相同 random_state 必须产生相同 NAV."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
+        data = load_aligned_prices(pool="index")
         cfg = v7_macro_baseline()
-        nav2 = run_v7_3_backtest(idx_ret, factor_ret, cfg)
+        nav2 = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], cfg)
         np.testing.assert_array_almost_equal(nav.values, nav2.values, decimal=8)
 
     def test_baseline_oos_2023_ann(self, nav: pd.Series) -> None:
@@ -131,13 +125,12 @@ class TestV7MacroBaselineStability:
 
     @pytest.fixture(scope="class")
     def navs_by_seed(self) -> dict[int, pd.Series]:
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
+        data = load_aligned_prices(pool="index")
         out = {}
         for seed in self.SEEDS:
             cfg = v7_macro_baseline()
             cfg.bootstrap_random_state = seed
-            out[seed] = run_v7_3_backtest(idx_ret, factor_ret, cfg)
+            out[seed] = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], cfg)
         return out
 
     def test_stability_ann_cv(self, navs_by_seed: dict[int, pd.Series]) -> None:

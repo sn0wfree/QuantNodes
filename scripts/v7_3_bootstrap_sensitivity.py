@@ -27,7 +27,7 @@ REPO = Path(__file__).resolve().parents[1]  # scripts/ 上一级 = QuantNodes/
 sys.path.insert(0, str(REPO))
 
 from QuantNodes.strategy.momentum_etf_rotation.v7 import (
-    V7_3Config, run_v7_3_backtest, load_factor_returns, load_index_panel,
+    V7_3Config, run_v7_3_backtest, load_aligned_prices,
 )
 
 OUT_DIR = REPO / "reports" / "momentum_etf_rotation" / "v7" / "bootstrap_sensitivity"
@@ -53,10 +53,10 @@ def compute_metrics(s: pd.Series) -> dict | None:
     }
 
 
-def run_one(bt: int, seed: int, factor_ret, idx_ret) -> tuple[pd.Series, float]:
+def run_one(bt: int, seed: int, asset_prices, factor_nav) -> tuple[pd.Series, float]:
     cfg = V7_3Config(bootstrap_times=bt, bootstrap_random_state=seed, quarter_window=8)
     t0 = time.time()
-    nav = run_v7_3_backtest(idx_ret, factor_ret, cfg)
+    nav = run_v7_3_backtest(asset_prices, factor_nav, cfg)
     return nav, time.time() - t0
 
 
@@ -66,9 +66,10 @@ def main():
     print("=" * 80, flush=True)
     t_start = time.time()
 
-    factor_ret = load_factor_returns()
-    idx_ret = load_index_panel()
-    print(f"[{time.time()-t_start:.1f}s] 数据加载: factor {factor_ret.shape}, idx {idx_ret.shape}", flush=True)
+    data = load_aligned_prices(pool="index")
+    asset_prices = data["asset_prices"]
+    factor_nav = data["factor_nav"]
+    print(f"[{time.time()-t_start:.1f}s] 数据加载: factor {factor_nav.shape}, prices {asset_prices.shape}", flush=True)
 
     # ----- Experiment 1: bootstrap_times -----
     print("\n" + "=" * 80, flush=True)
@@ -81,7 +82,7 @@ def main():
     t0 = time.time()
     for i, bt in enumerate(bt_values, 1):
         print(f"[{time.time()-t_start:.1f}s] [Exp1 {i}/{len(bt_values)}] bt={bt} 开始...", end=" ", flush=True)
-        nav, elapsed = run_one(bt, 42, factor_ret, idx_ret)
+        nav, elapsed = run_one(bt, 42, asset_prices, factor_nav)
         print(f"完成 ({elapsed:.1f}s) | 累计 {time.time()-t0:.1f}s", flush=True)
         exp1_navs[bt] = nav
         for ps, pl in [("2010-03-31", "full"), ("2022-01-01", "oos_2022"), ("2023-01-01", "oos_2023")]:
@@ -108,7 +109,7 @@ def main():
     t0 = time.time()
     for i, seed in enumerate(seeds, 1):
         print(f"[{time.time()-t_start:.1f}s] [Exp2 {i}/{len(seeds)}] seed={seed} 开始...", end=" ", flush=True)
-        nav, elapsed = run_one(500, seed, factor_ret, idx_ret)
+        nav, elapsed = run_one(500, seed, asset_prices, factor_nav)
         print(f"完成 ({elapsed:.1f}s) | 累计 {time.time()-t0:.1f}s", flush=True)
         exp2_navs[seed] = nav
         for ps, pl in [("2010-03-31", "full"), ("2022-01-01", "oos_2022"), ("2023-01-01", "oos_2023")]:

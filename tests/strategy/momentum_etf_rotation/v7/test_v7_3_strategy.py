@@ -20,9 +20,7 @@ import pytest
 from QuantNodes.strategy.momentum_etf_rotation.v7 import (
     V7_3Config,
     V7_3SubStrategy,
-    load_index_panel,
-    load_factor_returns,
-    load_index_prices,
+    load_aligned_prices,
     run_v7_3_backtest,
 )
 
@@ -61,32 +59,30 @@ class TestEndToEnd:
         assert callable(run_v7_3_backtest)
 
     def test_load_real_indices(self) -> None:
-        factors = load_factor_returns()
-        rets = load_index_panel()
-        assert factors.shape[1] == 8  # 8 macro factors (v7.6 removed 期限利差因子_加权)
-        assert rets.shape[1] == 13
-        assert len(rets) > 1000
+        data = load_aligned_prices(pool="index")
+        assert data["factor_nav"].shape[1] == 8
+        assert data["asset_prices"].shape[1] == 13
+        assert len(data["asset_prices"]) > 1000
 
     def test_run_v7_3_returns_series(self) -> None:
-        factors = load_factor_returns()
-        rets = load_index_panel()
+        data = load_aligned_prices(pool="index")
         cfg = V7_3Config(bootstrap_times=5, quarter_window=8)  # 短 bootstrap 加速
-        nav = run_v7_3_backtest(rets, factors, cfg)
+        nav = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], cfg)
         assert isinstance(nav, pd.Series)
         assert len(nav) > 100
         assert abs(nav.iloc[0] - 1.0) < 0.01
 
     def test_smoke_select(self) -> None:
         """Single select() 端到端."""
-        factors = load_factor_returns()
-        rets = load_index_panel()
+        data = load_aligned_prices(pool="index")
         cfg = V7_3Config(bootstrap_times=5, quarter_window=8)
         sub = V7_3SubStrategy(cfg)
 
-        # Concat weekly
-        idx_weekly = rets[list(cfg.index_pool)].resample("W").last().pct_change()
+        # Concat weekly simple returns (from prices)
+        asset_weekly = data["asset_prices"][list(cfg.index_pool)].resample("W").last().pct_change()
+        factor_weekly = data["factor_nav"][list(cfg.factor_cols)].pct_change()
         sample = pd.concat(
-            [idx_weekly, factors[list(cfg.factor_cols)]],
+            [asset_weekly, factor_weekly],
             axis=1,
         ).dropna(how="any")
 

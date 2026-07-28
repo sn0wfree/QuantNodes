@@ -21,8 +21,7 @@ from QuantNodes.strategy.momentum_etf_rotation.v7 import (
     v7_macro_baseline_v4_expanded,
     apply_trend_filter,
     run_v7_3_backtest,
-    load_factor_returns,
-    load_expanded_panel,
+    load_aligned_prices,
     load_benchmark_price,
     EXPANDED_COLS,
     EQUITY_ETF_COLS,
@@ -37,22 +36,22 @@ from QuantNodes.strategy.momentum_etf_rotation.v7 import (
 class TestExpandedPanel:
     def test_shape(self) -> None:
         """expanded panel 应有 56 列."""
-        df = load_expanded_panel()
+        df = load_aligned_prices(pool="expanded")["asset_prices"]
         assert df.shape[1] == 56
 
     def test_columns(self) -> None:
         """expanded panel 列应与 EXPANDED_COLS 一致."""
-        df = load_expanded_panel()
+        df = load_aligned_prices(pool="expanded")["asset_prices"]
         assert list(df.columns) == EXPANDED_COLS
 
     def test_no_all_nan_rows(self) -> None:
         """expanded panel 不应有全 NaN 行."""
-        df = load_expanded_panel()
+        df = load_aligned_prices(pool="expanded")["asset_prices"]
         assert df.isna().all(axis=1).sum() == 0
 
     def test_date_range(self) -> None:
         """expanded panel 日期范围应从 2018 开始."""
-        df = load_expanded_panel()
+        df = load_aligned_prices(pool="expanded")["asset_prices"]
         assert df.index[0].year >= 2018
 
 
@@ -139,32 +138,25 @@ class TestV4Backtest:
     @pytest.fixture(scope="class")
     def nav_v1(self) -> pd.Series:
         """v1 baseline NAV (对照组)."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline())
+        data = load_aligned_prices(pool="expanded")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline())
 
     @pytest.fixture(scope="class")
     def nav_v2(self) -> pd.Series:
         """v2 TF NAV (对照组, 13 indices)."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()
-        benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v2_tf(), benchmark)
+        data = load_aligned_prices(pool="expanded")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v2_tf(), data["benchmark"])
 
     @pytest.fixture(scope="class")
     def nav_v4(self) -> pd.Series:
         """v4 expanded pool NAV."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()
-        benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v4_expanded(), benchmark)
+        data = load_aligned_prices(pool="expanded")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v4_expanded(), data["benchmark"])
 
     def test_v4_deterministic(self, nav_v4) -> None:
-        """同参数 → 同 NAV."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_expanded_panel()
-        benchmark = load_benchmark_price()
-        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v4_expanded(), benchmark)
+        """同参数 -> 同 NAV."""
+        data = load_aligned_prices(pool="expanded")
+        nav_again = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v4_expanded(), data["benchmark"])
         np.testing.assert_array_almost_equal(nav_v4.values, nav_again.values, decimal=8)
 
     def test_v4_has_nav(self, nav_v4) -> None:

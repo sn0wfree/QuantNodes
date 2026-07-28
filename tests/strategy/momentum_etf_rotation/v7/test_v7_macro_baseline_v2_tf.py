@@ -24,8 +24,7 @@ from QuantNodes.strategy.momentum_etf_rotation.v7 import (
     v7_macro_baseline_v2_tf,
     apply_trend_filter,
     run_v7_3_backtest,
-    load_factor_returns,
-    load_index_panel,
+    load_aligned_prices,
     load_benchmark_price,
     INDEX_COLS,
 )
@@ -164,24 +163,19 @@ class TestV2TFBacktest:
     @pytest.fixture(scope="class")
     def nav_v1(self) -> pd.Series:
         """v1 baseline NAV (无 TF, 对照组)."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline())
+        data = load_aligned_prices(pool="index")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline())
 
     @pytest.fixture(scope="class")
     def nav_v2(self) -> pd.Series:
         """v2 baseline NAV (有 TF)."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
-        benchmark = load_benchmark_price()
-        return run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v2_tf(), benchmark)
+        data = load_aligned_prices(pool="index")
+        return run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v2_tf(), data["benchmark"])
 
     def test_v2_deterministic(self, nav_v2) -> None:
         """同 random_state → 同 NAV."""
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
-        benchmark = load_benchmark_price()
-        nav_again = run_v7_3_backtest(idx_ret, factor_ret, v7_macro_baseline_v2_tf(), benchmark)
+        data = load_aligned_prices(pool="index")
+        nav_again = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], v7_macro_baseline_v2_tf(), data["benchmark"])
         np.testing.assert_array_almost_equal(nav_v2.values, nav_again.values, decimal=8)
 
     def test_v2_2018_dd_reduced(self, nav_v1, nav_v2) -> None:
@@ -241,14 +235,12 @@ class TestV2TFStability:
 
     @pytest.fixture(scope="class")
     def navs_by_seed(self) -> dict[int, pd.Series]:
-        factor_ret = load_factor_returns()
-        idx_ret = load_index_panel()
-        benchmark = load_benchmark_price()
+        data = load_aligned_prices(pool="index")
         out = {}
         for seed in self.SEEDS:
             cfg = v7_macro_baseline_v2_tf()
             cfg.bootstrap_random_state = seed
-            out[seed] = run_v7_3_backtest(idx_ret, factor_ret, cfg, benchmark)
+            out[seed] = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], cfg, data["benchmark"])
         return out
 
     def test_stability_ann_cv(self, navs_by_seed) -> None:

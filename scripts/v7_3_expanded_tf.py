@@ -19,10 +19,7 @@ if not (ROOT / "QuantNodes").exists():
 sys.path.insert(0, str(ROOT))
 
 from QuantNodes.strategy.momentum_etf_rotation.v7.data_loader import (
-    load_expanded_panel,
-    load_factor_returns,
-    load_benchmark_price,
-    load_index_panel,
+    load_aligned_prices,
 )
 from QuantNodes.strategy.momentum_etf_rotation.v7.macro_substrategy_v7_3 import (
     V7_3Config,
@@ -43,7 +40,7 @@ START_DATES = [
 
 def print_metrics(name: str, nav: pd.Series):
     """使用 common/metrics.py 打印指标."""
-    m = compute_metrics(nav, freq="W")
+    m = compute_metrics(nav, freq="D")
     print(f"  AnnRet:  {m['AnnRet']*100:+.2f}%")
     print(f"  Vol:     {m['Vol']*100:.2f}%")
     print(f"  Sharpe:  {m['Sharpe']:.3f}")
@@ -64,22 +61,18 @@ def run_v73_baseline():
     print("v7.3 baseline: 13 指数, 无 TF (对照组)")
     print("=" * 60)
 
-    log.info("  loading index_panel...")
-    index_panel = load_index_panel()
-    log.info(f"  index_panel: {index_panel.shape}")
-
-    log.info("  loading factor_returns...")
-    factor_returns = load_factor_returns()
-    log.info(f"  factor_returns: {factor_returns.shape}")
+    log.info("  loading data...")
+    data = load_aligned_prices(pool="index")
+    log.info(f"  asset_prices: {data['asset_prices'].shape}, factor_nav: {data['factor_nav'].shape}")
 
     cfg = V7_3Config(bootstrap_times=100)
 
     log.info("  running backtest...")
-    nav = run_v7_3_backtest(index_panel, factor_returns, cfg)
+    nav = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], cfg)
     log.info(f"  backtest done, nav length: {len(nav)}")
 
-    m_full = compute_metrics(nav, freq="W")
-    m_oos = compute_metrics(nav, freq="W", oos_start="2022-01-01")
+    m_full = compute_metrics(nav, freq="D")
+    m_oos = compute_metrics(nav, freq="D", oos_start="2022-01-01")
 
     print("\n=== Full Period ===")
     print_metrics("v7.3 baseline", nav)
@@ -101,13 +94,9 @@ def run_v73_tf():
     print("v7.3 + TF: 13 指数, 趋势过滤")
     print("=" * 60)
 
-    log.info("  loading index_panel...")
-    index_panel = load_index_panel()
-    log.info("  loading factor_returns...")
-    factor_returns = load_factor_returns()
-    log.info("  loading benchmark_price...")
-    benchmark_price = load_benchmark_price("沪深300指数")
-    log.info(f"  benchmark_price: {benchmark_price.shape}")
+    log.info("  loading data...")
+    data = load_aligned_prices(pool="index")
+    log.info(f"  asset_prices: {data['asset_prices'].shape}")
 
     cfg = V7_3Config(
         trend_filter_enabled=True,
@@ -117,11 +106,11 @@ def run_v73_tf():
     )
 
     log.info("  running backtest...")
-    nav = run_v7_3_backtest(index_panel, factor_returns, cfg, benchmark_price=benchmark_price)
+    nav = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], cfg, benchmark_price=data["benchmark"])
     log.info(f"  backtest done, nav length: {len(nav)}")
 
-    m_full = compute_metrics(nav, freq="W")
-    m_oos = compute_metrics(nav, freq="W", oos_start="2022-01-01")
+    m_full = compute_metrics(nav, freq="D")
+    m_oos = compute_metrics(nav, freq="D", oos_start="2022-01-01")
 
     print("\n=== Full Period ===")
     print_metrics("v7.3 + TF", nav)
@@ -143,14 +132,9 @@ def run_v73_expanded_tf():
     print("v7.3 expanded + TF: 56 ETF+指数, 趋势过滤")
     print("=" * 60)
 
-    log.info("  loading expanded_panel...")
-    expanded_panel = load_expanded_panel()
-    log.info(f"  expanded_panel: {expanded_panel.shape}")
-
-    log.info("  loading factor_returns...")
-    factor_returns = load_factor_returns()
-    log.info("  loading benchmark_price...")
-    benchmark_price = load_benchmark_price("沪深300指数")
+    log.info("  loading data...")
+    data = load_aligned_prices(pool="expanded")
+    log.info(f"  asset_prices: {data['asset_prices'].shape}")
 
     cfg = V7_4Config(
         trend_filter_enabled=True,
@@ -160,11 +144,11 @@ def run_v73_expanded_tf():
     )
 
     log.info("  running backtest (this may take a few minutes)...")
-    nav = run_v7_3_backtest(expanded_panel, factor_returns, cfg, benchmark_price=benchmark_price)
+    nav = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], cfg, benchmark_price=data["benchmark"])
     log.info(f"  backtest done, nav length: {len(nav)}")
 
-    m_full = compute_metrics(nav, freq="W")
-    m_oos = compute_metrics(nav, freq="W", oos_start="2022-01-01")
+    m_full = compute_metrics(nav, freq="D")
+    m_oos = compute_metrics(nav, freq="D", oos_start="2022-01-01")
 
     print("\n=== Full Period ===")
     print_metrics("v7.3 expanded + TF", nav)
@@ -186,26 +170,16 @@ def run_cv_test():
     print("v7.3 expanded + TF: CV% 测试 (3 起点)")
     print("=" * 60)
 
-    log.info("  loading expanded_panel...")
-    expanded_panel = load_expanded_panel()
-    log.info("  loading factor_returns...")
-    factor_returns = load_factor_returns()
-    log.info("  loading benchmark_price...")
-    benchmark_price = load_benchmark_price("沪深300指数")
+    log.info("  loading data...")
+    data = load_aligned_prices(pool="expanded")
 
     results = []
     for start_date in START_DATES:
         print(f"\n--- 起点: {start_date.strftime('%Y-%m-%d')} ---")
 
         # 截断数据
-        mask_exp = expanded_panel.index >= start_date
-        mask_fac = factor_returns.index >= start_date
-        idx_panel = expanded_panel.loc[mask_exp]
-        fac_panel = factor_returns.loc[mask_fac]
-
-        # benchmark 也要截断
-        bm = benchmark_price.loc[:start_date]
-        # 但 TF 需要完整历史 (loc[:as_of] 在内部处理)
+        mask = data["asset_prices"].index >= start_date
+        asset_prices = data["asset_prices"].loc[mask]
 
         cfg = V7_4Config(
             trend_filter_enabled=True,
@@ -215,8 +189,8 @@ def run_cv_test():
         )
 
         try:
-            nav = run_v7_3_backtest(idx_panel, fac_panel, cfg, benchmark_price=benchmark_price)
-            m = compute_metrics(nav, freq="W")
+            nav = run_v7_3_backtest(asset_prices, data["factor_nav"], cfg, benchmark_price=data["benchmark"])
+            m = compute_metrics(nav, freq="D")
             result = {
                 "name": start_date.strftime("%Y-%m-%d"),
                 "ann_return": m["AnnRet"],

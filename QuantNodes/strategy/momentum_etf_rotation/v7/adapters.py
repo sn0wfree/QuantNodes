@@ -90,33 +90,33 @@ def load_v7_14_data_uniform() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
 
 
 def load_v7_3_data_uniform() -> tuple[np.ndarray, pd.DataFrame, list[str]]:
-    """加载 v7.3/v7.5 数据 — 周频指数收益 (T, 13) + 因子面板.
+    """加载 v7.3/v7.5 数据 - 周频指数收益 (T, 13) + 因子面板.
 
     返回 (T_weekly, 13, K) 格式, 因子广播到所有资产.
     """
-    from .data_loader import (
-        load_factor_returns,
-    )
+    from .data_loader import load_aligned_prices
 
-    factor_returns = load_factor_returns()  # (T, 8) 周频因子对数收益
-    from .data_loader import load_index_panel
-    index_panel = load_index_panel()  # 日对数收益
-    # 周频化: 用周末收盘价计算周收益 (pct_change)
-    index_weekly = index_panel.resample("W").last().pct_change().dropna()
+    data = load_aligned_prices(pool="index")
+    asset_prices = data["asset_prices"]
+    factor_nav = data["factor_nav"]
+
+    # 周频 simple return (从价格计算)
+    index_weekly = asset_prices.resample("W").last().pct_change().dropna(how="all")
+    factor_weekly = factor_nav.pct_change()
 
     # 对齐时间
-    common_idx = index_weekly.index.intersection(factor_returns.index)
+    common_idx = index_weekly.index.intersection(factor_weekly.index)
     index_weekly = index_weekly.loc[common_idx]
-    factor_returns = factor_returns.loc[common_idx]
+    factor_weekly = factor_weekly.loc[common_idx]
 
     Y = index_weekly
     T = len(common_idx)
     N = len(Y.columns)
-    K = len(factor_returns.columns)
+    K = len(factor_weekly.columns)
 
     X = np.zeros((T, N, K), dtype=np.float64)
-    for k, col in enumerate(factor_returns.columns):
-        X[:, :, k] = factor_returns[col].values[:, np.newaxis]
+    for k, col in enumerate(factor_weekly.columns):
+        X[:, :, k] = factor_weekly[col].values[:, np.newaxis]
 
     codes = list(Y.columns)
     return X, _normalize_y(Y), codes
@@ -340,13 +340,10 @@ def make_v7_6_backtest_fn(version: str = "v7.6") -> Callable:
 def make_v7_3_backtest_fn(version: str = "v7.3") -> Callable:
     """生成 v7.3/v7.5 的 backtest_fn (Bootstrap-Lasso, 季频调仓).
 
-    签名: backtest_fn(Y, X, **params) → (shares_df, prices_df, weights_df)
-
-    注意: v7.3 内部用 index_panel (T_daily, 13) 日对数收益 +
-    factor_panel (T_weekly, 8) 周对数收益, 季度调仓.
+    签名: backtest_fn(Y, X, **params) -> (shares_df, prices_df, weights_df)
     """
     from .data_loader import (
-        load_index_panel, FACTOR_COLS,
+        load_aligned_prices, FACTOR_COLS,
     )
     from .macro_substrategy_v7_3 import (
         V7_3Config, run_v7_3_backtest,
@@ -357,18 +354,7 @@ def make_v7_3_backtest_fn(version: str = "v7.3") -> Callable:
         X: np.ndarray,
         **params,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """v7.3/v7.5 backtest_fn — 返回日频 shares + prices + 季频 weights.
-
-        Parameters:
-            Y: (T_weekly, N) 周频训练数据 (日期索引)
-            X: (T_weekly, N, K) 周频训练因子面板
-            **params: quarter_window, max_weight, bootstrap_times, ...
-
-        Returns:
-            shares: (T_daily, N) 日频份额 (NAV=1 基准)
-            prices: (T_daily, N) 日频价格
-            weights: (T_quarter, N) 季频目标权重
-        """
+        """v7.3/v7.5 backtest_fn - 返回日频 shares + prices + 季频 weights."""
         cfg = V7_3Config(
             quarter_window=params.get("quarter_window", 8),
             max_weight=params.get("max_weight", 0.5),
@@ -390,29 +376,25 @@ def make_v7_3_backtest_fn(version: str = "v7.3") -> Callable:
         else:
             factor_returns = pd.DataFrame(index=Y.index)
 
-        # 加载日频指数收益 (与 factor_returns 时间对齐)
+        # 加载日频价格 (与 factor_returns 时间对齐)
         start_date = (Y.index[0] - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
-        index_panel = load_index_panel(start=start_date)
-        # 只保留 cfg.index_pool 中的列
-        available_cols = [c for c in cfg.index_pool if c in index_panel.columns]
-        index_panel = index_panel[available_cols].copy()
+        data = load_aligned_prices(pool="index", start=start_date)
+        asset_prices = data["asset_prices"]
+        factor_nav = data["factor_nav"]
 
         # 运行 v7.3 回测 (返回 NAV + 季频权重)
-        nav_weekly, quarter_weights = run_v7_3_backtest(
-            index_panel, factor_returns, cfg, return_weights=True,
+        nav, quarter_weights = run_v7_3_backtest(
+            asset_prices, factor_nav, cfg, return_weights=True,
         )
 
-        # 日频价格 = exp(累积对数收益), 起点 = 1.0
-        daily_prices = np.exp(index_panel.cumsum())
-        daily_prices = daily_prices.ffill().dropna(how='all')
-        # 对齐列
+        # 日频价格
+        daily_prices = asset_prices[list(cfg.index_pool)].copy()
         daily_prices = daily_prices.reindex(columns=quarter_weights.columns)
 
-        # 季频权重 → 日频份额
+        # 季频权重 -> 日频份额
         from ..common.walk_forward import weights_to_daily_shares
         shares = weights_to_daily_shares(quarter_weights, daily_prices)
 
-        # 统一设置 index.name='date'
         shares = _normalize_y(shares)
         daily_prices = _normalize_y(daily_prices)
         quarter_weights = _normalize_y(quarter_weights)

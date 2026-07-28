@@ -111,6 +111,17 @@ class V7_4Config(V7_3Config):
     commodity_cols: tuple[str, ...] = tuple(COMMODITY_ETF_COLS) # 6 commodity ETFs
     bond_cols: tuple[str, ...] = tuple(EXPANDED_BOND_INDICES)   # 5 bond indices
 
+    # v7.3.2: β 预筛选 + 分散度约束 (借鉴 CICC)
+    n_assets: int = 15                    # 最大持仓数
+    div_a_share_max: int = 8              # A股(宽基+行业+SmartBeta) ≤ 8
+    div_hk_max: int = 2                   # 港股 ≤ 2
+    div_commodity_min: int = 1            # 商品 ≥ 1
+    div_commodity_max: int = 3            # 商品 ≤ 3
+    div_overseas_min: int = 1             # 海外 ≥ 1
+    div_overseas_max: int = 3             # 海外 ≤ 3
+    div_bond_min: int = 1                 # 债券 ≥ 1
+    div_bond_max: int = 5                 # 债券 ≤ 5
+
 
 @dataclass
 class V7_5Config(V7_4Config):
@@ -361,6 +372,93 @@ def apply_trend_score_filter(
     return w_new
 
 
+# ============================================================
+# v7.3.2: β 预筛选 + 分散度约束 (借鉴 CICC)
+# ============================================================
+_HK_PREFIXES = ("510900", "159920", "513010", "513050", "159740")
+_OVERSEAS_PREFIXES = ("513100", "513300", "513500", "513520", "513880", "159941")
+
+
+def _classify_asset(code: str, cfg: V7_4Config) -> str:
+    """将资产代码分类为: a_share / hk / commodity / overseas / bond."""
+    if code in cfg.bond_cols:
+        return "bond"
+    if code in cfg.commodity_cols:
+        return "commodity"
+    if any(code.startswith(p) for p in _HK_PREFIXES):
+        return "hk"
+    if any(code.startswith(p) for p in _OVERSEAS_PREFIXES):
+        return "overseas"
+    return "a_share"
+
+
+def _filter_beta_with_diversification(
+    β: pd.DataFrame,
+    cfg: V7_4Config,
+) -> pd.DataFrame:
+    """按 |β|_1 排序 + 分散度约束, 保留 ≤ n_assets 个资产.
+
+    流程:
+        1. 计算每个资产的 |β|_1 (对所有因子暴露的绝对值之和)
+        2. 按类别分组, 组内按 |β|_1 降序
+        3. 按类别 cap 选取 (a_share≤8, hk≤2, commodity 1-3, overseas 1-3, bond 1-5)
+        4. 合并后检查总数 ≤ n_assets
+        5. 确保 commodity/overseas/bond 至少各 1 只
+    """
+    # 1. 计算 |β|_1
+    beta_abs = β.abs().sum(axis=1)
+
+    # 2. 按类别分组
+    classified: dict[str, list[tuple[str, float]]] = {}
+    for code in β.index:
+        cat = _classify_asset(code, cfg)
+        classified.setdefault(cat, []).append((code, beta_abs[code]))
+
+    # 3. 组内按 |β|_1 降序
+    for cat in classified:
+        classified[cat].sort(key=lambda x: x[1], reverse=True)
+
+    # 4. 按 cap 选取
+    selected: list[str] = []
+    cat_caps = {
+        "a_share": cfg.div_a_share_max,
+        "hk": cfg.div_hk_max,
+        "commodity": cfg.div_commodity_max,
+        "overseas": cfg.div_overseas_max,
+        "bond": cfg.div_bond_max,
+    }
+    cat_mins = {
+        "commodity": cfg.div_commodity_min,
+        "overseas": cfg.div_overseas_min,
+        "bond": cfg.div_bond_min,
+    }
+
+    for cat, cap in cat_caps.items():
+        items = classified.get(cat, [])
+        for code, _ in items[:cap]:
+            selected.append(code)
+
+    # 5. 确保 min 约束
+    for cat, min_n in cat_mins.items():
+        current = sum(1 for c in selected if _classify_asset(c, cfg) == cat)
+        if current < min_n:
+            items = classified.get(cat, [])
+            for code, _ in items:
+                if code not in selected:
+                    selected.append(code)
+                    current += 1
+                    if current >= min_n:
+                        break
+
+    # 6. 如果总数超过 n_assets, 从 |β|_1 最小的开始裁剪
+    if len(selected) > cfg.n_assets:
+        selected_beta = [(c, beta_abs[c]) for c in selected]
+        selected_beta.sort(key=lambda x: x[1])
+        selected = [c for c, _ in selected_beta[-cfg.n_assets:]]
+
+    return β.loc[selected]
+
+
 class V7_3SubStrategy:
     """v7.3 v2 完整还原 — 季度调仓 (与 source 一致)."""
 
@@ -444,6 +542,10 @@ class V7_3SubStrategy:
             n = len(cfg.index_pool)
             return {col: 1.0 / n for col in cfg.index_pool}
 
+        # v7.3.2: β 预筛选 + 分散度约束 (expanded pool)
+        if isinstance(cfg, V7_4Config) and cfg.n_assets < len(β):
+            β = _filter_beta_with_diversification(β, cfg)
+
         # 因子协方差
         factor_cov = symmetried_sample[list(cfg.factor_cols)].cov()
 
@@ -453,46 +555,37 @@ class V7_3SubStrategy:
 
 
 def run_v7_3_backtest(
-    index_panel: pd.DataFrame,
-    factor_panel: pd.DataFrame,
+    asset_prices: pd.DataFrame,
+    factor_nav: pd.DataFrame,
     cfg: V7_3Config | None = None,
     benchmark_price: pd.Series | None = None,
     return_weights: bool = False,
 ):
-    """v7.3 v2 端到端回测 (忠实于 source).
+    """v7.3 v2 端到端回测.
 
     Args:
-        index_panel: 13 指数日对数收益
-        factor_panel: 9 宏观因子周对数收益
+        asset_prices: N 个资产日价格/NAV (DataFrame, 日频)
+        factor_nav: 8 宏观因子周频净值 (DataFrame, 周频)
         cfg: V7_3Config 配置 (含 trend_filter_* 字段)
-        benchmark_price: [Stage 4 v2 新增] benchmark 日价格 (用于 TF).
-                          默认 None 表示不加载; 当 cfg.trend_filter_enabled=True 时
-                          必须传入 (推荐用 load_benchmark_price()).
-        return_weights: [Stage 6 业绩对比新增] 是否同时返回调仓权重 DataFrame.
-                        默认 False (向后兼容, 现有测试零影响).
+        benchmark_price: benchmark 日价格 (用于 TF).
+        return_weights: 是否同时返回调仓权重 DataFrame.
 
     Returns:
         if return_weights=False: pd.Series 索引=业务日, 值=NAV (起点=1).
         if return_weights=True:  (nav: pd.Series, weights: pd.DataFrame)
-                                  weights index=调仓日, columns=cfg.index_pool
     """
     if cfg is None:
         cfg = V7_3Config()
 
-    # [Stage 4 v2 新增] 加载 benchmark 价格 (TF 需要)
     if cfg.trend_filter_enabled and benchmark_price is None:
         from .data_loader import load_benchmark_price
         benchmark_price = load_benchmark_price(cfg.trend_filter_benchmark)
 
-    # Concat sample (source cell 61)
-    idx_weekly = index_panel[list(cfg.index_pool)].resample("W").last().pct_change()
-    factor_weekly = factor_panel[list(cfg.factor_cols)]
-    # expanded pool: use dropna(how='all') to preserve dates with partial ETF data
+    # 信号: 周频 simple return (从价格计算)
+    asset_weekly_ret = asset_prices[list(cfg.index_pool)].resample("W").last().pct_change()
+    factor_weekly_ret = factor_nav[list(cfg.factor_cols)].pct_change()
     how = "all" if isinstance(cfg, V7_4Config) else "any"
-    sample = pd.concat(
-        [idx_weekly, factor_weekly],
-        axis=1,
-    ).dropna(how=how)
+    sample = pd.concat([asset_weekly_ret, factor_weekly_ret], axis=1).dropna(how=how)
 
     # Quarter 边界
     quarter_idx = pd.DataFrame(index=sample.index).resample(cfg.rebalance_freq).last().index
@@ -510,7 +603,6 @@ def run_v7_3_backtest(
             return None
         dd = nav_so_far / peak_nav - 1
         if dd < cfg.stop_loss_threshold:
-            # 强制 100% 债券 (按原 bond 权重比例分配)
             if isinstance(cfg, V7_4Config):
                 bd_cols = list(cfg.bond_cols)
             else:
@@ -520,26 +612,23 @@ def run_v7_3_backtest(
             if bond_sum > 0:
                 w_stop[bd_cols] = w_series[bd_cols] * (cfg.stop_loss_bond_alloc / bond_sum)
             else:
-                # 极端情况: 当前无 bond 权重, 等权分配
                 w_stop[bd_cols] = cfg.stop_loss_bond_alloc / len(bd_cols)
             return w_stop
         return None
 
-    # [Stage 7 v5 重构] 单次回测循环: 计算权重 → 生成当期收益 → 更新 NAV 路径
-    # 与原版逻辑严格一致:
-    #   - 调仓日 s 的权重决定 [s, e) 期间的收益
-    #   - 调仓成本 |w[e] - w[s]|/2 应用到 s 那一期的第一天
-    # 区别: 原版先全部算权重, 再算收益; 新版交错进行, 便于止损检查
+    # 回测: 日频 simple return (从价格计算)
     sub = V7_3SubStrategy(cfg)
     weights_history: dict[pd.Timestamp, pd.Series] = {}
     rebal_dates = list(quarter_idx[cfg.quarter_window:])
 
-    # [Stage 7 v5] NAV 跟踪变量 (止损用)
     nav_so_far: float = 1.0
     peak_nav: float = 1.0
     _stop_loss_initialized: bool = False
     cost_rate = (cfg.commission_bp + cfg.slippage_bp) / 10000.0
     all_ret: list[pd.Series] = []
+
+    # 日频 simple return
+    daily_returns = asset_prices[list(cfg.index_pool)].pct_change()
 
     for i, curr_date in enumerate(rebal_dates):
         w = sub.select(sample, curr_date)
@@ -548,11 +637,9 @@ def run_v7_3_backtest(
         w_series = pd.Series(w)
         if cfg.trend_filter_enabled and benchmark_price is not None:
             w_series = apply_trend_filter(w_series, benchmark_price, curr_date, cfg)
-        # [Stage 7 v5 Step 2] 连续 TF Score (与二值 MA200 互斥)
         elif getattr(cfg, "tf_score_enabled", False) and benchmark_price is not None:
             w_series = apply_trend_score_filter(w_series, benchmark_price, curr_date, cfg)
 
-        # [Stage 7 v5 硬止损] 在调仓时检查 NAV 回撤, 触发则全仓债券
         w_override = _check_stop_loss_and_override(w_series)
         if w_override is not None:
             w_series = w_override
@@ -560,18 +647,18 @@ def run_v7_3_backtest(
         _stop_loss_initialized = True
 
         # 计算当期收益 [curr_date, next_date) 期间
-        next_date = rebal_dates[i + 1] if i + 1 < len(rebal_dates) else index_panel.index[-1] + pd.Timedelta(days=1)
-        mask = (index_panel.index >= curr_date) & (index_panel.index < next_date)
+        next_date = rebal_dates[i + 1] if i + 1 < len(rebal_dates) else asset_prices.index[-1] + pd.Timedelta(days=1)
+        mask = (daily_returns.index > curr_date) & (daily_returns.index < next_date)
         if not mask.any():
             continue
 
-        idx_ret_window = index_panel.loc[mask, list(cfg.index_pool)]
+        idx_ret_window = daily_returns.loc[mask]
         ret_data = idx_ret_window.fillna(0).values @ w_series.reindex(cfg.index_pool).fillna(0).values
         ret_series = pd.Series(ret_data, index=idx_ret_window.index)
 
-        # 调仓日成本: 首次 (i=0) cost=0 (无前一权重); 否则 cost = |w[curr]-w[prev]|/2
+        # 调仓日成本: 首次 (i=0) cost=0; 否则 cost = |w[curr]-w[prev]|/2
         if i == 0:
-            ret_series.iloc[0] -= 0  # 与原版一致
+            ret_series.iloc[0] -= 0
         else:
             prev_date = rebal_dates[i - 1]
             turnover = np.abs(
@@ -581,7 +668,6 @@ def run_v7_3_backtest(
             ret_series.iloc[0] -= turnover * cost_rate
 
         all_ret.append(ret_series)
-        # 更新 NAV 路径 (止损用)
         nav_after = (1 + ret_series).cumprod() * nav_so_far
         peak_nav = max(peak_nav, float(nav_after.max()))
         nav_so_far = float(nav_after.iloc[-1])

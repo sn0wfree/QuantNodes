@@ -33,8 +33,7 @@ sys.path.insert(0, str(REPO))
 
 from QuantNodes.strategy.momentum_etf_rotation.v7 import (
     V7_3Config,
-    load_factor_returns,
-    load_index_panel,
+    load_aligned_prices,
     run_v7_3_backtest,
 )
 
@@ -69,10 +68,9 @@ def main(bootstrap_times: int = 500) -> None:
     print("=" * 70)
 
     print("\n[1/5] 加载数据...")
-    factor_ret = load_factor_returns()
-    idx_ret = load_index_panel(start="2008-01-01")
-    print(f"  9 周频宏观因子:  {factor_ret.shape}")
-    print(f"  13 指数日频收益: {idx_ret.shape}")
+    data = load_aligned_prices(pool="index", start="2008-01-01")
+    print(f"  8 周频宏观因子净值:  {data['factor_nav'].shape}")
+    print(f"  13 指数日频价格: {data['asset_prices'].shape}")
 
     print(f"\n[2/5] v7.3 v2 OOS 回测 (bootstrap_times={bootstrap_times})...")
     print("  季度调仓 + 8 quarter 窗口 + Symmetry 窗口白化 + Bootstrap-Lasso + FRP")
@@ -84,7 +82,7 @@ def main(bootstrap_times: int = 500) -> None:
     )
     import time
     t0 = time.time()
-    nav_v73 = run_v7_3_backtest(idx_ret, factor_ret, cfg)
+    nav_v73 = run_v7_3_backtest(data["asset_prices"], data["factor_nav"], cfg)
     print(f"  elapsed: {time.time()-t0:.1f}s")
     print(f"  v7.3 NAV:  {len(nav_v73)} rows, "
           f"{nav_v73.index[0].date()} -> {nav_v73.index[-1].date()}")
@@ -114,14 +112,9 @@ def main(bootstrap_times: int = 500) -> None:
     v62_a = v62.reindex(aligned_idx) if v62 is not None else None
     v10_a = v10.reindex(aligned_idx) if v10 is not None else None
 
-    # 5 ETF 等权 (idx_rets 等权)
-    nav_eq = (
-        1
-        + idx_ret[list(cfg.index_pool)]
-        .reindex(aligned_idx)
-        .fillna(0.0)
-        .mean(axis=1)
-    ).cumprod()
+    # 等权 NAV (从价格计算)
+    eq_rets = data["asset_prices"][list(cfg.index_pool)].pct_change().reindex(aligned_idx).fillna(0.0).mean(axis=1)
+    nav_eq = (1 + eq_rets).cumprod()
 
     # --- 4. 评估 ---
     print("\n[4/5] 评估...")

@@ -7,15 +7,15 @@ import pandas as pd
 import pytest
 
 from QuantNodes.strategy.momentum_etf_rotation.v7 import (
-    load_factor_returns, load_index_panel, load_benchmark_price,
+    load_aligned_prices,
     v7_macro_baseline, run_v7_3_backtest,
 )
 from QuantNodes.strategy.momentum_etf_rotation.v7.v3_momentum_backtest import (
     v3_momentum_config, run_v3_momentum_backtest,
 )
 from QuantNodes.strategy.momentum_etf_rotation.v7.momentum_overlay import (
-    compute_momentum_score, apply_momentum_tilt_a, scores_to_weights,
-    EQUITY_INDICES, COMMODITY_INDICES, BOND_INDICES, MOMENTUM_UNIVERSE,
+    compute_momentum_score, apply_momentum_tilt_a,
+    BOND_INDICES, MOMENTUM_UNIVERSE,
 )
 from QuantNodes.strategy.momentum_etf_rotation.v7.data_loader import INDEX_COLS
 
@@ -26,7 +26,8 @@ from QuantNodes.strategy.momentum_etf_rotation.v7.data_loader import INDEX_COLS
 class TestMomentumScore:
     @pytest.fixture
     def idx_ret(self) -> pd.DataFrame:
-        return load_index_panel()
+        prices = load_aligned_prices(pool="index")["asset_prices"]
+        return np.log(prices / prices.shift(1)).dropna()
 
     def test_price_momentum(self, idx_ret) -> None:
         """price 动量: P(T)/P(T-90)-1, bond=0."""
@@ -63,7 +64,8 @@ class TestMomentumScore:
 class TestMomentumTiltA:
     @pytest.fixture
     def idx_ret(self) -> pd.DataFrame:
-        return load_index_panel()
+        prices = load_aligned_prices(pool="index")["asset_prices"]
+        return np.log(prices / prices.shift(1)).dropna()
 
     def test_bull_unchanged(self, idx_ret) -> None:
         """α=0 时权重不变."""
@@ -134,23 +136,24 @@ class TestV3MomentumConfig:
 class TestV3MomentumBacktest:
     @pytest.fixture(scope="class")
     def data(self):
-        return load_factor_returns(), load_index_panel(), load_benchmark_price()
+        data = load_aligned_prices(pool="index")
+        return data["factor_nav"], data["asset_prices"], data["benchmark"]
 
     def test_option_a_deterministic(self, data) -> None:
         """Option A 同参数同结果."""
-        fr, ir, bp = data
+        factor_nav, asset_prices, benchmark = data
         cfg = v3_momentum_config(momentum_type="hybrid", lookback=90, alpha=0.05, option="A")
-        nav1 = run_v3_momentum_backtest(ir, fr, cfg, bp)
-        nav2 = run_v3_momentum_backtest(ir, fr, cfg, bp)
+        nav1 = run_v3_momentum_backtest(asset_prices, factor_nav, cfg, benchmark)
+        nav2 = run_v3_momentum_backtest(asset_prices, factor_nav, cfg, benchmark)
         np.testing.assert_array_almost_equal(nav1.values, nav2.values, decimal=8)
 
     def test_option_a_improves_over_baseline(self, data) -> None:
         """Option A (with TF) 应优于 v7 baseline."""
-        fr, ir, bp = data
+        factor_nav, asset_prices, benchmark = data
         cfg_base = v7_macro_baseline()
-        nav_base = run_v7_3_backtest(ir, fr, cfg_base)
+        nav_base = run_v7_3_backtest(asset_prices, factor_nav, cfg_base)
         cfg_mom = v3_momentum_config(momentum_type="slope_r2", lookback=90, alpha=0.05, option="A", tf_enabled=True)
-        nav_mom = run_v3_momentum_backtest(ir, fr, cfg_mom, bp)
+        nav_mom = run_v3_momentum_backtest(asset_prices, factor_nav, cfg_mom, benchmark)
         # Calmar 应 > baseline
         def calmar(nav):
             n = nav.loc["2022-01-01":]
@@ -162,16 +165,16 @@ class TestV3MomentumBacktest:
 
     def test_option_b_matches_tf_only(self, data) -> None:
         """Option B (第10因子) with TF 应与 TF only 一致."""
-        fr, ir, bp = data
+        factor_nav, asset_prices, benchmark = data
         cfg_tf = v7_macro_baseline()
         cfg_tf.trend_filter_enabled = True
         cfg_tf.trend_filter_benchmark = "沪深300指数"
         cfg_tf.trend_filter_ma = 200
         cfg_tf.trend_filter_bear = 0.5
-        nav_tf = run_v7_3_backtest(ir, fr, cfg_tf, bp)
+        nav_tf = run_v7_3_backtest(asset_prices, factor_nav, cfg_tf, benchmark)
 
         cfg_b = v3_momentum_config(momentum_type="hybrid", lookback=90, alpha=0.05, option="B", tf_enabled=True)
-        nav_b = run_v3_momentum_backtest(ir, fr, cfg_b, bp)
+        nav_b = run_v3_momentum_backtest(asset_prices, factor_nav, cfg_b, benchmark)
         # Option B 应与 TF only 非常接近 (可能因 float 精度微小差异)
         np.testing.assert_array_almost_equal(
             nav_tf.loc["2022-01-01":].values,
