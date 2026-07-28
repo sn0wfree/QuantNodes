@@ -534,12 +534,16 @@ def winsorize_factor(X_panel: np.ndarray, factor_names: list[str],
 
 
 def standardize_v7_10(X_panel: np.ndarray, factor_names: list[str]) -> np.ndarray:
-    """v7.10 混合标准化: 宏观=时间序列Z-score, PV=截面Z-score.
+    """v7.10 混合标准化: 宏观=expanding Z-score, PV=截面Z-score.
+
+    ⚠️ 2026-07-28 修复: 全样本 Z-score -> expanding Z-score (消除未来函数).
+    原版使用全样本 mean/std/quantile, 在 t 时点偷看 t+1..T 的数据,
+    导致 OOS 表现被虚假放大 (v7.6 CV% 50.2% FAIL -> v7.10 CV% 16.6% PASS).
 
     处理顺序:
-      1. Winsorize 极端偏度因子 (f13_rv, f17_idio_vol, f15_max5, f1_first_mom)
-      2. 宏观因子 (k=0-16): 时间序列 Z-score (每个因子在时间维度上标准化)
-      3. PV 因子 (k=17-35): 截面 Z-score (每个时间点、每个因子在截面上标准化)
+      1. Winsorize 极端偏度因子 (expanding quantile, 仅用 [0:t] 数据)
+      2. 宏观因子 (k=0-16): expanding 时间序列 Z-score (仅用 [0:t] 数据)
+      3. PV 因子 (k=17-35): 截面 Z-score (每个时间点, 无未来函数, 保持不变)
 
     Parameters:
         X_panel: (T, N, K) 因子面板 (v7.9 原始)
@@ -550,21 +554,64 @@ def standardize_v7_10(X_panel: np.ndarray, factor_names: list[str]) -> np.ndarra
     """
     T, N, K = X_panel.shape
 
-    # Step 1: Winsorize 极端偏度因子
-    X_std = winsorize_factor(X_panel, factor_names)
-
-    # Step 2: 宏观因子 - 时间序列 Z-score
-    for k in range(min(MACRO_K, K)):
-        vals = X_std[:, :, k].ravel()
-        valid = vals[~np.isnan(vals)]
-        if len(valid) < 2:
+    # Step 1: Winsorize 极端偏度因子 (expanding quantile)
+    X_std = X_panel.copy()
+    for k in range(K):
+        fname = factor_names[k] if k < len(factor_names) else f"f{k}"
+        if fname not in SKEWED_FACTORS:
             continue
-        mean_t = np.mean(valid)
-        std_t = np.std(valid)
-        if std_t > 1e-10:
-            X_std[:, :, k] = (X_std[:, :, k] - mean_t) / std_t
 
-    # Step 3: PV 因子 - 截面 Z-score
+        for t in range(T):
+            vals = X_std[:t + 1, :, k].ravel()
+            valid = vals[~np.isnan(vals)]
+            if len(valid) < 20:
+                continue
+            q_low = np.quantile(valid, 0.01)
+            q_high = np.quantile(valid, 0.99)
+            X_std[t, :, k] = np.clip(X_std[t, :, k], q_low, q_high)
+
+    # Step 2: 宏观因子 - expanding 时间序列 Z-score
+    # 宏观因子在所有资产间共享同一值 (广播), 用第一个资产提取时序
+    for k in range(min(MACRO_K, K)):
+        series = X_std[:, 0, k]  # (T,) — 所有资产相同, 取任一即可
+
+        # 累积统计量 (online mean/std)
+        cumsum = np.zeros(T)
+        cumsum_sq = np.zeros(T)
+        count = np.zeros(T, dtype=int)
+
+        for t in range(T):
+            if not np.isnan(series[t]):
+                if t == 0:
+                    cumsum[0] = series[0]
+                    cumsum_sq[0] = series[0] ** 2
+                    count[0] = 1
+                else:
+                    cumsum[t] = cumsum[t - 1] + series[t]
+                    cumsum_sq[t] = cumsum_sq[t - 1] + series[t] ** 2
+                    count[t] = count[t - 1] + 1
+            else:
+                if t > 0:
+                    cumsum[t] = cumsum[t - 1]
+                    cumsum_sq[t] = cumsum_sq[t - 1]
+                    count[t] = count[t - 1]
+
+        # 计算 expanding mean / std
+        mean_exp = np.zeros(T)
+        std_exp = np.ones(T)
+        for t in range(T):
+            if count[t] >= 2:
+                mean_exp[t] = cumsum[t] / count[t]
+                var = cumsum_sq[t] / count[t] - mean_exp[t] ** 2
+                var = max(var, 0.0)  # 数值稳定性
+                std_exp[t] = np.sqrt(var)
+
+        # 应用 Z-score
+        for t in range(T):
+            if count[t] >= 2 and std_exp[t] > 1e-10:
+                X_std[t, :, k] = (X_std[t, :, k] - mean_exp[t]) / std_exp[t]
+
+    # Step 3: PV 因子 - 截面 Z-score (无未来函数, 保持不变)
     for t in range(T):
         for k in range(MACRO_K, K):
             vals = X_std[t, :, k]
