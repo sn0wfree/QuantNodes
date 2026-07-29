@@ -12,7 +12,7 @@ _V102 = Path(__file__).resolve().parent.parent
 if str(_V102) not in sys.path:
     sys.path.insert(0, str(_V102))
 
-from ca_gcp.core import CAGCPConfig, CAGCPipeline  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import CAGCPConfig, CAGCPipeline  # noqa: E402
 from integration.ca_gcp_risk_filter import RiskFilterRules  # noqa: E402
 from integration.dual_momentum_ca_gcp import (  # noqa: E402
     dual_momentum_bare,

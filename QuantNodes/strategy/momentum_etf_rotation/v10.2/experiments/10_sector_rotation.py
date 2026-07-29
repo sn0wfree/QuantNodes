@@ -20,15 +20,15 @@ sys.path.insert(0, str(ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation
 sys.path.insert(0, str(ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation"))
 
 from _path import *  # noqa: F401,F403
-from ca_gcp import CAGCPConfig, CAGCPipeline  # noqa: E402
-from ca_gcp.cluster import (  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import CAGCPConfig, CAGCPipeline  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import (  # noqa: E402
     build_sector_groups,
     fit_sector_ca_gcp,
     fit_sector_hybrid_ca_gcp,
     load_sector_map,
     predict_sector_ca_gcp,
 )
-from ca_gcp.validators import compute_coverage_metrics, width_bps  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import compute_coverage_metrics, width_bps  # noqa: E402
 
 DATA_DIR = ROOT / "data" / "high_freq_macro"
 V102_DIR = ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation" / "v10.2"

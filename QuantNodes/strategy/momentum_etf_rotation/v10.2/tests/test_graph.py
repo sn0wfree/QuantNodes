@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ca_gcp.core.graph import build_knn_graph
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import build_knn_graph
 
 
 def test_build_knn_graph_correlation():

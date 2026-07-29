@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ca_gcp.core.volatility import estimate_volatility
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import estimate_volatility
 
 
 def test_estimate_volatility_shape():

@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ca_gcp.core.pipeline import CAGCPConfig, CAGCPipeline
-from ca_gcp.validators.theoretical_bound import (
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import CAGCPConfig, CAGCPipeline
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import (
     compare_bound_to_empirical,
     theoretical_coverage_bound,
     total_variation_distance_ecdf,

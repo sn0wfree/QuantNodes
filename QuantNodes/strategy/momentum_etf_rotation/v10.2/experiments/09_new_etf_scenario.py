@@ -17,12 +17,12 @@ sys.path.insert(0, str(ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation
 sys.path.insert(0, str(ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation"))
 
 from _path import *  # noqa: F401,F403
-from ca_gcp import (  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import (  # noqa: E402
     CAGCPConfig,
     CAGCPipeline,
     estimate_volatility,
 )
-from ca_gcp.validators import (  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import (  # noqa: E402
     compute_coverage_metrics,
     quality_dataframe,
     width_bps,

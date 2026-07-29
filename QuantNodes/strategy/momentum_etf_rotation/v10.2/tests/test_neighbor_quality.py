@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ca_gcp.core.pipeline import CAGCPConfig, CAGCPipeline
-from ca_gcp.validators.neighbor_quality import (
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import CAGCPConfig, CAGCPipeline
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import (
     NeighborQuality,
     compute_neighbor_quality,
     quality_dataframe,

@@ -8,15 +8,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ca_gcp.cluster import (
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import (
     SectorCAGCPResult,
     build_sector_groups,
     fit_sector_ca_gcp,
     fit_sector_hybrid_ca_gcp,
     load_sector_map,
     predict_sector_ca_gcp,
+    CAGCPConfig,
 )
-from ca_gcp.core.pipeline import CAGCPConfig
 
 
 @pytest.fixture

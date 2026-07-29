@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from ca_gcp.core.weighted_quantile_fast import PrecomputedWeightedQuantile
-from ca_gcp.core.weighted_quantile import weighted_quantile
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import PrecomputedWeightedQuantile
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import weighted_quantile
 
 
 def test_matches_slow_uniform_weights():

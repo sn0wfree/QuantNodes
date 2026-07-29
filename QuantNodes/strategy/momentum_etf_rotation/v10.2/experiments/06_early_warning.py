@@ -16,7 +16,7 @@ ROOT = Path("/home/ll/Public/QuantNodes")
 sys.path.insert(0, str(ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation" / "v10.2"))
 
 from _path import *  # noqa: F401,F403
-from ca_gcp.validators import detect_warnings, evaluate_against_events  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import detect_warnings, evaluate_against_events  # noqa: E402
 
 DATA_DIR = ROOT / "data" / "high_freq_macro"
 OUT_DIR = ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation" / "v10.2" / "data" / "results"
@@ -32,8 +32,7 @@ def main() -> None:
     lo = pd.read_parquet(OUT_DIR / "lo_CA_GCP.parquet")
     up = pd.read_parquet(OUT_DIR / "up_CA_GCP.parquet")
 
-    from ca_gcp.core.modulator import compute_systemic_stress
-    from ca_gcp.core.volatility import estimate_volatility
+        from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import compute_systemic_stress, estimate_volatility
 
     sigma = estimate_volatility(actual)
     stress = compute_systemic_stress(actual, sigma)

@@ -20,8 +20,8 @@ sys.path.insert(0, str(ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation
 sys.path.insert(0, str(ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation" / "v10.2"))
 
 from _path import *  # noqa: F401,F403,E402
-from ca_gcp import CAGCPConfig, CAGCPipeline  # noqa: E402
-from ca_gcp.validators import compute_coverage_metrics, width_bps  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import CAGCPConfig, CAGCPipeline  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import compute_coverage_metrics, width_bps  # noqa: E402
 from integration.ca_gcp_risk_filter import RiskFilterRules  # noqa: E402
 from integration.dual_momentum_ca_gcp import (  # noqa: E402
     dual_momentum_bare,

@@ -696,6 +696,22 @@ def quality_dataframe(pipeline, calib_days_per_asset=None):
     return pd.DataFrame(rows).set_index("target")
 
 
+def recommend_borrow_strategy(pipeline, calib_days_per_asset=None,
+                              strong_threshold=5.0, moderate_threshold=2.0):
+    if calib_days_per_asset is None:
+        calib_days_per_asset = {c: 252 for c in pipeline.codes}
+    out = {}
+    for v_idx, code in enumerate(pipeline.codes):
+        nq = compute_neighbor_quality(pipeline, v_idx, calib_days_per_asset.get(code, 252))
+        if nq.weighted_corr_sum >= strong_threshold:
+            out[code] = "strong"
+        elif nq.weighted_corr_sum >= moderate_threshold:
+            out[code] = "moderate"
+        else:
+            out[code] = "weak"
+    return out
+
+
 @dataclass
 class TheoreticalBound:
     code: str

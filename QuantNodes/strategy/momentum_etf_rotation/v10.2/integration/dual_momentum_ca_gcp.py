@@ -22,7 +22,7 @@ _V10 = _V102.parent / "v10"
 if str(_V10) not in sys.path:
     sys.path.insert(0, str(_V10))
 
-from ca_gcp.core import CAGCPConfig, CAGCPipeline  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import CAGCPConfig, CAGCPipeline  # noqa: E402
 from .ca_gcp_risk_filter import RiskFilterRules, ca_gcp_risk_filter  # noqa: E402
 
 LOOKBACK_WEEKS = 52
@@ -80,7 +80,7 @@ def build_sector_pipelines(
     Returns:
         {asset_code: fitted CAGCPipeline}
     """
-    from ca_gcp.core import CAGCPConfig
+    from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import CAGCPConfig
 
     config = config or CAGCPConfig()
     target_sectors = {sector_map[a] for a in target_assets if a in sector_map}

@@ -28,7 +28,7 @@ _spec.loader.exec_module(_mod)
 CAGCPipeline = _mod.CAGCPipeline
 load_calibrated_config = _mod.load_calibrated_config
 
-from ca_gcp.validators import (  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import (  # noqa: E402
     compute_coverage_metrics,
     theoretical_coverage_bound,
     total_variation_distance_ecdf,
@@ -79,7 +79,7 @@ def main() -> None:
     print(f"Empirical per-asset min: {per_asset_cov.min():.3f}")
     print(f"Empirical per-asset max: {per_asset_cov.max():.3f}")
 
-    from ca_gcp.core.volatility import estimate_volatility
+    from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import estimate_volatility
     full_returns = pd.concat([calib, val])
     sigma = estimate_volatility(full_returns)
     sigma_calib = sigma.reindex(calib.index)

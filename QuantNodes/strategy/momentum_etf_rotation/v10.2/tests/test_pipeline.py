@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ca_gcp.core.pipeline import CAGCPConfig, CAGCPipeline
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import CAGCPConfig, CAGCPipeline
 
 
 def test_pipeline_smoke():

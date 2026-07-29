@@ -107,6 +107,7 @@ from .ca_gcp import (  # noqa: E402,F401
     compute_coverage_metrics,
     compute_neighbor_quality,
     compute_systemic_stress,
+    recommend_borrow_strategy,
     detect_warnings,
     estimate_volatility,
     evaluate_alert,

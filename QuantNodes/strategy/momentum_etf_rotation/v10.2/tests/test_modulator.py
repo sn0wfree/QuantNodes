@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ca_gcp.core.modulator import apply_modulator, compute_systemic_stress
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import apply_modulator, compute_systemic_stress
 
 
 def test_stress_in_unit_interval():
