@@ -190,17 +190,36 @@ def compute_systemic_stress(
     returns: pd.DataFrame,
     volatility: pd.DataFrame,
     threshold_sigma: float = 1.5,
+    expanding: bool = True,
 ) -> pd.Series:
-    """S_t = sigmoid(a + b * dispersion_t + c * anomalous_frac_t) (Sec. 4.5)."""
+    """S_t = sigmoid(a + b * dispersion_t + c * anomalous_frac_t) (Sec. 4.5).
+
+    Args:
+        expanding: If True (default), normalization uses expanding past-only
+            statistics to avoid look-ahead bias in backtests. If False,
+            normalizes against the entire window (original behavior, for
+            compatibility with precomputed results).
+    """
     aligned_returns, aligned_vol = returns.align(volatility, join="inner", axis=1)
     cross_dispersion = aligned_returns.std(axis=1)
     anomaly_count = (aligned_returns.abs() > (threshold_sigma * aligned_vol)).sum(axis=1)
     anomaly_frac = anomaly_count / aligned_returns.shape[1]
 
     a, b, c = -4.0, 1.5, 4.0
-    z = a + b * cross_dispersion / (cross_dispersion.std() + 1e-8) + c * (
-        anomaly_frac - anomaly_frac.mean()
-    ) / (anomaly_frac.std() + 1e-8)
+    if expanding:
+        # Expanding window: at time t, normalize using only data [0..t]
+        cd_mean = cross_dispersion.expanding(min_periods=1).mean()
+        cd_std = cross_dispersion.expanding(min_periods=1).std().replace(0, np.nan)
+        af_mean = anomaly_frac.expanding(min_periods=1).mean()
+        af_std = anomaly_frac.expanding(min_periods=1).std().replace(0, np.nan)
+        z = a + b * (cross_dispersion - cd_mean) / (cd_std + 1e-8) + c * (
+            anomaly_frac - af_mean
+        ) / (af_std + 1e-8)
+    else:
+        # Original: normalize against entire input (has look-ahead)
+        z = a + b * cross_dispersion / (cross_dispersion.std() + 1e-8) + c * (
+            anomaly_frac - anomaly_frac.mean()
+        ) / (anomaly_frac.std() + 1e-8)
     s = pd.Series(_SIGMOID(z.values), index=returns.index)
     return s.fillna(0.0)
 
