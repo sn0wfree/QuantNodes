@@ -37,6 +37,10 @@ V10 = ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation" / "v10"
 sys.path.insert(0, str(V10))
 from dual_momentum import load_all_assets_daily  # noqa: E402
 
+COMMON = ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation" / "common"
+sys.path.insert(0, str(COMMON))
+from metrics import compute_metrics  # noqa: E402
+
 OUT_DIR = ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation" / "v10.2" / "data" / "results"
 
 K_GRID = [2, 4, 6, 8, 12, 16, 24]
@@ -71,27 +75,6 @@ WF_FOLDS = [
         "test_end": pd.Timestamp("2026-06-30"),
     },
 ]
-
-
-def nav_metrics(nav: pd.Series) -> dict:
-    if len(nav) < 20:
-        return {}
-    rets = nav.pct_change().fillna(0.0)
-    ann_ret = (1 + rets).prod() ** (252 / len(rets)) - 1
-    ann_vol = rets.std() * np.sqrt(252)
-    sharpe = ann_ret / ann_vol if ann_vol > 0 else 0.0
-    cummax = nav.cummax()
-    dd = nav / cummax - 1.0
-    max_dd = float(dd.min())
-    calmar = ann_ret / abs(max_dd) if max_dd < 0 else 0.0
-    return {
-        "ann_return": float(ann_ret),
-        "ann_vol": float(ann_vol),
-        "sharpe": float(sharpe),
-        "max_dd": max_dd,
-        "calmar": float(calmar),
-        "total_return": float(nav.iloc[-1] / nav.iloc[0] - 1),
-    }
 
 
 def pareto_score(m: dict, w_bps: float) -> float:
@@ -207,7 +190,7 @@ def run_fold(
         test_start=calib_end,
         test_end=test_end,
     )
-    m_bare = nav_metrics(nav_bare)
+    m_bare = compute_metrics(nav_bare)
 
     # 4. Run dual momentum + CA-GCP on test period
     print("  Running dual momentum + CA-GCP...")
@@ -218,19 +201,19 @@ def run_fold(
         test_start=calib_end,
         test_end=test_end,
     )
-    m_cagcp = nav_metrics(nav_cagcp)
+    m_cagcp = compute_metrics(nav_cagcp)
 
     # 5. Diagnostics
     alerts = diag["alert_level"].value_counts().to_dict()
     n_trades = (diag["turnover"] > 0.001).sum()
     total_turnover = diag["turnover"].sum()
 
-    print(f"  Bare: Sharpe={m_bare.get('sharpe', 0):.3f}, "
-          f"MaxDD={m_bare.get('max_dd', 0):.2%}, "
-          f"Total={m_bare.get('total_return', 0):.2%}")
-    print(f"  CA-GCP: Sharpe={m_cagcp.get('sharpe', 0):.3f}, "
-          f"MaxDD={m_cagcp.get('max_dd', 0):.2%}, "
-          f"Total={m_cagcp.get('total_return', 0):.2%}")
+    print(f"  Bare: Sharpe={m_bare.get('Sharpe', 0):.3f}, "
+          f"MaxDD={m_bare.get('MaxDD', 0):.2%}, "
+          f"AnnRet={m_bare.get('AnnRet', 0):.2%}")
+    print(f"  CA-GCP: Sharpe={m_cagcp.get('Sharpe', 0):.3f}, "
+          f"MaxDD={m_cagcp.get('MaxDD', 0):.2%}, "
+          f"AnnRet={m_cagcp.get('AnnRet', 0):.2%}")
     print(f"  Alerts: {alerts}, trades: {n_trades}, turnover: {total_turnover:.2%}")
 
     return {
@@ -281,16 +264,20 @@ def main() -> None:
         rows.append({
             "Fold": r["fold"],
             "Period": r["test_period"],
-            "Bare_AnnRet": b.get("ann_return", 0),
-            "Bare_Vol": b.get("ann_vol", 0),
-            "Bare_MaxDD": b.get("max_dd", 0),
-            "Bare_Sharpe": b.get("sharpe", 0),
-            "Bare_Calmar": b.get("calmar", 0),
-            "CAGCP_AnnRet": c.get("ann_return", 0),
-            "CAGCP_Vol": c.get("ann_vol", 0),
-            "CAGCP_MaxDD": c.get("max_dd", 0),
-            "CAGCP_Sharpe": c.get("sharpe", 0),
-            "CAGCP_Calmar": c.get("calmar", 0),
+            "Bare_AnnRet": b.get("AnnRet", 0),
+            "Bare_Vol": b.get("Vol", 0),
+            "Bare_MaxDD": b.get("MaxDD", 0),
+            "Bare_Sharpe": b.get("Sharpe", 0),
+            "Bare_Sortino": b.get("Sortino", 0),
+            "Bare_Calmar": b.get("Calmar", 0),
+            "Bare_WinRate": b.get("WinRate", 0),
+            "CAGCP_AnnRet": c.get("AnnRet", 0),
+            "CAGCP_Vol": c.get("Vol", 0),
+            "CAGCP_MaxDD": c.get("MaxDD", 0),
+            "CAGCP_Sharpe": c.get("Sharpe", 0),
+            "CAGCP_Sortino": c.get("Sortino", 0),
+            "CAGCP_Calmar": c.get("Calmar", 0),
+            "CAGCP_WinRate": c.get("WinRate", 0),
         })
 
     summary = pd.DataFrame(rows)
@@ -298,13 +285,15 @@ def main() -> None:
     # Print Bare metrics
     print("\n--- Bare Dual Momentum ---")
     bare_cols = ["Fold", "Period", "Bare_AnnRet", "Bare_Vol",
-                 "Bare_MaxDD", "Bare_Sharpe", "Bare_Calmar"]
+                 "Bare_MaxDD", "Bare_Sharpe", "Bare_Sortino",
+                 "Bare_Calmar", "Bare_WinRate"]
     print(summary[bare_cols].to_string(index=False, float_format="%.4f"))
 
     # Print CA-GCP metrics
     print("\n--- Dual Momentum + CA-GCP ---")
     cagcp_cols = ["Fold", "Period", "CAGCP_AnnRet", "CAGCP_Vol",
-                  "CAGCP_MaxDD", "CAGCP_Sharpe", "CAGCP_Calmar"]
+                  "CAGCP_MaxDD", "CAGCP_Sharpe", "CAGCP_Sortino",
+                  "CAGCP_Calmar", "CAGCP_WinRate"]
     print(summary[cagcp_cols].to_string(index=False, float_format="%.4f"))
 
     # Print deltas
@@ -316,27 +305,33 @@ def main() -> None:
         "Vol_Δ": summary["CAGCP_Vol"] - summary["Bare_Vol"],
         "MaxDD_Δ": summary["CAGCP_MaxDD"] - summary["Bare_MaxDD"],
         "Sharpe_Δ": summary["CAGCP_Sharpe"] - summary["Bare_Sharpe"],
+        "Sortino_Δ": summary["CAGCP_Sortino"] - summary["Bare_Sortino"],
         "Calmar_Δ": summary["CAGCP_Calmar"] - summary["Bare_Calmar"],
+        "WinRate_Δ": summary["CAGCP_WinRate"] - summary["Bare_WinRate"],
     })
     print(delta_df.to_string(index=False, float_format="%+.4f"))
 
     # Aggregate averages
     print("\n--- Aggregate ---")
     agg = pd.DataFrame({
-        "Metric": ["AnnRet", "Vol", "MaxDD", "Sharpe", "Calmar"],
+        "Metric": ["AnnRet", "Vol", "MaxDD", "Sharpe", "Sortino", "Calmar", "WinRate"],
         "Bare_Avg": [
             summary["Bare_AnnRet"].mean(),
             summary["Bare_Vol"].mean(),
             summary["Bare_MaxDD"].mean(),
             summary["Bare_Sharpe"].mean(),
+            summary["Bare_Sortino"].mean(),
             summary["Bare_Calmar"].mean(),
+            summary["Bare_WinRate"].mean(),
         ],
         "CAGCP_Avg": [
             summary["CAGCP_AnnRet"].mean(),
             summary["CAGCP_Vol"].mean(),
             summary["CAGCP_MaxDD"].mean(),
             summary["CAGCP_Sharpe"].mean(),
+            summary["CAGCP_Sortino"].mean(),
             summary["CAGCP_Calmar"].mean(),
+            summary["CAGCP_WinRate"].mean(),
         ],
     })
     agg["Delta"] = agg["CAGCP_Avg"] - agg["Bare_Avg"]
