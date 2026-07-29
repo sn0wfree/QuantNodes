@@ -7,6 +7,12 @@ from .neighbor_quality import (
     quality_dataframe,
     recommend_borrow_strategy,
 )
+from .theoretical_bound import (
+    TheoreticalBound,
+    compare_bound_to_empirical,
+    theoretical_coverage_bound,
+    total_variation_distance_ecdf,
+)
 from .width import width_stability, width_timeseries, width_volatility_correlation
 
 __all__ = [
@@ -21,4 +27,8 @@ __all__ = [
     "compute_neighbor_quality",
     "recommend_borrow_strategy",
     "quality_dataframe",
+    "TheoreticalBound",
+    "theoretical_coverage_bound",
+    "total_variation_distance_ecdf",
+    "compare_bound_to_empirical",
 ]
