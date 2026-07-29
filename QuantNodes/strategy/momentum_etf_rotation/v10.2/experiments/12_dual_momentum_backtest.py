@@ -264,38 +264,80 @@ def main() -> None:
         result = run_fold(daily_prices, weekly_prices, etf_returns, fold, i)
         all_results.append(result)
 
-    # Summary table
-    print("\n" + "=" * 60)
-    print("SUMMARY")
-    print("=" * 60)
+    # Summary table — full metrics
+    print("\n" + "=" * 80)
+    print("SUMMARY: Dual Momentum Bare vs + CA-GCP (Option C)")
+    print("=" * 80)
 
     rows = []
     for r in all_results:
+        b = r["bare"]
+        c = r["cagcp"]
         rows.append({
             "Fold": r["fold"],
             "Period": r["test_period"],
-            "Bare_Sharpe": r["bare"].get("sharpe", 0),
-            "Bare_MaxDD": r["bare"].get("max_dd", 0),
-            "Bare_Total": r["bare"].get("total_return", 0),
-            "CAGCP_Sharpe": r["cagcp"].get("sharpe", 0),
-            "CAGCP_MaxDD": r["cagcp"].get("max_dd", 0),
-            "CAGCP_Total": r["cagcp"].get("total_return", 0),
-            "Sharpe_Delta": r["cagcp"].get("sharpe", 0) - r["bare"].get("sharpe", 0),
-            "Alerts": sum(1 for v in r["alerts"].values() if v > 0),
-            "Turnover": r["total_turnover"],
+            "Bare_AnnRet": b.get("ann_return", 0),
+            "Bare_Vol": b.get("ann_vol", 0),
+            "Bare_MaxDD": b.get("max_dd", 0),
+            "Bare_Sharpe": b.get("sharpe", 0),
+            "Bare_Calmar": b.get("calmar", 0),
+            "CAGCP_AnnRet": c.get("ann_return", 0),
+            "CAGCP_Vol": c.get("ann_vol", 0),
+            "CAGCP_MaxDD": c.get("max_dd", 0),
+            "CAGCP_Sharpe": c.get("sharpe", 0),
+            "CAGCP_Calmar": c.get("calmar", 0),
         })
 
     summary = pd.DataFrame(rows)
-    print(summary.round(4).to_string(index=False))
 
-    # Aggregate
-    avg_bare_sharpe = summary["Bare_Sharpe"].mean()
-    avg_cagcp_sharpe = summary["CAGCP_Sharpe"].mean()
-    avg_delta = summary["Sharpe_Delta"].mean()
-    print(f"\nAvg Bare Sharpe: {avg_bare_sharpe:.3f}")
-    print(f"Avg CA-GCP Sharpe: {avg_cagcp_sharpe:.3f}")
-    print(f"Avg Delta: {avg_delta:+.3f}")
-    print(f"CA-GCP helps: {'YES' if avg_delta > 0 else 'NO'}")
+    # Print Bare metrics
+    print("\n--- Bare Dual Momentum ---")
+    bare_cols = ["Fold", "Period", "Bare_AnnRet", "Bare_Vol",
+                 "Bare_MaxDD", "Bare_Sharpe", "Bare_Calmar"]
+    print(summary[bare_cols].to_string(index=False, float_format="%.4f"))
+
+    # Print CA-GCP metrics
+    print("\n--- Dual Momentum + CA-GCP ---")
+    cagcp_cols = ["Fold", "Period", "CAGCP_AnnRet", "CAGCP_Vol",
+                  "CAGCP_MaxDD", "CAGCP_Sharpe", "CAGCP_Calmar"]
+    print(summary[cagcp_cols].to_string(index=False, float_format="%.4f"))
+
+    # Print deltas
+    print("\n--- Delta (CA-GCP - Bare) ---")
+    delta_df = pd.DataFrame({
+        "Fold": summary["Fold"],
+        "Period": summary["Period"],
+        "AnnRet_Δ": summary["CAGCP_AnnRet"] - summary["Bare_AnnRet"],
+        "Vol_Δ": summary["CAGCP_Vol"] - summary["Bare_Vol"],
+        "MaxDD_Δ": summary["CAGCP_MaxDD"] - summary["Bare_MaxDD"],
+        "Sharpe_Δ": summary["CAGCP_Sharpe"] - summary["Bare_Sharpe"],
+        "Calmar_Δ": summary["CAGCP_Calmar"] - summary["Bare_Calmar"],
+    })
+    print(delta_df.to_string(index=False, float_format="%+.4f"))
+
+    # Aggregate averages
+    print("\n--- Aggregate ---")
+    agg = pd.DataFrame({
+        "Metric": ["AnnRet", "Vol", "MaxDD", "Sharpe", "Calmar"],
+        "Bare_Avg": [
+            summary["Bare_AnnRet"].mean(),
+            summary["Bare_Vol"].mean(),
+            summary["Bare_MaxDD"].mean(),
+            summary["Bare_Sharpe"].mean(),
+            summary["Bare_Calmar"].mean(),
+        ],
+        "CAGCP_Avg": [
+            summary["CAGCP_AnnRet"].mean(),
+            summary["CAGCP_Vol"].mean(),
+            summary["CAGCP_MaxDD"].mean(),
+            summary["CAGCP_Sharpe"].mean(),
+            summary["CAGCP_Calmar"].mean(),
+        ],
+    })
+    agg["Delta"] = agg["CAGCP_Avg"] - agg["Bare_Avg"]
+    print(agg.to_string(index=False, float_format="%.4f"))
+    print(f"\nCA-GCP helps (Sharpe): "
+          f"{'YES' if agg.loc[agg['Metric'] == 'Sharpe', 'Delta'].iloc[0] > 0 else 'NO'}")
 
     # Save
     summary.to_csv(OUT_DIR / "dual_momentum_wf_summary.csv", index=False)
