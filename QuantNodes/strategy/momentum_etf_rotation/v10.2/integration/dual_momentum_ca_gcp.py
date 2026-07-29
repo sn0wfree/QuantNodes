@@ -477,7 +477,7 @@ def dual_momentum_with_ca_gcp(
                     per_asset_intervals, w_target, date, history_hw,
                 )
             else:
-                if date in intervals["half_width"].index:
+                if date in intervals["half_width"].index and len(intervals["stress"]) > 0:
                     idx_t = intervals["half_width"].index.get_loc(date)
                     intervals_t = {
                         "lower": intervals["lower"].iloc[[idx_t]],
@@ -557,7 +557,7 @@ def dual_momentum_with_ca_gcp(
                     per_asset_intervals, w_target, date, history_hw,
                 )
             else:
-                if date in intervals["half_width"].index:
+                if date in intervals["half_width"].index and len(intervals["stress"]) > 0:
                     idx_t = intervals["half_width"].index.get_loc(date)
                     intervals_t = {
                         "lower": intervals["lower"].iloc[[idx_t]],
