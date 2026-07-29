@@ -180,10 +180,14 @@ def run_fold(
           f"Train→{train_end.date()}, Calib→{calib_end.date()}, "
           f"Test→{test_end.date()} ---")
 
-    # 1. Calibrate
-    print("  Calibrating...")
-    cfg = calibrate_fold(etf_returns, train_end, calib_end)
-    print(f"  Best config: k={cfg.k}, eta={cfg.sensitivity_eta}, tau={cfg.recency_tau}")
+    # 1. Use global calibrated config from best_params.json
+    import importlib.util as _ilu
+    _v102_dir = ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation" / "v10.2"
+    _spec = _ilu.spec_from_file_location("v10_2_module", _v102_dir / "__init__.py")
+    _mod = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    cfg = _mod.load_calibrated_config()
+    print(f"  Config: k={cfg.k}, eta={cfg.sensitivity_eta}, tau={cfg.recency_tau}")
 
     # 2. Fit CA-GCP on train window (600 days before calib_end)
     train_slice = etf_returns.loc[:calib_end].iloc[-600:]
