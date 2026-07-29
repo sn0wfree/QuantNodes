@@ -117,16 +117,29 @@ def calibrate_fold(
     no_improve = 0
     total = len(K_GRID) * len(ETA_GRID) * len(TAU_GRID)
     t0 = time.time()
+    prev_k = None
 
     for idx, (k, eta, tau) in enumerate(itertools.product(K_GRID, ETA_GRID, TAU_GRID), 1):
         pipe.config.k = k
         pipe.config.sensitivity_eta = eta
         pipe.config.recency_tau = tau
 
+        # Rebuild graph when k changes (Bug 2 fix)
+        if k != prev_k:
+            pipe.fit(train)
+            prev_k = k
+
         out = pipe.predict_fast(calib_grid, val)
         m = compute_coverage_metrics(actual, out["lower"], out["upper"], extreme_mask)
         w_bps = width_bps(out["half_width"])
-        s = pareto_score(m, w_bps)
+
+        # Turnover penalty: width instability (rolling CV of half_width)
+        hw_mean = out["half_width"].mean(axis=1)
+        if len(hw_mean) > 20:
+            hw_cv = hw_mean.rolling(20, min_periods=5).std().mean() / hw_mean.mean()
+        else:
+            hw_cv = 0.0
+        s = pareto_score(m, w_bps) - 2.0 * hw_cv
 
         if s > best_score:
             best_score = s

@@ -67,6 +67,7 @@ def main() -> None:
     best_score = -np.inf
     no_improve_count = 0
     t0 = time.time()
+    prev_k = None
 
     total = len(K_GRID) * len(ETA_GRID) * len(TAU_GRID)
     print(f"Grid size: {total} combinations")
@@ -75,6 +76,11 @@ def main() -> None:
         pipe.config.k = k
         pipe.config.sensitivity_eta = eta
         pipe.config.recency_tau = tau
+
+        # Rebuild graph when k changes (Bug 2 fix)
+        if k != prev_k:
+            pipe.fit(train)
+            prev_k = k
 
         t_fit = time.time()
         out = pipe.predict_fast(calib, val)

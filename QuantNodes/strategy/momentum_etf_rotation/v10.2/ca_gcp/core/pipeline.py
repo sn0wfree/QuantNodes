@@ -210,8 +210,6 @@ class CAGCPipeline:
         Same interface as predict(), but ~10x faster on the grid sizes
         used in v10.2 experiments.
         """
-        from .weighted_quantile_fast import PrecomputedWeightedQuantile
-
         if point_forecasts is None:
             point_forecasts = pd.DataFrame(0.0, index=returns_test.index, columns=self.codes)
         point_forecasts = point_forecasts.reindex(index=returns_test.index, columns=self.codes).fillna(0.0)
@@ -257,14 +255,7 @@ class CAGCPipeline:
             valid_mask = ~np.isnan(scores_calib_arr[:, v_idx])
             if not valid_mask.any():
                 continue
-            valid_scores = scores_calib_arr[valid_mask, v_idx]
             valid_calib_pos = calib_pos[valid_mask]
-            from .weighted_quantile_fast import PrecomputedWeightedQuantile
-            cache = PrecomputedWeightedQuantile(
-                valid_scores,
-                np.ones_like(valid_scores),
-                pseudo_count_inf=self.config.pseudo_count_inf,
-            )
             for t_idx in range(n_test):
                 if test_pos[t_idx] < valid_calib_pos[0]:
                     continue
@@ -286,7 +277,7 @@ class CAGCPipeline:
                     src_valid = ~np.isnan(scores_calib_arr[valid_mask, src_idx])
                     if not src_valid.any():
                         continue
-                    pool.append(valid_scores[src_valid])
+                    pool.append(scores_calib_arr[valid_mask, src_idx][src_valid])
                     weights.append(corr_w[k_i] * time_w[src_valid])
                 if not pool:
                     continue
