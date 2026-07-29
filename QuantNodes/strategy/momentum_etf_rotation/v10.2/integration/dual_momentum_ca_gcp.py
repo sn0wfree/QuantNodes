@@ -67,12 +67,15 @@ def _compute_gate_signal(
     corr_window: int = GATE_CORR_WINDOW,
     corr_drop: float = GATE_CORR_DROP,
     atr_window: int = GATE_ATR_WINDOW,
+    gate_mode: str = "or",
 ) -> tuple[pd.Series, pd.Series, pd.Series]:
     """Compute adaptive gate signal.
 
+    Args:
+        gate_mode: "or" (vol OR corr) or "and" (vol AND corr).
+
     Returns:
         (gate: bool Series, vol_signal: bool Series, corr_signal: bool Series)
-        gate = vol_signal | corr_signal (OR mode) or vol_signal & corr_signal (AND mode)
     """
     # Condition A: ATR-based volatility filter
     atr = compute_atr_proxy(etf_returns, window=atr_window)
@@ -98,13 +101,16 @@ def _compute_gate_signal(
             avg_corr_list.append(np.nan)
     avg_corr = pd.Series(avg_corr_list, index=etf_returns.index)
 
-    # Detect breakdown: drop > 30% from recent high
-    corr_high = avg_corr.expanding(corr_window).max()
+    # Detect breakdown: drop from ROLLING max (not expanding/all-time)
+    corr_high = avg_corr.rolling(corr_window).max()
     corr_drop_pct = (corr_high - avg_corr) / corr_high.replace(0, np.nan)
     corr_signal = corr_drop_pct > corr_drop
 
-    # Combine
-    gate = vol_signal | corr_signal  # Default OR (will be overridden per config)
+    # Combine based on mode
+    if gate_mode == "and":
+        gate = vol_signal & corr_signal
+    else:
+        gate = vol_signal | corr_signal
 
     return gate, vol_signal, corr_signal
 
@@ -388,7 +394,7 @@ def dual_momentum_with_ca_gcp(
     if use_gate:
         gate_signal, _, _ = _compute_gate_signal(
             etf_returns, gate_vol_window, gate_vol_pct,
-            gate_corr_window, gate_corr_drop,
+            gate_corr_window, gate_corr_drop, gate_mode=gate_mode,
         )
 
     if test_start is not None:
@@ -498,9 +504,6 @@ def dual_momentum_with_ca_gcp(
                     else:
                         gate_last_switch_idx = i
                         gate_active = gate_is_active
-
-                # Reset gate at month-end (natural rebalance point)
-                gate_active = gate_is_active
 
             if intervals_t is not None and gate_is_active:
                 w_adj, diag = ca_gcp_risk_filter(
