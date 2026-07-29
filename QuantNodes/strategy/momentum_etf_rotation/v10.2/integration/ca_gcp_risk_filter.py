@@ -291,7 +291,10 @@ def calibrate_risk_filter(
 ) -> RiskFilterRules:
     """Grid search for optimal risk filter thresholds on calib period.
 
-    Uses Pareto score: Sharpe - 0.5 * AnnCost.
+    Pareto score measures marginal improvement over bare:
+      score = (sharpe_cagcp - sharpe_bare)
+            - 0.3 * max(0, ann_cost_cagcp - ann_cost_bare - 0.02)
+            + 0.5 * max(0, maxdd_bare - maxdd_cagcp)
 
     Args:
         daily_prices: Daily close prices for the 4 assets.
@@ -308,11 +311,27 @@ def calibrate_risk_filter(
     import itertools
     import time
 
-    from .dual_momentum_ca_gcp import dual_momentum_with_ca_gcp
+    from common.metrics import compute_metrics
+    from .dual_momentum_ca_gcp import dual_momentum_bare, dual_momentum_with_ca_gcp
 
     calib_prices = daily_prices.loc[calib_start:calib_end]
     calib_weekly = weekly_prices.loc[:calib_end]
 
+    # 1. Run bare baseline
+    nav_bare, diag_bare = dual_momentum_bare(
+        calib_prices, calib_weekly, cost_bp=cost_bp,
+    )
+    m_bare = compute_metrics(nav_bare)
+    sharpe_bare = m_bare.get("Sharpe", 0.0)
+    maxdd_bare = m_bare.get("MaxDD", 0.0)
+    total_cost_bare = diag_bare["cost"].sum()
+    n_years_bare = m_bare.get("Years", 1.0)
+    ann_cost_bare = total_cost_bare / n_years_bare if n_years_bare > 0 else 0.0
+
+    print(f"    Bare baseline: Sharpe={sharpe_bare:.3f}, MaxDD={maxdd_bare:.2%}, "
+          f"AnnCost={ann_cost_bare:.2%}")
+
+    # 2. Grid search over thresholds
     grid = list(itertools.product(
         WIDTH_Z_YELLOW_GRID, WIDTH_Z_RED_GRID,
         STRESS_YELLOW_GRID, STRESS_RED_GRID,
@@ -341,23 +360,29 @@ def calibrate_risk_filter(
         if len(nav) < 20:
             continue
 
-        from common.metrics import compute_metrics
         m = compute_metrics(nav)
-        sharpe = m.get("Sharpe", 0.0)
+        sharpe_cagcp = m.get("Sharpe", 0.0)
+        maxdd_cagcp = m.get("MaxDD", 0.0)
 
-        total_cost = diag["cost"].sum()
+        total_cost_cagcp = diag["cost"].sum()
         n_years = m.get("Years", 1.0)
-        ann_cost = total_cost / n_years if n_years > 0 else 0.0
+        ann_cost_cagcp = total_cost_cagcp / n_years if n_years > 0 else 0.0
 
-        score = sharpe - 0.5 * ann_cost
+        # New Pareto score: marginal improvement over bare
+        delta_sharpe = sharpe_cagcp - sharpe_bare
+        cost_penalty = max(0, ann_cost_cagcp - ann_cost_bare - 0.02)
+        maxdd_bonus = max(0, maxdd_bare - maxdd_cagcp)  # maxdd is negative
+
+        score = delta_sharpe - 0.3 * cost_penalty + 0.5 * maxdd_bonus
 
         if score > best_score:
             best_score = score
             best_rules = rules
 
-        if idx % 50 == 0:
+        if idx % 100 == 0:
             elapsed = time.time() - t0
             print(f"      [{idx}/{total}] best_score={best_score:.3f} "
+                  f"delta_sharpe={delta_sharpe:+.3f} maxdd_bonus={maxdd_bonus:.3f} "
                   f"({elapsed:.1f}s)")
 
     elapsed = time.time() - t0
