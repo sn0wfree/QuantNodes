@@ -63,6 +63,7 @@ def ca_gcp_risk_filter(
     rules: RiskFilterRules | None = None,
     today: pd.Timestamp | None = None,
     history: pd.DataFrame | None = None,
+    residual_asset: str | None = None,
 ) -> tuple[pd.Series, dict]:
     """Apply CA-GCP risk filter to v10 target weights.
 
@@ -77,6 +78,7 @@ def ca_gcp_risk_filter(
         rules: RiskFilterRules configuration.
         today: Specific day to evaluate. If None, uses last day of intervals.
         history: Earlier half_width values for computing rolling stats.
+        residual_asset: Asset code to receive residual exposure when scale < 1.0.
 
     Returns:
         (adjusted_weights, diagnostics_dict)
@@ -87,11 +89,13 @@ def ca_gcp_risk_filter(
     if rules.group_rules and rules.asset_groups:
         return _ca_gcp_risk_filter_grouped(
             weights, intervals, rules, today, history,
+            residual_asset=residual_asset,
         )
 
     # Global mode (original logic)
     return _ca_gcp_risk_filter_global(
         weights, intervals, rules, today, history,
+        residual_asset=residual_asset,
     )
 
 
@@ -124,6 +128,7 @@ def _ca_gcp_risk_filter_global(
     rules: RiskFilterRules,
     today: pd.Timestamp | None,
     history: pd.DataFrame | None,
+    residual_asset: str | None = None,
 ) -> tuple[pd.Series, dict]:
     """Global mode: single threshold for all assets."""
     hw = intervals["half_width"]
@@ -158,8 +163,11 @@ def _ca_gcp_risk_filter_global(
     if scale < 1.0:
         residual = (1.0 - adjusted.sum()) if adjusted.sum() < 1.0 else 0.0
         if residual > 0:
-            weights_min = weights.abs().idxmin()
-            adjusted[weights_min] += residual
+            if residual_asset is not None and residual_asset in adjusted.index:
+                adjusted[residual_asset] += residual
+            else:
+                weights_min = weights.abs().idxmin()
+                adjusted[weights_min] += residual
 
     return adjusted, diag
 
@@ -170,6 +178,7 @@ def _ca_gcp_risk_filter_grouped(
     rules: RiskFilterRules,
     today: pd.Timestamp | None,
     history: pd.DataFrame | None,
+    residual_asset: str | None = None,
 ) -> tuple[pd.Series, dict]:
     """Per-group mode: separate thresholds per asset group."""
     hw = intervals["half_width"]
@@ -258,8 +267,11 @@ def _ca_gcp_risk_filter_grouped(
     if overall_scale < 1.0:
         residual = (1.0 - adjusted.sum()) if adjusted.sum() < 1.0 else 0.0
         if residual > 0:
-            weights_min = weights.abs().idxmin()
-            adjusted[weights_min] += residual
+            if residual_asset is not None and residual_asset in adjusted.index:
+                adjusted[residual_asset] += residual
+            else:
+                weights_min = weights.abs().idxmin()
+                adjusted[weights_min] += residual
 
     return adjusted, diag
 

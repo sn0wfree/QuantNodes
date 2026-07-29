@@ -937,33 +937,54 @@ def evaluate_alert(width_z: float, stress: float, rules: RiskFilterRules) -> tup
     return "green", 1.0
 
 
-def apply_scale_to_weights(weights: pd.Series, scale: float) -> pd.Series:
-    """Multiply weights by scale; redistribute residual (1 - sum) to smallest-weight asset.
+def apply_scale_to_weights(weights: pd.Series, scale: float,
+                           residual_asset: str | None = None) -> pd.Series:
+    """Multiply weights by scale; redistribute residual to residual_asset.
 
     Assumes weights.sum() ≈ 1.0. If scale < 1.0 and adjusted.sum() < 1.0,
-    the residual is added to the asset with the smallest absolute weight.
+    the residual is added to residual_asset (e.g. bond code) instead of the
+    smallest-weight asset. This prevents diluting the trend winner into
+    an arbitrary zero-weight ETF.
+
+    Args:
+        weights: Current portfolio weights (sum ≈ 1.0).
+        scale: Risk scale factor (0 < scale <= 1.0).
+        residual_asset: Asset code to receive residual exposure. If None,
+            falls back to smallest-weight asset (legacy behavior).
     """
     adjusted = weights * scale
     if scale < 1.0:
         residual = (1.0 - adjusted.sum()) if adjusted.sum() < 1.0 else 0.0
         if residual > 0:
-            adjusted[weights.abs().idxmin()] += residual
+            if residual_asset is not None and residual_asset in adjusted.index:
+                adjusted[residual_asset] += residual
+            else:
+                adjusted[weights.abs().idxmin()] += residual
     return adjusted
 
 
-def ca_gcp_risk_filter(weights, intervals, rules=None, today=None, history=None):
-    """Apply CA-GCP risk filter to target weights. Returns (adjusted_weights, diagnostics)."""
+def ca_gcp_risk_filter(weights, intervals, rules=None, today=None, history=None,
+                       residual_asset=None):
+    """Apply CA-GCP risk filter to target weights. Returns (adjusted_weights, diagnostics).
+
+    Args:
+        residual_asset: Asset code to receive residual exposure when scale < 1.0.
+            Typically the bond/defensive asset (e.g. '511260'). If None,
+            residual goes to smallest-weight asset (legacy behavior).
+    """
     rules = rules or RiskFilterRules()
     if rules.group_rules and rules.asset_groups:
-        return _ca_gcp_risk_filter_grouped(weights, intervals, rules, today, history)
+        return _ca_gcp_risk_filter_grouped(weights, intervals, rules, today, history,
+                                           residual_asset=residual_asset)
     signals = extract_risk_signals(intervals, today=today, history=history)
     alert, scale = evaluate_alert(signals["width_z_today"], signals["stress_today"], rules)
-    adjusted = apply_scale_to_weights(weights, scale)
+    adjusted = apply_scale_to_weights(weights, scale, residual_asset=residual_asset)
     diag = {**signals, "alert_level": alert, "applied_scale": scale}
     return adjusted, diag
 
 
-def _ca_gcp_risk_filter_grouped(weights, intervals, rules, today, history):
+def _ca_gcp_risk_filter_grouped(weights, intervals, rules, today, history,
+                               residual_asset=None):
     hw, stress = intervals["half_width"], intervals["stress"]
     if today is None:
         today = hw.index[-1]
@@ -995,7 +1016,7 @@ def _ca_gcp_risk_filter_grouped(weights, intervals, rules, today, history):
         if total_w > 0:
             overall_scale = weighted_s / total_w
 
-    adjusted = apply_scale_to_weights(weights, overall_scale)
+    adjusted = apply_scale_to_weights(weights, overall_scale, residual_asset=residual_asset)
     return adjusted, {"width_z_today": group_width_z, "stress_today": stress_today,
                       "alert_level": overall_alert, "applied_scale": overall_scale,
                       "group_alerts": group_alerts, "group_scales": group_scales}

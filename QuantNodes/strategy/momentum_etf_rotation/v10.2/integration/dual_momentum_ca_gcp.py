@@ -327,6 +327,7 @@ def dual_momentum_with_ca_gcp(
                 w_adj, diag = ca_gcp_risk_filter(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
+                    residual_asset=BOND_CODE,
                 )
                 if history_hw is None:
                     history_hw = intervals_t["half_width"].copy()
@@ -374,6 +375,7 @@ def dual_momentum_with_ca_gcp(
                 w_adj, diag = ca_gcp_risk_filter(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
+                    residual_asset=BOND_CODE,
                 )
                 if history_hw is None:
                     history_hw = intervals_t["half_width"].copy()
