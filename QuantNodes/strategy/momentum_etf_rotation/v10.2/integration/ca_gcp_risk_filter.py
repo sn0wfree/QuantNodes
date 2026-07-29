@@ -293,8 +293,14 @@ def calibrate_risk_filter(
 
     Pareto score measures marginal improvement over bare:
       score = (sharpe_cagcp - sharpe_bare)
-            - 0.3 * max(0, ann_cost_cagcp - ann_cost_bare - 0.02)
-            + 0.5 * max(0, maxdd_bare - maxdd_cagcp)
+            - cost_penalty
+            + maxdd_bonus
+
+    where:
+      cost_penalty = 1.0 * max(0, ann_cost_cagcp - ann_cost_bare)
+        (every incremental bp above bare is penalized; no dead-zone)
+      maxdd_bonus  = 0.5 * max(0, maxdd_bare - maxdd_cagcp)
+        (capped at +0.5 by MaxDD improvement, maxdd_bare is negative)
 
     Args:
         daily_prices: Daily close prices for the 4 assets.
@@ -368,12 +374,12 @@ def calibrate_risk_filter(
         n_years = m.get("Years", 1.0)
         ann_cost_cagcp = total_cost_cagcp / n_years if n_years > 0 else 0.0
 
-        # New Pareto score: marginal improvement over bare
+        # Pareto score: marginal improvement over bare
         delta_sharpe = sharpe_cagcp - sharpe_bare
-        cost_penalty = max(0, ann_cost_cagcp - ann_cost_bare - 0.02)
-        maxdd_bonus = max(0, maxdd_bare - maxdd_cagcp)  # maxdd is negative
+        cost_penalty = max(0.0, ann_cost_cagcp - ann_cost_bare)
+        maxdd_bonus = max(0.0, maxdd_bare - maxdd_cagcp)  # maxdd is negative
 
-        score = delta_sharpe - 0.3 * cost_penalty + 0.5 * maxdd_bonus
+        score = delta_sharpe - cost_penalty + 0.5 * maxdd_bonus
 
         if score > best_score:
             best_score = score

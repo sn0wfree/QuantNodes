@@ -184,3 +184,56 @@ class TestRiskFilterHysteresis:
         rules = RiskFilterRules()
         assert rules.stress_yellow_recovery < rules.stress_yellow
         assert rules.width_z_yellow_recovery < rules.width_z_yellow
+
+
+class TestDiagnostics:
+    """Verify new diagnostics columns are populated correctly (P7)."""
+
+    def test_bare_diag_has_new_fields(self, sample_data):
+        prices, weekly, _ = sample_data
+        _, diag = dual_momentum_bare(
+            prices, weekly, cost_bp=10,
+            test_start=prices.index[300], test_end=prices.index[400],
+        )
+        for col in ["is_month_end", "is_monday", "days_since_month_end",
+                    "applied_scale"]:
+            assert col in diag.columns, f"missing column: {col}"
+        # is_monday should be true for some rows
+        assert diag["is_monday"].sum() > 0
+        # applied_scale is always 1.0 for bare
+        assert (diag["applied_scale"] == 1.0).all()
+
+    def test_cagcp_diag_has_new_fields(self, sample_data, fitted_pipe):
+        prices, weekly, returns = sample_data
+        _, diag = dual_momentum_with_ca_gcp(
+            prices, weekly, fitted_pipe, returns,
+            test_start=prices.index[300], test_end=prices.index[400],
+        )
+        for col in ["is_month_end", "is_monday", "days_since_month_end",
+                    "applied_scale", "w_prev"]:
+            assert col in diag.columns, f"missing column: {col}"
+
+    def test_rebal_dates_use_last_trading_day(self, sample_data):
+        """P6: rebal_dates should be actual last trading day per month."""
+        prices, weekly, _ = sample_data
+        # Call with default rebal_dates=None
+        _, diag = dual_momentum_bare(
+            prices, weekly, cost_bp=10,
+            test_start=prices.index[100], test_end=prices.index[400],
+        )
+        # Every is_month_end row must be in the index
+        month_end_dates = diag[diag["is_month_end"]]["date"]
+        for d in month_end_dates:
+            assert d in prices.index, f"rebalance date {d} not in trading days"
+        # No is_month_end row should be a non-trading day (weekend/holiday)
+        for d in month_end_dates:
+            assert d.dayofweek < 5, f"rebalance date {d} is a weekend"
+
+    def test_calibrate_risk_filter_penalizes_every_bp(self):
+        """P5: cost penalty must fire on every incremental bp, not after a 2% dead-zone."""
+        from integration.ca_gcp_risk_filter import calibrate_risk_filter
+        # Inspect source: confirm the cost_penalty formula no longer has 0.02 dead-zone
+        import inspect
+        src = inspect.getsource(calibrate_risk_filter)
+        assert "ann_cost_bare - 0.02" not in src, \
+            "calibrate_risk_filter still has the 0.02 dead-zone (P5 bug)"

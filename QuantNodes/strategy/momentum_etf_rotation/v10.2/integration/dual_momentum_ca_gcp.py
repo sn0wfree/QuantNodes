@@ -118,6 +118,19 @@ def build_sector_pipelines(
     return pipelines
 
 
+def _days_since_month_end(date: pd.Timestamp, rebal_dates: pd.DatetimeIndex) -> int:
+    """Trading days since the most recent month-end rebalance date.
+
+    Used to flag Monday alerts that fire too close to month-end (likely
+    to be unwound at the next rebalance, generating churn).
+    """
+    prior = rebal_dates[rebal_dates <= date]
+    if len(prior) == 0:
+        return -1
+    last_rebal = prior[-1]
+    return int((date - last_rebal).days)
+
+
 def dual_momentum_signal(
     prices: pd.DataFrame,
     lookback_weeks: int = LOOKBACK_WEEKS,
@@ -233,9 +246,12 @@ def dual_momentum_with_ca_gcp(
     if test_end is not None:
         daily_prices = daily_prices.loc[:test_end]
 
-    # Default: monthly end rebalancing
+    # Default: monthly end rebalancing (use actual last trading day per month)
     if rebal_dates is None:
-        rebal_dates = daily_prices.resample("M").last().index
+        month_groups = daily_prices.index.to_period("M")
+        rebal_dates = pd.DatetimeIndex(
+            daily_prices.index.to_series().groupby(month_groups).max().values
+        )
 
     # Pre-compute CA-GCP intervals for entire test period
     test_returns = etf_returns.reindex(daily_prices.index, method="ffill").fillna(0.0)
@@ -392,12 +408,17 @@ def dual_momentum_with_ca_gcp(
             "date": date,
             "w_target": w_target.to_dict(),
             "w_adj": w_adj.to_dict(),
+            "w_prev": prev_weights.to_dict(),
             "turnover": turnover,
             "cost": cost,
             "port_ret": port_ret,
             "alert_level": diag["alert_level"],
+            "applied_scale": diag.get("applied_scale", 1.0),
             "width_z": diag.get("width_z_today", 0.0),
             "stress": diag.get("stress_today", 0.0),
+            "is_month_end": is_month_end,
+            "is_monday": is_monday,
+            "days_since_month_end": _days_since_month_end(date, rebal_dates),
         })
 
         prev_weights = w_adj.copy()
@@ -427,9 +448,12 @@ def dual_momentum_bare(
     if test_end is not None:
         daily_prices = daily_prices.loc[:test_end]
 
-    # Default: monthly end rebalancing
+    # Default: monthly end rebalancing (use actual last trading day per month)
     if rebal_dates is None:
-        rebal_dates = daily_prices.resample("M").last().index
+        month_groups = daily_prices.index.to_period("M")
+        rebal_dates = pd.DatetimeIndex(
+            daily_prices.index.to_series().groupby(month_groups).max().values
+        )
 
     nav = pd.Series(1.0, index=daily_prices.index, dtype=float)
     prev_weights = pd.Series(0.0, index=daily_prices.columns, dtype=float)
@@ -466,6 +490,10 @@ def dual_momentum_bare(
             "cost": cost,
             "port_ret": port_ret,
             "alert_level": "green",
+            "applied_scale": 1.0,
+            "is_month_end": date in rebal_dates,
+            "is_monday": date.dayofweek == 0,
+            "days_since_month_end": _days_since_month_end(date, rebal_dates),
         })
 
         prev_weights = curr_weights
