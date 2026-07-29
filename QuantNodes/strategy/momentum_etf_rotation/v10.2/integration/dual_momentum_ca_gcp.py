@@ -34,6 +34,80 @@ PER_ETF_DIR = REPO / "data" / "real" / "per_etf"
 # Hysteresis constants
 ALERT_RANK = {"green": 0, "yellow": 1, "red": 2}
 
+# Adaptive Gate defaults
+GATE_VOL_WINDOW = 60
+GATE_VOL_PCT = 0.40
+GATE_CORR_WINDOW = 60
+GATE_CORR_DROP = 0.30
+GATE_MIN_HOLD = 10
+GATE_ATR_WINDOW = 14
+
+
+def compute_atr_proxy(returns: pd.DataFrame, window: int = 14) -> pd.Series:
+    """Simplified ATR proxy: mean absolute daily return (rolling).
+
+    Since we only have close prices (no OHLC), we use the absolute daily
+    return as a proxy for True Range. This is equivalent to the
+    mean-absolute-return, which captures volatility regime changes.
+
+    Args:
+        returns: Daily percentage returns DataFrame (T, N).
+        window: Rolling window for smoothing (default 14 days).
+
+    Returns:
+        Series of mean absolute return per day (averaged across assets).
+    """
+    return returns.abs().rolling(window).mean().mean(axis=1)
+
+
+def _compute_gate_signal(
+    etf_returns: pd.DataFrame,
+    vol_window: int = GATE_VOL_WINDOW,
+    vol_pct: float = GATE_VOL_PCT,
+    corr_window: int = GATE_CORR_WINDOW,
+    corr_drop: float = GATE_CORR_DROP,
+    atr_window: int = GATE_ATR_WINDOW,
+) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """Compute adaptive gate signal.
+
+    Returns:
+        (gate: bool Series, vol_signal: bool Series, corr_signal: bool Series)
+        gate = vol_signal | corr_signal (OR mode) or vol_signal & corr_signal (AND mode)
+    """
+    # Condition A: ATR-based volatility filter
+    atr = compute_atr_proxy(etf_returns, window=atr_window)
+    vol_pctile = atr.expanding(vol_window).rank(pct=True)
+    vol_signal = vol_pctile > vol_pct
+
+    # Condition B: Correlation breakdown detection
+    # Compute rolling average pairwise correlation
+    n = etf_returns.shape[1]
+    rolling_corr = etf_returns.rolling(20).corr()
+    # Extract average correlation per day (excluding self-correlation)
+    avg_corr_list = []
+    for t in etf_returns.index:
+        if t in rolling_corr.index.get_level_values(0):
+            corr_t = rolling_corr.loc[t]
+            if isinstance(corr_t, pd.DataFrame) and corr_t.shape == (n, n):
+                # Mask diagonal and compute mean of upper triangle
+                mask = np.triu(np.ones((n, n), dtype=bool), k=1)
+                avg_corr_list.append(float(corr_t.values[mask].mean()))
+            else:
+                avg_corr_list.append(np.nan)
+        else:
+            avg_corr_list.append(np.nan)
+    avg_corr = pd.Series(avg_corr_list, index=etf_returns.index)
+
+    # Detect breakdown: drop > 30% from recent high
+    corr_high = avg_corr.expanding(corr_window).max()
+    corr_drop_pct = (corr_high - avg_corr) / corr_high.replace(0, np.nan)
+    corr_signal = corr_drop_pct > corr_drop
+
+    # Combine
+    gate = vol_signal | corr_signal  # Default OR (will be overridden per config)
+
+    return gate, vol_signal, corr_signal
+
 
 def _apply_hysteresis(
     raw_alert: str,
@@ -259,6 +333,13 @@ def dual_momentum_with_ca_gcp(
     rebal_dates: pd.DatetimeIndex | None = None,
     test_start: pd.Timestamp | None = None,
     test_end: pd.Timestamp | None = None,
+    use_gate: bool = False,
+    gate_mode: str = "or",
+    gate_vol_window: int = GATE_VOL_WINDOW,
+    gate_vol_pct: float = GATE_VOL_PCT,
+    gate_corr_window: int = GATE_CORR_WINDOW,
+    gate_corr_drop: float = GATE_CORR_DROP,
+    gate_min_hold: int = GATE_MIN_HOLD,
 ) -> tuple[pd.Series, pd.DataFrame]:
     """Run dual momentum with CA-GCP weekly risk control.
 
@@ -272,6 +353,12 @@ def dual_momentum_with_ca_gcp(
       - Global: pipe is a single CAGCPipeline (all assets)
       - Sector: pipe is {asset_code: CAGCPipeline} (per-asset sector pipelines)
 
+    Adaptive Gate (optional):
+      - use_gate=True enables market-state adaptive filtering
+      - gate_mode="or": CA-GCP active if vol OR corr breakdown
+      - gate_mode="and": CA-GCP active if vol AND corr breakdown
+      - Gate resets at each month-end rebalance
+
     Args:
         daily_prices: Daily close prices (T, 4) for the 4 assets.
         weekly_prices: Weekly close prices (T_w, 4) for signal.
@@ -282,12 +369,27 @@ def dual_momentum_with_ca_gcp(
         rebal_dates: Rebalance dates (month-end). Auto if None.
         test_start: Start of test period.
         test_end: End of test period.
+        use_gate: Enable adaptive gate filtering.
+        gate_mode: "or" or "and" for combining vol and corr signals.
+        gate_vol_window: Rolling window for volatility percentile.
+        gate_vol_pct: Volatility percentile threshold (top X%).
+        gate_corr_window: Rolling window for correlation breakdown.
+        gate_corr_drop: Relative correlation drop threshold.
+        gate_min_hold: Minimum days to hold gate state after switching.
 
     Returns:
         (nav, diagnostics_df): NAV series and daily diagnostics.
     """
     rules = rules or RiskFilterRules()
     is_sector = isinstance(pipe, dict)
+
+    # Pre-compute gate signal if enabled
+    gate_signal = None
+    if use_gate:
+        gate_signal, _, _ = _compute_gate_signal(
+            etf_returns, gate_vol_window, gate_vol_pct,
+            gate_corr_window, gate_corr_drop,
+        )
 
     if test_start is not None:
         daily_prices = daily_prices.loc[test_start:]
@@ -341,6 +443,10 @@ def dual_momentum_with_ca_gcp(
     consecutive_alert = 0
     last_upgrade_idx = -100
 
+    # Gate state
+    gate_active = False
+    gate_last_switch_idx = -100
+
     for i in range(1, len(daily_prices)):
         date = daily_prices.index[i]
         is_month_end = date in rebal_dates
@@ -376,7 +482,27 @@ def dual_momentum_with_ca_gcp(
                 else:
                     intervals_t = None
 
-            if intervals_t is not None:
+            # Adaptive Gate: check if CA-GCP should be active
+            gate_is_active = True  # Default: active
+            if use_gate and gate_signal is not None:
+                # Get gate signal for today
+                if date in gate_signal.index:
+                    gate_is_active = bool(gate_signal.loc[date])
+                else:
+                    gate_is_active = False
+
+                # Enforce minimum holding period
+                if gate_is_active != gate_active:
+                    if i - gate_last_switch_idx < gate_min_hold:
+                        gate_is_active = gate_active  # Hold current state
+                    else:
+                        gate_last_switch_idx = i
+                        gate_active = gate_is_active
+
+                # Reset gate at month-end (natural rebalance point)
+                gate_active = gate_is_active
+
+            if intervals_t is not None and gate_is_active:
                 w_adj, diag = ca_gcp_risk_filter(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
@@ -403,6 +529,7 @@ def dual_momentum_with_ca_gcp(
                         last_upgrade_idx = i
                 prev_alert = filtered_alert
             else:
+                # Gate OFF or intervals not available: use bare momentum
                 w_adj = w_target.copy()
                 diag = {
                     "alert_level": "green",
@@ -438,7 +565,22 @@ def dual_momentum_with_ca_gcp(
                 else:
                     intervals_t = None
 
-            if intervals_t is not None:
+            # Adaptive Gate: check if CA-GCP should be active (Monday)
+            gate_is_active = True
+            if use_gate and gate_signal is not None:
+                if date in gate_signal.index:
+                    gate_is_active = bool(gate_signal.loc[date])
+                else:
+                    gate_is_active = False
+                # Enforce minimum holding period
+                if gate_is_active != gate_active:
+                    if i - gate_last_switch_idx < gate_min_hold:
+                        gate_is_active = gate_active
+                    else:
+                        gate_last_switch_idx = i
+                        gate_active = gate_is_active
+
+            if intervals_t is not None and gate_is_active:
                 w_adj, diag = ca_gcp_risk_filter(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
