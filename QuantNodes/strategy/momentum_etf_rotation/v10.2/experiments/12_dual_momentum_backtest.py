@@ -1,6 +1,6 @@
 """Dual Momentum + CA-GCP Walk-Forward backtest.
 
-Walk-Forward 4 fold校准 + 3 candidates:
+Walk-Forward 5 fold校准 + 3 candidates:
   Candidate 1: dual_mom pure vs dual_mom + CA-GCP
   Candidate 2: 4 strategies comparison table
   Candidate 3: Sector CA-GCP on dual_mom
@@ -64,6 +64,11 @@ WF_FOLDS = [
         "train_end": pd.Timestamp("2023-10-01"),
         "calib_end": pd.Timestamp("2024-08-01"),
         "test_end": pd.Timestamp("2025-07-01"),
+    },
+    {
+        "train_end": pd.Timestamp("2024-05-01"),
+        "calib_end": pd.Timestamp("2025-03-01"),
+        "test_end": pd.Timestamp("2026-06-30"),
     },
 ]
 
@@ -258,7 +263,7 @@ def main() -> None:
           f"{daily_prices.index[0].date()} ~ {daily_prices.index[-1].date()}")
 
     # Run 4-fold WF
-    print("\n[2] Walk-Forward 4 fold...")
+    print("\n[2] Walk-Forward 5 fold...")
     all_results = []
     for i, fold in enumerate(WF_FOLDS):
         result = run_fold(daily_prices, weekly_prices, etf_returns, fold, i)
