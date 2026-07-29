@@ -31,6 +31,54 @@ BOND_CODE = "511260"
 REPO = Path(__file__).resolve().parents[5]
 PER_ETF_DIR = REPO / "data" / "real" / "per_etf"
 
+# Hysteresis constants
+ALERT_RANK = {"green": 0, "yellow": 1, "red": 2}
+
+
+def _apply_hysteresis(
+    raw_alert: str,
+    raw_scale: float,
+    prev_alert: str,
+    consecutive_raw_above: int,
+    last_upgrade_idx: int,
+    current_idx: int,
+    rules: RiskFilterRules,
+    w_adj: pd.Series,
+    w_target: pd.Series,
+) -> tuple[str, pd.Series, int]:
+    """Apply hysteresis state machine to raw alert level.
+
+    Rules:
+    1. Upgrade requires `confirm_threshold` consecutive raw alerts at same or higher level.
+    2. Downgrade requires minimum hold period.
+    3. Minimum hold period after upgrade.
+
+    Returns:
+        (filtered_alert, adjusted_weights, new_consecutive_raw_above)
+    """
+    raw_rank = ALERT_RANK[raw_alert]
+    prev_rank = ALERT_RANK[prev_alert]
+
+    # Track consecutive raw alerts above prev level
+    if raw_rank >= prev_rank:
+        new_consecutive = consecutive_raw_above + 1
+    else:
+        new_consecutive = 0
+
+    # Upgrade: raw alert is higher than previous
+    if raw_rank > prev_rank:
+        if new_consecutive < rules.confirm_threshold:
+            # Not enough confirmations yet, stay at prev level
+            return prev_alert, w_adj, new_consecutive
+
+    # Downgrade: raw alert is lower than previous
+    if raw_rank < prev_rank:
+        # Check minimum hold period
+        if current_idx - last_upgrade_idx < rules.min_hold_days:
+            return prev_alert, w_adj, new_consecutive
+
+    return raw_alert, w_adj, new_consecutive
+
 
 def load_bond_etf_returns(
     start: pd.Timestamp | None = None,
@@ -288,6 +336,11 @@ def dual_momentum_with_ca_gcp(
     diag_rows = []
     history_hw = None
 
+    # Hysteresis state
+    prev_alert = "green"
+    consecutive_alert = 0
+    last_upgrade_idx = -100
+
     for i in range(1, len(daily_prices)):
         date = daily_prices.index[i]
         is_month_end = date in rebal_dates
@@ -335,6 +388,20 @@ def dual_momentum_with_ca_gcp(
                     history_hw = pd.concat([
                         history_hw, intervals_t["half_width"],
                     ])
+                # Hysteresis: apply state machine to alert level
+                raw_alert = diag["alert_level"]
+                filtered_alert, w_adj, consecutive_alert = _apply_hysteresis(
+                    raw_alert, diag["applied_scale"], prev_alert,
+                    consecutive_alert, last_upgrade_idx, i, rules, w_adj, w_target,
+                )
+                diag["alert_level"] = filtered_alert
+                if filtered_alert != raw_alert:
+                    diag["applied_scale"] = 1.0 if filtered_alert == "green" else diag["applied_scale"]
+                # Update hysteresis state
+                if ALERT_RANK[filtered_alert] > ALERT_RANK[prev_alert]:
+                    if consecutive_alert >= rules.confirm_threshold:
+                        last_upgrade_idx = i
+                prev_alert = filtered_alert
             else:
                 w_adj = w_target.copy()
                 diag = {
@@ -383,6 +450,20 @@ def dual_momentum_with_ca_gcp(
                     history_hw = pd.concat([
                         history_hw, intervals_t["half_width"],
                     ])
+                # Hysteresis: apply state machine to alert level
+                raw_alert = diag["alert_level"]
+                filtered_alert, w_adj, consecutive_alert = _apply_hysteresis(
+                    raw_alert, diag["applied_scale"], prev_alert,
+                    consecutive_alert, last_upgrade_idx, i, rules, w_adj, w_target,
+                )
+                diag["alert_level"] = filtered_alert
+                if filtered_alert != raw_alert:
+                    diag["applied_scale"] = 1.0 if filtered_alert == "green" else diag["applied_scale"]
+                # Update hysteresis state
+                if ALERT_RANK[filtered_alert] > ALERT_RANK[prev_alert]:
+                    if consecutive_alert >= rules.confirm_threshold:
+                        last_upgrade_idx = i
+                prev_alert = filtered_alert
 
         else:
             # Other days (Tue-Sun, non-month-end): hold

@@ -31,6 +31,11 @@ class RiskFilterRules:
 
     Supports per-group thresholds via group_rules and asset_groups.
     If group_rules is None, uses global thresholds for all assets.
+
+    Hysteresis fields:
+        confirm_threshold: consecutive days needed to upgrade alert level.
+        min_hold_days: minimum days to hold after upgrading.
+        cooldown_days: minimum days between upgrades.
     """
 
     width_z_yellow: float = 3.0
@@ -42,6 +47,10 @@ class RiskFilterRules:
     panic_scale: float = 0.3
     stress_yellow_recovery: float = 0.80
     width_z_yellow_recovery: float = 2.0
+    # Hysteresis
+    confirm_threshold: int = 2
+    min_hold_days: int = 5
+    cooldown_days: int = 3
     # Per-group support
     group_rules: dict[str, "RiskFilterRules"] | None = None
     asset_groups: dict[str, list[str]] | None = None
