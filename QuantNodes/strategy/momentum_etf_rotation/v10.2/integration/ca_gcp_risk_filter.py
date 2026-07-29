@@ -102,7 +102,9 @@ def _compute_width_z(
 ) -> float:
     """Compute width z-score for today."""
     if history is not None:
-        hw_full = pd.concat([history, hw]).drop_duplicates()
+        hw_full = pd.concat([history, hw])
+        # Deduplicate by index (keep last occurrence per date)
+        hw_full = hw_full[~hw_full.index.duplicated(keep='last')]
     else:
         hw_full = hw
     width_ts = (2.0 * hw_full).mean(axis=1)

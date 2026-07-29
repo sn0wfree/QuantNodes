@@ -392,6 +392,26 @@ def dual_momentum_with_ca_gcp(
                 "width_z_today": 0.0,
                 "stress_today": 0.0,
             }
+            # Update history_hw daily for proper rolling z-score
+            if is_sector:
+                intervals_t_daily = _build_sector_intervals_t(
+                    per_asset_intervals, w_target, date, history_hw,
+                )
+            else:
+                if date in intervals["half_width"].index:
+                    idx_t = intervals["half_width"].index.get_loc(date)
+                    intervals_t_daily = {
+                        "half_width": intervals["half_width"].iloc[[idx_t]],
+                    }
+                else:
+                    intervals_t_daily = None
+            if intervals_t_daily is not None:
+                if history_hw is None:
+                    history_hw = intervals_t_daily["half_width"].copy()
+                else:
+                    history_hw = pd.concat([
+                        history_hw, intervals_t_daily["half_width"],
+                    ])
 
         # Compute portfolio return
         day_ret = daily_prices.iloc[i] / daily_prices.iloc[i - 1] - 1
