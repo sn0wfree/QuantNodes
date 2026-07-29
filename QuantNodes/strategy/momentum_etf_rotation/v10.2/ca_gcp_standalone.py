@@ -1,18 +1,73 @@
 """
-CA-GCP: Cross-Asset Graph Conformal Prediction — Standalone Module
+CA-GCP: Cross-Asset Graph Conformal Prediction
+==============================================
 
-Parker & Zhang (2026), "Graph-Based Uncertainty-Aware Financial Forecasting
-via Cross-Asset Conformal Prediction", Computer Life 14(3), 21-29.
+Reference
+---------
+Parker, J. & Zhang, Y. (2026).
+"Graph-Based Uncertainty-Aware Financial Forecasting via
+ Cross-Asset Conformal Prediction."
+Computer Life, 14(3), 21-29.
+
+BibTeX:
+    @article{parker2026cagcp,
+        title   = {Graph-Based Uncertainty-Aware Financial Forecasting
+                   via Cross-Asset Conformal Prediction},
+        author  = {Parker, J. and Zhang, Y.},
+        journal = {Computer Life},
+        volume  = {14},
+        number  = {3},
+        pages   = {21--29},
+        year    = {2026}
+    }
+
+Model Overview
+--------------
+CA-GCP is a model-agnostic post-hoc calibration layer that produces
+distribution-free prediction intervals for asset returns, leveraging
+cross-asset correlation structure via a KNN graph.
+
+Problem: Given a point forecast r̂ for asset i at time t, construct an
+interval [r̂ - hw, r̂ + hw] such that P(actual ∈ [lower, upper]) ≥ 1 - α,
+*without* distributional assumptions, by borrowing nonconformity scores
+from correlated peer assets.
+
+Core Mechanism (3 steps):
+    1. Graph construction (Sec. 4.1):
+       Build KNN graph A on training window using either correlation
+       (default) or sector membership. Nodes = assets, edges = neighbors.
+
+    2. Cross-asset score pooling (Sec. 4.2):
+       For target asset i at time t, pool nonconformity scores
+       (|r - r̂| / σ) from neighbors N(i), weighted by:
+           w_jk = corr(i, j)^sharpness_p * exp(-Δt_days / recency_tau)
+
+    3. Weighted conformal quantile (Sec. 4.3):
+       threshold = WeightedQuantile(pooled_scores, weights, level=1-α)
+       hw = threshold * σ̂; modulated by systemic stress (Sec. 4.4):
+           hw_adj = hw * exp(η * stress_t)
+       where stress_t = sigmoid(z(cross_dispersion, anomaly_frac)).
+
+Theoretical Guarantee (Sec. 4.5):
+    Marginal coverage ≥ 1 - α under exchangeability, with finite-sample
+    adjustment via TV distance bound on neighbor distributions.
 
 Single-file implementation: core pipeline, validators, sector clustering,
 and risk filter. Dependencies: numpy, pandas only.
+
+Key Parameters (see CAGCPConfig for full list):
+    k (int, default 8)         — KNN neighbors per asset
+    sharpness_p (float, 1.0)   — exponent on correlation weight
+    recency_tau (float, 60.0)  — half-life of time decay (days)
+    sensitivity_eta (float,0.5)— stress modulation strength
+    alpha (float, 0.05)        — target miscoverage rate
 
 Usage:
     # As library
     from ca_gcp_standalone import CAGCPipeline, CAGCPConfig
     pipe = CAGCPipeline(CAGCPConfig(k=6, sensitivity_eta=0.5))
-    pipe.fit(returns_train)
-    intervals = pipe.predict_fast(returns_calib, returns_test)
+    pipe.fit(returns_full)              # Config 驱动自动拆分
+    intervals = pipe.predict_fast(pipe._calib, pipe._test)
 
     # As script
     python ca_gcp_standalone.py
