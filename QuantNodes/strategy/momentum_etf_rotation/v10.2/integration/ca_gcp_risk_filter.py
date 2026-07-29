@@ -55,6 +55,17 @@ class RiskFilterRules:
     trend_filter: bool = True
     trend_window: int = 20
     trend_threshold: float = 0.0
+    # ADX trend strength filter
+    adx_filter: bool = False
+    adx_period: int = 14
+    adx_low: float = 15.0
+    adx_high: float = 40.0
+    adx_min_scale: float = 0.5
+    # Multi-signal fusion
+    fusion_enabled: bool = False
+    fusion_w_trend: float = 0.5
+    fusion_w_risk: float = 0.5
+    fusion_min_scale: float = 0.3
     # Per-group support
     group_rules: dict[str, "RiskFilterRules"] | None = None
     asset_groups: dict[str, list[str]] | None = None
@@ -78,6 +89,9 @@ def ca_gcp_risk_filter(
     history: pd.DataFrame | None = None,
     residual_asset: str | None = None,
     trend_signal: pd.Series | None = None,
+    adx_value: float | None = None,
+    ma_trend_sign: float | None = None,
+    vol_pct: float | None = None,
 ) -> tuple[pd.Series, dict]:
     """Apply CA-GCP risk filter to v10 target weights.
 
@@ -94,6 +108,9 @@ def ca_gcp_risk_filter(
         history: Earlier half_width values for computing rolling stats.
         residual_asset: Asset code to receive residual exposure when scale < 1.0.
         trend_signal: Boolean Series (True=downtrend). If today is uptrend, skip alerts.
+        adx_value: Current ADX value for trend-strength position scaling.
+        ma_trend_sign: Moving average trend direction (+1=up, -1=down). For fusion.
+        vol_pct: Volatility percentile [0, 1]. For fusion.
 
     Returns:
         (adjusted_weights, diagnostics_dict)
@@ -106,6 +123,9 @@ def ca_gcp_risk_filter(
             weights, intervals, rules, today, history,
             residual_asset=residual_asset,
             trend_signal=trend_signal,
+            adx_value=adx_value,
+            ma_trend_sign=ma_trend_sign,
+            vol_pct=vol_pct,
         )
 
     # Global mode (original logic)
@@ -113,6 +133,9 @@ def ca_gcp_risk_filter(
         weights, intervals, rules, today, history,
         residual_asset=residual_asset,
         trend_signal=trend_signal,
+        adx_value=adx_value,
+        ma_trend_sign=ma_trend_sign,
+        vol_pct=vol_pct,
     )
 
 
@@ -147,6 +170,9 @@ def _ca_gcp_risk_filter_global(
     history: pd.DataFrame | None,
     residual_asset: str | None = None,
     trend_signal: pd.Series | None = None,
+    adx_value: float | None = None,
+    ma_trend_sign: float | None = None,
+    vol_pct: float | None = None,
 ) -> tuple[pd.Series, dict]:
     """Global mode: single threshold for all assets."""
     hw = intervals["half_width"]
@@ -181,6 +207,29 @@ def _ca_gcp_risk_filter_global(
             diag["alert_level"] = "green"
             scale = 1.0
 
+    # ADX trend-strength scaling (multiplied on top of CA-GCP scale)
+    if rules.adx_filter and adx_value is not None:
+        adx_scale = adx_position_scale(
+            adx_value, rules.adx_low, rules.adx_high, rules.adx_min_scale,
+        )
+        scale = scale * adx_scale
+        diag["adx_value"] = adx_value
+        diag["adx_scale"] = adx_scale
+    else:
+        diag["adx_value"] = 0.0
+        diag["adx_scale"] = 1.0
+
+    # Multi-signal fusion (replaces rule-based scale if enabled)
+    if rules.fusion_enabled:
+        alert_rank = {"green": 0, "yellow": 0.5, "red": 1.0}
+        cagcp_score = alert_rank.get(diag["alert_level"], 0.0)
+        adx_norm = (adx_value / 100.0) if adx_value is not None else 0.5
+        fused_scale, fused_alert = _apply_fusion_to_diag(
+            diag, rules, ma_trend_sign, adx_norm, vol_pct, cagcp_score,
+        )
+        scale = fused_scale
+        diag["alert_level"] = fused_alert
+
     diag["applied_scale"] = scale
     adjusted = weights * scale
 
@@ -196,6 +245,47 @@ def _ca_gcp_risk_filter_global(
     return adjusted, diag
 
 
+def _apply_fusion_to_diag(
+    diag: dict,
+    rules: RiskFilterRules,
+    ma_trend_sign: float | None,
+    adx_norm: float | None,
+    vol_pct: float | None,
+    cagcp_score: float,
+) -> tuple[float, str]:
+    """Apply multi-signal fusion and update diagnostics.
+
+    Returns (fused_scale, fused_alert_level).
+    """
+    if not rules.fusion_enabled:
+        return diag.get("applied_scale", 1.0), diag.get("alert_level", "green")
+
+    ma_sign = ma_trend_sign if ma_trend_sign is not None else 0.0
+    adx_n = adx_norm if adx_norm is not None else 0.5
+    vol_p = vol_pct if vol_pct is not None else 0.5
+
+    fusion_score = compute_fusion_score(
+        ma_sign, adx_n, vol_p, cagcp_score,
+        rules.fusion_w_trend, rules.fusion_w_risk,
+    )
+    fused_scale = fusion_score_to_scale(fusion_score, rules.fusion_min_scale)
+
+    if fusion_score > 0.3:
+        fused_alert = "green"
+    elif fusion_score > -0.2:
+        fused_alert = "yellow"
+    else:
+        fused_alert = "red"
+
+    diag["fusion_score"] = fusion_score
+    diag["ma_trend_sign"] = ma_sign
+    diag["adx_norm"] = adx_n
+    diag["vol_pct"] = vol_p
+    diag["cagcp_score"] = cagcp_score
+
+    return fused_scale, fused_alert
+
+
 def _ca_gcp_risk_filter_grouped(
     weights: pd.Series,
     intervals: dict[str, pd.DataFrame],
@@ -204,6 +294,9 @@ def _ca_gcp_risk_filter_grouped(
     history: pd.DataFrame | None,
     residual_asset: str | None = None,
     trend_signal: pd.Series | None = None,
+    adx_value: float | None = None,
+    ma_trend_sign: float | None = None,
+    vol_pct: float | None = None,
 ) -> tuple[pd.Series, dict]:
     """Per-group mode: separate thresholds per asset group."""
     hw = intervals["half_width"]
@@ -285,6 +378,26 @@ def _ca_gcp_risk_filter_grouped(
             overall_alert = "green"
             overall_scale = 1.0
 
+    # ADX trend-strength scaling
+    if rules.adx_filter and adx_value is not None:
+        adx_scale = adx_position_scale(
+            adx_value, rules.adx_low, rules.adx_high, rules.adx_min_scale,
+        )
+        overall_scale = overall_scale * adx_scale
+    else:
+        adx_scale = 1.0
+
+    # Multi-signal fusion (replaces rule-based scale if enabled)
+    if rules.fusion_enabled:
+        alert_rank = {"green": 0, "yellow": 0.5, "red": 1.0}
+        cagcp_score = alert_rank.get(overall_alert, 0.0)
+        adx_norm = (adx_value / 100.0) if adx_value is not None else 0.5
+        fused_scale, fused_alert = _apply_fusion_to_diag(
+            {}, rules, ma_trend_sign, adx_norm, vol_pct, cagcp_score,
+        )
+        overall_scale = fused_scale
+        overall_alert = fused_alert
+
     diag: dict = {
         "width_z_today": group_width_z,
         "stress_today": stress_today,
@@ -292,6 +405,8 @@ def _ca_gcp_risk_filter_grouped(
         "applied_scale": overall_scale,
         "group_alerts": group_alerts,
         "group_scales": group_scales,
+        "adx_value": adx_value if adx_value is not None else 0.0,
+        "adx_scale": adx_scale,
     }
 
     adjusted = weights * overall_scale
@@ -445,3 +560,108 @@ def calibrate_risk_filter(
           f"stress_red={best_rules.stress_red}")
 
     return best_rules
+
+
+def compute_adx_close(close: pd.Series, period: int = 14) -> pd.Series:
+    """Simplified ADX using only close prices (no OHLC).
+
+    Approximations:
+      - True Range ≈ |close - prev_close|
+      - +DM ≈ max(close - prev_close, 0)  (positive return days)
+      - -DM ≈ max(prev_close - close, 0)  (negative return days)
+
+    This loses the high/low information but works for close-only data.
+    The resulting ADX is lower than the standard one but captures the
+    same trend-strength dynamics.
+
+    Args:
+        close: Daily close price series.
+        period: ADX period (default 14).
+
+    Returns:
+        ADX series (same index as close, first 2*period values are NaN).
+    """
+    if len(close) < 2 * period:
+        return pd.Series(np.nan, index=close.index)
+
+    delta = close.diff()
+    tr = delta.abs()
+    plus_dm = delta.clip(lower=0.0)
+    minus_dm = (-delta).clip(lower=0.0)
+
+    alpha = 1.0 / period
+    tr_smooth = tr.ewm(alpha=alpha, adjust=False).mean()
+    plus_dm_smooth = plus_dm.ewm(alpha=alpha, adjust=False).mean()
+    minus_dm_smooth = minus_dm.ewm(alpha=alpha, adjust=False).mean()
+
+    plus_di = 100.0 * plus_dm_smooth / tr_smooth.replace(0, np.nan)
+    minus_di = 100.0 * minus_dm_smooth / tr_smooth.replace(0, np.nan)
+
+    dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan)
+    adx = dx.ewm(alpha=alpha, adjust=False).mean()
+    adx = adx.fillna(0.0).clip(upper=100.0)
+
+    return adx
+
+
+def adx_position_scale(
+    adx_value: float,
+    adx_low: float = 15.0,
+    adx_high: float = 40.0,
+    min_scale: float = 0.5,
+) -> float:
+    """Map ADX value to position scale factor.
+
+    ADX < adx_low → min_scale (low trend confidence, reduce position)
+    ADX > adx_high → 1.0 (strong trend, full position)
+    In between → linear interpolation
+    """
+    if adx_value <= adx_low:
+        return min_scale
+    if adx_value >= adx_high:
+        return 1.0
+    ratio = (adx_value - adx_low) / (adx_high - adx_low)
+    return min_scale + ratio * (1.0 - min_scale)
+
+
+def compute_fusion_score(
+    ma_trend_sign: float,
+    adx_norm: float,
+    vol_pct: float,
+    cagcp_score: float,
+    w_trend: float = 0.5,
+    w_risk: float = 0.5,
+) -> float:
+    """Compute multi-signal fusion score.
+
+    Args:
+        ma_trend_sign: Moving average trend direction, -1 (downtrend) or +1 (uptrend).
+        adx_norm: Normalized ADX in [0, 1] (ADX/100).
+        vol_pct: Volatility percentile in [0, 1] (higher = more risky).
+        cagcp_score: CA-GCP risk score in [0, 1] (0=green, 0.5=yellow, 1=red).
+        w_trend: Weight for trend component.
+        w_risk: Weight for risk component.
+
+    Returns:
+        Fusion score in [-1, +1]. Higher = more bullish.
+    """
+    trend_score = ma_trend_sign * adx_norm  # [-1, +1]
+    risk_score = max(vol_pct, cagcp_score)  # [0, 1]
+
+    w_total = w_trend + w_risk
+    if w_total <= 0:
+        return 0.0
+
+    final_score = (w_trend * trend_score + w_risk * (-risk_score)) / w_total
+    return float(np.clip(final_score, -1.0, 1.0))
+
+
+def fusion_score_to_scale(score: float, min_scale: float = 0.3) -> float:
+    """Map fusion score [-1, +1] to position scale [min_scale, 1.0].
+
+    score = +1 → 1.0 (full position)
+    score =  0 → (1 + min_scale) / 2 (mid position)
+    score = -1 → min_scale (minimum position)
+    """
+    ratio = (score + 1.0) / 2.0  # [0, 1]
+    return float(min_scale + ratio * (1.0 - min_scale))

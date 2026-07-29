@@ -23,7 +23,7 @@ if str(_V10) not in sys.path:
     sys.path.insert(0, str(_V10))
 
 from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import CAGCPConfig, CAGCPipeline  # noqa: E402
-from .ca_gcp_risk_filter import RiskFilterRules, ca_gcp_risk_filter  # noqa: E402
+from .ca_gcp_risk_filter import RiskFilterRules, ca_gcp_risk_filter, compute_adx_close  # noqa: E402
 
 LOOKBACK_WEEKS = 52
 BOND_CODE = "511260"
@@ -404,6 +404,30 @@ def dual_momentum_with_ca_gcp(
         rolling_ret = target_returns.rolling(rules.trend_window).sum()
         trend_signal = rolling_ret < rules.trend_threshold
 
+    # Pre-compute ADX for trend-strength filter
+    adx_series = None
+    if rules.adx_filter:
+        portfolio_close = daily_prices.mean(axis=1)
+        adx_series = compute_adx_close(portfolio_close, period=rules.adx_period)
+
+    # Pre-compute MA trend signal (for fusion)
+    ma_trend_series = None
+    if rules.fusion_enabled:
+        portfolio_close = daily_prices.mean(axis=1)
+        ma20 = portfolio_close.rolling(20).mean()
+        ma60 = portfolio_close.rolling(60).mean()
+        ma_trend_series = pd.Series(
+            np.where(ma20 > ma60, 1.0, -1.0),
+            index=portfolio_close.index,
+        )
+
+    # Pre-compute volatility percentile (for fusion)
+    vol_pct_series = None
+    if rules.fusion_enabled:
+        port_returns = daily_prices.mean(axis=1).pct_change().fillna(0.0)
+        vol_20 = port_returns.rolling(20).std() * np.sqrt(252)
+        vol_pct_series = vol_20.expanding(60).rank(pct=True)
+
     if test_start is not None:
         daily_prices = daily_prices.loc[test_start:]
     if test_end is not None:
@@ -513,11 +537,17 @@ def dual_momentum_with_ca_gcp(
                         gate_active = gate_is_active
 
             if intervals_t is not None and gate_is_active:
+                adx_val = float(adx_series.loc[date]) if (adx_series is not None and date in adx_series.index and pd.notna(adx_series.loc[date])) else None
+                ma_sign = float(ma_trend_series.loc[date]) if (ma_trend_series is not None and date in ma_trend_series.index and pd.notna(ma_trend_series.loc[date])) else None
+                vol_p = float(vol_pct_series.loc[date]) if (vol_pct_series is not None and date in vol_pct_series.index and pd.notna(vol_pct_series.loc[date])) else None
                 w_adj, diag = ca_gcp_risk_filter(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
                     residual_asset=BOND_CODE,
                     trend_signal=trend_signal,
+                    adx_value=adx_val,
+                    ma_trend_sign=ma_sign,
+                    vol_pct=vol_p,
                 )
                 if history_hw is None:
                     history_hw = intervals_t["half_width"].copy()
@@ -592,11 +622,17 @@ def dual_momentum_with_ca_gcp(
                         gate_active = gate_is_active
 
             if intervals_t is not None and gate_is_active:
+                adx_val = float(adx_series.loc[date]) if (adx_series is not None and date in adx_series.index and pd.notna(adx_series.loc[date])) else None
+                ma_sign = float(ma_trend_series.loc[date]) if (ma_trend_series is not None and date in ma_trend_series.index and pd.notna(ma_trend_series.loc[date])) else None
+                vol_p = float(vol_pct_series.loc[date]) if (vol_pct_series is not None and date in vol_pct_series.index and pd.notna(vol_pct_series.loc[date])) else None
                 w_adj, diag = ca_gcp_risk_filter(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
                     residual_asset=BOND_CODE,
                     trend_signal=trend_signal,
+                    adx_value=adx_val,
+                    ma_trend_sign=ma_sign,
+                    vol_pct=vol_p,
                 )
                 if history_hw is None:
                     history_hw = intervals_t["half_width"].copy()
@@ -673,6 +709,8 @@ def dual_momentum_with_ca_gcp(
             "applied_scale": diag.get("applied_scale", 1.0),
             "width_z": diag.get("width_z_today", 0.0),
             "stress": diag.get("stress_today", 0.0),
+            "adx": diag.get("adx_value", 0.0),
+            "adx_scale": diag.get("adx_scale", 1.0),
             "is_month_end": is_month_end,
             "is_monday": is_monday,
             "days_since_month_end": _days_since_month_end(date, rebal_dates),
