@@ -20,6 +20,7 @@ from ca_gcp_standalone import (  # noqa: E402
     RiskFilterRules,
     SectorCAGCPResult,
     TheoreticalBound,
+    _LOSS_REGISTRY,
     apply_modulator,
     build_knn_graph,
     build_sector_groups,
@@ -37,6 +38,7 @@ from ca_gcp_standalone import (  # noqa: E402
     load_sector_map,
     predict_sector_ca_gcp,
     quality_dataframe,
+    resolve_loss_fn,
     theoretical_coverage_bound,
     total_variation_distance_ecdf,
     width_bps,
@@ -367,3 +369,130 @@ class TestBuildPipeline:
     def test_build_v10_2_pipeline(self, sample_returns):
         pipe = build_v10_2_pipeline(sample_returns.iloc[:200], CAGCPConfig(k=4))
         assert len(pipe.codes) == 8
+
+
+# --- Data splitting ---
+
+
+class TestSplitData:
+    def test_split_by_ratio(self, sample_returns):
+        cfg = CAGCPConfig(k=4, train_ratio=0.6, calib_ratio=0.25)
+        pipe = CAGCPipeline(cfg)
+        train, calib, test = pipe._split_data(sample_returns)
+        assert len(train) == 300
+        assert len(calib) == 125
+        assert len(test) == 75
+        assert len(train) + len(calib) + len(test) == 500
+
+    def test_split_by_date(self, sample_returns):
+        cfg = CAGCPConfig(k=4, train_end="2020-09-01", calib_end="2020-12-01")
+        pipe = CAGCPipeline(cfg)
+        train, calib, test = pipe._split_data(sample_returns)
+        assert train.index[-1] < pd.Timestamp("2020-09-01")
+        assert calib.index[0] >= pd.Timestamp("2020-09-01")
+        assert calib.index[-1] <= pd.Timestamp("2020-12-01")
+        assert test.index[0] > pd.Timestamp("2020-12-01")
+        assert len(test) > 0
+
+    def test_fit_stores_split(self, sample_returns):
+        cfg = CAGCPConfig(k=4, train_ratio=0.6, calib_ratio=0.25)
+        pipe = CAGCPipeline(cfg)
+        pipe.fit(sample_returns)
+        assert pipe._train is not None
+        assert pipe._calib is not None
+        assert pipe._test is not None
+        assert len(pipe._train) + len(pipe._calib) + len(pipe._test) == 500
+
+
+# --- target_codes filtering ---
+
+
+class TestTargetCodes:
+    def test_target_codes_filters_output(self, sample_returns):
+        cfg = CAGCPConfig(k=4, target_codes=["A0", "A1", "A2"])
+        pipe = CAGCPipeline(cfg)
+        pipe.fit(sample_returns)
+        intervals = pipe.predict_fast(pipe._calib, pipe._test)
+        assert list(intervals["lower"].columns) == ["A0", "A1", "A2"]
+        assert list(intervals["upper"].columns) == ["A0", "A1", "A2"]
+        assert list(intervals["half_width"].columns) == ["A0", "A1", "A2"]
+        assert list(intervals["thresholds"].columns) == ["A0", "A1", "A2"]
+
+    def test_target_codes_none_returns_all(self, sample_returns):
+        cfg = CAGCPConfig(k=4, target_codes=None)
+        pipe = CAGCPipeline(cfg)
+        pipe.fit(sample_returns)
+        intervals = pipe.predict_fast(pipe._calib, pipe._test)
+        assert list(intervals["lower"].columns) == [f"A{i}" for i in range(8)]
+
+    def test_stress_unfiltered_by_target_codes(self, sample_returns):
+        cfg = CAGCPConfig(k=4, target_codes=["A0", "A1"])
+        pipe = CAGCPipeline(cfg)
+        pipe.fit(sample_returns)
+        intervals = pipe.predict_fast(pipe._calib, pipe._test)
+        assert len(intervals["stress"]) == len(pipe._test)
+
+
+# --- sectors input ---
+
+
+class TestSectorsInput:
+    def test_sectors_passed_to_graph(self, sample_returns):
+        sectors = {f"A{i}": "sector1" if i < 4 else "sector2" for i in range(8)}
+        cfg = CAGCPConfig(k=3, graph_method="sector", sectors=sectors)
+        pipe = CAGCPipeline(cfg)
+        pipe.fit(sample_returns)
+        for i in range(4):
+            nbrs = pipe.neighbors[i]
+            nbr_codes = [pipe.codes[j] for j in nbrs]
+            for nc in nbr_codes:
+                assert sectors[nc] == "sector1"
+        for i in range(4, 8):
+            nbrs = pipe.neighbors[i]
+            nbr_codes = [pipe.codes[j] for j in nbrs]
+            for nc in nbr_codes:
+                assert sectors[nc] == "sector2"
+
+    def test_sectors_none_with_correlation_method(self, sample_returns):
+        cfg = CAGCPConfig(k=4, graph_method="correlation", sectors=None)
+        pipe = CAGCPipeline(cfg)
+        pipe.fit(sample_returns)
+        assert len(pipe.neighbors[0]) > 1
+
+
+# --- Loss function ---
+
+
+class TestLossFn:
+    def test_loss_pareto_default(self):
+        cfg = CAGCPConfig()
+        assert cfg.loss_fn == "pareto"
+        loss = resolve_loss_fn(cfg.loss_fn)
+        m = {"extreme": 0.95, "pa_std": 0.05, "marginal": 0.96}
+        assert loss(m, 100.0) == pytest.approx(10.0 * 0.95 - 5.0 * 0.05 - 0.1)
+
+    def test_loss_pareto_nan_extreme(self):
+        loss = resolve_loss_fn("pareto")
+        assert loss({"extreme": float("nan")}, 100.0) == -1e9
+
+    def test_loss_coverage(self):
+        loss = resolve_loss_fn("coverage")
+        m = {"marginal": 0.96, "extreme": 0.92}
+        assert loss(m, 500.0) == pytest.approx(1.88)
+
+    def test_loss_sharpness(self):
+        loss = resolve_loss_fn("sharpness")
+        assert loss({}, 200.0) == -200.0
+
+    def test_loss_callable(self):
+        def custom(m, w):
+            return -m["pa_std"]
+        loss = resolve_loss_fn(custom)
+        assert loss({"pa_std": 0.1}, 100.0) == -0.1
+
+    def test_loss_unknown_raises(self):
+        with pytest.raises(ValueError, match="Unknown loss_fn"):
+            resolve_loss_fn("unknown_loss")
+
+    def test_registry_keys(self):
+        assert set(_LOSS_REGISTRY.keys()) == {"pareto", "coverage", "sharpness"}

@@ -239,6 +239,58 @@ class PrecomputedWeightedQuantile:
         return val
 
 
+def _loss_pareto(metrics: dict, w_bps: float) -> float:
+    """Default: 10*extreme - 5*pa_std - w_bps/1000."""
+    if np.isnan(metrics.get("extreme", np.nan)):
+        return -1e9
+    return 10.0 * metrics["extreme"] - 5.0 * metrics["pa_std"] - w_bps / 1000.0
+
+
+def _loss_coverage(metrics: dict, w_bps: float) -> float:
+    """Pure coverage: marginal + extreme (no width penalty)."""
+    if np.isnan(metrics.get("extreme", np.nan)):
+        return -1e9
+    return metrics["marginal"] + metrics["extreme"]
+
+
+def _loss_sharpness(metrics: dict, w_bps: float) -> float:
+    """Pure sharpness: -width (narrower intervals win)."""
+    return -w_bps
+
+
+_LOSS_REGISTRY = {
+    "pareto": _loss_pareto,
+    "coverage": _loss_coverage,
+    "sharpness": _loss_sharpness,
+}
+
+
+def resolve_loss_fn(loss_fn):
+    """Resolve loss_fn from string name or callable to a callable."""
+    if callable(loss_fn):
+        return loss_fn
+    if isinstance(loss_fn, str) and loss_fn in _LOSS_REGISTRY:
+        return _LOSS_REGISTRY[loss_fn]
+    raise ValueError(
+        f"Unknown loss_fn={loss_fn!r}; choose from {list(_LOSS_REGISTRY)} or pass a callable"
+    )
+
+
+def _filter_to_target(result: dict, target_codes: list[str] | None) -> dict:
+    """Slice per-asset DataFrames to target_codes subset. stress untouched."""
+    if not target_codes:
+        return result
+    keys_to_slice = ("lower", "upper", "half_width", "thresholds")
+    sliced = {}
+    for k, v in result.items():
+        if k in keys_to_slice and isinstance(v, pd.DataFrame):
+            cols = [c for c in target_codes if c in v.columns]
+            sliced[k] = v[cols] if cols else v.iloc[:, :0]
+        else:
+            sliced[k] = v
+    return sliced
+
+
 # ============================================================================
 # SECTION 5: CORE — CAGCPConfig + CAGCPipeline
 # ============================================================================
@@ -257,6 +309,16 @@ class CAGCPConfig:
     realized_window: int = 20
     pseudo_count_inf: bool = True
 
+    sectors: dict[str, str] | None = None
+    target_codes: list[str] | None = None
+
+    train_ratio: float = 0.60
+    calib_ratio: float = 0.25
+    train_end: str | "pd.Timestamp" | None = None
+    calib_end: str | "pd.Timestamp" | None = None
+
+    loss_fn: str | object = "pareto"
+
 
 class CAGCPipeline:
     """Model-agnostic calibration layer producing prediction intervals."""
@@ -268,10 +330,44 @@ class CAGCPipeline:
         self.A_norm: np.ndarray | None = None
         self.corr_matrix: np.ndarray | None = None
         self.train_sigma: pd.DataFrame | None = None
+        self._train: pd.DataFrame | None = None
+        self._calib: pd.DataFrame | None = None
+        self._test: pd.DataFrame | None = None
+        self._loss_fn = resolve_loss_fn(self.config.loss_fn)
 
-    def fit(self, returns_train: pd.DataFrame) -> "CAGCPipeline":
+    def _split_data(self, returns: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Split returns into train/calib/test per Config."""
+        if not isinstance(returns.index, pd.DatetimeIndex):
+            raise ValueError("returns must have a DatetimeIndex for date-based splitting")
+        if self.config.train_end is not None:
+            train_end = pd.Timestamp(self.config.train_end)
+            train = returns.loc[:train_end].iloc[:-1]
+            if self.config.calib_end is not None:
+                calib_end = pd.Timestamp(self.config.calib_end)
+                calib = returns.loc[train_end:calib_end]
+                if calib_end < returns.index[-1]:
+                    test = returns.loc[calib_end:].iloc[1:]
+                else:
+                    test = returns.iloc[0:0]
+            else:
+                calib = returns.loc[train_end:]
+                test = returns.iloc[0:0]
+        else:
+            n = len(returns)
+            t = max(1, int(n * self.config.train_ratio))
+            c = max(1, int(n * self.config.calib_ratio))
+            train = returns.iloc[:t]
+            calib = returns.iloc[t:t + c]
+            test = returns.iloc[t + c:]
+        return train, calib, test
+
+    def fit(self, returns_full: pd.DataFrame) -> "CAGCPipeline":
+        self._train, self._calib, self._test = self._split_data(returns_full)
+        returns_train = self._train
         self.A_norm, self.neighbors, self.codes = build_knn_graph(
-            returns_train, k=self.config.k, method=self.config.graph_method,
+            returns_train, k=self.config.k,
+            method=self.config.graph_method,
+            sectors=self.config.sectors,
         )
         self.corr_matrix = returns_train.corr().fillna(0.0).loc[self.codes, self.codes].values
         self.train_sigma = estimate_volatility(
@@ -336,8 +432,9 @@ class CAGCPipeline:
         half_width_adj = apply_modulator(half_width, stress, eta=self.config.sensitivity_eta)
         lower = point_forecasts - half_width_adj
         upper = point_forecasts + half_width_adj
-        return {"lower": lower, "upper": upper, "half_width": half_width_adj,
-                "thresholds": thresholds, "stress": stress}
+        result = {"lower": lower, "upper": upper, "half_width": half_width_adj,
+                  "thresholds": thresholds, "stress": stress}
+        return _filter_to_target(result, self.config.target_codes)
 
     def predict_fast(self, returns_calib, returns_test, point_forecasts=None, volatility=None):
         """Vectorized prediction (~10x faster)."""
@@ -407,8 +504,9 @@ class CAGCPipeline:
         half_width_adj = apply_modulator(half_width, stress, eta=self.config.sensitivity_eta)
         lower = point_forecasts - half_width_adj
         upper = point_forecasts + half_width_adj
-        return {"lower": lower, "upper": upper, "half_width": half_width_adj,
-                "thresholds": thresholds, "stress": stress}
+        result = {"lower": lower, "upper": upper, "half_width": half_width_adj,
+                  "thresholds": thresholds, "stress": stress}
+        return _filter_to_target(result, self.config.target_codes)
 
     def get_diagnostics(self) -> dict:
         return {"codes": self.codes, "neighbors": self.neighbors,
