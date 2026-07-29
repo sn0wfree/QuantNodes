@@ -111,13 +111,13 @@ def dual_momentum_with_ca_gcp(
     prev_weights = pd.Series(0.0, index=daily_prices.columns, dtype=float)
     diag_rows = []
     history_hw = None
-    prev_alert_level = "green"  # hysteresis state
 
     for i in range(1, len(daily_prices)):
         date = daily_prices.index[i]
 
         # Step 1: Determine target weights
-        if date in rebal_dates:
+        is_rebal = date in rebal_dates
+        if is_rebal:
             wk = weekly_prices.loc[:date]
             if len(wk) >= LOOKBACK_WEEKS:
                 w_target = dual_momentum_signal(wk, LOOKBACK_WEEKS)
@@ -131,8 +131,13 @@ def dual_momentum_with_ca_gcp(
         else:
             w_target = prev_weights.copy()
 
-        # Step 2: Daily CA-GCP check (override if panic)
-        if date in intervals["half_width"].index:
+        # Step 2: CA-GCP check ONLY on rebalance days, ONLY red triggers
+        w_adj = w_target.copy()
+        alert_level = "green"
+        stress_today = 0.0
+        width_z_today = 0.0
+
+        if is_rebal and date in intervals["half_width"].index:
             idx_t = intervals["half_width"].index.get_loc(date)
             intervals_t = {
                 "lower": intervals["lower"].iloc[[idx_t]],
@@ -140,35 +145,25 @@ def dual_momentum_with_ca_gcp(
                 "half_width": intervals["half_width"].iloc[[idx_t]],
                 "stress": intervals["stress"].iloc[[idx_t]],
             }
-            w_adj, diag = ca_gcp_risk_filter(
+            _, diag_t = ca_gcp_risk_filter(
                 w_target, intervals_t, rules, today=date, history=history_hw,
             )
-            # Hysteresis: if prev was yellow/red, require lower stress to recover
-            if prev_alert_level in ("yellow", "red") and diag["alert_level"] == "green":
-                stress_now = diag.get("stress_today", 0.0)
-                width_now = diag.get("width_z_today", 0.0)
-                if (stress_now > rules.stress_yellow_recovery or
-                        width_now > rules.width_z_yellow_recovery):
-                    diag["alert_level"] = "yellow"
-                    diag["applied_scale"] = rules.yellow_scale
-                    w_adj = w_target * rules.yellow_scale
-                    residual = (1.0 - w_adj.sum()) if w_adj.sum() < 1.0 else 0.0
-                    if residual > 0:
-                        w_min = w_target.abs().idxmin()
-                        w_adj[w_min] += residual
-            prev_alert_level = diag["alert_level"]
+            alert_level = diag_t["alert_level"]
+            stress_today = diag_t.get("stress_today", 0.0)
+            width_z_today = diag_t.get("width_z_today", 0.0)
+
+            # Only act on RED
+            if alert_level == "red":
+                w_adj = w_target * rules.red_scale
+                residual = (1.0 - w_adj.sum()) if w_adj.sum() < 1.0 else 0.0
+                if residual > 0:
+                    w_min = w_target.abs().idxmin()
+                    w_adj[w_min] += residual
+
             if history_hw is None:
                 history_hw = intervals["half_width"].iloc[: idx_t + 1].copy()
             else:
                 history_hw = pd.concat([history_hw, intervals["half_width"].iloc[[idx_t]]])
-        else:
-            w_adj = w_target.copy()
-            diag = {
-                "alert_level": "green",
-                "applied_scale": 1.0,
-                "width_z_today": 0.0,
-                "stress_today": 0.0,
-            }
 
         # Step 3: Compute portfolio return
         day_ret = daily_prices.iloc[i] / daily_prices.iloc[i - 1] - 1
@@ -188,9 +183,9 @@ def dual_momentum_with_ca_gcp(
             "turnover": turnover,
             "cost": cost,
             "port_ret": port_ret,
-            "alert_level": diag["alert_level"],
-            "width_z": diag.get("width_z_today", 0.0),
-            "stress": diag.get("stress_today", 0.0),
+            "alert_level": alert_level,
+            "width_z": width_z_today,
+            "stress": stress_today,
         })
 
         prev_weights = w_adj.copy()
