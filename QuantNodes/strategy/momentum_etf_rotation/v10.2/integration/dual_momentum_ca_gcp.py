@@ -397,6 +397,13 @@ def dual_momentum_with_ca_gcp(
             gate_corr_window, gate_corr_drop, gate_mode=gate_mode,
         )
 
+    # Pre-compute trend signal for trend filter
+    trend_signal = None
+    if rules.trend_filter:
+        target_returns = etf_returns[daily_prices.columns].mean(axis=1)
+        rolling_ret = target_returns.rolling(rules.trend_window).sum()
+        trend_signal = rolling_ret < rules.trend_threshold
+
     if test_start is not None:
         daily_prices = daily_prices.loc[test_start:]
     if test_end is not None:
@@ -510,6 +517,7 @@ def dual_momentum_with_ca_gcp(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
                     residual_asset=BOND_CODE,
+                    trend_signal=trend_signal,
                 )
                 if history_hw is None:
                     history_hw = intervals_t["half_width"].copy()
@@ -588,6 +596,7 @@ def dual_momentum_with_ca_gcp(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
                     residual_asset=BOND_CODE,
+                    trend_signal=trend_signal,
                 )
                 if history_hw is None:
                     history_hw = intervals_t["half_width"].copy()

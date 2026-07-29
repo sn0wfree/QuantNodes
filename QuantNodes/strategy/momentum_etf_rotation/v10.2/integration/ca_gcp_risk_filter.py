@@ -51,6 +51,10 @@ class RiskFilterRules:
     confirm_threshold: int = 2
     min_hold_days: int = 5
     cooldown_days: int = 3
+    # Trend filter: skip alerts during uptrend
+    trend_filter: bool = True
+    trend_window: int = 20
+    trend_threshold: float = 0.0
     # Per-group support
     group_rules: dict[str, "RiskFilterRules"] | None = None
     asset_groups: dict[str, list[str]] | None = None
@@ -73,6 +77,7 @@ def ca_gcp_risk_filter(
     today: pd.Timestamp | None = None,
     history: pd.DataFrame | None = None,
     residual_asset: str | None = None,
+    trend_signal: pd.Series | None = None,
 ) -> tuple[pd.Series, dict]:
     """Apply CA-GCP risk filter to v10 target weights.
 
@@ -88,6 +93,7 @@ def ca_gcp_risk_filter(
         today: Specific day to evaluate. If None, uses last day of intervals.
         history: Earlier half_width values for computing rolling stats.
         residual_asset: Asset code to receive residual exposure when scale < 1.0.
+        trend_signal: Boolean Series (True=downtrend). If today is uptrend, skip alerts.
 
     Returns:
         (adjusted_weights, diagnostics_dict)
@@ -99,12 +105,14 @@ def ca_gcp_risk_filter(
         return _ca_gcp_risk_filter_grouped(
             weights, intervals, rules, today, history,
             residual_asset=residual_asset,
+            trend_signal=trend_signal,
         )
 
     # Global mode (original logic)
     return _ca_gcp_risk_filter_global(
         weights, intervals, rules, today, history,
         residual_asset=residual_asset,
+        trend_signal=trend_signal,
     )
 
 
@@ -138,6 +146,7 @@ def _ca_gcp_risk_filter_global(
     today: pd.Timestamp | None,
     history: pd.DataFrame | None,
     residual_asset: str | None = None,
+    trend_signal: pd.Series | None = None,
 ) -> tuple[pd.Series, dict]:
     """Global mode: single threshold for all assets."""
     hw = intervals["half_width"]
@@ -166,6 +175,12 @@ def _ca_gcp_risk_filter_global(
         scale = rules.yellow_scale
         diag["alert_level"] = "yellow"
 
+    # Trend filter: skip alerts during uptrend
+    if rules.trend_filter and trend_signal is not None:
+        if today in trend_signal.index and not trend_signal.loc[today]:
+            diag["alert_level"] = "green"
+            scale = 1.0
+
     diag["applied_scale"] = scale
     adjusted = weights * scale
 
@@ -188,6 +203,7 @@ def _ca_gcp_risk_filter_grouped(
     today: pd.Timestamp | None,
     history: pd.DataFrame | None,
     residual_asset: str | None = None,
+    trend_signal: pd.Series | None = None,
 ) -> tuple[pd.Series, dict]:
     """Per-group mode: separate thresholds per asset group."""
     hw = intervals["half_width"]
@@ -262,6 +278,12 @@ def _ca_gcp_risk_filter_grouped(
                 total_weight += grp_w
         if total_weight > 0:
             overall_scale = weighted_scale / total_weight
+
+    # Trend filter: skip alerts during uptrend
+    if rules.trend_filter and trend_signal is not None:
+        if today in trend_signal.index and not trend_signal.loc[today]:
+            overall_alert = "green"
+            overall_scale = 1.0
 
     diag: dict = {
         "width_z_today": group_width_z,
