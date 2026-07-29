@@ -41,6 +41,9 @@ class RiskFilterRules:
     yellow_scale: float = 0.85
     red_scale: float = 0.6
     panic_scale: float = 0.3
+    # Hysteresis: recovery requires stress below this (prevents bounce)
+    stress_yellow_recovery: float = 0.80
+    width_z_yellow_recovery: float = 2.0
 
 
 def experimental_rules() -> RiskFilterRules:

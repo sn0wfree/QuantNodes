@@ -1,0 +1,38 @@
+[
+  {
+    "fold": 1,
+    "config": "k=2,eta=0.7,tau=20.0",
+    "alerts": {
+      "green": 173,
+      "red": 26,
+      "yellow": 23
+    }
+  },
+  {
+    "fold": 2,
+    "config": "k=2,eta=0.7,tau=20.0",
+    "alerts": {
+      "green": 165,
+      "red": 31,
+      "yellow": 26
+    }
+  },
+  {
+    "fold": 3,
+    "config": "k=2,eta=0.5,tau=20.0",
+    "alerts": {
+      "green": 186,
+      "red": 23,
+      "yellow": 10
+    }
+  },
+  {
+    "fold": 4,
+    "config": "k=2,eta=0.5,tau=20.0",
+    "alerts": {
+      "green": 186,
+      "red": 21,
+      "yellow": 12
+    }
+  }
+]
