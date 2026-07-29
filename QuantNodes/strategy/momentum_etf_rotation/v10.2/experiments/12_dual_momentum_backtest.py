@@ -184,7 +184,7 @@ def run_fold(
 
     # 3. Run bare dual momentum on test period
     print("  Running bare dual momentum...")
-    nav_bare = dual_momentum_bare(
+    nav_bare, diag_bare = dual_momentum_bare(
         daily_prices, weekly_prices,
         cost_bp=10,
         test_start=calib_end,
@@ -194,7 +194,7 @@ def run_fold(
 
     # 4. Run dual momentum + CA-GCP on test period
     print("  Running dual momentum + CA-GCP...")
-    nav_cagcp, diag = dual_momentum_with_ca_gcp(
+    nav_cagcp, diag_cagcp = dual_momentum_with_ca_gcp(
         daily_prices, weekly_prices, pipe, etf_returns,
         rules=RiskFilterRules(),
         cost_bp=10,
@@ -203,10 +203,19 @@ def run_fold(
     )
     m_cagcp = compute_metrics(nav_cagcp)
 
-    # 5. Diagnostics
-    alerts = diag["alert_level"].value_counts().to_dict()
-    n_trades = (diag["turnover"] > 0.001).sum()
-    total_turnover = diag["turnover"].sum()
+    # 5. Turnover & cost diagnostics
+    n_years = m_bare.get("Years", 1.0)
+    total_turnover_bare = diag_bare["turnover"].sum()
+    total_cost_bare = diag_bare["cost"].sum()
+    ann_turnover_bare = total_turnover_bare / n_years
+    ann_cost_bare = total_cost_bare / n_years
+
+    total_turnover_cagcp = diag_cagcp["turnover"].sum()
+    total_cost_cagcp = diag_cagcp["cost"].sum()
+    ann_turnover_cagcp = total_turnover_cagcp / n_years
+    ann_cost_cagcp = total_cost_cagcp / n_years
+
+    alerts = diag_cagcp["alert_level"].value_counts().to_dict()
 
     print(f"  Bare: Sharpe={m_bare.get('Sharpe', 0):.3f}, "
           f"MaxDD={m_bare.get('MaxDD', 0):.2%}, "
@@ -214,7 +223,8 @@ def run_fold(
     print(f"  CA-GCP: Sharpe={m_cagcp.get('Sharpe', 0):.3f}, "
           f"MaxDD={m_cagcp.get('MaxDD', 0):.2%}, "
           f"AnnRet={m_cagcp.get('AnnRet', 0):.2%}")
-    print(f"  Alerts: {alerts}, trades: {n_trades}, turnover: {total_turnover:.2%}")
+    print(f"  Bare turnover: {ann_turnover_bare:.1f}x/yr, cost: {ann_cost_bare:.2%}/yr")
+    print(f"  CA-GCP turnover: {ann_turnover_cagcp:.1f}x/yr, cost: {ann_cost_cagcp:.2%}/yr")
 
     return {
         "fold": fold_idx + 1,
@@ -223,11 +233,14 @@ def run_fold(
         "bare": m_bare,
         "cagcp": m_cagcp,
         "alerts": alerts,
-        "n_trades": int(n_trades),
-        "total_turnover": float(total_turnover),
+        "ann_turnover_bare": ann_turnover_bare,
+        "ann_cost_bare": ann_cost_bare,
+        "ann_turnover_cagcp": ann_turnover_cagcp,
+        "ann_cost_cagcp": ann_cost_cagcp,
         "nav_bare": nav_bare,
         "nav_cagcp": nav_cagcp,
-        "diag": diag,
+        "diag_bare": diag_bare,
+        "diag_cagcp": diag_cagcp,
     }
 
 
@@ -271,6 +284,8 @@ def main() -> None:
             "Bare_Sortino": b.get("Sortino", 0),
             "Bare_Calmar": b.get("Calmar", 0),
             "Bare_WinRate": b.get("WinRate", 0),
+            "Bare_AnnTurnover": r["ann_turnover_bare"],
+            "Bare_AnnCost": r["ann_cost_bare"],
             "CAGCP_AnnRet": c.get("AnnRet", 0),
             "CAGCP_Vol": c.get("Vol", 0),
             "CAGCP_MaxDD": c.get("MaxDD", 0),
@@ -278,6 +293,8 @@ def main() -> None:
             "CAGCP_Sortino": c.get("Sortino", 0),
             "CAGCP_Calmar": c.get("Calmar", 0),
             "CAGCP_WinRate": c.get("WinRate", 0),
+            "CAGCP_AnnTurnover": r["ann_turnover_cagcp"],
+            "CAGCP_AnnCost": r["ann_cost_cagcp"],
         })
 
     summary = pd.DataFrame(rows)
@@ -286,14 +303,16 @@ def main() -> None:
     print("\n--- Bare Dual Momentum ---")
     bare_cols = ["Fold", "Period", "Bare_AnnRet", "Bare_Vol",
                  "Bare_MaxDD", "Bare_Sharpe", "Bare_Sortino",
-                 "Bare_Calmar", "Bare_WinRate"]
+                 "Bare_Calmar", "Bare_WinRate",
+                 "Bare_AnnTurnover", "Bare_AnnCost"]
     print(summary[bare_cols].to_string(index=False, float_format="%.4f"))
 
     # Print CA-GCP metrics
     print("\n--- Dual Momentum + CA-GCP ---")
     cagcp_cols = ["Fold", "Period", "CAGCP_AnnRet", "CAGCP_Vol",
                   "CAGCP_MaxDD", "CAGCP_Sharpe", "CAGCP_Sortino",
-                  "CAGCP_Calmar", "CAGCP_WinRate"]
+                  "CAGCP_Calmar", "CAGCP_WinRate",
+                  "CAGCP_AnnTurnover", "CAGCP_AnnCost"]
     print(summary[cagcp_cols].to_string(index=False, float_format="%.4f"))
 
     # Print deltas
@@ -308,13 +327,17 @@ def main() -> None:
         "Sortino_Δ": summary["CAGCP_Sortino"] - summary["Bare_Sortino"],
         "Calmar_Δ": summary["CAGCP_Calmar"] - summary["Bare_Calmar"],
         "WinRate_Δ": summary["CAGCP_WinRate"] - summary["Bare_WinRate"],
+        "AnnTurnover_Δ": summary["CAGCP_AnnTurnover"] - summary["Bare_AnnTurnover"],
+        "AnnCost_Δ": summary["CAGCP_AnnCost"] - summary["Bare_AnnCost"],
     })
     print(delta_df.to_string(index=False, float_format="%+.4f"))
 
     # Aggregate averages
     print("\n--- Aggregate ---")
+    metrics_list = ["AnnRet", "Vol", "MaxDD", "Sharpe", "Sortino", "Calmar",
+                    "WinRate", "AnnTurnover", "AnnCost"]
     agg = pd.DataFrame({
-        "Metric": ["AnnRet", "Vol", "MaxDD", "Sharpe", "Sortino", "Calmar", "WinRate"],
+        "Metric": metrics_list,
         "Bare_Avg": [
             summary["Bare_AnnRet"].mean(),
             summary["Bare_Vol"].mean(),
@@ -323,6 +346,8 @@ def main() -> None:
             summary["Bare_Sortino"].mean(),
             summary["Bare_Calmar"].mean(),
             summary["Bare_WinRate"].mean(),
+            summary["Bare_AnnTurnover"].mean(),
+            summary["Bare_AnnCost"].mean(),
         ],
         "CAGCP_Avg": [
             summary["CAGCP_AnnRet"].mean(),
@@ -332,6 +357,8 @@ def main() -> None:
             summary["CAGCP_Sortino"].mean(),
             summary["CAGCP_Calmar"].mean(),
             summary["CAGCP_WinRate"].mean(),
+            summary["CAGCP_AnnTurnover"].mean(),
+            summary["CAGCP_AnnCost"].mean(),
         ],
     })
     agg["Delta"] = agg["CAGCP_Avg"] - agg["Bare_Avg"]
@@ -348,8 +375,11 @@ def main() -> None:
         r["nav_cagcp"].to_frame("nav_cagcp").to_csv(
             OUT_DIR / f"dual_mom_cagcp_fold{r['fold']}.csv", index=True,
         )
-        r["diag"].to_csv(
-            OUT_DIR / f"dual_mom_diag_fold{r['fold']}.csv", index=False,
+        r["diag_bare"].to_csv(
+            OUT_DIR / f"dual_mom_diag_bare_fold{r['fold']}.csv", index=False,
+        )
+        r["diag_cagcp"].to_csv(
+            OUT_DIR / f"dual_mom_diag_cagcp_fold{r['fold']}.csv", index=False,
         )
 
     with (OUT_DIR / "dual_momentum_wf_config.json").open("w") as f:

@@ -73,20 +73,47 @@ class TestDualMomentumSignal:
 
 
 class TestDualMomentumBare:
+    def test_bare_returns_tuple(self, sample_data):
+        prices, weekly, _ = sample_data
+        result = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
     def test_bare_nav_shape(self, sample_data):
         prices, weekly, _ = sample_data
-        nav = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
+        nav, _ = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
         assert len(nav) == 300
 
     def test_bare_nav_starts_at_1(self, sample_data):
         prices, weekly, _ = sample_data
-        nav = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
+        nav, _ = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
         assert nav.iloc[0] == pytest.approx(1.0)
 
     def test_bare_nav_positive(self, sample_data):
         prices, weekly, _ = sample_data
-        nav = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
+        nav, _ = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
         assert (nav > 0).all()
+
+    def test_bare_diag_columns(self, sample_data):
+        prices, weekly, _ = sample_data
+        _, diag = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
+        expected_cols = {"date", "turnover", "cost", "port_ret", "alert_level"}
+        assert expected_cols.issubset(set(diag.columns))
+
+    def test_bare_turnover_non_negative(self, sample_data):
+        prices, weekly, _ = sample_data
+        _, diag = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
+        assert (diag["turnover"] >= 0).all()
+
+    def test_bare_cost_non_negative(self, sample_data):
+        prices, weekly, _ = sample_data
+        _, diag = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
+        assert (diag["cost"] >= 0).all()
+
+    def test_bare_alert_level_all_green(self, sample_data):
+        prices, weekly, _ = sample_data
+        _, diag = dual_momentum_bare(prices, weekly, test_start=prices.index[200])
+        assert (diag["alert_level"] == "green").all()
 
 
 class TestDualMomentumWithCaGCP:

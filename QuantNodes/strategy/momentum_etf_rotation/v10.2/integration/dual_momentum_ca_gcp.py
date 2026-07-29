@@ -206,10 +206,14 @@ def dual_momentum_bare(
     rebal_dates: pd.DatetimeIndex | None = None,
     test_start: pd.Timestamp | None = None,
     test_end: pd.Timestamp | None = None,
-) -> pd.Series:
+) -> tuple[pd.Series, pd.DataFrame]:
     """Pure dual momentum without CA-GCP (baseline).
 
     Same as dual_momentum_with_ca_gcp but no CA-GCP intervention.
+
+    Returns:
+        (nav, diagnostics_df): NAV series and daily diagnostics with
+        columns: date, turnover, cost, port_ret, alert_level.
     """
     if test_start is not None:
         daily_prices = daily_prices.loc[test_start:]
@@ -221,6 +225,7 @@ def dual_momentum_bare(
 
     nav = pd.Series(1.0, index=daily_prices.index, dtype=float)
     prev_weights = pd.Series(0.0, index=daily_prices.columns, dtype=float)
+    diag_rows = []
 
     for i in range(1, len(daily_prices)):
         date = daily_prices.index[i]
@@ -246,6 +251,16 @@ def dual_momentum_bare(
         cost = turnover * cost_bp / 10000
 
         nav.iloc[i] = nav.iloc[i - 1] * (1 + port_ret - cost)
+
+        diag_rows.append({
+            "date": date,
+            "turnover": turnover,
+            "cost": cost,
+            "port_ret": port_ret,
+            "alert_level": "green",
+        })
+
         prev_weights = curr_weights
 
-    return nav
+    diag_df = pd.DataFrame(diag_rows)
+    return nav, diag_df
