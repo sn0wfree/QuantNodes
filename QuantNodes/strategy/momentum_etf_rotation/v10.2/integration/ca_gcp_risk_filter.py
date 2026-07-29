@@ -284,7 +284,7 @@ def calibrate_risk_filter(
     daily_prices: pd.DataFrame,
     weekly_prices: pd.DataFrame,
     etf_returns: pd.DataFrame,
-    pipelines: dict,
+    pipe,
     calib_start: pd.Timestamp,
     calib_end: pd.Timestamp,
     cost_bp: int = 10,
@@ -296,8 +296,8 @@ def calibrate_risk_filter(
     Args:
         daily_prices: Daily close prices for the 4 assets.
         weekly_prices: Weekly close prices for signal.
-        etf_returns: ETF daily returns (enriched with bond ETFs).
-        pipelines: Sector pipelines dict {asset_code: CAGCPipeline}.
+        etf_returns: ETF daily returns.
+        pipe: Fitted CAGCPipeline (global) or dict of sector pipelines.
         calib_start: Start of calibration period.
         calib_end: End of calibration period.
         cost_bp: Transaction cost in basis points.
@@ -312,7 +312,6 @@ def calibrate_risk_filter(
 
     calib_prices = daily_prices.loc[calib_start:calib_end]
     calib_weekly = weekly_prices.loc[:calib_end]
-    calib_returns = etf_returns.loc[calib_start:calib_end]
 
     grid = list(itertools.product(
         WIDTH_Z_YELLOW_GRID, WIDTH_Z_RED_GRID,
@@ -335,7 +334,7 @@ def calibrate_risk_filter(
         )
 
         nav, diag = dual_momentum_with_ca_gcp(
-            calib_prices, calib_weekly, pipelines, calib_returns,
+            calib_prices, calib_weekly, pipe, etf_returns,
             rules=rules, cost_bp=cost_bp,
         )
 
