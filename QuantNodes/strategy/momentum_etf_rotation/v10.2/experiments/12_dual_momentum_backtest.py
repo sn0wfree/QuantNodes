@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation
 from _path import *  # noqa: F401,F403,E402
 from ca_gcp import CAGCPConfig, CAGCPipeline  # noqa: E402
 from ca_gcp.validators import compute_coverage_metrics, width_bps  # noqa: E402
-from integration.ca_gcp_risk_filter import RiskFilterRules  # noqa: E402
+from integration.ca_gcp_risk_filter import calibrate_risk_filter  # noqa: E402
 from integration.dual_momentum_ca_gcp import (  # noqa: E402
     build_sector_pipelines,
     dual_momentum_bare,
@@ -204,6 +204,13 @@ def run_fold(
     )
     print(f"  Sector pipelines: {list(sector_pipelines.keys())}")
 
+    # 2c. Calibrate risk filter thresholds on calib period
+    print("  Calibrating risk filter thresholds...")
+    best_rules = calibrate_risk_filter(
+        daily_prices, weekly_prices, enriched_returns,
+        sector_pipelines, train_end, calib_end,
+    )
+
     # 3. Run bare dual momentum on test period
     print("  Running bare dual momentum...")
     nav_bare, diag_bare = dual_momentum_bare(
@@ -218,7 +225,7 @@ def run_fold(
     print("  Running dual momentum + sector CA-GCP...")
     nav_cagcp, diag_cagcp = dual_momentum_with_ca_gcp(
         daily_prices, weekly_prices, sector_pipelines, enriched_returns,
-        rules=RiskFilterRules(),
+        rules=best_rules,
         cost_bp=10,
         test_start=calib_end,
         test_end=test_end,
