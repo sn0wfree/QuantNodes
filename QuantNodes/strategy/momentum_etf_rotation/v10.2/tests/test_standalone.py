@@ -1,18 +1,15 @@
-"""Unit tests for ca_gcp_standalone.py — single-file CA-GCP module."""
-from __future__ import annotations
+"""Unit tests for the CA-GCP common module (QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp).
 
-import sys
-from pathlib import Path
+Originally tested v10.2/ca_gcp_standalone.py; module moved to common/ for
+cross-version reuse. Test file kept here for backward compatibility.
+"""
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 import pytest
 
-_V102 = Path(__file__).resolve().parent.parent
-if str(_V102) not in sys.path:
-    sys.path.insert(0, str(_V102))
-
-from ca_gcp_standalone import (  # noqa: E402
+from QuantNodes.strategy.momentum_etf_rotation.common.ca_gcp import (  # noqa: E402
     CAGCPConfig,
     CAGCPipeline,
     NeighborQuality,
