@@ -11,6 +11,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 _V102 = Path(__file__).resolve().parent.parent
@@ -21,11 +22,100 @@ _V10 = _V102.parent / "v10"
 if str(_V10) not in sys.path:
     sys.path.insert(0, str(_V10))
 
-from ca_gcp.core import CAGCPipeline  # noqa: E402
+from ca_gcp.core import CAGCPConfig, CAGCPipeline  # noqa: E402
 from .ca_gcp_risk_filter import RiskFilterRules, ca_gcp_risk_filter  # noqa: E402
 
 LOOKBACK_WEEKS = 52
 BOND_CODE = "511260"
+
+REPO = Path(__file__).resolve().parents[5]
+PER_ETF_DIR = REPO / "data" / "real" / "per_etf"
+
+
+def load_bond_etf_returns(
+    start: pd.Timestamp | None = None,
+    end: pd.Timestamp | None = None,
+) -> pd.DataFrame:
+    """Load 511010/511220 daily returns from per_etf data.
+
+    Returns:
+        DataFrame (T, 2) with columns ['511010', '511220'].
+    """
+    codes = ["511010", "511220"]
+    series_list = []
+    for code in codes:
+        path = PER_ETF_DIR / f"{code}.parquet"
+        df = pd.read_parquet(path)
+        col = "close" if "close" in df.columns else df.columns[0]
+        s = df[col].dropna()
+        s.name = code
+        series_list.append(s)
+
+    prices = pd.concat(series_list, axis=1).dropna()
+    returns = prices.pct_change().dropna()
+    if start is not None:
+        returns = returns.loc[start:]
+    if end is not None:
+        returns = returns.loc[:end]
+    return returns
+
+
+def build_sector_pipelines(
+    etf_returns: pd.DataFrame,
+    sector_map: dict[str, str],
+    target_assets: list[str],
+    config: "CAGCPConfig | None" = None,
+) -> dict[str, CAGCPipeline]:
+    """Build per-sector CA-GCP pipelines for target assets.
+
+    Each target asset gets its own pipeline trained on its sector's ETFs.
+    k is auto-adjusted for small sectors.
+
+    Args:
+        etf_returns: Full ETF returns (T, N) including bond ETFs.
+        sector_map: {etf_code: sector_name}.
+        target_assets: List of 4 asset codes to build pipelines for.
+        config: CAGCPConfig (applied to all sectors, k auto-adjusted).
+
+    Returns:
+        {asset_code: fitted CAGCPipeline}
+    """
+    from ca_gcp.core import CAGCPConfig
+
+    config = config or CAGCPConfig()
+    target_sectors = {sector_map[a] for a in target_assets if a in sector_map}
+
+    # Group codes by sector
+    sector_codes: dict[str, list[str]] = {}
+    for code, sector in sector_map.items():
+        if sector in target_sectors and code in etf_returns.columns:
+            sector_codes.setdefault(sector, []).append(code)
+
+    pipelines: dict[str, CAGCPipeline] = {}
+    for asset in target_assets:
+        sector = sector_map.get(asset)
+        if sector is None or sector not in sector_codes:
+            continue
+        codes = sector_codes[sector]
+        sec_returns = etf_returns[codes].dropna()
+        if len(sec_returns) < 100:
+            continue
+
+        # Auto-adjust k for small sectors
+        sec_cfg = CAGCPConfig(
+            k=min(config.k, max(1, len(codes) - 1)),
+            sensitivity_eta=config.sensitivity_eta,
+            recency_tau=config.recency_tau,
+            sharpness_p=config.sharpness_p,
+            graph_method=config.graph_method,
+            ewma_span=config.ewma_span,
+            realized_window=config.realized_window,
+        )
+        pipe = CAGCPipeline(sec_cfg)
+        pipe.fit(sec_returns)
+        pipelines[asset] = pipe
+
+    return pipelines
 
 
 def dual_momentum_signal(
@@ -58,10 +148,50 @@ def dual_momentum_signal(
     return weights
 
 
+def _build_sector_intervals_t(
+    per_asset_intervals: dict[str, dict],
+    weights: pd.Series,
+    date: pd.Timestamp,
+    history_hw: pd.DataFrame | None,
+) -> dict | None:
+    """Build merged intervals dict from per-asset sector pipelines.
+
+    Slices each asset's intervals to the given date, then concatenates
+    into a single dict suitable for ca_gcp_risk_filter.
+    """
+    lower_parts = []
+    upper_parts = []
+    hw_parts = []
+    stress_parts = []
+
+    for asset_code in weights.index:
+        if asset_code not in per_asset_intervals:
+            continue
+        ai = per_asset_intervals[asset_code]
+        if date not in ai["half_width"].index:
+            continue
+        idx = ai["half_width"].index.get_loc(date)
+        lower_parts.append(ai["lower"].iloc[[idx]])
+        upper_parts.append(ai["upper"].iloc[[idx]])
+        hw_parts.append(ai["half_width"].iloc[[idx]])
+        stress_parts.append(ai["stress"].iloc[idx])
+
+    if not lower_parts:
+        return None
+
+    mean_stress = float(np.mean(stress_parts)) if stress_parts else 0.0
+    return {
+        "lower": pd.concat(lower_parts, axis=1),
+        "upper": pd.concat(upper_parts, axis=1),
+        "half_width": pd.concat(hw_parts, axis=1),
+        "stress": pd.Series([mean_stress], index=[date]),
+    }
+
+
 def dual_momentum_with_ca_gcp(
     daily_prices: pd.DataFrame,
     weekly_prices: pd.DataFrame,
-    pipe: CAGCPipeline,
+    pipe: CAGCPipeline | dict[str, CAGCPipeline],
     etf_returns: pd.DataFrame,
     rules: RiskFilterRules | None = None,
     cost_bp: int = 10,
@@ -77,10 +207,14 @@ def dual_momentum_with_ca_gcp(
       - Other days (Tue-Sun, non-month-end): hold previous weights
       - Every trade incurs cost_bp transaction cost
 
+    Supports two modes:
+      - Global: pipe is a single CAGCPipeline (all assets)
+      - Sector: pipe is {asset_code: CAGCPipeline} (per-asset sector pipelines)
+
     Args:
         daily_prices: Daily close prices (T, 4) for the 4 assets.
         weekly_prices: Weekly close prices (T_w, 4) for signal.
-        pipe: Fitted CAGCPipeline.
+        pipe: Fitted CAGCPipeline or dict of per-asset pipelines.
         etf_returns: ETF daily returns for risk filter.
         rules: Risk filter rules.
         cost_bp: Transaction cost in basis points.
@@ -92,6 +226,7 @@ def dual_momentum_with_ca_gcp(
         (nav, diagnostics_df): NAV series and daily diagnostics.
     """
     rules = rules or RiskFilterRules()
+    is_sector = isinstance(pipe, dict)
 
     if test_start is not None:
         daily_prices = daily_prices.loc[test_start:]
@@ -108,7 +243,29 @@ def dual_momentum_with_ca_gcp(
         daily_prices.index[0] - pd.Timedelta(days=300):
         daily_prices.index[0] - pd.Timedelta(days=1),
     ]
-    intervals = pipe.predict_fast(calib_returns, test_returns)
+
+    if is_sector:
+        # Sector mode: per-asset pipelines (use full sector returns for stress)
+        per_asset_intervals: dict[str, dict] = {}
+        for asset_code, asset_pipe in pipe.items():
+            # Use all sector codes for prediction (needed for stress computation)
+            sec_codes = asset_pipe.codes
+            sec_test = test_returns[sec_codes].dropna()
+            sec_calib = calib_returns[sec_codes].dropna()
+            if len(sec_test) > 0 and len(sec_calib) > 0:
+                full_out = asset_pipe.predict_fast(sec_calib, sec_test)
+                # Extract only the target asset's columns
+                per_asset_intervals[asset_code] = {
+                    "lower": full_out["lower"][[asset_code]],
+                    "upper": full_out["upper"][[asset_code]],
+                    "half_width": full_out["half_width"][[asset_code]],
+                    "stress": full_out["stress"],
+                }
+        intervals = None
+    else:
+        # Global mode: single pipeline
+        intervals = pipe.predict_fast(calib_returns, test_returns)
+        per_asset_intervals = None
 
     nav = pd.Series(1.0, index=daily_prices.index, dtype=float)
     prev_weights = pd.Series(0.0, index=daily_prices.columns, dtype=float)
@@ -134,24 +291,32 @@ def dual_momentum_with_ca_gcp(
                         w_target[col] = 0.25 / (n_assets - 1)
 
             # Full CA-GCP check on month-end
-            if date in intervals["half_width"].index:
-                idx_t = intervals["half_width"].index.get_loc(date)
-                intervals_t = {
-                    "lower": intervals["lower"].iloc[[idx_t]],
-                    "upper": intervals["upper"].iloc[[idx_t]],
-                    "half_width": intervals["half_width"].iloc[[idx_t]],
-                    "stress": intervals["stress"].iloc[[idx_t]],
-                }
+            if is_sector:
+                intervals_t = _build_sector_intervals_t(
+                    per_asset_intervals, w_target, date, history_hw,
+                )
+            else:
+                if date in intervals["half_width"].index:
+                    idx_t = intervals["half_width"].index.get_loc(date)
+                    intervals_t = {
+                        "lower": intervals["lower"].iloc[[idx_t]],
+                        "upper": intervals["upper"].iloc[[idx_t]],
+                        "half_width": intervals["half_width"].iloc[[idx_t]],
+                        "stress": intervals["stress"].iloc[[idx_t]],
+                    }
+                else:
+                    intervals_t = None
+
+            if intervals_t is not None:
                 w_adj, diag = ca_gcp_risk_filter(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
                 )
                 if history_hw is None:
-                    history_hw = intervals["half_width"].iloc[: idx_t + 1].copy()
+                    history_hw = intervals_t["half_width"].copy()
                 else:
                     history_hw = pd.concat([
-                        history_hw,
-                        intervals["half_width"].iloc[[idx_t]],
+                        history_hw, intervals_t["half_width"],
                     ])
             else:
                 w_adj = w_target.copy()
@@ -173,24 +338,32 @@ def dual_momentum_with_ca_gcp(
                 "stress_today": 0.0,
             }
 
-            if date in intervals["half_width"].index:
-                idx_t = intervals["half_width"].index.get_loc(date)
-                intervals_t = {
-                    "lower": intervals["lower"].iloc[[idx_t]],
-                    "upper": intervals["upper"].iloc[[idx_t]],
-                    "half_width": intervals["half_width"].iloc[[idx_t]],
-                    "stress": intervals["stress"].iloc[[idx_t]],
-                }
+            if is_sector:
+                intervals_t = _build_sector_intervals_t(
+                    per_asset_intervals, w_target, date, history_hw,
+                )
+            else:
+                if date in intervals["half_width"].index:
+                    idx_t = intervals["half_width"].index.get_loc(date)
+                    intervals_t = {
+                        "lower": intervals["lower"].iloc[[idx_t]],
+                        "upper": intervals["upper"].iloc[[idx_t]],
+                        "half_width": intervals["half_width"].iloc[[idx_t]],
+                        "stress": intervals["stress"].iloc[[idx_t]],
+                    }
+                else:
+                    intervals_t = None
+
+            if intervals_t is not None:
                 w_adj, diag = ca_gcp_risk_filter(
                     w_target, intervals_t, rules,
                     today=date, history=history_hw,
                 )
                 if history_hw is None:
-                    history_hw = intervals["half_width"].iloc[: idx_t + 1].copy()
+                    history_hw = intervals_t["half_width"].copy()
                 else:
                     history_hw = pd.concat([
-                        history_hw,
-                        intervals["half_width"].iloc[[idx_t]],
+                        history_hw, intervals_t["half_width"],
                     ])
 
         else:

@@ -29,8 +29,10 @@ from ca_gcp import CAGCPConfig, CAGCPipeline  # noqa: E402
 from ca_gcp.validators import compute_coverage_metrics, width_bps  # noqa: E402
 from integration.ca_gcp_risk_filter import RiskFilterRules  # noqa: E402
 from integration.dual_momentum_ca_gcp import (  # noqa: E402
+    build_sector_pipelines,
     dual_momentum_bare,
     dual_momentum_with_ca_gcp,
+    load_bond_etf_returns,
 )
 
 V10 = ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation" / "v10"
@@ -182,6 +184,26 @@ def run_fold(
     pipe = CAGCPipeline(cfg)
     pipe.fit(train_slice)
 
+    # 2b. Build sector pipelines (with bond ETF enrichment)
+    bond_returns = load_bond_etf_returns()
+    enriched_returns = pd.concat([etf_returns, bond_returns], axis=1)
+    enriched_returns = enriched_returns.loc[:, ~enriched_returns.columns.duplicated()]
+    enriched_returns = enriched_returns.ffill().fillna(0.0)
+
+    sector_map_path = (
+        ROOT / "QuantNodes" / "strategy" / "momentum_etf_rotation"
+        / "v10.2" / "data" / "etf_sector_map.csv"
+    )
+    sector_df = pd.read_csv(sector_map_path)
+    sector_map = dict(zip(sector_df["code"].astype(str), sector_df["sector"]))
+
+    target_assets = ["510300", "513100", "518880", "511260"]
+    sector_pipelines = build_sector_pipelines(
+        enriched_returns.loc[:calib_end].iloc[-600:],
+        sector_map, target_assets, cfg,
+    )
+    print(f"  Sector pipelines: {list(sector_pipelines.keys())}")
+
     # 3. Run bare dual momentum on test period
     print("  Running bare dual momentum...")
     nav_bare, diag_bare = dual_momentum_bare(
@@ -192,10 +214,10 @@ def run_fold(
     )
     m_bare = compute_metrics(nav_bare)
 
-    # 4. Run dual momentum + CA-GCP on test period
-    print("  Running dual momentum + CA-GCP...")
+    # 4. Run dual momentum + sector CA-GCP on test period
+    print("  Running dual momentum + sector CA-GCP...")
     nav_cagcp, diag_cagcp = dual_momentum_with_ca_gcp(
-        daily_prices, weekly_prices, pipe, etf_returns,
+        daily_prices, weekly_prices, sector_pipelines, enriched_returns,
         rules=RiskFilterRules(),
         cost_bp=10,
         test_start=calib_end,
