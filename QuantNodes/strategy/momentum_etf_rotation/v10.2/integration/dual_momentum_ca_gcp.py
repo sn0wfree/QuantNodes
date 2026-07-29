@@ -1,8 +1,9 @@
 """Dual Momentum + CA-GCP integration.
 
-月频调仓 + 日频保护:
-  - 月度: dual_momentum_signal → target weights
-  - 日频: CA-GCP monitor → panic scale-down if stress/yellow
+月频调仓 + 周频风控 + 其他日 hold:
+  - 月末: dual_momentum_signal → target weights
+  - 周一: CA-GCP full check (green/yellow/red) → 调整权重
+  - 其他日 (周二~周日, 非月末): hold 不动
   - 每次交易扣 10bp 交易成本
 """
 from __future__ import annotations
@@ -68,11 +69,12 @@ def dual_momentum_with_ca_gcp(
     test_start: pd.Timestamp | None = None,
     test_end: pd.Timestamp | None = None,
 ) -> tuple[pd.Series, pd.DataFrame]:
-    """Run dual momentum with CA-GCP daily protection.
+    """Run dual momentum with CA-GCP weekly risk control.
 
-    Monthly rebal + daily CA-GCP override:
+    Monthly rebal + weekly CA-GCP check + hold on other days:
       - Month-end: dual_momentum_signal → target weights
-      - Daily: if CA-GCP stress > threshold →临时降仓
+      - Monday: CA-GCP full check (green/yellow/red) → adjust if needed
+      - Other days (Tue-Sun, non-month-end): hold previous weights
       - Every trade incurs cost_bp transaction cost
 
     Args:
@@ -96,6 +98,7 @@ def dual_momentum_with_ca_gcp(
     if test_end is not None:
         daily_prices = daily_prices.loc[:test_end]
 
+    # Default: monthly end rebalancing
     if rebal_dates is None:
         rebal_dates = daily_prices.resample("M").last().index
 
@@ -114,10 +117,11 @@ def dual_momentum_with_ca_gcp(
 
     for i in range(1, len(daily_prices)):
         date = daily_prices.index[i]
+        is_month_end = date in rebal_dates
+        is_monday = date.dayofweek == 0  # Monday = 0
 
-        # Step 1: Determine target weights
-        is_rebal = date in rebal_dates
-        if is_rebal:
+        if is_month_end:
+            # Month-end: compute signal + full CA-GCP check
             wk = weekly_prices.loc[:date]
             if len(wk) >= LOOKBACK_WEEKS:
                 w_target = dual_momentum_signal(wk, LOOKBACK_WEEKS)
@@ -128,52 +132,87 @@ def dual_momentum_with_ca_gcp(
                 for col in daily_prices.columns:
                     if col != BOND_CODE:
                         w_target[col] = 0.25 / (n_assets - 1)
-        else:
-            w_target = prev_weights.copy()
 
-        # Step 2: CA-GCP check ONLY on rebalance days, ONLY red triggers
-        w_adj = w_target.copy()
-        alert_level = "green"
-        stress_today = 0.0
-        width_z_today = 0.0
-
-        if is_rebal and date in intervals["half_width"].index:
-            idx_t = intervals["half_width"].index.get_loc(date)
-            intervals_t = {
-                "lower": intervals["lower"].iloc[[idx_t]],
-                "upper": intervals["upper"].iloc[[idx_t]],
-                "half_width": intervals["half_width"].iloc[[idx_t]],
-                "stress": intervals["stress"].iloc[[idx_t]],
-            }
-            _, diag_t = ca_gcp_risk_filter(
-                w_target, intervals_t, rules, today=date, history=history_hw,
-            )
-            alert_level = diag_t["alert_level"]
-            stress_today = diag_t.get("stress_today", 0.0)
-            width_z_today = diag_t.get("width_z_today", 0.0)
-
-            # Only act on RED
-            if alert_level == "red":
-                w_adj = w_target * rules.red_scale
-                residual = (1.0 - w_adj.sum()) if w_adj.sum() < 1.0 else 0.0
-                if residual > 0:
-                    w_min = w_target.abs().idxmin()
-                    w_adj[w_min] += residual
-
-            if history_hw is None:
-                history_hw = intervals["half_width"].iloc[: idx_t + 1].copy()
+            # Full CA-GCP check on month-end
+            if date in intervals["half_width"].index:
+                idx_t = intervals["half_width"].index.get_loc(date)
+                intervals_t = {
+                    "lower": intervals["lower"].iloc[[idx_t]],
+                    "upper": intervals["upper"].iloc[[idx_t]],
+                    "half_width": intervals["half_width"].iloc[[idx_t]],
+                    "stress": intervals["stress"].iloc[[idx_t]],
+                }
+                w_adj, diag = ca_gcp_risk_filter(
+                    w_target, intervals_t, rules,
+                    today=date, history=history_hw,
+                )
+                if history_hw is None:
+                    history_hw = intervals["half_width"].iloc[: idx_t + 1].copy()
+                else:
+                    history_hw = pd.concat([
+                        history_hw,
+                        intervals["half_width"].iloc[[idx_t]],
+                    ])
             else:
-                history_hw = pd.concat([history_hw, intervals["half_width"].iloc[[idx_t]]])
+                w_adj = w_target.copy()
+                diag = {
+                    "alert_level": "green",
+                    "applied_scale": 1.0,
+                    "width_z_today": 0.0,
+                    "stress_today": 0.0,
+                }
 
-        # Step 3: Compute portfolio return
+        elif is_monday:
+            # Monday (non-month-end): CA-GCP check on current weights
+            w_target = prev_weights.copy()
+            w_adj = prev_weights.copy()
+            diag = {
+                "alert_level": "green",
+                "applied_scale": 1.0,
+                "width_z_today": 0.0,
+                "stress_today": 0.0,
+            }
+
+            if date in intervals["half_width"].index:
+                idx_t = intervals["half_width"].index.get_loc(date)
+                intervals_t = {
+                    "lower": intervals["lower"].iloc[[idx_t]],
+                    "upper": intervals["upper"].iloc[[idx_t]],
+                    "half_width": intervals["half_width"].iloc[[idx_t]],
+                    "stress": intervals["stress"].iloc[[idx_t]],
+                }
+                w_adj, diag = ca_gcp_risk_filter(
+                    w_target, intervals_t, rules,
+                    today=date, history=history_hw,
+                )
+                if history_hw is None:
+                    history_hw = intervals["half_width"].iloc[: idx_t + 1].copy()
+                else:
+                    history_hw = pd.concat([
+                        history_hw,
+                        intervals["half_width"].iloc[[idx_t]],
+                    ])
+
+        else:
+            # Other days (Tue-Sun, non-month-end): hold
+            w_target = prev_weights.copy()
+            w_adj = prev_weights.copy()
+            diag = {
+                "alert_level": "green",
+                "applied_scale": 1.0,
+                "width_z_today": 0.0,
+                "stress_today": 0.0,
+            }
+
+        # Compute portfolio return
         day_ret = daily_prices.iloc[i] / daily_prices.iloc[i - 1] - 1
         port_ret = (w_adj * day_ret).sum()
 
-        # Step 4: Transaction cost (every trade)
+        # Transaction cost (every trade)
         turnover = (w_adj - prev_weights).abs().sum()
         cost = turnover * cost_bp / 10000
 
-        # Step 5: Update NAV
+        # Update NAV
         nav.iloc[i] = nav.iloc[i - 1] * (1 + port_ret - cost)
 
         diag_rows.append({
@@ -183,9 +222,9 @@ def dual_momentum_with_ca_gcp(
             "turnover": turnover,
             "cost": cost,
             "port_ret": port_ret,
-            "alert_level": alert_level,
-            "width_z": width_z_today,
-            "stress": stress_today,
+            "alert_level": diag["alert_level"],
+            "width_z": diag.get("width_z_today", 0.0),
+            "stress": diag.get("stress_today", 0.0),
         })
 
         prev_weights = w_adj.copy()
@@ -204,7 +243,7 @@ def dual_momentum_bare(
 ) -> tuple[pd.Series, pd.DataFrame]:
     """Pure dual momentum without CA-GCP (baseline).
 
-    Same as dual_momentum_with_ca_gcp but no CA-GCP intervention.
+    Monthly rebalancing (month-end). No CA-GCP intervention.
 
     Returns:
         (nav, diagnostics_df): NAV series and daily diagnostics with
@@ -215,6 +254,7 @@ def dual_momentum_bare(
     if test_end is not None:
         daily_prices = daily_prices.loc[:test_end]
 
+    # Default: monthly end rebalancing
     if rebal_dates is None:
         rebal_dates = daily_prices.resample("M").last().index
 

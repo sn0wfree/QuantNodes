@@ -5,8 +5,8 @@ Walk-Forward 5 fold校准 + 3 candidates:
   Candidate 2: 4 strategies comparison table
   Candidate 3: Sector CA-GCP on dual_mom
 
-Option C: monthly rebal + daily CA-GCP protection
-Every trade incurs 10bp transaction cost.
+Monthly rebal (month-end) + weekly CA-GCP risk control (Monday)
+Other days: hold. Every trade incurs 10bp transaction cost.
 """
 from __future__ import annotations
 
@@ -247,7 +247,7 @@ def run_fold(
 def main() -> None:
     print("=" * 60)
     print("Dual Momentum + CA-GCP Walk-Forward Backtest")
-    print("Option C: monthly rebal + daily protection")
+    print("Monthly rebal + weekly CA-GCP risk control")
     print("=" * 60)
 
     # Load data
@@ -267,7 +267,7 @@ def main() -> None:
 
     # Summary table — full metrics
     print("\n" + "=" * 80)
-    print("SUMMARY: Dual Momentum Bare vs + CA-GCP (Option C)")
+    print("SUMMARY: Dual Momentum Bare vs + CA-GCP (Monthly Rebal + Weekly Risk)")
     print("=" * 80)
 
     rows = []
