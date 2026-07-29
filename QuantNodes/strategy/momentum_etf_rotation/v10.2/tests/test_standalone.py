@@ -22,6 +22,7 @@ from ca_gcp_standalone import (  # noqa: E402
     TheoreticalBound,
     _LOSS_REGISTRY,
     apply_modulator,
+    apply_scale_to_weights,
     build_knn_graph,
     build_sector_groups,
     build_v10_2_pipeline,
@@ -32,7 +33,9 @@ from ca_gcp_standalone import (  # noqa: E402
     compute_systemic_stress,
     detect_warnings,
     estimate_volatility,
+    evaluate_alert,
     experimental_rules,
+    extract_risk_signals,
     fit_sector_ca_gcp,
     fit_sector_hybrid_ca_gcp,
     load_sector_map,
@@ -360,6 +363,38 @@ class TestRiskFilter:
         r = RiskFilterRules()
         assert r.stress_yellow_recovery < r.stress_yellow
         assert r.width_z_yellow_recovery < r.width_z_yellow
+
+    def test_extract_risk_signals_keys(self):
+        hw = pd.DataFrame(0.01, index=pd.date_range("2020-01-01", periods=5), columns=["A", "B"])
+        stress = pd.Series([0.3, 0.4, 0.5, 0.6, 0.7])
+        intervals = {"half_width": hw, "stress": stress}
+        sig = extract_risk_signals(intervals)
+        assert "width_z_today" in sig
+        assert "stress_today" in sig
+        assert isinstance(sig["stress_today"], float)
+
+    def test_evaluate_alert_levels(self):
+        rules = RiskFilterRules()
+        assert evaluate_alert(0.0, 0.5, rules) == ("green", 1.0)
+        assert evaluate_alert(2.0, 0.5, rules) == ("green", 1.0)
+        assert evaluate_alert(3.5, 0.5, rules) == ("yellow", 0.85)
+        assert evaluate_alert(5.0, 0.5, rules) == ("red", 0.6)
+        assert evaluate_alert(0.0, 0.95, rules) == ("yellow", 0.85)
+        assert evaluate_alert(0.0, 0.99, rules) == ("red", 0.6)
+
+    def test_apply_scale_to_weights_sum(self):
+        weights = pd.Series({"A": 0.5, "B": 0.3, "C": 0.2})
+        adj = apply_scale_to_weights(weights, 1.0)
+        assert adj.sum() == pytest.approx(1.0)
+        adj_red = apply_scale_to_weights(weights, 0.6)
+        assert adj_red.sum() == pytest.approx(1.0)
+
+    def test_apply_scale_to_weights_residual(self):
+        weights = pd.Series({"A": 0.5, "B": 0.3, "C": 0.2})
+        adj = apply_scale_to_weights(weights, 0.6)
+        assert adj["C"] == pytest.approx(0.52)
+        assert adj["A"] == pytest.approx(0.30)
+        assert adj["B"] == pytest.approx(0.18)
 
 
 # --- Integration: build_v10_2_pipeline ---

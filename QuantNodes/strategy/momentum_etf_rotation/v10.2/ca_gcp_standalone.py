@@ -860,34 +860,67 @@ def _compute_width_z(hw, history, today):
     return float(val) if pd.notna(val) else 0.0
 
 
-def ca_gcp_risk_filter(weights, intervals, rules=None, today=None, history=None):
-    """Apply CA-GCP risk filter to target weights. Returns (adjusted_weights, diagnostics)."""
-    rules = rules or RiskFilterRules()
-    if rules.group_rules and rules.asset_groups:
-        return _ca_gcp_risk_filter_grouped(weights, intervals, rules, today, history)
-    return _ca_gcp_risk_filter_global(weights, intervals, rules, today, history)
+def extract_risk_signals(intervals: dict, today=None, history=None) -> dict:
+    """Extract today's width_z and stress from intervals.
 
+    Args:
+        intervals: dict with keys 'half_width' (DataFrame) and 'stress' (Series).
+        today: timestamp to query; defaults to last index of half_width.
+        history: optional DataFrame of historical half_width for rolling z-score.
 
-def _ca_gcp_risk_filter_global(weights, intervals, rules, today, history):
-    hw, stress = intervals["half_width"], intervals["stress"]
+    Returns:
+        dict with keys 'width_z_today' (float) and 'stress_today' (float).
+    """
+    hw = intervals["half_width"]
+    stress = intervals["stress"]
     if today is None:
         today = hw.index[-1]
     width_z_today = _compute_width_z(hw, history, today)
     stress_today = float(stress.loc[today]) if today in stress.index else float(stress.iloc[-1])
+    return {"width_z_today": width_z_today, "stress_today": stress_today}
 
-    diag = {"width_z_today": width_z_today, "stress_today": stress_today, "alert_level": "green"}
-    scale = 1.0
-    if width_z_today > rules.width_z_red or stress_today > rules.stress_red:
-        scale, diag["alert_level"] = rules.red_scale, "red"
-    elif width_z_today > rules.width_z_yellow or stress_today > rules.stress_yellow:
-        scale, diag["alert_level"] = rules.yellow_scale, "yellow"
 
-    diag["applied_scale"] = scale
+def evaluate_alert(width_z: float, stress: float, rules: RiskFilterRules) -> tuple[str, float]:
+    """Evaluate alert level and scale factor from width_z and stress against rules.
+
+    Args:
+        width_z: today's z-score of interval width.
+        stress: today's systemic stress value in [0, 1).
+        rules: RiskFilterRules with yellow/red thresholds.
+
+    Returns:
+        (alert_level, scale) where alert_level ∈ {'green', 'yellow', 'red'}.
+    """
+    if width_z > rules.width_z_red or stress > rules.stress_red:
+        return "red", rules.red_scale
+    if width_z > rules.width_z_yellow or stress > rules.stress_yellow:
+        return "yellow", rules.yellow_scale
+    return "green", 1.0
+
+
+def apply_scale_to_weights(weights: pd.Series, scale: float) -> pd.Series:
+    """Multiply weights by scale; redistribute residual (1 - sum) to smallest-weight asset.
+
+    Assumes weights.sum() ≈ 1.0. If scale < 1.0 and adjusted.sum() < 1.0,
+    the residual is added to the asset with the smallest absolute weight.
+    """
     adjusted = weights * scale
     if scale < 1.0:
         residual = (1.0 - adjusted.sum()) if adjusted.sum() < 1.0 else 0.0
         if residual > 0:
             adjusted[weights.abs().idxmin()] += residual
+    return adjusted
+
+
+def ca_gcp_risk_filter(weights, intervals, rules=None, today=None, history=None):
+    """Apply CA-GCP risk filter to target weights. Returns (adjusted_weights, diagnostics)."""
+    rules = rules or RiskFilterRules()
+    if rules.group_rules and rules.asset_groups:
+        return _ca_gcp_risk_filter_grouped(weights, intervals, rules, today, history)
+    signals = extract_risk_signals(intervals, today=today, history=history)
+    alert, scale = evaluate_alert(signals["width_z_today"], signals["stress_today"], rules)
+    adjusted = apply_scale_to_weights(weights, scale)
+    diag = {**signals, "alert_level": alert, "applied_scale": scale}
     return adjusted, diag
 
 
@@ -906,11 +939,7 @@ def _ca_gcp_risk_filter_grouped(weights, intervals, rules, today, history):
         wz = _compute_width_z(hw[group_hw_cols], group_history, today)
         group_width_z[group_name] = wz
         grp_rules = rules.group_rules.get(group_name, rules) if rules.group_rules else rules
-        alert, scale = "green", 1.0
-        if wz > grp_rules.width_z_red or stress_today > grp_rules.stress_red:
-            scale, alert = grp_rules.red_scale, "red"
-        elif wz > grp_rules.width_z_yellow or stress_today > grp_rules.stress_yellow:
-            scale, alert = grp_rules.yellow_scale, "yellow"
+        alert, scale = evaluate_alert(wz, stress_today, grp_rules)
         group_alerts[group_name] = alert
         group_scales[group_name] = scale
 
@@ -927,11 +956,7 @@ def _ca_gcp_risk_filter_grouped(weights, intervals, rules, today, history):
         if total_w > 0:
             overall_scale = weighted_s / total_w
 
-    adjusted = weights * overall_scale
-    if overall_scale < 1.0:
-        residual = (1.0 - adjusted.sum()) if adjusted.sum() < 1.0 else 0.0
-        if residual > 0:
-            adjusted[weights.abs().idxmin()] += residual
+    adjusted = apply_scale_to_weights(weights, overall_scale)
     return adjusted, {"width_z_today": group_width_z, "stress_today": stress_today,
                       "alert_level": overall_alert, "applied_scale": overall_scale,
                       "group_alerts": group_alerts, "group_scales": group_scales}
