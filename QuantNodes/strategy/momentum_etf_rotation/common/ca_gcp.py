@@ -200,7 +200,8 @@ def compute_systemic_stress(
             normalizes against the entire window (original behavior, for
             compatibility with precomputed results).
     """
-    aligned_returns, aligned_vol = returns.align(volatility, join="inner", axis=1)
+    # Align on both index (rows) and columns to ensure matching labels
+    aligned_returns, aligned_vol = returns.align(volatility, join="inner")
     cross_dispersion = aligned_returns.std(axis=1)
     anomaly_count = (aligned_returns.abs() > (threshold_sigma * aligned_vol)).sum(axis=1)
     anomaly_frac = anomaly_count / aligned_returns.shape[1]
