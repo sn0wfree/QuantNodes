@@ -21,12 +21,18 @@ from ..common.extended_metrics import kelly_audit
 
 @dataclass
 class RiskLayerV11:
-    """v11 风控层封装."""
+    """v11 风控层封装.
 
-    dd_config: DrawdownConfig
+    ACT-2: Kelly 审计 (自动输出 sizing 位置)
+    ACT-3: 回撤控制器 (Grossman-Zhou 1993)
+    """
+
+    dd_config: DrawdownConfig | None = None
     kelly_audit_enabled: bool = True
 
     def __post_init__(self):
+        if self.dd_config is None:
+            self.dd_config = DrawdownConfig()
         self.dd_state = DrawdownState()
         self.kelly_results = []
 

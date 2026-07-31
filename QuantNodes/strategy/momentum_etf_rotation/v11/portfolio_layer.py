@@ -139,8 +139,8 @@ def build_final_weights_at(
 def build_final_weights(
     returns_df: pd.DataFrame,
     rebal_dates: pd.DatetimeIndex,
-    sector_tilt: pd.DataFrame,
-    factor_tilt: pd.DataFrame,
+    sector_tilt: pd.DataFrame | None,
+    factor_tilt: pd.DataFrame | None,
     position_size: pd.Series,
     cfg: PortfolioLayerConfig,
 ) -> pd.DataFrame:
@@ -149,8 +149,8 @@ def build_final_weights(
     参数:
         returns_df: ETF 收益
         rebal_dates: 调仓日期
-        sector_tilt: (T_rebal, N) Layer 2A
-        factor_tilt: (T_rebal, N) Layer 2C
+        sector_tilt: (T_rebal, N) Layer 2A, None = 全 1 (无倾斜)
+        factor_tilt: (T_rebal, N) Layer 2C, None = 全 1 (无倾斜)
         position_size: (T,) Layer 4
         cfg: PortfolioLayerConfig
 
@@ -160,6 +160,12 @@ def build_final_weights(
     if not cfg.enabled:
         n = len(returns_df.columns)
         return pd.DataFrame(1.0 / n, index=rebal_dates, columns=returns_df.columns)
+
+    # None → 全 1（无倾斜，等价于底仓）
+    if sector_tilt is None:
+        sector_tilt = pd.DataFrame(1.0, index=rebal_dates, columns=returns_df.columns)
+    if factor_tilt is None:
+        factor_tilt = pd.DataFrame(1.0, index=rebal_dates, columns=returns_df.columns)
 
     weights_list = []
     for date in rebal_dates:
@@ -184,7 +190,7 @@ class PortfolioLayer:
         self.weights: pd.DataFrame | None = None
 
     def fit(self, returns_df: pd.DataFrame, rebal_dates: pd.DatetimeIndex,
-            sector_tilt: pd.DataFrame, factor_tilt: pd.DataFrame,
+            sector_tilt: pd.DataFrame | None, factor_tilt: pd.DataFrame | None,
             position_size: pd.Series) -> "PortfolioLayer":
         """构建最终权重时序."""
         self.weights = build_final_weights(
