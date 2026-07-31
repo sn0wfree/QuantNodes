@@ -1,0 +1,2 @@
+marginal_coverage,target_coverage,coverage_gap,pa_std,worst10_coverage,min_per_asset_coverage,worst_10pct_avg_coverage,width_volatility_correlation,width_stability_cv,extreme_day_coverage
+0.9861244019138756,0.95,-0.03612440191387567,0.0062000373451787764,0.975,0.9734848484848485,0.975,0.6294851451211824,0.2286911277857714,
