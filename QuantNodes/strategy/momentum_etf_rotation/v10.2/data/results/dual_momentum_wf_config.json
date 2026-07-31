@@ -3,44 +3,40 @@
     "fold": 1,
     "config": "k=6,eta=0.5,tau=20.0",
     "alerts": {
-      "green": 211,
-      "red": 7,
-      "yellow": 4
+      "green": 218,
+      "red": 4
     }
   },
   {
     "fold": 2,
     "config": "k=6,eta=0.5,tau=20.0",
     "alerts": {
-      "green": 208,
-      "yellow": 9,
-      "red": 5
+      "green": 216,
+      "red": 6
     }
   },
   {
     "fold": 3,
     "config": "k=6,eta=0.5,tau=20.0",
     "alerts": {
-      "green": 214,
-      "red": 5
+      "green": 215,
+      "red": 4
     }
   },
   {
     "fold": 4,
     "config": "k=6,eta=0.5,tau=20.0",
     "alerts": {
-      "green": 213,
-      "red": 5,
-      "yellow": 1
+      "green": 216,
+      "red": 3
     }
   },
   {
     "fold": 5,
     "config": "k=6,eta=0.5,tau=20.0",
     "alerts": {
-      "green": 305,
-      "red": 15,
-      "yellow": 2
+      "green": 307,
+      "red": 15
     }
   }
 ]
