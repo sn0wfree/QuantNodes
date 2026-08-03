@@ -353,13 +353,13 @@ def _cont_prob(forecast: pd.Series, window: int = 252) -> pd.Series:
 # ── EnsembleRiskWarning ──────────────────────────────────────────
 
 LAYER_CONFIGS = {
-    "equity": ["harrv", "climatology", "ewma", "current_vol", "macro"],
-    "commodity": ["climatology", "harrv"],
-    "gold": ["climatology", "harrv"],
-    "soybean": ["climatology", "harrv", "ewma", "current_vol"],
+    "equity": ["climatology", "macro", "current_vol"],
+    "commodity": ["climatology"],
+    "gold": ["climatology"],
+    "soybean": ["climatology", "current_vol"],
     "silver": ["climatology", "ewma"],
-    "energy_chem": ["climatology", "harrv", "ewma", "current_vol"],
-    "commodity_ex_gold": ["climatology", "harrv", "ewma", "current_vol"],
+    "energy_chem": ["climatology", "ewma"],
+    "commodity_ex_gold": ["climatology", "ewma"],
 }
 
 MODEL_FNS = {
