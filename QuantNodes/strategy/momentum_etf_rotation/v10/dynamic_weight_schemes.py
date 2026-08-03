@@ -5,6 +5,7 @@
   D: 信号强度加权 (Signal-Weighted) — 基准方案
   F: Conservative - D + 防御底仓 + 换手上限 + hysteresis
   G: Trend-Adaptive - F + v10.2 TrendFilter (生产推荐)
+   H: Risk-Aware - G + EnsembleRiskWarning 动态防御底仓
 
 Baseline:
   Static: 固定权重 (74/9/12/5)
@@ -57,6 +58,43 @@ V10_3G_TREND_WINDOW = 5       # 5 日 trend
 V10_3G_TREND_THRESH = 0.02    # 5 日收益 > 2% → 顺势 (用 base scheme)
 V10_3G_HYSTERESIS = 0.005     # 趋势过滤 hysteresis buffer (0.5%)
 V10_3G_WEEKLY_MIN_CHANGE = 0.05  # 周频最小变化率, < 5% 不调仓
+
+# v10.3 Risk-Aware (H) 参数
+V10_3H_V1_NORMAL = 0.25       # 低风险时 v1.0 最低权重
+V10_3H_V1_HIGH = 0.90         # 高风险时 v1.0 最高权重
+V10_3H_RISK_MODEL = None      # 延迟初始化: EnsembleRiskWarning 实例
+
+
+def _risk_prob_to_min_defensive(prob: float) -> float:
+    """Map risk probability [0,1] to min_defensive [0.25, 0.90].
+
+    Piecewise linear:
+      prob <= 0.3 → 0.25
+      0.3 < prob <= 0.5 → 0.25 → 0.45
+      0.5 < prob <= 0.7 → 0.45 → 0.65
+      0.7 < prob <= 0.9 → 0.65 → 0.85
+      prob > 0.9 → 0.90
+    """
+    if prob <= 0.3:
+        return 0.25
+    if prob <= 0.5:
+        return 0.25 + (prob - 0.3) * (0.45 - 0.25) / 0.2
+    if prob <= 0.7:
+        return 0.45 + (prob - 0.5) * (0.65 - 0.45) / 0.2
+    if prob <= 0.9:
+        return 0.65 + (prob - 0.7) * (0.85 - 0.65) / 0.2
+    return 0.90
+
+
+def _get_risk_model() -> object:
+    """Lazy-load the risk warning model."""
+    global V10_3H_RISK_MODEL
+    if V10_3H_RISK_MODEL is None:
+        from QuantNodes.strategy.momentum_etf_rotation.v10_3.risk_warning import (
+            EnsembleRiskWarning, load_etf_data)
+        etf_data = load_etf_data()
+        V10_3H_RISK_MODEL = EnsembleRiskWarning(etf_data, "equity")
+    return V10_3H_RISK_MODEL
 
 
 def load_navs() -> pd.DataFrame:
@@ -372,6 +410,68 @@ def scheme_g_trend_adaptive(prices: pd.DataFrame) -> pd.DataFrame:
     return weights
 
 
+def scheme_h_risk_aware(prices: pd.DataFrame) -> pd.DataFrame:
+    """v10.3 H: Risk-Aware - G + 风险预警动态防御底仓.
+
+    在 G 基础上叠加 EnsembleRiskWarning 风险概率:
+      - 5 日市场收益 > 2.5% → D 模式 (signal-weighted)
+      - 5 日市场收益 < 1.5% → F 模式, 但 min_defensive 由风险概率动态决定
+        prob=0.3 → 0.25, prob=0.5 → 0.40, prob=0.7 → 0.60, prob=0.9 → 0.85
+
+    调仓规则同 G:
+      - 月度: 强制调仓 (所有模式)
+      - 周度: D 模式可选, 变化率 < 5% 不调仓
+    """
+    weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+
+    monthly_dates = set(prices.resample('M').last().index)
+    weekly_dates = set(prices.index[4::5])
+
+    market_ret_5d = prices['v7.10'].pct_change(V10_3G_TREND_WINDOW)
+
+    risk_model = None
+
+    prev_w = dict(BASE_WEIGHTS)
+    for i in range(min(252, len(prices))):
+        weights.iloc[i] = prev_w
+
+    last_trade_w = dict(BASE_WEIGHTS)
+    in_d_mode = False
+    for i in range(252, len(prices)):
+        date = prices.index[i]
+        trend_up = (
+            i >= V10_3G_TREND_WINDOW
+            and market_ret_5d.iloc[i] > V10_3G_TREND_THRESH + V10_3G_HYSTERESIS
+        )
+        trend_down = (
+            i >= V10_3G_TREND_WINDOW
+            and market_ret_5d.iloc[i] < V10_3G_TREND_THRESH - V10_3G_HYSTERESIS
+        )
+
+        if trend_up:
+            in_d_mode = True
+        elif trend_down:
+            in_d_mode = False
+
+        if in_d_mode:
+            target = _compute_target_weights(prices, i)
+            change = sum(abs(target.get(k, 0) - last_trade_w.get(k, 0)) for k in target)
+            if date in monthly_dates or (date in weekly_dates and change > V10_3G_WEEKLY_MIN_CHANGE):
+                prev_w = target
+                last_trade_w = dict(target)
+        elif date in monthly_dates:
+            if risk_model is None:
+                risk_model = _get_risk_model()
+            risk_prob = risk_model.predict(date)
+            min_def = _risk_prob_to_min_defensive(risk_prob)
+            target = _compute_target_weights(prices, i)
+            prev_w = _apply_constraints(target, prev_w, min_defensive=min_def)
+
+        weights.loc[date] = prev_w
+
+    return weights
+
+
 def _compute_sharpes(prices: pd.DataFrame, i: int) -> dict:
     """计算各策略近 12M Sharpe."""
     sharpes = {}
@@ -416,6 +516,7 @@ def main():
         'D_signal_weighted': scheme_d_signal_weighted,
         'F_v10_3_conservative': scheme_f_conservative,
         'G_v10_3_trend_adaptive': scheme_g_trend_adaptive,
+        'H_v10_3_risk_aware': scheme_h_risk_aware,
     }
 
     # 静态 baseline

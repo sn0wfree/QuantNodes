@@ -176,7 +176,7 @@ def _model_current_vol(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     return vol.reindex(oos_idx).fillna(method="ffill")
 
 
-def _model_macro(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
+def _model_macro_equity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     from sklearn.linear_model import LinearRegression
     vix = pd.read_parquet(HF_DIR / "macro_vix_daily.parquet")["vix"]
     vix.index = pd.to_datetime(vix.index)
@@ -221,6 +221,106 @@ def _model_macro(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
         except Exception:
             continue
     return forecasts.fillna(method="ffill")
+
+
+def _model_macro_commodity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
+    from sklearn.linear_model import LinearRegression
+    dxy = pd.read_parquet(HF_DIR / "macro_dxy_daily_v2.parquet")["dxy"]
+    dxy.index = pd.to_datetime(dxy.index)
+    go = pd.read_parquet(HF_DIR / "gold_oil_corr.parquet")
+    go["date"] = pd.to_datetime(go["date"])
+    go = go.set_index("date")["gold_oil_corr"]
+    rr = pd.read_parquet(HF_DIR / "macro_real_rate_daily.parquet")["real_rate"]
+    rr.index = pd.to_datetime(rr.index)
+
+    idx = rets.index
+    dxy = dxy.reindex(idx).ffill()
+    go = go.reindex(idx).ffill()
+    rr = rr.reindex(idx).ffill()
+
+    dxy_z = (dxy - dxy.rolling(252).mean()) / dxy.rolling(252).std()
+    go_z = (go - go.rolling(252).mean()) / go.rolling(252).std()
+    rr_z = (rr - rr.rolling(252).mean()) / rr.rolling(252).std()
+
+    fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
+    forecasts = pd.Series(index=oos_idx, dtype=float)
+    refit_dates = oos_idx[::20]
+    for rd in refit_dates:
+        ri = rets.index.get_indexer([rd], method="ffill")[0]
+        if ri < 504:
+            continue
+        X = pd.DataFrame({"dxy_z": dxy_z.iloc[:ri], "go_z": go_z.iloc[:ri],
+                          "rr_z": rr_z.iloc[:ri], "c": 1.0})
+        y = fwd_vol.iloc[:ri]
+        valid = X.notna().all(axis=1) & y.notna()
+        Xc, yc = X.loc[valid].values, y.loc[valid].values
+        try:
+            m = LinearRegression(fit_intercept=False).fit(Xc, yc)
+            fs = rd + pd.Timedelta(days=1)
+            for fd in pd.bdate_range(fs, periods=20):
+                if fd not in forecasts.index:
+                    continue
+                fi = rets.index.get_indexer([fd], method="ffill")[0]
+                feat = np.array([dxy_z.iloc[fi-1], go_z.iloc[fi-1],
+                                 rr_z.iloc[fi-1], 1.0]).reshape(1, -1)
+                if not np.any(np.isnan(feat)):
+                    forecasts[fd] = m.predict(feat)[0]
+        except Exception:
+            continue
+    return forecasts.fillna(method="ffill")
+
+
+def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
+    from sklearn.linear_model import LinearRegression
+    dxy = pd.read_parquet(HF_DIR / "macro_dxy_daily_v2.parquet")["dxy"]
+    dxy.index = pd.to_datetime(dxy.index)
+    rr = pd.read_parquet(HF_DIR / "macro_real_rate_daily.parquet")["real_rate"]
+    rr.index = pd.to_datetime(rr.index)
+    vix = pd.read_parquet(HF_DIR / "macro_vix_daily.parquet")["vix"]
+    vix.index = pd.to_datetime(vix.index)
+
+    idx = rets.index
+    dxy = dxy.reindex(idx).ffill()
+    rr = rr.reindex(idx).ffill()
+    vix = vix.reindex(idx).ffill()
+
+    dxy_z = (dxy - dxy.rolling(252).mean()) / dxy.rolling(252).std()
+    rr_z = (rr - rr.rolling(252).mean()) / rr.rolling(252).std()
+    vix_z = (vix - vix.rolling(252).mean()) / vix.rolling(252).std()
+
+    fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
+    forecasts = pd.Series(index=oos_idx, dtype=float)
+    refit_dates = oos_idx[::20]
+    for rd in refit_dates:
+        ri = rets.index.get_indexer([rd], method="ffill")[0]
+        if ri < 504:
+            continue
+        X = pd.DataFrame({"dxy_z": dxy_z.iloc[:ri], "rr_z": rr_z.iloc[:ri],
+                          "vix_z": vix_z.iloc[:ri], "c": 1.0})
+        y = fwd_vol.iloc[:ri]
+        valid = X.notna().all(axis=1) & y.notna()
+        Xc, yc = X.loc[valid].values, y.loc[valid].values
+        try:
+            m = LinearRegression(fit_intercept=False).fit(Xc, yc)
+            fs = rd + pd.Timedelta(days=1)
+            for fd in pd.bdate_range(fs, periods=20):
+                if fd not in forecasts.index:
+                    continue
+                fi = rets.index.get_indexer([fd], method="ffill")[0]
+                feat = np.array([dxy_z.iloc[fi-1], rr_z.iloc[fi-1],
+                                 vix_z.iloc[fi-1], 1.0]).reshape(1, -1)
+                if not np.any(np.isnan(feat)):
+                    forecasts[fd] = m.predict(feat)[0]
+        except Exception:
+            continue
+    return forecasts.fillna(method="ffill")
+
+
+MACRO_MODELS = {
+    "equity": _model_macro_equity,
+    "commodity": _model_macro_commodity,
+    "gold": _model_macro_gold,
+}
 
 
 def _jump_overlay(prob: pd.Series, rets: pd.Series,
@@ -293,9 +393,8 @@ class EnsembleRiskWarning:
             "climatology": _model_climatology,
             "ewma": _model_ewma,
             "current_vol": _model_current_vol,
+            "macro": MACRO_MODELS[self.asset],
         }
-        if self.asset == "equity":
-            models["macro"] = _model_macro
 
         for key, fn in models.items():
             self._raw[key] = fn(self.rets, self.oos_idx)
@@ -913,3 +1012,84 @@ def _auto_init(self, etf_data: pd.DataFrame, asset: str):
     _orig_init(self, etf_data, asset)
     self.optimizer = AutoOptimizer(self.rw)
 AutoRiskWarning.__init__ = _auto_init
+
+
+# ── Operational Infrastructure ──────────────────────────────────
+
+class RiskScheduler:
+    """Daily/weekly risk model update scheduler.
+
+    Daily:
+      - Check data freshness (last NAV date)
+      - Predict risk probability for today
+      - Log to status file
+
+    Weekly:
+      - Run AutoRiskWarning.weekly_update() (self-eval + Bayesian weights)
+      - Save version snapshot
+      - Check alert rules, write to alert log
+
+    Usage:
+        scheduler = RiskScheduler()
+        scheduler.daily()
+        scheduler.weekly()  # run once per week
+    """
+
+    STATUS_DIR = MON_DIR / "status"
+    ALERT_LOG = MON_DIR / "alerts.csv"
+
+    def __init__(self):
+        self.STATUS_DIR.mkdir(exist_ok=True, parents=True)
+        self.models: dict[str, AutoRiskWarning] = {}
+
+    def _ensure_model(self, asset: str) -> AutoRiskWarning:
+        if asset not in self.models:
+            etf_data = load_etf_data()
+            self.models[asset] = AutoRiskWarning(etf_data, asset)
+        return self.models[asset]
+
+    def daily(self) -> dict:
+        today = pd.Timestamp.now().normalize()
+        result = {"date": str(today.date()), "assets": {}}
+        for asset in ["equity", "commodity", "gold"]:
+            aw = self._ensure_model(asset)
+            prob = aw.predict(today)
+            signal = EnsembleRiskWarning._to_signal(prob)
+            result["assets"][asset] = {
+                "risk_prob": prob,
+                "signal": signal,
+                "status": aw.evaluator.status(),
+            }
+        pd.DataFrame([result["assets"]]).to_parquet(
+            self.STATUS_DIR / f"daily_{today.strftime('%Y-%m-%d')}.parquet")
+        return result
+
+    def weekly(self) -> dict:
+        today = pd.Timestamp.now().normalize()
+        result = {"date": str(today.date()), "assets": {}}
+        for asset in ["equity", "commodity", "gold"]:
+            aw = self._ensure_model(asset)
+            detail = aw.weekly_update()
+            result["assets"][asset] = {
+                "health_score": detail["health_score"],
+                "status": detail["status"],
+                "action": detail["action"],
+                "fallback_active": detail.get("fallback_active", False),
+                "weights": detail["weights"],
+            }
+            alerts = aw.evaluator._monitor.check_alerts(today)
+            if alerts:
+                for a in alerts:
+                    a["asset"] = asset
+                    a["date"] = str(today.date())
+                    pd.DataFrame([a]).to_csv(
+                        self.ALERT_LOG, mode="a", header=not self.ALERT_LOG.exists(),
+                        index=False)
+        return result
+
+    def data_freshness(self) -> dict:
+        etf_data = load_etf_data()
+        last_date = etf_data.index.max()
+        days_since = (pd.Timestamp.now() - last_date).days
+        return {"last_data_date": str(last_date.date()), "days_since_update": days_since,
+                "stale": days_since > 5}
