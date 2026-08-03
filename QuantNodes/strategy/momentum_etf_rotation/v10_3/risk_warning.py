@@ -402,6 +402,7 @@ class EnsembleRiskWarning:
             self._prob[key] = _cont_prob(self._raw[key].loc[common])
 
         self._ensemble_prob, self._ensemble_weights = self._compute_ensemble_weights()
+        self._ensemble_prob = _jump_overlay(self._ensemble_prob, self.rets, self.asset)
         if self.asset == "equity":
             self._ensemble_prob = _jump_overlay(self._ensemble_prob, self.rets, self.asset)
         self._metrics = {}
