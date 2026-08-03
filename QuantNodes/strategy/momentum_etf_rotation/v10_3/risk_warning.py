@@ -51,6 +51,11 @@ CONFIGS = {
     "commodity": AssetConfig("commodity", ["518880", "159985", "161226", "159981"],
                               weights=[0.50, 0.20, 0.15, 0.15]),
     "gold": AssetConfig("gold", ["518880"]),
+    "soybean": AssetConfig("soybean", ["159985"]),
+    "silver": AssetConfig("silver", ["161226"]),
+    "energy_chem": AssetConfig("energy_chem", ["159981"]),
+    "commodity_ex_gold": AssetConfig("commodity_ex_gold", ["159985", "161226", "159981"],
+                                      weights=[0.40, 0.30, 0.30]),
 }
 
 
@@ -393,8 +398,9 @@ class EnsembleRiskWarning:
             "climatology": _model_climatology,
             "ewma": _model_ewma,
             "current_vol": _model_current_vol,
-            "macro": MACRO_MODELS[self.asset],
         }
+        if self.asset in MACRO_MODELS:
+            models["macro"] = MACRO_MODELS[self.asset]
 
         for key, fn in models.items():
             self._raw[key] = fn(self.rets, self.oos_idx)

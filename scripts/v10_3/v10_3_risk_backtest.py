@@ -253,19 +253,20 @@ def main():
     log(SEP)
 
     results = []
-    for asset in ["equity", "commodity", "gold"]:
+    for asset in ["equity", "commodity", "gold", "soybean", "silver", "energy_chem",
+                  "commodity_ex_gold"]:
         rw = load_rw(asset)
         res = backtest(rw, asset)
         results.append(res)
 
     # Final comparison
     log(f"\n{SEP}")
-    log(f"  三资产对比")
+    log(f"  全资产对比")
     log(SEP)
-    log(f"{'Asset':<12} {'AUC':<8} {'Brier':<8} {'最优阈值':<10} {'F1':<8} {'天数':<8} {'正报率':<8}")
+    log(f"{'Asset':<18} {'AUC':<8} {'Brier':<8} {'最优阈值':<10} {'F1':<8} {'天数':<8} {'正报率':<8}")
     log(DASH)
     for r in results:
-        log(f"{r['asset']:<12} {r['auc']:<8.4f} {r['brier']:<8.4f} "
+        log(f"{r['asset']:<18} {r['auc']:<8.4f} {r['brier']:<8.4f} "
             f"{r['best_threshold']:<10.2f} {r['best_f1']:<8.3f} "
             f"{r['n_days']:<8} {r['pos_rate']:<8.1%}")
 
