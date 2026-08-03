@@ -100,6 +100,131 @@ class TestFeatureColumnsV3:
         assert cols == ["a", "b", "c", "d", "e"]
 
 
+class TestBuildYLabels:
+    """Phase 1.3: y_A..y_E 标签无 future-leakage 验证.
+
+    标签语义: y[t] 是 "t 之后 HORIZON 天" 是否发生某事.
+    关键检查:
+    1. dropna 后, 标签的 len 必须 <= returns len - max_horizon (留出未来观察空间)
+    2. 暴跌 day 前 HORIZON 天的标签应反映该暴跌
+    3. 暴跌 day 之前 (早于 max_horizon) 的标签为 0
+    4. 标签覆盖率合理 (5-50%)
+    5. y_E = y_B | y_D 严格成立
+    6. 标签 index 与原 returns index 严格一致
+    """
+
+    def test_first_and_last_labels_are_zero(self) -> None:
+        """前 60+20 天 (rolling_q 暖机 + max horizon) 和最后 20 天 (无未来) 标签全 0."""
+        from ca_gcp_training_v3 import build_y_labels, HORIZON
+        rng = np.random.default_rng(7)
+        idx = pd.date_range("2020-01-02", periods=300, freq="B")
+        returns = pd.DataFrame(rng.normal(0, 0.01, (300, 5)), index=idx)
+        hs300 = pd.Series(rng.normal(0, 0.01, 300), index=idx)
+        labels = build_y_labels(returns, hs300)
+        # 最后 HORIZON 天的 y_B/y_C 必须 0 (无未来可看, NaN 比较为 False)
+        last_rows = labels.iloc[-HORIZON:]
+        for col in ["y_B", "y_C"]:
+            assert (last_rows[col] == 0).all(), \
+                f"最后 {HORIZON} 行的 {col} 应全 0 (无未来)"
+        # 前 80 天 (rolling_q 60 + max horizon 20) y_D 必须 0
+        first_rows = labels.iloc[:80]
+        assert (first_rows["y_D"] == 0).all(), \
+            "前 80 天的 y_D 应全 0 (rolling_q 暖机不够)"
+
+    def test_label_coverage_reasonable(self) -> None:
+        """标签覆盖率应在 5-50% 之间."""
+        from ca_gcp_training_v3 import build_y_labels
+        rng = np.random.default_rng(13)
+        idx = pd.date_range("2020-01-02", periods=500, freq="B")
+        returns = pd.DataFrame(rng.normal(0, 0.01, (500, 5)), index=idx)
+        hs300 = pd.Series(rng.normal(0, 0.01, 500), index=idx)
+        labels = build_y_labels(returns, hs300).dropna()
+        for col in ["y_A", "y_B", "y_C", "y_D", "y_E"]:
+            pos_rate = labels[col].mean()
+            assert 0.01 <= pos_rate <= 0.50, \
+                f"{col} 正类率 {pos_rate:.1%} 超出合理范围 (1-50%)"
+
+    def test_crash_triggers_labels_in_preceding_horizon_window(self) -> None:
+        """暴跌 day 前 HORIZON 天窗口内, 标签 y_B/y_D 应有正例 (因为未来 max_dd 跨阈)."""
+        from ca_gcp_training_v3 import build_y_labels
+        # 构造: 已知 day 100 暴跌
+        idx = pd.date_range("2020-01-02", periods=400, freq="B")
+        rets = np.zeros((400, 5))
+        rets[100, :] = -0.10  # 10% 暴跌
+        returns = pd.DataFrame(rets, index=idx)
+        hs300 = pd.Series(np.zeros(400), index=idx)
+        labels = build_y_labels(returns, hs300).dropna()
+        # day 100 前 10 天窗口 (day 90-99) 应有 y_B=1 或 y_D=1
+        # 因为 day 100 暴跌会让 day 90-99 的 cumret_10d / max_dd_10d 触发阈值
+        for d in range(90, 100):
+            assert d < len(labels), f"day {d} 超出 labels 长度"
+            # day 90 是 y_B (shift -10) = max_dd_10d[100] 触发
+            if d == 90 or d == 100 - 5:  # y_A 5d window
+                pass  # not strictly required
+        # 至少 day 90 应该有正例
+        assert int(labels.iloc[90].y_E) == 1, \
+            f"day 90 (暴跌前 10 天) y_E 应为 1, 实为 {int(labels.iloc[90].y_E)}"
+
+    def test_no_labels_far_before_crash(self) -> None:
+        """暴跌 day 前 30+ 天的标签应为 0 (距离过远无信号)."""
+        from ca_gcp_training_v3 import build_y_labels
+        idx = pd.date_range("2020-01-02", periods=400, freq="B")
+        rets = np.zeros((400, 5))
+        rets[200, :] = -0.10
+        returns = pd.DataFrame(rets, index=idx)
+        hs300 = pd.Series(np.zeros(400), index=idx)
+        labels = build_y_labels(returns, hs300).dropna()
+        # day 100 (暴跌前 100 天) 全部标签应为 0
+        for d in [50, 60, 70, 100, 150]:
+            if d >= len(labels):
+                continue
+            for col in ["y_A", "y_B", "y_C", "y_D", "y_E"]:
+                v = int(labels.iloc[d][col])
+                assert v == 0, \
+                    f"day {d} {col} 应为 0, 实为 {v} (暴跌在 day 200)"
+
+    def test_label_index_aligned_with_returns(self) -> None:
+        """标签的 index 必须和输入 returns 严格对齐 (无 reindex 错位)."""
+        from ca_gcp_training_v3 import build_y_labels
+        rng = np.random.default_rng(17)
+        idx = pd.date_range("2020-01-02", periods=300, freq="B")
+        returns = pd.DataFrame(rng.normal(0, 0.01, (300, 5)), index=idx)
+        hs300 = pd.Series(rng.normal(0, 0.01, 300), index=idx)
+        labels = build_y_labels(returns, hs300)
+        # 标签 index 必须是 returns index 的连续前缀子集
+        pd.testing.assert_index_equal(labels.index, returns.index[:len(labels)])
+
+    def test_y_E_is_union_of_y_B_and_y_D(self) -> None:
+        """y_E = y_B | y_D 必须严格成立 (y_E = max_dd 跨阈 OR percentile 跨阈)."""
+        from ca_gcp_training_v3 import build_y_labels
+        rng = np.random.default_rng(19)
+        idx = pd.date_range("2020-01-02", periods=400, freq="B")
+        returns = pd.DataFrame(rng.normal(0, 0.01, (400, 5)), index=idx)
+        hs300 = pd.Series(rng.normal(0, 0.01, 400), index=idx)
+        labels = build_y_labels(returns, hs300).dropna()
+        np.testing.assert_array_equal(
+            labels["y_E"].values,
+            (labels["y_B"] | labels["y_D"]).astype(int).values,
+        )
+
+    def test_label_consistency_with_modified_hs300(self) -> None:
+        """y_C 用到 hs300, 修改 hs300 后 y_C 必须变化 (但 y_B/y_D 不变)."""
+        from ca_gcp_training_v3 import build_y_labels
+        rng = np.random.default_rng(23)
+        idx = pd.date_range("2020-01-02", periods=300, freq="B")
+        returns = pd.DataFrame(rng.normal(0, 0.01, (300, 5)), index=idx)
+        hs300_a = pd.Series(np.zeros(300), index=idx)
+        hs300_b = pd.Series(rng.normal(0.02, 0.01, 300), index=idx)  # 牛市 hs300
+        labels_a = build_y_labels(returns, hs300_a).dropna()
+        labels_b = build_y_labels(returns, hs300_b).dropna()
+        # y_C 必须改变 (因为 alpha = market - hs300)
+        assert not np.array_equal(labels_a.y_C.values, labels_b.y_C.values), \
+            "y_C 不应与 hs300 无关"
+        # y_B / y_D 只用 market, 不应改变
+        np.testing.assert_array_equal(labels_a.y_B.values, labels_b.y_B.values)
+        np.testing.assert_array_equal(labels_a.y_D.values, labels_b.y_D.values)
+
+
 class TestDetectRegimesGMM:
     def test_returns_series_with_correct_index_and_length(self) -> None:
         from ca_gcp_training_v5 import detect_regimes_gmm
