@@ -352,6 +352,25 @@ def _cont_prob(forecast: pd.Series, window: int = 252) -> pd.Series:
 
 # ── EnsembleRiskWarning ──────────────────────────────────────────
 
+LAYER_CONFIGS = {
+    "equity": ["harrv", "climatology", "ewma", "current_vol", "macro"],
+    "commodity": ["climatology", "harrv"],
+    "gold": ["climatology", "harrv"],
+    "soybean": ["climatology", "harrv", "ewma", "current_vol"],
+    "silver": ["climatology", "ewma"],
+    "energy_chem": ["climatology", "harrv", "ewma", "current_vol"],
+    "commodity_ex_gold": ["climatology", "harrv", "ewma", "current_vol"],
+}
+
+MODEL_FNS = {
+    "harrv": _model_harrv,
+    "climatology": _model_climatology,
+    "ewma": _model_ewma,
+    "current_vol": _model_current_vol,
+    "macro": None,
+}
+
+
 class EnsembleRiskWarning:
     """5-layer ensemble volatility forecasting model.
 
@@ -393,14 +412,12 @@ class EnsembleRiskWarning:
         self._raw = {}
         self._prob = {}
 
-        models = {
-            "harrv": _model_harrv,
-            "climatology": _model_climatology,
-            "ewma": _model_ewma,
-            "current_vol": _model_current_vol,
-        }
-        if self.asset in MACRO_MODELS:
-            models["macro"] = MACRO_MODELS[self.asset]
+        models = {}
+        for key in LAYER_CONFIGS.get(self.asset, ["climatology"]):
+            if key == "macro" and self.asset in MACRO_MODELS:
+                models[key] = MACRO_MODELS[self.asset]
+            elif key != "macro":
+                models[key] = MODEL_FNS[key]
 
         for key, fn in models.items():
             self._raw[key] = fn(self.rets, self.oos_idx)
@@ -408,7 +425,6 @@ class EnsembleRiskWarning:
             self._prob[key] = _cont_prob(self._raw[key].loc[common])
 
         self._ensemble_prob, self._ensemble_weights = self._compute_ensemble_weights()
-        self._ensemble_prob = _jump_overlay(self._ensemble_prob, self.rets, self.asset)
         if self.asset == "equity":
             self._ensemble_prob = _jump_overlay(self._ensemble_prob, self.rets, self.asset)
         self._metrics = {}
