@@ -1,0 +1,2 @@
+observed_sharpe_a,observed_sharpe_b,observed_diff,bootstrap_mean_diff,bootstrap_std_diff,ci_low_2.5,ci_high_97.5,p_value_one_sided,p_value_two_sided
+1.668653226171003,1.49535317278285,0.17330005338815302,0.0005800807183344137,0.08043011634081977,-0.14814198611469173,0.1719280624946,0.0242,0.0356
