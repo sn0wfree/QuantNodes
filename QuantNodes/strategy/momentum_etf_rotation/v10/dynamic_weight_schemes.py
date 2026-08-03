@@ -55,6 +55,8 @@ V10_3F_REBAL_FREQ = 25        # 调仓频率 25 天 (月频)
 # v10.3 Trend-Adaptive (G) 参数 (继承 F + TrendFilter)
 V10_3G_TREND_WINDOW = 5       # 5 日 trend
 V10_3G_TREND_THRESH = 0.02    # 5 日收益 > 2% → 顺势 (用 base scheme)
+V10_3G_HYSTERESIS = 0.005     # 趋势过滤 hysteresis buffer (0.5%)
+V10_3G_DRIFT_THRESH = 0.03    # D 模式 drift 触发阈值 (3% 总权重变化)
 
 
 def load_navs() -> pd.DataFrame:
@@ -457,72 +459,84 @@ def scheme_g_trend_adaptive(prices: pd.DataFrame) -> pd.DataFrame:
     """v10.3 G: Trend-Adaptive - 在 F 基础上加 v10.2 TrendFilter.
 
     逻辑:
-      - 5 日市场收益 > 2% → 顺势: 用 D scheme (signal-weighted, 不约束)
-      - 5 日市场收益 < 2% → 逆势: 用 F scheme (conservative)
+      - 5 日市场收益 > 2.5% → 顺势: 用 D scheme (signal-weighted, 周频 + drift 触发)
+      - 5 日市场收益 < 1.5% → 逆势: 用 F scheme (conservative, 月频)
+      - 1.5%~2.5% 之间 → 维持当前模式 (hysteresis)
+
+    D 模式调仓规则:
+      - 固定: 每 5 个交易日强制调仓
+      - 触发: 每日目标权重与上次调仓的 drift > 3% 时立即调仓
     """
     weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-    rebal_dates = prices.resample('M').last().index
+    f_rebal_dates = prices.resample('M').last().index
 
-    # 5 日市场收益 (用 v7.10 近似)
+    d_rebal_dates = set(prices.index[4::5])  # 每 5 个交易日 (周频)
+
     market_ret_5d = prices['v7.10'].pct_change(V10_3G_TREND_WINDOW)
 
     prev_w = dict(BASE_WEIGHTS)
-    # 前 252 天 (warmup) 全部用 BASE_WEIGHTS
     for i in range(min(252, len(prices))):
         weights.iloc[i] = prev_w
 
+    last_trade_w = dict(BASE_WEIGHTS)
+    in_d_mode = False
     for i in range(252, len(prices)):
         date = prices.index[i]
         trend_up = (
             i >= V10_3G_TREND_WINDOW
-            and market_ret_5d.iloc[i] > V10_3G_TREND_THRESH
+            and market_ret_5d.iloc[i] > V10_3G_TREND_THRESH + V10_3G_HYSTERESIS
+        )
+        trend_down = (
+            i >= V10_3G_TREND_WINDOW
+            and market_ret_5d.iloc[i] < V10_3G_TREND_THRESH - V10_3G_HYSTERESIS
         )
 
         if trend_up:
-            # 顺势: 用 D 方案 (无约束)
-            sharpes = {}
-            for col in prices.columns:
-                rets_12m = prices[col].iloc[i-252:i].pct_change().dropna()
-                if len(rets_12m) > 50:
-                    ann_ret = prices[col].iloc[i] / prices[col].iloc[i-252] - 1
-                    vol = rets_12m.std() * np.sqrt(252)
-                    sharpes[col] = ann_ret / vol if vol > 0 else 0
-                else:
-                    sharpes[col] = 0
-            sharpes_pos = {k: max(v, 0) + 0.1 for k, v in sharpes.items()}
-            total_s = sum(sharpes_pos.values())
-            w_target = {
-                col: (sharpes_pos[col] / total_s) * BASE_WEIGHTS[col]
-                for col in prices.columns
-            }
-            total_w = sum(w_target.values())
-            w_target = {k: v / total_w for k, v in w_target.items()}
-            prev_w = w_target
-        else:
-            # 逆势: 用 F 方案 (conservative, 月频)
-            if date in rebal_dates:
-                sharpes = {}
-                for col in prices.columns:
-                    rets_12m = prices[col].iloc[i-252:i].pct_change().dropna()
-                    if len(rets_12m) > 50:
-                        ann_ret = prices[col].iloc[i] / prices[col].iloc[i-252] - 1
-                        vol = rets_12m.std() * np.sqrt(252)
-                        sharpes[col] = ann_ret / vol if vol > 0 else 0
-                    else:
-                        sharpes[col] = 0
-                sharpes_pos = {k: max(v, 0) + 0.1 for k, v in sharpes.items()}
-                total_s = sum(sharpes_pos.values())
-                w_target = {
-                    col: (sharpes_pos[col] / total_s) * BASE_WEIGHTS[col]
-                    for col in prices.columns
-                }
-                total_w = sum(w_target.values())
-                w_target = {k: v / total_w for k, v in w_target.items()}
-                prev_w = _apply_constraints(w_target, prev_w)
+            in_d_mode = True
+        elif trend_down:
+            in_d_mode = False
+
+        if in_d_mode:
+            target = _compute_target_weights(prices, i)
+            drift = sum(abs(target.get(k, 0) - last_trade_w.get(k, 0)) for k in target)
+            is_weekly = date in d_rebal_dates
+            if is_weekly or drift > V10_3G_DRIFT_THRESH:
+                prev_w = target
+                last_trade_w = dict(target)
+        elif date in f_rebal_dates:
+            target = _compute_target_weights(prices, i)
+            prev_w = _apply_constraints(target, prev_w)
 
         weights.loc[date] = prev_w
 
     return weights
+
+
+def _compute_sharpes(prices: pd.DataFrame, i: int) -> dict:
+    """计算各策略近 12M Sharpe."""
+    sharpes = {}
+    for col in prices.columns:
+        rets_12m = prices[col].iloc[i-252:i].pct_change().dropna()
+        if len(rets_12m) > 50:
+            ann_ret = prices[col].iloc[i] / prices[col].iloc[i-252] - 1
+            vol = rets_12m.std() * np.sqrt(252)
+            sharpes[col] = ann_ret / vol if vol > 0 else 0
+        else:
+            sharpes[col] = 0
+    return sharpes
+
+
+def _compute_target_weights(prices: pd.DataFrame, i: int) -> dict:
+    """计算 D 模式目标权重 (基于 Sharpe 信号)."""
+    sharpes = _compute_sharpes(prices, i)
+    sharpes_pos = {k: max(v, 0) + 0.1 for k, v in sharpes.items()}
+    total_s = sum(sharpes_pos.values())
+    w_target = {
+        col: (sharpes_pos[col] / total_s) * BASE_WEIGHTS[col]
+        for col in prices.columns
+    }
+    total_w = sum(w_target.values())
+    return {k: v / total_w for k, v in w_target.items()}
 
 
 def main():
