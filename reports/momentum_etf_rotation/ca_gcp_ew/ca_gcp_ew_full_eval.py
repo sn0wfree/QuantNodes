@@ -196,7 +196,8 @@ def bootstrap_metrics(alerts: pd.DataFrame, returns: pd.DataFrame,
                       horizon: int = 10,
                       neg_thresh: float = -0.01,
                       seed: int = BOOT_SEED,
-                      fired_col: str = "trigger_v3") -> pd.DataFrame:
+                      fired_col: str = "trigger_v3",
+                      out_name: str | None = None) -> pd.DataFrame:
     """Bootstrap 评估指标置信区间"""
     print()
     print("=" * 70)
@@ -281,8 +282,10 @@ def bootstrap_metrics(alerts: pd.DataFrame, returns: pd.DataFrame,
         })
 
     df = pd.DataFrame(rows)
-    df.to_csv(EVAL_DIR / "bootstrap_ci.csv", index=False)
-    print(f"[保存] {EVAL_DIR / 'bootstrap_ci.csv'}")
+    out_name = out_name or fired_col
+    out_path = EVAL_DIR / f"bootstrap_ci_{out_name}.csv"
+    df.to_csv(out_path, index=False)
+    print(f"[保存] {out_path}")
     for _, r in df.iterrows():
         print(f"  {r['metric']:10s}: mean={r['mean']:.3f}, "
               f"90% CI=[{r['ci_low_10']:.3f}, {r['ci_high_90']:.3f}], "
@@ -750,10 +753,10 @@ def main() -> None:
 
     wf_df = walk_forward_evaluate(returns)
 
-    boot_v3 = bootstrap_metrics(alerts_v3, returns, fired_col="trigger_v3")
-    boot_v4 = bootstrap_metrics(alerts_v4, returns, fired_col="trigger_v4")
-    boot_raw = bootstrap_metrics(alerts_raw, returns, fired_col="fired")
-    boot_conf = bootstrap_metrics(alerts_conf, returns, fired_col="alert_level")
+    boot_v3 = bootstrap_metrics(alerts_v3, returns, fired_col="trigger_v3", out_name="v3")
+    boot_v4 = bootstrap_metrics(alerts_v4, returns, fired_col="trigger_v4", out_name="v4")
+    boot_raw = bootstrap_metrics(alerts_raw, returns, fired_col="fired", out_name="raw")
+    boot_conf = bootstrap_metrics(alerts_conf, returns, fired_col="alert_level", out_name="conf")
 
     roc_df = compute_roc_auc(alerts_tf, returns)
 

@@ -3,6 +3,10 @@
 
 所有策略净值归一化到 1.0 起点, 对齐到同一日期范围.
 指标计算复用 common.metrics.compute_metrics.
+
+Phase 0 修复:
+  - 强制 business-day-only 索引 (reindex to bdate_range, dropna)
+  - OOS_START = 2022-01-01 (与 docs/77 审计 + combo/unified_v1v5_compare.py 一致)
 """
 from __future__ import annotations
 
@@ -23,7 +27,8 @@ DATA_DIR = REPO / "data/real"
 OUTPUT_PATH = COMBO_DIR / "all_strategy_navs.parquet"
 METRICS_PATH = COMBO_DIR / "all_strategy_metrics.parquet"
 
-OOS_START = pd.Timestamp("2021-08-01")
+OOS_START = pd.Timestamp("2022-01-01")
+OOS_END = pd.Timestamp("2026-06-30")
 
 STRATEGY_SOURCES: list[tuple[str, Path, dict]] = [
     # (显示名称, 文件路径, 加载参数)
@@ -145,6 +150,16 @@ def compute_all_metrics(navs: pd.DataFrame, oos_start: pd.Timestamp) -> pd.DataF
     return pd.DataFrame(rows).set_index("strategy")
 
 
+def _to_business_day_index(nav: pd.Series) -> pd.Series:
+    """Phase 0: 强制 business-day-only 索引 (丢弃周末 + NaN)."""
+    s = nav.copy()
+    s.index = pd.to_datetime(s.index)
+    s = s[~s.index.duplicated(keep="last")]
+    biz = pd.bdate_range(start=s.index.min(), end=s.index.max())
+    s = s.reindex(biz).dropna()
+    return s
+
+
 def main() -> int:
     print("=" * 60)
     print("收集所有策略日净值...")
@@ -159,28 +174,31 @@ def main() -> int:
             continue
         try:
             nav = load_nav(path, kwargs["col"])
-            all_navs[name] = nav
-            print(f"  ✅ {name:30s} {len(nav):4d}天  {nav.index[0].date()} ~ {nav.index[-1].date()}")
+            nav_bd = _to_business_day_index(nav)
+            all_navs[name] = nav_bd
+            print(f"  ✅ {name:30s} {len(nav_bd):4d}天  {nav_bd.index[0].date()} ~ {nav_bd.index[-1].date()}")
         except Exception as e:
             print(f"  ❌ {name}: {e}")
 
     # 2. v11 (周频转日频)
     try:
         nav = load_v11_daily()
-        all_navs["v11 5层架构"] = nav
-        print(f"  ✅ {'v11 5层架构':30s} {len(nav):4d}天  {nav.index[0].date()} ~ {nav.index[-1].date()}")
+        nav_bd = _to_business_day_index(nav)
+        all_navs["v11 5层架构"] = nav_bd
+        print(f"  ✅ {'v11 5层架构':30s} {len(nav_bd):4d}天  {nav_bd.index[0].date()} ~ {nav_bd.index[-1].date()}")
     except Exception as e:
         print(f"  ❌ v11: {e}")
 
     # 3. HS300 基准
     try:
         nav = load_hs300()
-        all_navs["HS300 基准"] = nav
-        print(f"  ✅ {'HS300 基准':30s} {len(nav):4d}天  {nav.index[0].date()} ~ {nav.index[-1].date()}")
+        nav_bd = _to_business_day_index(nav)
+        all_navs["HS300 基准"] = nav_bd
+        print(f"  ✅ {'HS300 基准':30s} {len(nav_bd):4d}天  {nav_bd.index[0].date()} ~ {nav_bd.index[-1].date()}")
     except Exception as e:
         print(f"  ❌ HS300: {e}")
 
-    # 对齐到公共日期范围 (取交集)
+    # 对齐到公共日期范围 (取交集 - business-day-only)
     print(f"\n共 {len(all_navs)} 个策略, 对齐中...")
     df = pd.DataFrame(all_navs)
 
@@ -189,12 +207,20 @@ def main() -> int:
     last_valid = df.apply(lambda c: c.last_valid_index()).min()
     print(f"  公共区间: {first_valid.date()} ~ {last_valid.date()}")
 
-    # 前向填充 (策略起始日不同, 早的策略填充到对齐起点)
-    df = df.ffill()
+    # Phase 0: 严格交集 = dropna (不前向填充, 避免污染)
     df = df.loc[first_valid:last_valid]
+    df = df.dropna()
+    # 严格 business-day-only
+    biz = pd.bdate_range(start=df.index.min(), end=df.index.max())
+    df = df.reindex(biz).dropna()
 
     # 确保起点都是 1.0 (用 first_valid 那天归一化)
-    df = df.div(df.loc[first_valid])
+    df = df.div(df.iloc[0])
+
+    # 健全性检查
+    assert (df.index.dayofweek < 5).all(), "周末行污染!"
+    assert not df.isna().any().any(), "NaN 残留!"
+    assert len(df) > 200, f"过短 ({len(df)} 行)"
 
     print(f"  最终 shape: {df.shape}")
     print("  策略列表:")
