@@ -1,11 +1,18 @@
 """v10 动态权重分配方案对比.
 
-5 个方案:
+5 个方案 (v10 原版):
   A: 市场状态切换 (Regime-Based)
   B: 波动率目标 (Vol-Targeting)
   C: 回撤控制 (Drawdown Control)
   D: 信号强度加权 (Signal-Weighted)
   E: 混合方案 (Hybrid)
+
+2 个新方案 (v10.3 Phase 2):
+  F: Conservative - 在 D 基础上加 min defensive + turnover cap + hysteresis
+  G: Trend-Adaptive - 在 F 基础上加 v10.2 TrendFilter
+
+注: v10.3c (CA-GCP-Bounded) 已跳过 - v6 信号 AUC ≈ 0.5 太弱
+     (详见 docs/83-ca_gcp_v6_utility_aligned.md 第 5.4 节)
 """
 from __future__ import annotations
 
@@ -37,6 +44,17 @@ STRATS = {
 
 # 基础权重 (静态 Vol-parity)
 BASE_WEIGHTS = {'v1.0': 0.74, 'v7.10': 0.09, 'v9macro': 0.12, 'DualMom': 0.05}
+
+# v10.3 Conservative (F) 参数
+V10_3F_MIN_DEFENSIVE = 0.25   # v1.0 最低权重 25%
+V10_3F_MAX_TURNOVER = 0.30    # 单次调仓最大换手 30%
+V10_3F_HYSTERESIS = 0.05      # 权重变化 < 5% 不调仓
+V10_3F_DD_GUARD = 0.05        # NAV 回撤 > 5% 时强制 v1.0 90%
+V10_3F_REBAL_FREQ = 25        # 调仓频率 25 天 (月频)
+
+# v10.3 Trend-Adaptive (G) 参数 (继承 F + TrendFilter)
+V10_3G_TREND_WINDOW = 5       # 5 日 trend
+V10_3G_TREND_THRESH = 0.02    # 5 日收益 > 2% → 顺势 (用 base scheme)
 
 
 def load_navs() -> pd.DataFrame:
@@ -310,9 +328,194 @@ def metrics(nav: pd.Series, ps: str = '2022-01-01', pe: str = '2026-05-29') -> d
     }
 
 
+def _apply_constraints(
+    w_target: dict,
+    prev_w: dict,
+    min_defensive: float = V10_3F_MIN_DEFENSIVE,
+    max_turnover: float = V10_3F_MAX_TURNOVER,
+    hysteresis: float = V10_3F_HYSTERESIS,
+) -> dict:
+    """v10.3 共享约束: 防御底仓 + 换手上限 + hysteresis.
+
+    1. min_defensive: v1.0 最低权重 (防御底仓)
+    2. max_turnover: 换手 (Σ |Δw|) 上限, 超过则缩放
+    3. hysteresis: 权重变化 < hysteresis 不调仓
+    """
+    w = dict(w_target)
+
+    # 1. min defensive
+    if w.get('v1.0', 0) < min_defensive:
+        deficit = min_defensive - w['v1.0']
+        w['v1.0'] = min_defensive
+        # 从其他策略等比例扣减
+        other = sum(v for k, v in w.items() if k != 'v1.0')
+        if other > 0:
+            for k in w:
+                if k != 'v1.0':
+                    w[k] -= deficit * w[k] / other
+
+    # 2. hysteresis
+    if prev_w:
+        drift = sum(abs(w.get(k, 0) - prev_w.get(k, 0)) for k in w)
+        if drift < hysteresis:
+            return prev_w
+
+    # 3. turnover cap
+    if prev_w:
+        turnover = sum(abs(w.get(k, 0) - prev_w.get(k, 0)) for k in w)
+        if turnover > max_turnover:
+            scale = max_turnover / turnover
+            for k in w:
+                delta = w[k] - prev_w.get(k, 0)
+                w[k] = prev_w[k] + delta * scale
+
+    # 4. 归一化 (总和为 1, 移除负值)
+    for k in w:
+        w[k] = max(0.0, w[k])
+    total = sum(w.values())
+    if total > 0:
+        w = {k: v / total for k, v in w.items()}
+
+    return w
+
+
+def scheme_f_conservative(prices: pd.DataFrame) -> pd.DataFrame:
+    """v10.3 F: Conservative - 在 D 基础上加防御底仓 + 换手上限 + hysteresis.
+
+    约束:
+      - min(v1.0) = 25% (防御底仓)
+      - max turnover = 30% per rebalance
+      - hysteresis: weight drift < 5% 不调仓
+      - DD guard: NAV drawdown > 5% 强制 v1.0 = 90%
+      - rebalance freq = 25 days (月频)
+    """
+    weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+    rebal_dates = prices.resample('M').last().index
+
+    prev_w = dict(BASE_WEIGHTS)
+    # 前 252 天 (warmup) 全部用 BASE_WEIGHTS
+    for i in range(min(252, len(prices))):
+        weights.iloc[i] = prev_w
+
+    for i in range(252, len(prices)):
+        date = prices.index[i]
+        if date not in rebal_dates:
+            weights.loc[date] = prev_w
+            continue
+
+        # 计算各策略近 12M Sharpe (同 D)
+        sharpes = {}
+        for col in prices.columns:
+            rets_12m = prices[col].iloc[i-252:i].pct_change().dropna()
+            if len(rets_12m) > 50:
+                ann_ret = prices[col].iloc[i] / prices[col].iloc[i-252] - 1
+                vol = rets_12m.std() * np.sqrt(252)
+                sharpes[col] = ann_ret / vol if vol > 0 else 0
+            else:
+                sharpes[col] = 0
+
+        sharpes_pos = {k: max(v, 0) + 0.1 for k, v in sharpes.items()}
+        total_s = sum(sharpes_pos.values())
+        w_target = {
+            col: (sharpes_pos[col] / total_s) * BASE_WEIGHTS[col]
+            for col in prices.columns
+        }
+        total_w = sum(w_target.values())
+        w_target = {k: v / total_w for k, v in w_target.items()}
+
+        # 应用 v10.3 约束
+        prev_w = _apply_constraints(w_target, prev_w)
+
+        # DD guard: NAV drawdown > 5% 强制 v1.0 = 90%
+        rets = prices.pct_change()
+        port_ret = sum(prev_w.get(s, 0) * rets[s].iloc[:i+1] for s in prices.columns)
+        nav_so_far = (1 + port_ret).cumprod()
+        if len(nav_so_far) > 0:
+            peak = nav_so_far.max()
+            dd = nav_so_far.iloc[-1] / peak - 1
+            if dd < -V10_3F_DD_GUARD:
+                prev_w = {'v1.0': 0.90, 'v7.10': 0.05, 'v9macro': 0.05, 'DualMom': 0.0}
+
+        weights.loc[date] = prev_w
+
+    return weights
+
+
+def scheme_g_trend_adaptive(prices: pd.DataFrame) -> pd.DataFrame:
+    """v10.3 G: Trend-Adaptive - 在 F 基础上加 v10.2 TrendFilter.
+
+    逻辑:
+      - 5 日市场收益 > 2% → 顺势: 用 D scheme (signal-weighted, 不约束)
+      - 5 日市场收益 < 2% → 逆势: 用 F scheme (conservative)
+    """
+    weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+    rebal_dates = prices.resample('M').last().index
+
+    # 5 日市场收益 (用 v7.10 近似)
+    market_ret_5d = prices['v7.10'].pct_change(V10_3G_TREND_WINDOW)
+
+    prev_w = dict(BASE_WEIGHTS)
+    # 前 252 天 (warmup) 全部用 BASE_WEIGHTS
+    for i in range(min(252, len(prices))):
+        weights.iloc[i] = prev_w
+
+    for i in range(252, len(prices)):
+        date = prices.index[i]
+        trend_up = (
+            i >= V10_3G_TREND_WINDOW
+            and market_ret_5d.iloc[i] > V10_3G_TREND_THRESH
+        )
+
+        if trend_up:
+            # 顺势: 用 D 方案 (无约束)
+            sharpes = {}
+            for col in prices.columns:
+                rets_12m = prices[col].iloc[i-252:i].pct_change().dropna()
+                if len(rets_12m) > 50:
+                    ann_ret = prices[col].iloc[i] / prices[col].iloc[i-252] - 1
+                    vol = rets_12m.std() * np.sqrt(252)
+                    sharpes[col] = ann_ret / vol if vol > 0 else 0
+                else:
+                    sharpes[col] = 0
+            sharpes_pos = {k: max(v, 0) + 0.1 for k, v in sharpes.items()}
+            total_s = sum(sharpes_pos.values())
+            w_target = {
+                col: (sharpes_pos[col] / total_s) * BASE_WEIGHTS[col]
+                for col in prices.columns
+            }
+            total_w = sum(w_target.values())
+            w_target = {k: v / total_w for k, v in w_target.items()}
+            prev_w = w_target
+        else:
+            # 逆势: 用 F 方案 (conservative, 月频)
+            if date in rebal_dates:
+                sharpes = {}
+                for col in prices.columns:
+                    rets_12m = prices[col].iloc[i-252:i].pct_change().dropna()
+                    if len(rets_12m) > 50:
+                        ann_ret = prices[col].iloc[i] / prices[col].iloc[i-252] - 1
+                        vol = rets_12m.std() * np.sqrt(252)
+                        sharpes[col] = ann_ret / vol if vol > 0 else 0
+                    else:
+                        sharpes[col] = 0
+                sharpes_pos = {k: max(v, 0) + 0.1 for k, v in sharpes.items()}
+                total_s = sum(sharpes_pos.values())
+                w_target = {
+                    col: (sharpes_pos[col] / total_s) * BASE_WEIGHTS[col]
+                    for col in prices.columns
+                }
+                total_w = sum(w_target.values())
+                w_target = {k: v / total_w for k, v in w_target.items()}
+                prev_w = _apply_constraints(w_target, prev_w)
+
+        weights.loc[date] = prev_w
+
+    return weights
+
+
 def main():
     log('=' * 60)
-    log('v10 动态权重分配方案对比')
+    log('v10 动态权重分配方案对比 (含 v10.3 F/G)')
     log('=' * 60)
 
     # 加载数据
@@ -328,6 +531,8 @@ def main():
         'C_drawdown': scheme_c_drawdown,
         'D_signal_weighted': scheme_d_signal_weighted,
         'E_hybrid': scheme_e_hybrid,
+        'F_v10_3_conservative': scheme_f_conservative,
+        'G_v10_3_trend_adaptive': scheme_g_trend_adaptive,
     }
 
     # 静态 baseline
