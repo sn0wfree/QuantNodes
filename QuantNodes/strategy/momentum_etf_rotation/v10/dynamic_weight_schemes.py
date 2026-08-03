@@ -1,15 +1,15 @@
 """v10 动态权重分配方案对比.
 
-5 个方案 (v10 原版):
-  A: 市场状态切换 (Regime-Based)
-  B: 波动率目标 (Vol-Targeting)
-  C: 回撤控制 (Drawdown Control)
-  D: 信号强度加权 (Signal-Weighted)
-  E: 混合方案 (Hybrid)
+保留方案:
+  A: 市场状态切换 (Regime-Based) — 独立模型, 用于市场择时研究
+  D: 信号强度加权 (Signal-Weighted) — 基准方案
+  F: Conservative - D + 防御底仓 + 换手上限 + hysteresis
+  G: Trend-Adaptive - F + v10.2 TrendFilter (生产推荐)
 
-2 个新方案 (v10.3 Phase 2):
-  F: Conservative - 在 D 基础上加 min defensive + turnover cap + hysteresis
-  G: Trend-Adaptive - 在 F 基础上加 v10.2 TrendFilter
+Baseline:
+  Static: 固定权重 (74/9/12/5)
+
+已删除: B(波动率目标), C(回撤控制), E(混合) — 被 D/F/G 覆盖
 
 注: v10.3c (CA-GCP-Bounded) 已跳过 - v6 信号 AUC ≈ 0.5 太弱
      (详见 docs/83-ca_gcp_v6_utility_aligned.md 第 5.4 节)
@@ -99,11 +99,13 @@ def compute_nav(prices: pd.DataFrame, weights_history: pd.DataFrame, cost_bp: in
 
 
 def scheme_a_regime(prices: pd.DataFrame) -> pd.DataFrame:
-    """方案 A: 市场状态切换.
+    """方案 A: 市场状态切换 (Regime-Based).
 
     信号: 44 ETF 平均 12M 收益 (用 v7.10 近似)
     牛市: DualMom 15% + v7.10 15% + v9macro 15% + v1.0 55%
     熊市: DualMom 0% + v7.10 5% + v9macro 5% + v1.0 90%
+
+    注: 本方案保留作为独立市场择时模型, 详见 docs/86
     """
     weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
 
@@ -122,75 +124,6 @@ def scheme_a_regime(prices: pd.DataFrame) -> pd.DataFrame:
         else:
             # 熊市
             weights.loc[date] = {'v1.0': 0.90, 'v7.10': 0.05, 'v9macro': 0.05, 'DualMom': 0.00}
-
-    return weights
-
-
-def scheme_b_vol_target(prices: pd.DataFrame) -> pd.DataFrame:
-    """方案 B: 波动率目标.
-
-    信号: 组合近 20 日波动率
-    高波动 (>15%): 全部切 v1.0
-    中波动 (8-15%): 正常 vol-parity
-    低波动 (<8%): 增加 DualMom/v7.10
-    """
-    weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-
-    for i in range(60, len(prices)):
-        date = prices.index[i]
-        # 近 20 日波动率 (用各策略日收益的加权)
-        w_mid = pd.Series(BASE_WEIGHTS)
-        rets_20d = prices.pct_change().iloc[i-20:i]
-        port_rets = (rets_20d * w_mid).sum(axis=1)
-        vol_20d = port_rets.std() * np.sqrt(252)
-
-        if vol_20d > 0.15:
-            # 高波动 → 防御
-            weights.loc[date] = {'v1.0': 0.95, 'v7.10': 0.02, 'v9macro': 0.03, 'DualMom': 0.00}
-        elif vol_20d > 0.08:
-            # 中波动 → 正常
-            weights.loc[date] = BASE_WEIGHTS
-        else:
-            # 低波动 → 进攻
-            weights.loc[date] = {'v1.0': 0.55, 'v7.10': 0.15, 'v9macro': 0.15, 'DualMom': 0.15}
-
-    return weights
-
-
-def scheme_c_drawdown(prices: pd.DataFrame) -> pd.DataFrame:
-    """方案 C: 回撤控制.
-
-    信号: 组合从峰值回撤
-    < 3%: 正常
-    3-5%: DualMom 减半, v1.0 加倍
-    5-8%: DualMom 清仓, v1.0 90%
-    > 8%: 全部切 v1.0
-    """
-    weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-
-    # 先计算基准 NAV
-    rets = prices.pct_change()
-    port_ret_base = sum(BASE_WEIGHTS[s] * rets[s] for s in prices.columns)
-    nav_base = (1 + port_ret_base).cumprod()
-    nav_base.iloc[0] = 1.0
-
-    for i in range(1, len(prices)):
-        date = prices.index[i]
-        peak = nav_base.iloc[:i+1].max()
-        dd = nav_base.iloc[i] / peak - 1
-
-        if dd < -0.08:
-            # 严重回撤 → 全防御
-            weights.loc[date] = {'v1.0': 1.00, 'v7.10': 0.00, 'v9macro': 0.00, 'DualMom': 0.00}
-        elif dd < -0.05:
-            # 中等回撤 → DualMom 清仓
-            weights.loc[date] = {'v1.0': 0.90, 'v7.10': 0.05, 'v9macro': 0.05, 'DualMom': 0.00}
-        elif dd < -0.03:
-            # 轻微回撤 → DualMom 减半
-            weights.loc[date] = {'v1.0': 0.80, 'v7.10': 0.10, 'v9macro': 0.10, 'DualMom': 0.00}
-        else:
-            # 正常
-            weights.loc[date] = BASE_WEIGHTS
 
     return weights
 
@@ -250,79 +183,6 @@ def scheme_d_signal_weighted(prices: pd.DataFrame) -> pd.DataFrame:
 
         weights.loc[date] = w
         prev_w = pd.Series(w)
-
-    return weights
-
-
-def scheme_e_hybrid(prices: pd.DataFrame) -> pd.DataFrame:
-    """方案 E: 混合方案.
-
-    1. 基础权重: v1.0 60% + v7.10 15% + v9macro 15% + DualMom 10%
-    2. 市场状态调整: 牛市 DualMom +5%, 熊市 v1.0 +10%
-    3. 回撤控制: 回撤 > 5% 时 DualMom 减半
-    4. 波动率缩放: 组合vol > 10% 时整体降仓
-    """
-    weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-
-    # 基础权重
-    base = {'v1.0': 0.60, 'v7.10': 0.15, 'v9macro': 0.15, 'DualMom': 0.10}
-
-    # 前 252 天 (warmup) 全部用 base (与 D/F/G 一致)
-    for i in range(min(252, len(prices))):
-        weights.iloc[i] = base
-
-    # 基准 NAV
-    rets = prices.pct_change()
-    port_ret_base = sum(base[s] * rets[s] for s in prices.columns)
-    nav_base = (1 + port_ret_base).cumprod()
-    nav_base.iloc[0] = 1.0
-
-    for i in range(252, len(prices)):
-        date = prices.index[i]
-        w = base.copy()
-
-        # 1. 市场状态调整
-        ret_12m = prices['v7.10'].iloc[i] / prices['v7.10'].iloc[i-252] - 1
-        if ret_12m > 0:
-            w['DualMom'] += 0.05
-            w['v1.0'] -= 0.05
-        else:
-            w['v1.0'] += 0.10
-            w['DualMom'] -= 0.05
-            w['v7.10'] -= 0.03
-            w['v9macro'] -= 0.02
-
-        # 2. 回撤控制
-        peak = nav_base.iloc[:i+1].max()
-        dd = nav_base.iloc[i] / peak - 1
-        if dd < -0.05:
-            w['DualMom'] *= 0.5
-            w['v1.0'] += w['DualMom'] * 0.5
-
-        # 3. 波动率缩放
-        rets_20d = prices.pct_change().iloc[i-20:i]
-        vol_20d = (sum(w[s] * rets_20d[s] for s in prices.columns)).std() * np.sqrt(252)
-        if vol_20d > 0.10:
-            scale = 0.10 / vol_20d
-            for col in w:
-                if col != 'v1.0':
-                    w[col] *= scale
-            w['v1.0'] = 1.0 - sum(v for k, v in w.items() if k != 'v1.0')
-
-        # 归一化
-        total = sum(w.values())
-        if total > 0:
-            w = {k: v / total for k, v in w.items()}
-        else:
-            w = base.copy()
-
-        # 限制
-        for col in w:
-            w[col] = max(0.0, min(0.90, w[col]))
-        total = sum(w.values())
-        w = {k: v / total for k, v in w.items()}
-
-        weights.loc[date] = w
 
     return weights
 
@@ -553,10 +413,7 @@ def main():
     log('\n[2] 生成权重...')
     schemes = {
         'A_regime': scheme_a_regime,
-        'B_vol_target': scheme_b_vol_target,
-        'C_drawdown': scheme_c_drawdown,
         'D_signal_weighted': scheme_d_signal_weighted,
-        'E_hybrid': scheme_e_hybrid,
         'F_v10_3_conservative': scheme_f_conservative,
         'G_v10_3_trend_adaptive': scheme_g_trend_adaptive,
     }
