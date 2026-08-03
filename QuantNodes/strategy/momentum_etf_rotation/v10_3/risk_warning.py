@@ -293,19 +293,22 @@ class EnsembleRiskWarning:
             "climatology": _model_climatology,
             "ewma": _model_ewma,
             "current_vol": _model_current_vol,
-            "macro": _model_macro,
         }
+        if self.asset == "equity":
+            models["macro"] = _model_macro
+
         for key, fn in models.items():
             self._raw[key] = fn(self.rets, self.oos_idx)
             common = self._raw[key].dropna().index.intersection(self.y_true.dropna().index)
             self._prob[key] = _cont_prob(self._raw[key].loc[common])
 
         self._ensemble_prob, self._ensemble_weights = self._compute_ensemble_weights()
-        self._ensemble_prob = _jump_overlay(self._ensemble_prob, self.rets)
+        if self.asset == "equity":
+            self._ensemble_prob = _jump_overlay(self._ensemble_prob, self.rets, self.asset)
         self._metrics = {}
 
     def _compute_ensemble_weights(self, window: int = 60):
-        keys = ["harrv", "climatology", "ewma", "current_vol", "macro"]
+        keys = list(self._prob.keys())
         probs = {k: self._prob[k] for k in keys}
         yt = self.y_true.dropna()
         common = yt.index.intersection(probs[keys[0]].dropna().index)
@@ -374,7 +377,7 @@ class EnsembleRiskWarning:
         prob = self._ensemble_prob.loc[s:e]
         yt = self.y_true.loc[s:e].reindex(prob.index).dropna()
         result["ensemble"] = evaluate(yt, prob.reindex(yt.index))
-        for key in ["harrv", "climatology", "ewma", "current_vol", "macro"]:
+        for key in self._prob:
             p = self._prob[key].loc[s:e]
             result[key] = evaluate(yt, p.reindex(yt.index))
         self._metrics = result
@@ -384,9 +387,9 @@ class EnsembleRiskWarning:
     def forecast_df(self) -> pd.DataFrame:
         """Full forecast DataFrame with all layers and weights."""
         df = pd.DataFrame({"y_true": self.y_true, "ensemble": self._ensemble_prob})
-        for key in ["harrv", "climatology", "ewma", "current_vol", "macro"]:
+        for key in self._prob:
             df[f"prob_{key}"] = self._prob[key]
-        for i, key in enumerate(["harrv", "climatology", "ewma", "current_vol", "macro"]):
+        for i, key in enumerate(self._prob):
             df[f"weight_{key}"] = self._ensemble_weights.iloc[:, i]
         return df
 

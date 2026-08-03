@@ -203,7 +203,7 @@ def backtest(rw: EnsembleRiskWarning, asset: str):
     log(DASH)
     log(f"{'Layer':<15} {'AUC':<8} {'Brier':<8} {'ECE':<8} {'正报率(th=0.8)':<15}")
     log(DASH)
-    for key in ["climatology", "harrv", "ewma", "current_vol", "macro"]:
+    for key in rw._prob:
         m = rw._metrics.get(key, {})
         if not m:
             continue
