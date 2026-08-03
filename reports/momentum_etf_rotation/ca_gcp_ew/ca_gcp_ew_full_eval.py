@@ -293,6 +293,91 @@ def bootstrap_metrics(alerts: pd.DataFrame, returns: pd.DataFrame,
     return df
 
 
+def compute_pr_auc(alerts: pd.DataFrame, returns: pd.DataFrame,
+                    fired_col: str = "fired",
+                    horizon: int = 10,
+                    neg_thresh: float = -0.01) -> dict:
+    """Phase 1.5: PR-AUC (Average Precision) — 评估概率预测的 ranking 能力.
+
+    对 fired=1 的样本, 后续 horizon 天累计收益 < neg_thresh 视为 true positive (binary label).
+    对 fired=0 的样本, 后续 horizon 天累计收益 > -neg_thresh 视为 true negative.
+
+    Returns: AP score, n_pos, n_neg, label
+    """
+    from sklearn.metrics import average_precision_score
+
+    if fired_col == "alert_level":
+        fired_series = alerts["alert_level"].isin(["yellow", "red"])
+    elif fired_col in alerts.columns and alerts[fired_col].dtype == object:
+        fired_series = alerts[fired_col] == "and_fired"
+    elif fired_col in alerts.columns:
+        fired_series = alerts[fired_col].fillna(0).astype(int) == 1
+    else:
+        return {"AP": float("nan"), "n_pos": 0, "n_neg": 0}
+
+    market = returns.mean(axis=1)
+    labels = np.zeros(len(alerts), dtype=int)
+    for i, d in enumerate(alerts.index):
+        post = market.loc[d:].iloc[1:horizon + 1]
+        if len(post) < 2:
+            continue
+        cumret = float((1 + post).prod() - 1)
+        labels[i] = 1 if cumret < neg_thresh else 0
+
+    if fired_col in alerts.columns and alerts[fired_col].dtype != object:
+        proba = alerts[fired_col].fillna(0).astype(float).values
+    else:
+        proba = fired_series.astype(float).values
+
+    if labels.sum() == 0 or (1 - labels).sum() == 0:
+        return {"AP": float("nan"), "n_pos": int(labels.sum()), "n_neg": int((1 - labels).sum())}
+
+    ap = float(average_precision_score(labels, proba))
+    return {
+        "AP": ap,
+        "n_pos": int(labels.sum()),
+        "n_neg": int((1 - labels).sum()),
+    }
+
+
+def compute_ece(proba: np.ndarray, labels: np.ndarray, n_bins: int = 10) -> float:
+    """Phase 1.5: Expected Calibration Error (ECE).
+
+    ECE = Σ_b |bin_acc - bin_conf| * (n_b / N)
+    """
+    if len(proba) != len(labels):
+        raise ValueError(f"proba {len(proba)} vs labels {len(labels)} length mismatch")
+    bin_edges = np.linspace(0, 1, n_bins + 1)
+    ece = 0.0
+    for i in range(n_bins):
+        lo, hi = bin_edges[i], bin_edges[i + 1]
+        if i == n_bins - 1:
+            mask = (proba >= lo) & (proba <= hi)
+        else:
+            mask = (proba >= lo) & (proba < hi)
+        if mask.sum() == 0:
+            continue
+        bin_acc = labels[mask].mean()
+        bin_conf = proba[mask].mean()
+        ece += abs(bin_acc - bin_conf) * (mask.sum() / len(proba))
+    return float(ece)
+
+
+def compute_net_utility(proba: np.ndarray,
+                        realized_loss: np.ndarray,
+                        risk_budget: np.ndarray,
+                        lambda_param: float = 2.0) -> float:
+    """Phase 1.5: Net portfolio utility = -λ·CVaR_loss (E[R]=0 baseline)."""
+    if len(proba) == 0 or len(realized_loss) == 0:
+        return 0.0
+    downside_mask = realized_loss < 0
+    if downside_mask.sum() == 0:
+        cvar = 0.0
+    else:
+        cvar = float(-realized_loss[downside_mask].mean())
+    return -lambda_param * cvar
+
+
 def compute_roc_auc(alerts: pd.DataFrame, returns: pd.DataFrame,
                     horizon: int = 10,
                     neg_thresh: float = -0.01) -> pd.DataFrame:
