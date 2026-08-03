@@ -13,7 +13,6 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
-import pytest
 
 
 class TestRollingZscore:
@@ -31,11 +30,30 @@ class TestRollingZscore:
         z = rolling_zscore(s, window=80)
         assert z.isna().all()
 
-    def test_window_below_min_periods_raises(self) -> None:
+    def test_custom_min_periods_v2(self) -> None:
         from ca_gcp_training_v2 import rolling_zscore
-        s = pd.Series([1.0, 2.0, 3.0], name="x")
-        with pytest.raises(ValueError):
-            rolling_zscore(s, window=10)
+        rng = np.random.default_rng(99)
+        s = pd.Series(rng.normal(0, 1, 50), name="x")
+        z = rolling_zscore(s, window=20, min_periods=5)
+        assert len(z) == 50
+        assert not z.isna().all()
+        assert z.iloc[4:].notna().any()
+
+    def test_window_below_default_min_periods_works(self) -> None:
+        from ca_gcp_training_v2 import rolling_zscore
+        rng = np.random.default_rng(50)
+        s = pd.Series(rng.normal(0, 1, 100), name="x")
+        z = rolling_zscore(s, window=10, min_periods=5)
+        assert len(z) == 100
+        assert z.iloc[:4].isna().all()
+
+    def test_custom_min_periods_v3(self) -> None:
+        from ca_gcp_training_v3 import rolling_zscore
+        rng = np.random.default_rng(101)
+        s = pd.Series(rng.normal(0, 1, 50), name="y")
+        z = rolling_zscore(s, window=20, min_periods=2)
+        assert not z.isna().all()
+        assert z.iloc[1:].notna().any()
 
     def test_custom_window(self) -> None:
         from ca_gcp_training_v2 import rolling_zscore

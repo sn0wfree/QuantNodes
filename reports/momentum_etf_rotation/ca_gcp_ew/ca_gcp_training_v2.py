@@ -102,9 +102,11 @@ def build_macro_features(macro_daily: pd.DataFrame) -> pd.DataFrame:
     return macro_features
 
 
-def rolling_zscore(s: pd.Series, window: int = ZSCORE_WINDOW) -> pd.Series:
-    mean = s.rolling(window, min_periods=60).mean()
-    std = s.rolling(window, min_periods=60).std()
+def rolling_zscore(s: pd.Series,
+                   window: int = ZSCORE_WINDOW,
+                   min_periods: int = 60) -> pd.Series:
+    mean = s.rolling(window, min_periods=min_periods).mean()
+    std = s.rolling(window, min_periods=min_periods).std()
     return (s - mean) / std.replace(0, np.nan)
 
 

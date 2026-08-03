@@ -79,9 +79,11 @@ def load_macro_daily() -> pd.DataFrame:
     return macro.resample("D").ffill()
 
 
-def rolling_zscore(s: pd.Series, window: int = ZSCORE_WINDOW) -> pd.Series:
-    mean = s.rolling(window, min_periods=60).mean()
-    std = s.rolling(window, min_periods=60).std()
+def rolling_zscore(s: pd.Series,
+                   window: int = ZSCORE_WINDOW,
+                   min_periods: int = 60) -> pd.Series:
+    mean = s.rolling(window, min_periods=min_periods).mean()
+    std = s.rolling(window, min_periods=min_periods).std()
     return (s - mean) / std.replace(0, np.nan)
 
 

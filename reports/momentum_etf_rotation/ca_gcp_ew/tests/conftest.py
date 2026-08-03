@@ -13,16 +13,40 @@ _CA_GCP_EW = _ROOT
 if str(_CA_GCP_EW) not in sys.path:
     sys.path.insert(0, str(_CA_GCP_EW))
 
-from ca_gcp_ew_eval import KNOWN_EVENTS  # noqa: E402
+from ca_gcp_ew_eval import KNOWN_EVENTS, get_asset_sectors  # noqa: E402
+
+
+def _select_real_etf_codes(n_per_sector: int = 5,
+                            target_sectors: tuple[str, ...] = ("a_broad", "overseas", "bond",
+                                                                "commodity")) -> list[str]:
+    sectors = get_asset_sectors()
+    by_sector: dict[str, list[str]] = {}
+    for code, sec in sectors.items():
+        by_sector.setdefault(sec, []).append(code)
+    selected: list[str] = []
+    for sec in target_sectors:
+        selected.extend(by_sector.get(sec, [])[:n_per_sector])
+    if len(selected) < n_per_sector * len(target_sectors):
+        for s_list in by_sector.values():
+            for c in s_list:
+                if c not in selected:
+                    selected.append(c)
+                if len(selected) >= n_per_sector * len(target_sectors):
+                    break
+            if len(selected) >= n_per_sector * len(target_sectors):
+                break
+    return selected
+
+
+_REAL_CODES = _select_real_etf_codes()
 
 
 @pytest.fixture
 def sample_returns() -> pd.DataFrame:
     rng = np.random.default_rng(42)
     dates = pd.date_range("2020-01-02", periods=400, freq="B")
-    n_assets = 20
-    rets = rng.normal(0.0005, 0.012, (len(dates), n_assets))
-    cols = [f"ETF{i:02d}" for i in range(n_assets)]
+    cols = _REAL_CODES
+    rets = rng.normal(0.0005, 0.012, (len(dates), len(cols)))
     return pd.DataFrame(rets, index=dates, columns=cols)
 
 
@@ -30,8 +54,8 @@ def sample_returns() -> pd.DataFrame:
 def bullish_returns() -> pd.DataFrame:
     rng = np.random.default_rng(7)
     dates = pd.date_range("2020-01-02", periods=120, freq="B")
-    cols = [f"ETF{i:02d}" for i in range(20)]
-    rets = rng.normal(0.01, 0.005, (len(dates), 20))
+    cols = _REAL_CODES
+    rets = rng.normal(0.01, 0.005, (len(dates), len(cols)))
     return pd.DataFrame(rets, index=dates, columns=cols)
 
 
@@ -39,8 +63,8 @@ def bullish_returns() -> pd.DataFrame:
 def bearish_returns() -> pd.DataFrame:
     rng = np.random.default_rng(13)
     dates = pd.date_range("2020-01-02", periods=120, freq="B")
-    cols = [f"ETF{i:02d}" for i in range(20)]
-    rets = rng.normal(-0.01, 0.025, (len(dates), 20))
+    cols = _REAL_CODES
+    rets = rng.normal(-0.01, 0.025, (len(dates), len(cols)))
     return pd.DataFrame(rets, index=dates, columns=cols)
 
 
