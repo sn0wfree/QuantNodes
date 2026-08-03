@@ -507,28 +507,46 @@ class VersionManager:
         self.asset = asset
         self.version_dir = MON_DIR / "versions"
         self.version_dir.mkdir(exist_ok=True, parents=True)
+        self._seq = 0
 
     def save(self, snapshot: dict) -> Path:
-        date = pd.Timestamp.now().strftime("%Y-%m-%d")
-        path = self.version_dir / f"{self.asset}_v{date}.parquet"
+        now = pd.Timestamp.now()
+        self._seq += 1
+        date = now.strftime("%Y-%m-%d")
+        path = self.version_dir / f"{self.asset}_v{date}_s{self._seq:03d}.parquet"
+        snapshot["version_date"] = str(now)
+        snapshot["version_seq"] = self._seq
         pd.DataFrame([snapshot]).to_parquet(path)
         return path
 
     def list_versions(self) -> pd.DataFrame:
         files = sorted(self.version_dir.glob(f"{self.asset}_v*.parquet"))
+        if not files:
+            return pd.DataFrame()
         records = []
         for f in files:
             df = pd.read_parquet(f)
             records.append(df.iloc[0].to_dict())
-        return pd.DataFrame(records) if records else pd.DataFrame()
+        df = pd.DataFrame(records)
+        if "version_seq" in df.columns:
+            df = df.sort_values("version_seq")
+        return df
 
-    def compare(self, v1: str, v2: str) -> dict:
-        d1 = pd.read_parquet(self.version_dir / f"{self.asset}_v{v1}.parquet")
-        d2 = pd.read_parquet(self.version_dir / f"{self.asset}_v{v2}.parquet")
+    def compare(self, seq1: int, seq2: int) -> dict:
+        files = sorted(self.version_dir.glob(f"{self.asset}_v*_s{seq1:03d}.parquet"))
+        f1 = files[0] if files else None
+        files = sorted(self.version_dir.glob(f"{self.asset}_v*_s{seq2:03d}.parquet"))
+        f2 = files[0] if files else None
+        if f1 is None or f2 is None:
+            return {"error": f"Version not found: {seq1} or {seq2}"}
+        d1 = pd.read_parquet(f1).iloc[0]
+        d2 = pd.read_parquet(f2).iloc[0]
         diff = {}
-        for col in d1.columns:
-            if col in d2.columns and d1[col].dtype.kind in 'fi':
-                diff[col] = d2[col].iloc[0] - d1[col].iloc[0]
+        for col in d1.index:
+            if col in d2.index:
+                v1, v2 = d1[col], d2[col]
+                if isinstance(v1, (int, float)) and isinstance(v2, (int, float)):
+                    diff[col] = float(v2 - v1)
         return diff
 
 
@@ -688,3 +706,140 @@ class AutoRiskWarning:
         detail["alpha"] = self.alpha.tolist()
         self.versions.save(detail)
         return detail
+
+
+# ── PlattCalibrator ─────────────────────────────────────────────
+
+class PlattCalibrator:
+    """Probability calibration via Platt scaling (logistic regression).
+
+    Fits: P(y=1|prob) = 1 / (1 + exp(A * logit(prob) + B))
+    where A, B are estimated from recent 60d predictions vs actuals.
+    """
+
+    def __init__(self, window: int = 60, min_samples: int = 20):
+        self.window = window
+        self.min_samples = min_samples
+        self.A = 1.0
+        self.B = 0.0
+        self._fitted = False
+
+    def fit(self, prob: pd.Series, y_true: pd.Series):
+        common = prob.dropna().index.intersection(y_true.dropna().index)
+        if len(common) < self.min_samples:
+            return
+        recent = common[-self.window:]
+        x = prob.loc[recent].values
+        y = y_true.loc[recent].values
+        if len(np.unique(y)) < 2:
+            return
+        from sklearn.linear_model import LogisticRegression
+        # Clip to avoid log(0) / log(1)
+        eps = 1e-6
+        x_clip = np.clip(x, eps, 1 - eps)
+        lr = LogisticRegression(C=1e6, solver="lbfgs")
+        lr.fit(x_clip.reshape(-1, 1), y)
+        self.A = float(lr.coef_[0][0])
+        self.B = float(lr.intercept_[0])
+        self._fitted = True
+
+    def transform(self, prob: pd.Series) -> pd.Series:
+        if not self._fitted:
+            return prob
+        eps = 1e-6
+        x = np.clip(prob.values, eps, 1 - eps)
+        # logit → linear → sigmoid
+        logit = np.log(x / (1 - x))
+        calibrated = 1.0 / (1.0 + np.exp(-(self.A * logit + self.B)))
+        return pd.Series(calibrated, index=prob.index)
+
+    def fit_transform(self, prob: pd.Series, y_true: pd.Series) -> pd.Series:
+        self.fit(prob, y_true)
+        return self.transform(prob)
+
+
+# ── AutoOptimizer ───────────────────────────────────────────────
+
+class AutoOptimizer:
+    """Executes self-healing actions based on SelfEvaluator status.
+
+    Actions:
+      Normal:    no-op
+      Warning:   Platt calibrate probability outputs
+      Degraded:  rebuild all layer models
+      Failed:    switch to Climatology fallback (single model)
+    """
+
+    def __init__(self, rw: EnsembleRiskWarning):
+        self.rw = rw
+        self.calibrator = PlattCalibrator()
+        self.action_history: list[dict] = []
+        self.fallback_active = False
+
+    def run(self, status: str) -> dict:
+        result = {"status": status, "action_taken": None, "changed": False}
+        if status == "Normal":
+            result["action_taken"] = "noop"
+        elif status == "Warning":
+            result["action_taken"] = "recalibrate"
+            result["changed"] = self._recalibrate()
+        elif status == "Degraded":
+            result["action_taken"] = "rebuild"
+            result["changed"] = self._rebuild()
+        elif status == "Failed":
+            if not self.fallback_active:
+                result["action_taken"] = "fallback"
+                result["changed"] = self._fallback()
+            else:
+                result["action_taken"] = "fallback (active)"
+        self.action_history.append(result)
+        return result
+
+    def _recalibrate(self) -> bool:
+        prob = self.rw._ensemble_prob
+        yt = self.rw.y_true.reindex(prob.index).dropna()
+        cal = self.calibrator.fit_transform(prob, yt)
+        self.rw._ensemble_prob = cal
+        return True
+
+    def _rebuild(self) -> bool:
+        self.rw._fit_all()
+        self.calibrator = PlattCalibrator()
+        self.fallback_active = False
+        return True
+
+    def _fallback(self) -> bool:
+        w = self.rw._ensemble_weights
+        for k in w.columns:
+            w[k] = 1.0 if k == "climatology" else 0.0
+        self.rw._ensemble_prob = self.rw._prob["climatology"].copy()
+        self.fallback_active = True
+        return True
+
+
+# ── Integrated AutoRiskWarning.weekly_update ────────────────────
+
+# Patch: override weekly_update in AutoRiskWarning to include AutoOptimizer
+def _auto_weekly_update(self) -> dict:
+    self.evaluator.refresh()
+    self._update_weights_bayesian()
+    status = self.evaluator.status()
+    opt_result = self.optimizer.run(status)
+    detail = self.evaluator.detail()
+    detail["weights"] = dict(self.weights)
+    detail["weight_uncertainty"] = dict(self.weight_uncertainty)
+    detail["alpha"] = self.alpha.tolist()
+    detail["optimizer"] = opt_result
+    detail["fallback_active"] = self.optimizer.fallback_active
+    self.versions.save(detail)
+    return detail
+
+# Apply the patch
+AutoRiskWarning.weekly_update = _auto_weekly_update
+
+# Update __init__ to include optimizer
+_orig_init = AutoRiskWarning.__init__
+def _auto_init(self, etf_data: pd.DataFrame, asset: str):
+    _orig_init(self, etf_data, asset)
+    self.optimizer = AutoOptimizer(self.rw)
+AutoRiskWarning.__init__ = _auto_init
