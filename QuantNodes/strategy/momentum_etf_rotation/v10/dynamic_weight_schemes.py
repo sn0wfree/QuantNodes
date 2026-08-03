@@ -56,7 +56,7 @@ V10_3F_REBAL_FREQ = 25        # 调仓频率 25 天 (月频)
 V10_3G_TREND_WINDOW = 5       # 5 日 trend
 V10_3G_TREND_THRESH = 0.02    # 5 日收益 > 2% → 顺势 (用 base scheme)
 V10_3G_HYSTERESIS = 0.005     # 趋势过滤 hysteresis buffer (0.5%)
-V10_3G_DRIFT_THRESH = 0.03    # D 模式 drift 触发阈值 (3% 总权重变化)
+V10_3G_WEEKLY_MIN_CHANGE = 0.05  # 周频最小变化率, < 5% 不调仓
 
 
 def load_navs() -> pd.DataFrame:
@@ -459,18 +459,19 @@ def scheme_g_trend_adaptive(prices: pd.DataFrame) -> pd.DataFrame:
     """v10.3 G: Trend-Adaptive - 在 F 基础上加 v10.2 TrendFilter.
 
     逻辑:
-      - 5 日市场收益 > 2.5% → 顺势: 用 D scheme (signal-weighted, 周频 + drift 触发)
-      - 5 日市场收益 < 1.5% → 逆势: 用 F scheme (conservative, 月频)
+      - 5 日市场收益 > 2.5% → 顺势: 用 D scheme (signal-weighted)
+      - 5 日市场收益 < 1.5% → 逆势: 用 F scheme (conservative)
       - 1.5%~2.5% 之间 → 维持当前模式 (hysteresis)
 
-    D 模式调仓规则:
-      - 固定: 每 5 个交易日强制调仓
-      - 触发: 每日目标权重与上次调仓的 drift > 3% 时立即调仓
+    调仓规则:
+      - 月度: 强制调仓 (所有模式)
+      - 周度: D 模式可选, 变化率 < 5% 不调仓
+      - 日度: 无
     """
     weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-    f_rebal_dates = prices.resample('M').last().index
 
-    d_rebal_dates = set(prices.index[4::5])  # 每 5 个交易日 (周频)
+    monthly_dates = set(prices.resample('M').last().index)
+    weekly_dates = set(prices.index[4::5])
 
     market_ret_5d = prices['v7.10'].pct_change(V10_3G_TREND_WINDOW)
 
@@ -498,12 +499,11 @@ def scheme_g_trend_adaptive(prices: pd.DataFrame) -> pd.DataFrame:
 
         if in_d_mode:
             target = _compute_target_weights(prices, i)
-            drift = sum(abs(target.get(k, 0) - last_trade_w.get(k, 0)) for k in target)
-            is_weekly = date in d_rebal_dates
-            if is_weekly or drift > V10_3G_DRIFT_THRESH:
+            change = sum(abs(target.get(k, 0) - last_trade_w.get(k, 0)) for k in target)
+            if date in monthly_dates or (date in weekly_dates and change > V10_3G_WEEKLY_MIN_CHANGE):
                 prev_w = target
                 last_trade_w = dict(target)
-        elif date in f_rebal_dates:
+        elif date in monthly_dates:
             target = _compute_target_weights(prices, i)
             prev_w = _apply_constraints(target, prev_w)
 
