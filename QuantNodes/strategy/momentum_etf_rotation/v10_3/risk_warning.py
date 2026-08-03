@@ -7,6 +7,8 @@ EnsembleRiskWarning:
   Layer 2: Climatology (DOY mean) — calendar effect
   Layer 3: EWMA (RiskMetrics, 0.94) — fast jump response
   Layer 4: Current Vol (20d trailing) — current state
+  Layer 5: Macro (VIZ/DXY/CN-US) — macro factor regression
+  Post: Jump Detection Overlay — bear regime boost
 
 ModelMonitor:
   Rolling 60d AUC/Brier/ECE drift detection
@@ -31,6 +33,7 @@ OOS_END = "2026-05-29"
 log = print
 OUT_DIR = REPO / "reports" / "momentum_etf_rotation" / "v10_3"
 MON_DIR = OUT_DIR / "monitoring"
+HF_DIR = REPO / "data" / "high_freq_macro"
 
 
 @dataclass
@@ -173,6 +176,67 @@ def _model_current_vol(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     return vol.reindex(oos_idx).fillna(method="ffill")
 
 
+def _model_macro(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
+    from sklearn.linear_model import LinearRegression
+    vix = pd.read_parquet(HF_DIR / "macro_vix_daily.parquet")["vix"]
+    vix.index = pd.to_datetime(vix.index)
+    dxy = pd.read_parquet(HF_DIR / "macro_dxy_daily_v2.parquet")["dxy"]
+    dxy.index = pd.to_datetime(dxy.index)
+    cs = pd.read_parquet(HF_DIR / "cn_us_spread_10y.parquet")
+    cs["date"] = pd.to_datetime(cs["date"])
+    cs = cs.set_index("date")["cn_us_spread"]
+
+    idx = rets.index
+    vix = vix.reindex(idx).ffill()
+    dxy = dxy.reindex(idx).ffill()
+    cs = cs.reindex(idx).ffill()
+
+    vix_z = (vix - vix.rolling(252).mean()) / vix.rolling(252).std()
+    dxy_z = (dxy - dxy.rolling(252).mean()) / dxy.rolling(252).std()
+    cs_z = (cs - cs.rolling(252).mean()) / cs.rolling(252).std()
+
+    fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
+    forecasts = pd.Series(index=oos_idx, dtype=float)
+    refit_dates = oos_idx[::20]
+    for rd in refit_dates:
+        ri = rets.index.get_indexer([rd], method="ffill")[0]
+        if ri < 504:
+            continue
+        X = pd.DataFrame({"vix_z": vix_z.iloc[:ri], "dxy_z": dxy_z.iloc[:ri],
+                          "cs_z": cs_z.iloc[:ri], "c": 1.0})
+        y = fwd_vol.iloc[:ri]
+        valid = X.notna().all(axis=1) & y.notna()
+        Xc, yc = X.loc[valid].values, y.loc[valid].values
+        try:
+            m = LinearRegression(fit_intercept=False).fit(Xc, yc)
+            fs = rd + pd.Timedelta(days=1)
+            for fd in pd.bdate_range(fs, periods=20):
+                if fd not in forecasts.index:
+                    continue
+                fi = rets.index.get_indexer([fd], method="ffill")[0]
+                feat = np.array([vix_z.iloc[fi-1], dxy_z.iloc[fi-1],
+                                 cs_z.iloc[fi-1], 1.0]).reshape(1, -1)
+                if not np.any(np.isnan(feat)):
+                    forecasts[fd] = m.predict(feat)[0]
+        except Exception:
+            continue
+    return forecasts.fillna(method="ffill")
+
+
+def _jump_overlay(prob: pd.Series, rets: pd.Series,
+                  asset_type: str = "equity") -> pd.Series:
+    from QuantNodes.strategy.momentum_etf_rotation.v8.jump_model import (
+        jump_model_periodic_retrain)
+    regime = jump_model_periodic_retrain(rets, asset_type=asset_type,
+                                         show_progress=False)
+    common = prob.index.intersection(regime.index)
+    result = prob.loc[common].copy()
+    bear_dates = regime.loc[common][regime.loc[common] == 1].index
+    if len(bear_dates) > 0:
+        result.loc[bear_dates] = np.minimum(result.loc[bear_dates] * 1.3, 1.0)
+    return result
+
+
 def _cont_prob(forecast: pd.Series, window: int = 252) -> pd.Series:
     prob = pd.Series(index=forecast.index, dtype=float)
     for i in range(len(forecast)):
@@ -184,10 +248,11 @@ def _cont_prob(forecast: pd.Series, window: int = 252) -> pd.Series:
 # ── EnsembleRiskWarning ──────────────────────────────────────────
 
 class EnsembleRiskWarning:
-    """4-layer ensemble volatility forecasting model.
+    """5-layer ensemble volatility forecasting model.
 
     Layers:
-      HAR-RV → Climatology → EWMA(0.94) → Current 20d Vol
+      HAR-RV → Climatology → EWMA(0.94) → Current 20d Vol → Macro (VIX/DXY/CN-US)
+      Post-processed by Jump Detection Overlay (v8/jump_model)
       Ensembled via dynamic MSE weights (60d rolling window)
 
     Output: risk_prob [0, 1] for any date.
@@ -228,6 +293,7 @@ class EnsembleRiskWarning:
             "climatology": _model_climatology,
             "ewma": _model_ewma,
             "current_vol": _model_current_vol,
+            "macro": _model_macro,
         }
         for key, fn in models.items():
             self._raw[key] = fn(self.rets, self.oos_idx)
@@ -235,10 +301,11 @@ class EnsembleRiskWarning:
             self._prob[key] = _cont_prob(self._raw[key].loc[common])
 
         self._ensemble_prob, self._ensemble_weights = self._compute_ensemble_weights()
+        self._ensemble_prob = _jump_overlay(self._ensemble_prob, self.rets)
         self._metrics = {}
 
     def _compute_ensemble_weights(self, window: int = 60):
-        keys = ["harrv", "climatology", "ewma", "current_vol"]
+        keys = ["harrv", "climatology", "ewma", "current_vol", "macro"]
         probs = {k: self._prob[k] for k in keys}
         yt = self.y_true.dropna()
         common = yt.index.intersection(probs[keys[0]].dropna().index)
@@ -307,7 +374,7 @@ class EnsembleRiskWarning:
         prob = self._ensemble_prob.loc[s:e]
         yt = self.y_true.loc[s:e].reindex(prob.index).dropna()
         result["ensemble"] = evaluate(yt, prob.reindex(yt.index))
-        for key in ["harrv", "climatology", "ewma", "current_vol"]:
+        for key in ["harrv", "climatology", "ewma", "current_vol", "macro"]:
             p = self._prob[key].loc[s:e]
             result[key] = evaluate(yt, p.reindex(yt.index))
         self._metrics = result
@@ -317,9 +384,9 @@ class EnsembleRiskWarning:
     def forecast_df(self) -> pd.DataFrame:
         """Full forecast DataFrame with all layers and weights."""
         df = pd.DataFrame({"y_true": self.y_true, "ensemble": self._ensemble_prob})
-        for key in ["harrv", "climatology", "ewma", "current_vol"]:
+        for key in ["harrv", "climatology", "ewma", "current_vol", "macro"]:
             df[f"prob_{key}"] = self._prob[key]
-        for i, key in enumerate(["harrv", "climatology", "ewma", "current_vol"]):
+        for i, key in enumerate(["harrv", "climatology", "ewma", "current_vol", "macro"]):
             df[f"weight_{key}"] = self._ensemble_weights.iloc[:, i]
         return df
 
