@@ -210,3 +210,33 @@ class TestKnownEvents:
     def test_dates_ascending(self) -> None:
         dates = [pd.Timestamp(ev["date"]) for ev in KNOWN_EVENTS]
         assert dates == sorted(dates)
+
+    def test_is_downside_field_present(self) -> None:
+        """Phase 1: 所有事件必须有 is_downside 字段."""
+        for ev in KNOWN_EVENTS:
+            assert "is_downside" in ev, f"{ev['name']} 缺 is_downside 字段"
+            assert isinstance(ev["is_downside"], bool), \
+                f"{ev['name']} is_downside 不是 bool"
+
+    def test_is_downside_distribution(self) -> None:
+        """is_downside 分布: 大多数是 true downside, 少数是 bullish reversal."""
+        n_true = sum(1 for ev in KNOWN_EVENTS if ev["is_downside"])
+        n_false = len(KNOWN_EVENTS) - n_true
+        assert n_true >= 10, f"true downside 太少: {n_true}"
+        assert n_false >= 2, f"bullish reversal 太少: {n_false}"
+        assert n_true + n_false == len(KNOWN_EVENTS)
+
+    def test_bullish_reversals_marked_false(self) -> None:
+        """已知的 3 个 bullish reversal 事件应标 is_downside=False.
+
+        - 2022-10-31 A股底部 (反转日, 不应预警)
+        - 2023-08-28 印花税减半 (政策利好)
+        - 2024-09-24 政策预期 (政策利好)
+        """
+        reversal_dates = {pd.Timestamp("2022-10-31"),
+                          pd.Timestamp("2023-08-28"),
+                          pd.Timestamp("2024-09-24")}
+        for ev in KNOWN_EVENTS:
+            if pd.Timestamp(ev["date"]) in reversal_dates:
+                assert ev["is_downside"] is False, \
+                    f"{ev['name']} 应标 is_downside=False"
