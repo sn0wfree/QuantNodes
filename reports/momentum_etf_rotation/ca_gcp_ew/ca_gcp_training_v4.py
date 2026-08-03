@@ -310,12 +310,23 @@ def train_with_strong_regularization(
     r = recall_score(y.values, oof_pred, zero_division=0)
     f1 = f1_score(y.values, oof_pred, zero_division=0)
 
+    # Phase 1.2: refit final model on FULL training data (用于后续 routing 推理)
+    if model_type == "lgb":
+        full_train = lgb.Dataset(X.values, label=y.values)
+        final_model = lgb.train(best_params, full_train, num_boost_round=300,
+                                callbacks=[lgb.log_evaluation(0)])
+    else:
+        dfull = xgb.DMatrix(X.values, label=y.values)
+        final_model = xgb.train(best_params, dfull, num_boost_round=300, verbose_eval=0)
+
     return {
         "oof_proba": oof_proba,
         "oof_pred": oof_pred,
         "best_threshold": best_th,
         "P": p, "R": r, "F1": f1, "AUC": auc,
         "best_params": best_params,
+        "final_model": final_model,  # Phase 1.2: 用于 v5 routing 推理
+        "model_type": model_type,
     }
 
 

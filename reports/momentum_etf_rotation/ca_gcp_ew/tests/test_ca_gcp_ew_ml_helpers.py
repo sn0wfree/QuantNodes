@@ -158,3 +158,112 @@ class TestBuildRegimeFeatures:
         assert "market_ret_5d" in features.columns
         assert "realized_vol_20d" in features.columns
         assert "breadth_20d" in features.columns
+
+
+class TestPredictRegimeAware:
+    """Phase 1.2: v5 routing 修复 - 必须使用 final_model 直接推理."""
+
+    def test_predict_single_uses_final_model(self) -> None:
+        """_predict_single 必须用 final_model, 不应重建 fake 训练集."""
+        from unittest.mock import MagicMock
+
+        from ca_gcp_training_v5 import _predict_single
+
+        # 模拟 XGB final_model 直接推理
+        fake_model = MagicMock()
+        fake_dmatrix = MagicMock()
+        fake_model.predict.return_value = np.array([0.42])
+        with patch("ca_gcp_training_v5.xgb.DMatrix", return_value=fake_dmatrix):
+            X = pd.DataFrame([[0.1, 0.2, 0.3]], columns=["f1", "f2", "f3"])
+            res = {
+                "final_model": fake_model,
+                "model_type": "xgb",
+                "best_params": {},
+            }
+            p = _predict_single(res, X)
+
+        assert 0.0 <= p <= 1.0
+        assert p == 0.42
+        # 验证 final_model.predict 被调用 (而不是 train)
+        assert fake_model.predict.called
+        assert not hasattr(fake_model, "train") or not fake_model.train.called
+
+    def test_predict_single_lgb_uses_final_model(self) -> None:
+        """LightGBM 路径同样必须用 final_model."""
+        from unittest.mock import MagicMock
+
+        from ca_gcp_training_v5 import _predict_single
+
+        fake_model = MagicMock()
+        fake_model.predict.return_value = np.array([0.78])
+        X = pd.DataFrame([[0.1, 0.2]], columns=["f1", "f2"])
+        res = {
+            "final_model": fake_model,
+            "model_type": "lgb",
+            "best_params": {},
+        }
+        p = _predict_single(res, X)
+        assert p == 0.78
+        assert fake_model.predict.called
+
+    def test_predict_single_raises_without_final_model(self) -> None:
+        """老 model_result (没 final_model) 必须显式报错, 不返回 garbage."""
+        from ca_gcp_training_v5 import _predict_single
+
+        X = pd.DataFrame([[0.1]], columns=["f1"])
+        old_res = {"best_params": {}, "model_type": "xgb"}  # 缺 final_model
+        with __import__("pytest").raises(ValueError, match="final_model"):
+            _predict_single(old_res, X)
+
+    def test_predict_regime_aware_produces_valid_proba(self) -> None:
+        """predict_regime_aware 输出必须 [0, 1] 区间, 不全是 0.5."""
+        from unittest.mock import MagicMock
+
+        from ca_gcp_training_v5 import predict_regime_aware
+
+        rng = np.random.default_rng(7)
+        idx = pd.date_range("2024-01-02", periods=50, freq="B")
+        X = pd.DataFrame(rng.normal(0, 1, (50, 5)), index=idx, columns=[f"f{i}" for i in range(5)])
+        regimes = pd.Series([0] * 25 + [1] * 25, index=idx, name="regime")
+
+        # 模拟 final_model: 对每行返回 0~1 的 proba
+        fake_model = MagicMock()
+
+        def fake_predict(arr):
+            return np.linspace(0.1, 0.9, len(arr))
+        fake_model.predict = fake_predict
+
+        # 2 regime 都有 final_model
+        regime_models = {
+            0: {"final_model": fake_model, "model_type": "lgb", "best_params": {}},
+            1: {"final_model": fake_model, "model_type": "lgb", "best_params": {}},
+        }
+        proba, common = predict_regime_aware(X, regimes, regime_models)
+        assert len(proba) == 50
+        assert (proba >= 0).all() and (proba <= 1).all(), "proba 超出 [0,1] 区间"
+        # 不应全是 0.5 fallback
+        assert not (proba == 0.5).all(), "全部 0.5 - routing 全 fallback"
+
+    def test_predict_regime_aware_falls_back_on_missing_regime(self) -> None:
+        """未在 regime_models 的 regime → fallback global_model."""
+        from unittest.mock import MagicMock
+
+        from ca_gcp_training_v5 import predict_regime_aware
+
+        rng = np.random.default_rng(11)
+        idx = pd.date_range("2024-01-02", periods=20, freq="B")
+        X = pd.DataFrame(rng.normal(0, 1, (20, 3)), index=idx, columns=["f1", "f2", "f3"])
+        # regime 2 不在 regime_models 中
+        regimes = pd.Series([0] * 10 + [2] * 10, index=idx, name="regime")
+
+        fake_model = MagicMock()
+        fake_model.predict.return_value = np.array([0.6])
+        with patch("ca_gcp_training_v5.xgb.DMatrix", return_value=MagicMock()):
+            regime_models = {
+                0: {"final_model": fake_model, "model_type": "xgb", "best_params": {}},
+            }
+            global_model = {"final_model": fake_model, "model_type": "xgb", "best_params": {}}
+            proba, _ = predict_regime_aware(X, regimes, regime_models, global_model)
+        # 应该有 20 行 (0~10 用 regime 0, 10~20 fallback global)
+        assert len(proba) == 20
+        assert (proba >= 0).all() and (proba <= 1).all()

@@ -18,7 +18,6 @@ sys.path.insert(0, str(ROOT / "reports" / "momentum_etf_rotation" / "ca_gcp_ew")
 
 warnings.filterwarnings("ignore")
 
-import lightgbm as lgb  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import xgboost as xgb  # noqa: E402
@@ -183,7 +182,11 @@ def predict_regime_aware(
     regime_models: dict,
     global_model: dict | None = None,
 ) -> np.ndarray:
-    """Routing 推理: 根据当前 regime 选择模型"""
+    """Routing 推理: 根据当前 regime 选择模型.
+
+    Phase 1.2 修复: 使用 train_with_strong_regularization 返回的 final_model,
+    不再以 fake 训练集 (X*0+1) 重建模型.
+    """
     common = X.index.intersection(regimes.index)
     X_aligned = X.loc[common].fillna(0)
     regimes_aligned = regimes.loc[common]
@@ -193,46 +196,36 @@ def predict_regime_aware(
     for i, (idx, regime_id) in enumerate(regimes_aligned.items()):
         if regime_id in regime_models:
             res = regime_models[regime_id]
-            try:
-                if "lgb" in str(res.get("best_params", {})) and "bagging_freq" in res["best_params"]:  # noqa: E501
-                    p = _predict_single(res, X_aligned.iloc[[i]])
-                else:
-                    p = _predict_single(res, X_aligned.iloc[[i]])
-                proba[i] = p
-            except Exception:
-                proba[i] = 0.5
         elif global_model is not None:
-            proba[i] = _predict_single(global_model, X_aligned.iloc[[i]])
+            res = global_model
         else:
+            proba[i] = 0.5
+            continue
+        try:
+            proba[i] = _predict_single(res, X_aligned.iloc[[i]])
+        except Exception:
             proba[i] = 0.5
 
     return proba, X_aligned.index
 
 
 def _predict_single(model_result: dict, X: pd.DataFrame) -> float:
-    """预测单个样本 (需根据模型类型判断)"""
-    params = model_result["best_params"]
-    if "bagging_freq" in params:
-        params_full = params.copy()
-        params_full.update({
-            "objective": "binary", "metric": "binary_logloss",
-            "bagging_freq": 5, "min_data_in_leaf": 30,
-            "scale_pos_weight": params.get("scale_pos_weight", 4.0),
-            "verbose": -1,
-        })
-        train_data = lgb.Dataset(X.values * 0 + 1, label=[0])
-        model = lgb.train(params_full, train_data, num_boost_round=1)
-        return float(model.predict(X.values)[0])
+    """预测单个样本 - 使用 final_model 直接推理.
+
+    Phase 1.2 修复: 不再重建模型, 直接使用 train_with_strong_regularization
+    保存的 final_model. 这避免了 fake 训练集 (X*0+1) 导致 predict 错误.
+    """
+    if "final_model" not in model_result:
+        raise ValueError("model_result 缺 final_model - 需用 train_with_strong_regularization v4+")
+
+    final_model = model_result["final_model"]
+    model_type = model_result.get("model_type", "lgb")
+
+    if model_type == "lgb":
+        return float(final_model.predict(X.values)[0])
     else:
-        params_full = params.copy()
-        params_full.update({
-            "objective": "binary:logistic", "eval_metric": "logloss",
-            "scale_pos_weight": params.get("scale_pos_weight", 4.0),
-            "verbosity": 0,
-        })
-        dtrain = xgb.DMatrix(X.values * 0 + 1, label=[0])
-        model = xgb.train(params_full, dtrain, num_boost_round=1)
-        return float(model.predict(xgb.DMatrix(X.values))[0])
+        dtest = xgb.DMatrix(X.values)
+        return float(final_model.predict(dtest)[0])
 
 
 def main() -> None:
