@@ -105,6 +105,10 @@ def scheme_a_regime(prices: pd.DataFrame) -> pd.DataFrame:
     """
     weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
 
+    # 前 252 天 (warmup) 全部用 BASE_WEIGHTS (与 D/F/G 一致)
+    for i in range(min(252, len(prices))):
+        weights.iloc[i] = BASE_WEIGHTS
+
     for i in range(252, len(prices)):
         date = prices.index[i]
         # 12M 收益 (用 v7.10 近似市场状态)
@@ -202,6 +206,10 @@ def scheme_d_signal_weighted(prices: pd.DataFrame) -> pd.DataFrame:
     rebal_dates = prices.resample('M').last().index
 
     prev_w = pd.Series(BASE_WEIGHTS)
+    # 前 252 天 (warmup) 全部用 BASE_WEIGHTS (与 F/G 一致)
+    for i in range(min(252, len(prices))):
+        weights.iloc[i] = prev_w
+
     for i in range(252, len(prices)):
         date = prices.index[i]
         if date not in rebal_dates:
@@ -256,6 +264,10 @@ def scheme_e_hybrid(prices: pd.DataFrame) -> pd.DataFrame:
 
     # 基础权重
     base = {'v1.0': 0.60, 'v7.10': 0.15, 'v9macro': 0.15, 'DualMom': 0.10}
+
+    # 前 252 天 (warmup) 全部用 base (与 D/F/G 一致)
+    for i in range(min(252, len(prices))):
+        weights.iloc[i] = base
 
     # 基准 NAV
     rets = prices.pct_change()
