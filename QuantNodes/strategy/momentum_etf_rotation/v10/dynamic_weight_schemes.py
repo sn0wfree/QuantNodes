@@ -642,9 +642,10 @@ def scheme_j_vol_target(prices: pd.DataFrame) -> pd.DataFrame:
 def scheme_k_dd_control(prices: pd.DataFrame) -> pd.DataFrame:
     """v10.3 K: I方案 + 回撤控制器 (Grossman-Zhou).
 
-    在 I 方案基础上, 当回撤超过阈值时线性降低仓位:
-      dd = (peak - equity) / peak
-      multiplier = max(min_mult, 1 - dd / tolerance)
+    在 I 方案基础上, 当回撤超过阈时:
+      - 仅缩放权益策略 (v1.0, v7.10) → 变成现金
+      - 保留债券/避险策略 (v9macro, DualMom) 不动
+      - 总仓位 < 100%，差额是隐式现金
 
     参数:
       max_tolerance = 8%
@@ -658,13 +659,21 @@ def scheme_k_dd_control(prices: pd.DataFrame) -> pd.DataFrame:
 
     i_nav = compute_nav(prices, i_w, cost_bp=10)
 
+    equity_keys = ['v1.0', 'v7.10']
+    safe_keys = ['v9macro', 'DualMom']
+
     for i in range(252, len(prices)):
         date = prices.index[i]
         nav_val = i_nav.iloc[i]
         peak = i_nav.iloc[:i+1].max()
         mult = drawdown_multiplier(nav_val, peak, V10_3K_DD_TOLERANCE)
         mult = max(V10_3K_DD_MIN_MULT, mult)
-        weights.loc[date] = i_w.loc[date] * mult
+
+        w = dict(i_w.loc[date])
+        for key in equity_keys:
+            w[key] *= mult
+        # safe_keys stay unchanged
+        weights.loc[date] = pd.Series(w)
 
     return weights
 
