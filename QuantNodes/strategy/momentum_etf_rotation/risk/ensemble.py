@@ -277,21 +277,43 @@ def _model_macro_commodity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
 
 def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     from sklearn.linear_model import LinearRegression
+    # Load factors
     dxy = pd.read_parquet(HF_DIR / "macro_dxy_daily_v2.parquet")["dxy"]
     dxy.index = pd.to_datetime(dxy.index)
     rr = pd.read_parquet(HF_DIR / "macro_real_rate_daily.parquet")["real_rate"]
     rr.index = pd.to_datetime(rr.index)
     vix = pd.read_parquet(HF_DIR / "macro_vix_daily.parquet")["vix"]
     vix.index = pd.to_datetime(vix.index)
+    us10y = pd.read_parquet(HF_DIR / "us_10y_yield_fred.parquet")
+    us10y = us10y.set_index("date")["us_10y_yield"] if "date" in us10y.columns else us10y
+    us10y.index = pd.to_datetime(us10y.index)
+    cs = pd.read_parquet(HF_DIR / "cn_us_spread_10y.parquet")
+    cs = cs.set_index("date")["cn_us_spread"] if "date" in cs.columns else cs
+    cs.index = pd.to_datetime(cs.index)
+    go = pd.read_parquet(HF_DIR / "gold_oil_corr.parquet")
+    go = go.set_index("date")["gold_oil_corr"] if "date" in go.columns else go
+    go.index = pd.to_datetime(go.index)
+    idx_prices = pd.read_parquet(HF_DIR / "v7_index_prices.parquet")
+    gj = idx_prices["收盘价:沪金指数"]
+    gj.index = pd.to_datetime(gj.index)
 
     idx = rets.index
     dxy = dxy.reindex(idx).ffill()
     rr = rr.reindex(idx).ffill()
     vix = vix.reindex(idx).ffill()
+    us10y = us10y.reindex(idx).ffill()
+    cs = cs.reindex(idx).ffill()
+    go = go.reindex(idx).ffill()
+    gj = gj.reindex(idx).ffill()
 
-    dxy_z = (dxy - dxy.rolling(252).mean()) / dxy.rolling(252).std()
-    rr_z = (rr - rr.rolling(252).mean()) / rr.rolling(252).std()
-    vix_z = (vix - vix.rolling(252).mean()) / vix.rolling(252).std()
+    # Factor engineering
+    gj_z = (gj - gj.rolling(252).mean()) / gj.rolling(252).std().clip(lower=1e-6)
+    vix_z = (vix - vix.rolling(252).mean()) / vix.rolling(252).std().clip(lower=1e-6)
+    go_z = (go - go.rolling(252).mean()) / go.rolling(252).std().clip(lower=1e-6)
+    dxy_5d = dxy.pct_change(5)
+    breakeven = us10y - rr
+    ret_20d = rets.rolling(20).sum()
+    vol_20d = rets.rolling(20).std()
 
     fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
     forecasts = pd.Series(index=oos_idx, dtype=float)
@@ -300,8 +322,13 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
         ri = rets.index.get_indexer([rd], method="ffill")[0]
         if ri < 504:
             continue
-        X = pd.DataFrame({"dxy_z": dxy_z.iloc[:ri], "rr_z": rr_z.iloc[:ri],
-                          "vix_z": vix_z.iloc[:ri], "c": 1.0})
+        X = pd.DataFrame({
+            "gj_z": gj_z.iloc[:ri], "ret_20d": ret_20d.iloc[:ri],
+            "vol_20d": vol_20d.iloc[:ri], "us10y": us10y.iloc[:ri],
+            "rr": rr.iloc[:ri], "vix_z": vix_z.iloc[:ri],
+            "breakeven": breakeven.iloc[:ri], "go_z": go_z.iloc[:ri],
+            "dxy_5d": dxy_5d.iloc[:ri], "cs": cs.iloc[:ri], "c": 1.0,
+        })
         y = fwd_vol.iloc[:ri]
         valid = X.notna().all(axis=1) & y.notna()
         Xc, yc = X.loc[valid].values, y.loc[valid].values
@@ -312,8 +339,13 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
                 if fd not in forecasts.index:
                     continue
                 fi = rets.index.get_indexer([fd], method="ffill")[0]
-                feat = np.array([dxy_z.iloc[fi-1], rr_z.iloc[fi-1],
-                                 vix_z.iloc[fi-1], 1.0]).reshape(1, -1)
+                feat = np.array([
+                    gj_z.iloc[fi-1], ret_20d.iloc[fi-1],
+                    vol_20d.iloc[fi-1], us10y.iloc[fi-1],
+                    rr.iloc[fi-1], vix_z.iloc[fi-1],
+                    breakeven.iloc[fi-1], go_z.iloc[fi-1],
+                    dxy_5d.iloc[fi-1], cs.iloc[fi-1], 1.0,
+                ]).reshape(1, -1)
                 if not np.any(np.isnan(feat)):
                     forecasts[fd] = m.predict(feat)[0]
         except Exception:
@@ -355,7 +387,7 @@ def _cont_prob(forecast: pd.Series, window: int = 252) -> pd.Series:
 LAYER_CONFIGS = {
     "equity": ["climatology", "macro", "current_vol"],
     "commodity": ["climatology"],
-    "gold": ["climatology"],
+    "gold": ["climatology", "macro"],
     "soybean": ["climatology", "current_vol"],
     "silver": ["climatology", "ewma"],
     "energy_chem": ["climatology", "ewma"],
@@ -425,7 +457,7 @@ class EnsembleRiskWarning:
             self._prob[key] = _cont_prob(self._raw[key].loc[common])
 
         self._ensemble_prob, self._ensemble_weights = self._compute_ensemble_weights()
-        if self.asset == "equity":
+        if self.asset in ("equity", "gold"):
             self._ensemble_prob = _jump_overlay(self._ensemble_prob, self.rets, self.asset)
         self._metrics = {}
 
