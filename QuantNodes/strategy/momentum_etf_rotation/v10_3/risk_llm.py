@@ -73,6 +73,8 @@ class LLMInterpreter:
 3. 建议操作"""
 
     def _fallback(self, d: dict) -> str:
+        if "layers" in d:
+            return self._explain_fallback(d)
         status = d.get("status", "Unknown")
         score = d.get("health_score", 0)
         weights = d.get("weights", {})
@@ -98,4 +100,36 @@ class LLMInterpreter:
         w_lines = ", ".join(f"{k}={v:.1%}" for k, v in weights.items())
         lines.append(f"当前权重: {w_lines}")
         lines.append(f"建议动作: {d.get('action', 'continue')}")
+        return "\n".join(lines)
+
+    def _explain_fallback(self, d: dict) -> str:
+        """Generate template explanation from explain() output."""
+        lines = []
+        lines.append(f"=== {d.get('asset', '?').upper()} 风险预警 — {d.get('date', '?')} ===")
+        prob = d.get("risk_prob", 0)
+        signal = d.get("signal", 0)
+        signal_map = {0: "正常", 1: "关注", 2: "警告", 3: "危险"}
+        lines.append(f"风险概率: {prob:.1%} 信号: {signal_map.get(signal, '?')}")
+
+        clim = d.get("climatology_anchor", {})
+        gap = clim.get("gap", 0)
+        if gap > 0.05:
+            lines.append(f"高于 Climatology 基准 {clim.get('prob', 0):.0%} 约 {gap:.0%}")
+        elif gap < -0.05:
+            lines.append(f"低于 Climatology 基准 {clim.get('prob', 0):.0%} 约 {abs(gap):.0%}")
+        else:
+            lines.append(f"与 Climatology 基准 {clim.get('prob', 0):.0%} 基本持平")
+
+        layers = d.get("layers", {})
+        if len(layers) > 1:
+            lines.append("")
+            lines.append("各层贡献分解:")
+            sorted_layers = sorted(layers.items(), key=lambda x: x[1].get("contribution", 0), reverse=True)
+            for key, v in sorted_layers:
+                contrib = v.get("contribution", 0)
+                prob = v.get("prob", 0)
+                weight = v.get("weight", 0)
+                bar = "█" * max(1, int(contrib * 20))
+                lines.append(f"  {key:<15} {bar}  prob={prob:.0%}  weight={weight:.0%}  contrib={contrib:.0%}")
+
         return "\n".join(lines)

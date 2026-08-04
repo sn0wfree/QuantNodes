@@ -488,6 +488,48 @@ class EnsembleRiskWarning:
             return 1
         return 0
 
+    def explain(self, date: pd.Timestamp | str) -> dict:
+        """Decompose risk probability into layer contributions.
+
+        Returns: {
+            date, risk_prob, signal,
+            climatology_anchor: {prob, gap},
+            layers: {layer_name: {raw_vol, prob, weight, contribution}},
+            macro_coefs: {...}  # only for equity
+        }
+        """
+        d = pd.Timestamp(date)
+        if d not in self._ensemble_prob.index:
+            return {"date": str(d.date()), "error": "date not in OOS period"}
+
+        result = {
+            "date": str(d.date()),
+            "asset": self.asset,
+            "risk_prob": float(self._ensemble_prob.loc[d]),
+            "signal": self._to_signal(self._ensemble_prob.loc[d]),
+        }
+
+        clim_prob = float(self._prob["climatology"].loc[d]) if "climatology" in self._prob else 0.5
+        result["climatology_anchor"] = {
+            "prob": clim_prob,
+            "gap": result["risk_prob"] - clim_prob,
+        }
+
+        layers = {}
+        for key in self._prob:
+            prob = float(self._prob[key].loc[d]) if d in self._prob[key].index else 0.5
+            weight = float(self._ensemble_weights.loc[d, key]) if d in self._ensemble_weights.index else 0.0
+            raw = float(self._raw[key].loc[d]) if key in self._raw and d in self._raw[key].index else None
+            layers[key] = {
+                "raw_vol": raw,
+                "prob": prob,
+                "weight": weight,
+                "contribution": prob * weight,
+            }
+        result["layers"] = layers
+
+        return result
+
     def evaluate(self, start: str | None = None, end: str | None = None) -> dict:
         """Evaluate model performance over a period.
 
