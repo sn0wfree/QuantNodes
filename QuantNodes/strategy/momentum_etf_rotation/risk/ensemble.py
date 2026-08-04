@@ -276,9 +276,8 @@ def _model_macro_commodity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
 
 
 def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd.Series]:
-    from sklearn.linear_model import BayesianRidge
+    from sklearn.linear_model import ElasticNet
     from sklearn.preprocessing import StandardScaler
-    from statsmodels.regression.quantile_regression import QuantReg
     # Load factors
     dxy = pd.read_parquet(HF_DIR / "macro_dxy_daily_v2.parquet")["dxy"]
     dxy.index = pd.to_datetime(dxy.index)
@@ -374,9 +373,14 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd
         scaler = StandardScaler()
         Xc_scaled = scaler.fit_transform(Xc)
         try:
-            m_br = BayesianRidge(fit_intercept=False, compute_score=True)
-            m_br.fit(Xc_scaled, yc)
-            qr = QuantReg(yc, Xc_scaled).fit(q=0.9, max_iter=5000)
+            rng = np.random.RandomState(42)
+            boot_models = []
+            for _ in range(50):
+                boot_idx = rng.choice(len(Xc), size=len(Xc), replace=True)
+                m = ElasticNet(alpha=0.01, l1_ratio=0.5, fit_intercept=False,
+                               max_iter=10000, random_state=42)
+                m.fit(Xc_scaled[boot_idx], yc[boot_idx])
+                boot_models.append(m)
             fs = rd + pd.Timedelta(days=1)
             for fd in pd.bdate_range(fs, periods=20):
                 if fd not in forecasts.index:
@@ -399,12 +403,9 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd
                 ]).reshape(1, -1)
                 if not np.any(np.isnan(feat)):
                     feat_scaled = scaler.transform(feat)
-                    pred_br, std_br = m_br.predict(feat_scaled, return_std=True)
-                    pred_q90 = qr.predict(feat_scaled)
-                    inv_std = 1.0 / (std_br[0] + 1e-6)
-                    w_br = inv_std / (inv_std + 1)
-                    forecasts[fd] = w_br * pred_br[0] + (1 - w_br) * pred_q90[0]
-                    uncertainty[fd] = std_br[0]
+                    preds = np.array([bm.predict(feat_scaled)[0] for bm in boot_models])
+                    forecasts[fd] = preds.mean()
+                    uncertainty[fd] = preds.std()
         except Exception:
             continue
     return forecasts, uncertainty
