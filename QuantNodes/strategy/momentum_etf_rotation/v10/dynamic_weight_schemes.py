@@ -606,26 +606,27 @@ V10_3J_MIN_SCALE = 0.5         # 最小缩放系数
 V10_3J_MAX_SCALE = 1.5         # 最大缩放系数
 
 V10_3K_DD_TOLERANCE = 0.10     # 最大容忍回撤 10%
-V10_3K_DD_MIN_MULT = 0.3       # 最小缩放系数
+V10_3K_DD_MIN_MULT = 0.18      # 最小缩放系数 (Optuna优化)
+V10_3K_HYSTERESIS = 0.054       # Hysteresis (Optuna优化)
+
+# Optuna优化后的DD-mapper参数 (cost_bp=20)
+K_DD_BP = [0, 0.0257, 0.0457, 0.0615, 0.0835]
+K_DD_VALS = [1.00, 1.00, 0.93, 0.36, 0.18]
 
 
 def _dd_mult_gentle(dd: float) -> float:
-    """平缓回撤映射: dd -> multiplier.
+    """Optuna优化的DD-mapper: dd -> multiplier.
 
-    DD=0% -> 1.0, DD=4% -> 0.9, DD=6% -> 0.8,
-    DD=7% -> 0.7, DD=10% -> 0.5, DD>10% -> 0.3
+    DD=0% -> 1.0, DD=2.57% -> 1.0, DD=4.57% -> 0.93,
+    DD=6.15% -> 0.36, DD=8.35% -> 0.18, DD>10% -> 0.18
     """
-    if dd <= 0:
-        return 1.0
-    if dd <= 0.04:
-        return 1.0 - dd / 0.04 * 0.1
-    if dd <= 0.06:
-        return 0.9 - (dd - 0.04) / 0.02 * 0.1
-    if dd <= 0.07:
-        return 0.8 - (dd - 0.06) / 0.01 * 0.1
-    if dd <= 0.10:
-        return 0.7 - (dd - 0.07) / 0.03 * 0.2
-    return V10_3K_DD_MIN_MULT
+    if dd <= K_DD_BP[0]:
+        return K_DD_VALS[0]
+    for i in range(1, len(K_DD_BP)):
+        if dd <= K_DD_BP[i]:
+            t = (dd - K_DD_BP[i-1]) / (K_DD_BP[i] - K_DD_BP[i-1])
+            return K_DD_VALS[i-1] + t * (K_DD_VALS[i] - K_DD_VALS[i-1])
+    return K_DD_VALS[-1]
 
 
 def _kelly_mult(returns_60d: pd.Series) -> float:
@@ -688,21 +689,12 @@ def scheme_j_vol_target(prices: pd.DataFrame) -> pd.DataFrame:
 
 
 def scheme_k_dd_control(prices: pd.DataFrame) -> pd.DataFrame:
-    """v10.3 K: I方案 + 平缓回撤控制器.
+    """v10.3 K: I方案 + Optuna优化DD控制器.
 
-    在 I 方案基础上, 当回撤超过阈值时平缓降低所有仓位:
-      DD=0% -> mult=1.0
-      DD=4% -> mult=0.9
-      DD=6% -> mult=0.8
-      DD=7% -> mult=0.7
-      DD=10% -> mult=0.5
-      DD>10% -> mult=0.3
-
-    调仓: 仅在周频调仓时检查 DD
-
-    参数:
-      max_tolerance = 10%
-      min_multiplier = 0.3
+    参数: Optuna优化 (cost_bp=20, 50 trials)
+      DD=0% -> 1.0, DD=2.57% -> 1.0, DD=4.57% -> 0.93,
+      DD=6.15% -> 0.36, DD=8.35% -> 0.18
+      Hysteresis = 5.41%
     """
     i_w = scheme_i_blended(prices)
     weights = i_w.copy()
@@ -715,14 +707,13 @@ def scheme_k_dd_control(prices: pd.DataFrame) -> pd.DataFrame:
 
     for i in range(252, len(prices)):
         date = prices.index[i]
-
         if date in weekly_dates:
             nav_val = i_nav.iloc[i]
             peak = i_nav.iloc[:i+1].max()
             dd = (peak - nav_val) / peak if peak > 0 else 0
             new_mult = _dd_mult_gentle(dd)
-            # hysteresis
-            if abs(new_mult - prev_mult) > 0.05:
+            new_mult = max(K_DD_VALS[-1], min(K_DD_VALS[0], new_mult))
+            if abs(new_mult - prev_mult) > V10_3K_HYSTERESIS:
                 prev_mult = new_mult
             weights.loc[date] = i_w.loc[date] * prev_mult
 
