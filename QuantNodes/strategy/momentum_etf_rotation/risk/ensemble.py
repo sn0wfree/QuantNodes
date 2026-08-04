@@ -273,6 +273,14 @@ def _model_macro_equity_v3(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Serie
     v = ohlcv["510300"]["volume"].reindex(idx).ffill()
     vol_ratio = v / v.rolling(20).mean()
 
+    # ── Momentum factors ──
+    vol_mean_revert = vol_20d - vol_20d.rolling(60).mean()
+    vol_mom_20d = vol_20d.pct_change(20)
+    vix_mom_20d = vix.pct_change(20)
+
+    # ── Return momentum factors ──
+    ret_kurt_20d = rets.rolling(20).kurt()
+
     # ── Put-Call Ratio from DuckDB ──
     try:
         import duckdb
@@ -290,22 +298,13 @@ def _model_macro_equity_v3(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Serie
     except Exception:
         pcr = pd.Series(index=idx, dtype=float)
 
-    # ── IV Skew and ATM IV from pre-computed parquet ──
-    # IV Skew is not a strong predictor (AUC=0.5254), so we exclude it
-    # Keeping the data loading code for future reference
-    # try:
-    #     iv_df = pd.read_parquet(REPO / "data/high_freq_macro/io_iv_skew_daily.parquet")
-    #     iv_skew = iv_df["iv_skew"].reindex(idx).ffill()
-    #     iv_atm = iv_df["iv_atm"].reindex(idx).ffill()
-    # except Exception:
-    #     iv_skew = pd.Series(index=idx, dtype=float)
-    #     iv_atm = pd.Series(index=idx, dtype=float)
-
     # ── Assemble factor matrix ──
     names = ["vix_z", "vix_change_5d", "vix_rank20", "vol_20d", "vol_5d",
-             "gk_vol_20d", "vol_ratio", "pcr"]
+             "gk_vol_20d", "vol_ratio", "vol_mean_revert", "vol_mom_20d", "vix_mom_20d",
+             "ret_kurt_20d", "pcr"]
     arrays = [vix_z, vix_change_5d, vix_rank20, vol_20d, vol_5d,
-              gk_vol_20d, vol_ratio, pcr]
+              gk_vol_20d, vol_ratio, vol_mean_revert, vol_mom_20d, vix_mom_20d,
+              ret_kurt_20d, pcr]
 
     fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
     forecasts = pd.Series(index=oos_idx, dtype=float)
