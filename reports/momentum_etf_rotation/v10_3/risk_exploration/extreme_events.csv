@@ -1,0 +1,5 @@
+event,period,y_E_pos_rate,n_days,vix_zscore,vix_x_vol_20d,vix,dxy_zscore,vix_ratio_ma60
+2022 Crash,Fed hawkish hike + Russia-Ukraine,44.9%,198,0.995,1.340,26.287,2.022,1.055
+2024 Selloff,Pre-924 policy trough,2.7%,37,-0.889,-1.029,13.589,-0.028,0.996
+2025 Volatility,Tariff shock + China-US friction,19.8%,81,1.182,1.608,22.983,-1.435,1.083
+2026 Liquidity,Liquidity tightening expectation,48.2%,56,0.307,0.340,20.555,-0.390,1.169

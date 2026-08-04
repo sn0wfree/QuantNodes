@@ -1,0 +1,5 @@
+name,auc,n
+ensemble,0.5839,1004
+ensemble_macro,0.5583,1004
+ensemble_current_vol,0.5549,1005
+ensemble_climatology,0.5353,1005

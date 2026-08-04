@@ -1,0 +1,8 @@
+col1,col2,rho
+vix_zscore,vix_x_vol_20d,0.980
+real_rate,us_10y_yield,0.979
+ret_1d,dist_200ma,0.937
+ret_12m,drawdown,0.914
+cn_us_spread,us_10y_yield,-0.876
+real_rate_zscore,cn_us_spread_zscore,-0.859
+real_rate,cn_us_spread,-0.855
