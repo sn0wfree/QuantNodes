@@ -342,6 +342,7 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd
 
     fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
     forecasts = pd.Series(index=oos_idx, dtype=float)
+    uncertainty = pd.Series(index=oos_idx, dtype=float)
     refit_dates = oos_idx[::20]
     for rd in refit_dates:
         ri = rets.index.get_indexer([rd], method="ffill")[0]
@@ -373,8 +374,9 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd
         scaler = StandardScaler()
         Xc_scaled = scaler.fit_transform(Xc)
         try:
-            m = ElasticNet(alpha=0.01, l1_ratio=0.5, fit_intercept=False,
-                           max_iter=10000, random_state=42).fit(Xc_scaled, yc)
+            m_br = BayesianRidge(fit_intercept=False, compute_score=True)
+            m_br.fit(Xc_scaled, yc)
+            qr = QuantReg(yc, Xc_scaled).fit(q=0.9, max_iter=5000)
             fs = rd + pd.Timedelta(days=1)
             for fd in pd.bdate_range(fs, periods=20):
                 if fd not in forecasts.index:
@@ -397,10 +399,15 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd
                 ]).reshape(1, -1)
                 if not np.any(np.isnan(feat)):
                     feat_scaled = scaler.transform(feat)
-                    forecasts[fd] = m.predict(feat_scaled)[0]
+                    pred_br, std_br = m_br.predict(feat_scaled, return_std=True)
+                    pred_q90 = qr.predict(feat_scaled)
+                    inv_std = 1.0 / (std_br[0] + 1e-6)
+                    w_br = inv_std / (inv_std + 1)
+                    forecasts[fd] = w_br * pred_br[0] + (1 - w_br) * pred_q90[0]
+                    uncertainty[fd] = std_br[0]
         except Exception:
             continue
-    return forecasts
+    return forecasts, uncertainty
 
 
 MACRO_MODELS = {
@@ -493,6 +500,7 @@ class EnsembleRiskWarning:
     def _fit_all(self):
         self._raw = {}
         self._prob = {}
+        self._macro_uncertainty = None
 
         models = {}
         for key in LAYER_CONFIGS.get(self.asset, ["climatology"]):
@@ -502,7 +510,10 @@ class EnsembleRiskWarning:
                 models[key] = MODEL_FNS[key]
 
         for key, fn in models.items():
-            self._raw[key] = fn(self.rets, self.oos_idx)
+            if key == "macro" and self.asset == "gold":
+                self._raw[key], self._macro_uncertainty = fn(self.rets, self.oos_idx)
+            else:
+                self._raw[key] = fn(self.rets, self.oos_idx)
             common = self._raw[key].dropna().index.intersection(self.y_true.dropna().index)
             self._prob[key] = _cont_prob(self._raw[key].loc[common])
 
