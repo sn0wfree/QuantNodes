@@ -275,8 +275,10 @@ def _model_macro_commodity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     return forecasts.ffill()
 
 
-def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
-    from sklearn.linear_model import LinearRegression
+def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd.Series]:
+    from sklearn.linear_model import BayesianRidge
+    from sklearn.preprocessing import StandardScaler
+    from statsmodels.regression.quantile_regression import QuantReg
     # Load factors
     dxy = pd.read_parquet(HF_DIR / "macro_dxy_daily_v2.parquet")["dxy"]
     dxy.index = pd.to_datetime(dxy.index)
@@ -296,6 +298,7 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     idx_prices = pd.read_parquet(HF_DIR / "v7_index_prices.parquet")
     gj = idx_prices["收盘价:沪金指数"]
     gj.index = pd.to_datetime(gj.index)
+    ohlcv = pd.read_parquet(REPO / "data/real/etf_ohlcv_2018-01-01_2026-06-30.parquet")
 
     idx = rets.index
     dxy = dxy.reindex(idx).ffill()
@@ -305,6 +308,11 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     cs = cs.reindex(idx).ffill()
     go = go.reindex(idx).ffill()
     gj = gj.reindex(idx).ffill()
+    o = ohlcv["518880"]["open"].reindex(idx).ffill()
+    c = ohlcv["518880"]["close"].reindex(idx).ffill()
+    h = ohlcv["518880"]["high"].reindex(idx).ffill()
+    l = ohlcv["518880"]["low"].reindex(idx).ffill()
+    v = ohlcv["518880"]["volume"].reindex(idx).ffill()
 
     # Factor engineering
     gj_z = (gj - gj.rolling(252).mean()) / gj.rolling(252).std().clip(lower=1e-6)
@@ -314,6 +322,23 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     breakeven = us10y - rr
     ret_20d = rets.rolling(20).sum()
     vol_20d = rets.rolling(20).std()
+    # OHLCV
+    vol_ratio = v / v.rolling(20).mean()
+    intra_vol = (h - l) / c
+    parkinson = np.sqrt(1 / (4 * np.log(2)) * (np.log(h / l)) ** 2)
+    parkinson = parkinson.rolling(20).mean()
+    gap = ((o - c.shift(1)) / c.shift(1)).abs().rolling(20).mean()
+    ret_vol_ratio = ret_20d * vol_ratio
+    # Skew / Kurt
+    skew_20d_abs = rets.rolling(20).skew().abs()
+    skew60_vol20 = rets.rolling(60).skew() * vol_20d
+    kurt_252d = rets.rolling(252).kurt()
+    # Divergence
+    rr_z = (rr - rr.rolling(252).mean()) / rr.rolling(252).std().clip(lower=1e-6)
+    us10y_z = (us10y - us10y.rolling(252).mean()) / us10y.rolling(252).std().clip(lower=1e-6)
+    diverge_rr = gj_z - rr_z
+    diverge_us10y = gj_z - us10y_z
+    vol_20d_pct = vol_20d.pct_change(5)
 
     fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
     forecasts = pd.Series(index=oos_idx, dtype=float)
@@ -323,34 +348,59 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
         if ri < 504:
             continue
         X = pd.DataFrame({
-            "gj_z": gj_z.iloc[:ri], "ret_20d": ret_20d.iloc[:ri],
-            "vol_20d": vol_20d.iloc[:ri], "us10y": us10y.iloc[:ri],
-            "rr": rr.iloc[:ri], "vix_z": vix_z.iloc[:ri],
-            "breakeven": breakeven.iloc[:ri], "go_z": go_z.iloc[:ri],
-            "dxy_5d": dxy_5d.iloc[:ri], "cs": cs.iloc[:ri], "c": 1.0,
+            "gj_z": gj_z.loc[:rd], "ret_20d": ret_20d.loc[:rd],
+            "vol_20d": vol_20d.loc[:rd], "us10y": us10y.loc[:rd],
+            "rr": rr.loc[:rd], "vix_z": vix_z.loc[:rd],
+            "breakeven": breakeven.loc[:rd], "go_z": go_z.loc[:rd],
+            "dxy_5d": dxy_5d.loc[:rd], "cs": cs.loc[:rd],
+            "ret_vol_ratio": ret_vol_ratio.loc[:rd],
+            "intra_vol": intra_vol.loc[:rd],
+            "vol_ratio": vol_ratio.loc[:rd],
+            "gap_20d": gap.loc[:rd],
+            "parkinson": parkinson.loc[:rd],
+            "diverge_rr": diverge_rr.loc[:rd],
+            "diverge_us10y": diverge_us10y.loc[:rd],
+            "vol_20d_pct": vol_20d_pct.loc[:rd],
+            "skew_20d_abs": skew_20d_abs.loc[:rd],
+            "skew60_vol20": skew60_vol20.loc[:rd],
+            "kurt_252d": kurt_252d.loc[:rd],
         })
-        y = fwd_vol.iloc[:ri]
+        y = fwd_vol.loc[:rd]
         valid = X.notna().all(axis=1) & y.notna()
         Xc, yc = X.loc[valid].values, y.loc[valid].values
+        if len(Xc) < 100:
+            continue
+        scaler = StandardScaler()
+        Xc_scaled = scaler.fit_transform(Xc)
         try:
-            m = LinearRegression(fit_intercept=False).fit(Xc, yc)
+            m = ElasticNet(alpha=0.01, l1_ratio=0.5, fit_intercept=False,
+                           max_iter=10000, random_state=42).fit(Xc_scaled, yc)
             fs = rd + pd.Timedelta(days=1)
             for fd in pd.bdate_range(fs, periods=20):
                 if fd not in forecasts.index:
                     continue
                 fi = rets.index.get_indexer([fd], method="ffill")[0]
+                if fi < 1:
+                    continue
                 feat = np.array([
                     gj_z.iloc[fi-1], ret_20d.iloc[fi-1],
                     vol_20d.iloc[fi-1], us10y.iloc[fi-1],
                     rr.iloc[fi-1], vix_z.iloc[fi-1],
                     breakeven.iloc[fi-1], go_z.iloc[fi-1],
-                    dxy_5d.iloc[fi-1], cs.iloc[fi-1], 1.0,
+                    dxy_5d.iloc[fi-1], cs.iloc[fi-1],
+                    ret_vol_ratio.iloc[fi-1], intra_vol.iloc[fi-1],
+                    vol_ratio.iloc[fi-1], gap.iloc[fi-1],
+                    parkinson.iloc[fi-1], diverge_rr.iloc[fi-1],
+                    diverge_us10y.iloc[fi-1], vol_20d_pct.iloc[fi-1],
+                    skew_20d_abs.iloc[fi-1], skew60_vol20.iloc[fi-1],
+                    kurt_252d.iloc[fi-1],
                 ]).reshape(1, -1)
                 if not np.any(np.isnan(feat)):
-                    forecasts[fd] = m.predict(feat)[0]
+                    feat_scaled = scaler.transform(feat)
+                    forecasts[fd] = m.predict(feat_scaled)[0]
         except Exception:
             continue
-    return forecasts.ffill()
+    return forecasts
 
 
 MACRO_MODELS = {
@@ -465,7 +515,9 @@ class EnsembleRiskWarning:
         keys = list(self._prob.keys())
         probs = {k: self._prob[k] for k in keys}
         yt = self.y_true.dropna()
-        common = yt.index.intersection(probs[keys[0]].dropna().index)
+        common = yt.index
+        for k in keys:
+            common = common.intersection(probs[k].dropna().index)
         weights = pd.DataFrame(index=common, columns=keys, dtype=float)
         ensemble = pd.Series(index=common, dtype=float)
 
