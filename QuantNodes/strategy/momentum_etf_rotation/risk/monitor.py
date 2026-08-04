@@ -109,6 +109,8 @@ class ModelMonitor:
 
     def report(self, start: str | None = None, end: str | None = None) -> str:
         """Generate a human-readable monitoring report."""
+        if len(self._rolling) == 0:
+            return "No data for report period."
         s = pd.Timestamp(start) if start else self._rolling.index[0]
         e = pd.Timestamp(end) if end else self._rolling.index[-1]
         rolling = self._rolling.loc[s:e]
