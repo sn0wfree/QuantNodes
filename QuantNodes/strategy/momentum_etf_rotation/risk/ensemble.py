@@ -240,6 +240,8 @@ def _model_macro_equity_v3(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Serie
         - gk_vol_20d: Garman-Klass 20-day volatility
         - vol_ratio: Volume ratio (current / 20-day avg)
         - pcr_volume: Put-Call Ratio (volume)
+        - iv_skew: Implied Volatility Skew (25-delta put - 25-delta call)
+        - iv_atm: At-the-money Implied Volatility
     """
     from sklearn.linear_model import ElasticNet
     from sklearn.preprocessing import StandardScaler
@@ -287,6 +289,17 @@ def _model_macro_equity_v3(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Serie
         pcr = pcr_df["pcr_volume"].reindex(idx).ffill()
     except Exception:
         pcr = pd.Series(index=idx, dtype=float)
+
+    # ── IV Skew and ATM IV from pre-computed parquet ──
+    # IV Skew is not a strong predictor (AUC=0.5254), so we exclude it
+    # Keeping the data loading code for future reference
+    # try:
+    #     iv_df = pd.read_parquet(REPO / "data/high_freq_macro/io_iv_skew_daily.parquet")
+    #     iv_skew = iv_df["iv_skew"].reindex(idx).ffill()
+    #     iv_atm = iv_df["iv_atm"].reindex(idx).ffill()
+    # except Exception:
+    #     iv_skew = pd.Series(index=idx, dtype=float)
+    #     iv_atm = pd.Series(index=idx, dtype=float)
 
     # ── Assemble factor matrix ──
     names = ["vix_z", "vix_change_5d", "vix_rank20", "vol_20d", "vol_5d",
