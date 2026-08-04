@@ -411,9 +411,179 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd
     return forecasts, uncertainty
 
 
+def _model_macro_equity_v2(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd.Series]:
+    """Equity macro model: Bootstrap ElasticNet with expanded factors."""
+    from sklearn.linear_model import ElasticNet
+    from sklearn.preprocessing import StandardScaler
+
+    vix = pd.read_parquet(HF_DIR / "macro_vix_daily.parquet")["vix"]
+    vix.index = pd.to_datetime(vix.index)
+    dxy = pd.read_parquet(HF_DIR / "macro_dxy_daily_v2.parquet")["dxy"]
+    dxy.index = pd.to_datetime(dxy.index)
+    cs = pd.read_parquet(HF_DIR / "cn_us_spread_10y.parquet")
+    cs = cs.set_index("date")["cn_us_spread"] if "date" in cs.columns else cs
+    cs.index = pd.to_datetime(cs.index)
+    rr = pd.read_parquet(HF_DIR / "macro_real_rate_daily.parquet")["real_rate"]
+    rr.index = pd.to_datetime(rr.index)
+    us10y = pd.read_parquet(HF_DIR / "us_10y_yield_fred.parquet")
+    us10y = us10y.set_index("date")["us_10y_yield"] if "date" in us10y.columns else us10y
+    us10y.index = pd.to_datetime(us10y.index)
+
+    idx = rets.index
+    vix = vix.reindex(idx).ffill()
+    dxy = dxy.reindex(idx).ffill()
+    cs = cs.reindex(idx).ffill()
+    rr = rr.reindex(idx).ffill()
+    us10y = us10y.reindex(idx).ffill()
+
+    vix_z = (vix - vix.rolling(252).mean()) / vix.rolling(252).std().clip(lower=1e-6)
+    dxy_z = (dxy - dxy.rolling(252).mean()) / dxy.rolling(252).std().clip(lower=1e-6)
+    cs_z = (cs - cs.rolling(252).mean()) / cs.rolling(252).std().clip(lower=1e-6)
+    rr_z = (rr - rr.rolling(252).mean()) / rr.rolling(252).std().clip(lower=1e-6)
+    us10y_z = (us10y - us10y.rolling(252).mean()) / us10y.rolling(252).std().clip(lower=1e-6)
+    dxy_5d = dxy.pct_change(5)
+    ret_20d = rets.rolling(20).sum()
+    vol_20d = rets.rolling(20).std()
+    vol_change = vol_20d.pct_change(5)
+    skew_20d = rets.rolling(20).skew().abs()
+    kurt_252d = rets.rolling(252).kurt()
+
+    names = ["vix_z", "dxy_z", "cs_z", "rr_z", "us10y_z", "dxy_5d",
+             "ret_20d", "vol_20d", "vol_change", "skew_20d", "kurt_252d"]
+    arrays = [vix_z, dxy_z, cs_z, rr_z, us10y_z, dxy_5d,
+              ret_20d, vol_20d, vol_change, skew_20d, kurt_252d]
+
+    fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
+    forecasts = pd.Series(index=oos_idx, dtype=float)
+    uncertainty = pd.Series(index=oos_idx, dtype=float)
+    for rd in oos_idx[::20]:
+        ri = idx.get_indexer([rd], method="ffill")[0]
+        if ri < 504:
+            continue
+        X = pd.DataFrame({n: f.loc[:rd] for n, f in zip(names, arrays)})
+        y = fwd_vol.loc[:rd]
+        valid = X.notna().all(axis=1) & y.notna()
+        Xc, yc = X.loc[valid].values, y.loc[valid].values
+        if len(Xc) < 100:
+            continue
+        scaler = StandardScaler()
+        Xc_scaled = scaler.fit_transform(Xc)
+        try:
+            rng = np.random.RandomState(42)
+            boot_models = []
+            for _ in range(50):
+                boot_idx = rng.choice(len(Xc), size=len(Xc), replace=True)
+                m = ElasticNet(alpha=0.01, l1_ratio=0.5, fit_intercept=False,
+                               max_iter=10000, random_state=42)
+                m.fit(Xc_scaled[boot_idx], yc[boot_idx])
+                boot_models.append(m)
+            for fd in pd.bdate_range(rd + pd.Timedelta(days=1), periods=20):
+                if fd not in forecasts.index:
+                    continue
+                fi = idx.get_indexer([fd], method="ffill")[0]
+                if fi < 1:
+                    continue
+                feat = np.array([f.iloc[fi-1] for f in arrays]).reshape(1, -1)
+                if not np.any(np.isnan(feat)):
+                    feat_scaled = scaler.transform(feat)
+                    preds = np.array([bm.predict(feat_scaled)[0] for bm in boot_models])
+                    forecasts[fd] = preds.mean()
+                    uncertainty[fd] = preds.std()
+        except Exception:
+            continue
+    return forecasts, uncertainty
+
+
+def _model_macro_commodity_v2(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd.Series]:
+    """Commodity macro model: Bootstrap ElasticNet with expanded factors."""
+    from sklearn.linear_model import ElasticNet
+    from sklearn.preprocessing import StandardScaler
+
+    dxy = pd.read_parquet(HF_DIR / "macro_dxy_daily_v2.parquet")["dxy"]
+    dxy.index = pd.to_datetime(dxy.index)
+    go = pd.read_parquet(HF_DIR / "gold_oil_corr.parquet")
+    go = go.set_index("date")["gold_oil_corr"] if "date" in go.columns else go
+    go.index = pd.to_datetime(go.index)
+    rr = pd.read_parquet(HF_DIR / "macro_real_rate_daily.parquet")["real_rate"]
+    rr.index = pd.to_datetime(rr.index)
+    vix = pd.read_parquet(HF_DIR / "macro_vix_daily.parquet")["vix"]
+    vix.index = pd.to_datetime(vix.index)
+    us10y = pd.read_parquet(HF_DIR / "us_10y_yield_fred.parquet")
+    us10y = us10y.set_index("date")["us_10y_yield"] if "date" in us10y.columns else us10y
+    us10y.index = pd.to_datetime(us10y.index)
+    cs = pd.read_parquet(HF_DIR / "cn_us_spread_10y.parquet")
+    cs = cs.set_index("date")["cn_us_spread"] if "date" in cs.columns else cs
+    cs.index = pd.to_datetime(cs.index)
+
+    idx = rets.index
+    dxy = dxy.reindex(idx).ffill()
+    go = go.reindex(idx).ffill()
+    rr = rr.reindex(idx).ffill()
+    vix = vix.reindex(idx).ffill()
+    us10y = us10y.reindex(idx).ffill()
+    cs = cs.reindex(idx).ffill()
+
+    dxy_z = (dxy - dxy.rolling(252).mean()) / dxy.rolling(252).std().clip(lower=1e-6)
+    go_z = (go - go.rolling(252).mean()) / go.rolling(252).std().clip(lower=1e-6)
+    rr_z = (rr - rr.rolling(252).mean()) / rr.rolling(252).std().clip(lower=1e-6)
+    vix_z = (vix - vix.rolling(252).mean()) / vix.rolling(252).std().clip(lower=1e-6)
+    us10y_z = (us10y - us10y.rolling(252).mean()) / us10y.rolling(252).std().clip(lower=1e-6)
+    dxy_5d = dxy.pct_change(5)
+    ret_20d = rets.rolling(20).sum()
+    vol_20d = rets.rolling(20).std()
+    vol_change = vol_20d.pct_change(5)
+    skew_20d = rets.rolling(20).skew().abs()
+    kurt_252d = rets.rolling(252).kurt()
+
+    names = ["dxy_z", "go_z", "rr_z", "vix_z", "us10y_z", "dxy_5d",
+             "ret_20d", "vol_20d", "vol_change", "skew_20d", "kurt_252d"]
+    arrays = [dxy_z, go_z, rr_z, vix_z, us10y_z, dxy_5d,
+              ret_20d, vol_20d, vol_change, skew_20d, kurt_252d]
+
+    fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
+    forecasts = pd.Series(index=oos_idx, dtype=float)
+    uncertainty = pd.Series(index=oos_idx, dtype=float)
+    for rd in oos_idx[::20]:
+        ri = idx.get_indexer([rd], method="ffill")[0]
+        if ri < 504:
+            continue
+        X = pd.DataFrame({n: f.loc[:rd] for n, f in zip(names, arrays)})
+        y = fwd_vol.loc[:rd]
+        valid = X.notna().all(axis=1) & y.notna()
+        Xc, yc = X.loc[valid].values, y.loc[valid].values
+        if len(Xc) < 100:
+            continue
+        scaler = StandardScaler()
+        Xc_scaled = scaler.fit_transform(Xc)
+        try:
+            rng = np.random.RandomState(42)
+            boot_models = []
+            for _ in range(50):
+                boot_idx = rng.choice(len(Xc), size=len(Xc), replace=True)
+                m = ElasticNet(alpha=0.01, l1_ratio=0.5, fit_intercept=False,
+                               max_iter=10000, random_state=42)
+                m.fit(Xc_scaled[boot_idx], yc[boot_idx])
+                boot_models.append(m)
+            for fd in pd.bdate_range(rd + pd.Timedelta(days=1), periods=20):
+                if fd not in forecasts.index:
+                    continue
+                fi = idx.get_indexer([fd], method="ffill")[0]
+                if fi < 1:
+                    continue
+                feat = np.array([f.iloc[fi-1] for f in arrays]).reshape(1, -1)
+                if not np.any(np.isnan(feat)):
+                    feat_scaled = scaler.transform(feat)
+                    preds = np.array([bm.predict(feat_scaled)[0] for bm in boot_models])
+                    forecasts[fd] = preds.mean()
+                    uncertainty[fd] = preds.std()
+        except Exception:
+            continue
+    return forecasts, uncertainty
+
+
 MACRO_MODELS = {
     "equity": _model_macro_equity,
-    "commodity": _model_macro_commodity,
+    "commodity": _model_macro_commodity_v2,
     "gold": _model_macro_gold,
 }
 
@@ -444,7 +614,7 @@ def _cont_prob(forecast: pd.Series, window: int = 252) -> pd.Series:
 
 LAYER_CONFIGS = {
     "equity": ["climatology", "macro", "current_vol"],
-    "commodity": ["climatology"],
+    "commodity": ["climatology", "macro"],
     "gold": ["climatology", "macro"],
     "soybean": ["climatology", "current_vol"],
     "silver": ["climatology", "ewma"],
@@ -511,8 +681,10 @@ class EnsembleRiskWarning:
                 models[key] = MODEL_FNS[key]
 
         for key, fn in models.items():
-            if key == "macro" and self.asset == "gold":
+            if key == "macro" and self.asset in ("gold", "commodity"):
                 self._raw[key], self._macro_uncertainty = fn(self.rets, self.oos_idx)
+            elif key == "macro" and self.asset == "equity":
+                self._raw[key] = fn(self.rets, self.oos_idx)
             else:
                 self._raw[key] = fn(self.rets, self.oos_idx)
             common = self._raw[key].dropna().index.intersection(self.y_true.dropna().index)
