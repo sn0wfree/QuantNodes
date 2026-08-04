@@ -458,6 +458,11 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd
     diverge_rr = gj_z - rr_z
     diverge_us10y = gj_z - us10y_z
     vol_20d_pct = vol_20d.pct_change(5)
+    # Momentum factors
+    vol_mean_revert = vol_20d - vol_20d.rolling(60).mean()
+    vol_mom_20d = vol_20d.pct_change(20)
+    ret_accel_10d = rets.rolling(10).mean() - rets.rolling(60).mean()
+    ret_kurt_20d = rets.rolling(20).kurt()
 
     fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
     forecasts = pd.Series(index=oos_idx, dtype=float)
@@ -484,6 +489,10 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd
             "skew_20d_abs": skew_20d_abs.loc[:rd],
             "skew60_vol20": skew60_vol20.loc[:rd],
             "kurt_252d": kurt_252d.loc[:rd],
+            "vol_mean_revert": vol_mean_revert.loc[:rd],
+            "vol_mom_20d": vol_mom_20d.loc[:rd],
+            "ret_accel_10d": ret_accel_10d.loc[:rd],
+            "ret_kurt_20d": ret_kurt_20d.loc[:rd],
         })
         y = fwd_vol.loc[:rd]
         valid = X.notna().all(axis=1) & y.notna()
@@ -520,6 +529,8 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd
                     diverge_us10y.iloc[fi-1], vol_20d_pct.iloc[fi-1],
                     skew_20d_abs.iloc[fi-1], skew60_vol20.iloc[fi-1],
                     kurt_252d.iloc[fi-1],
+                    vol_mean_revert.iloc[fi-1], vol_mom_20d.iloc[fi-1],
+                    ret_accel_10d.iloc[fi-1], ret_kurt_20d.iloc[fi-1],
                 ]).reshape(1, -1)
                 if not np.any(np.isnan(feat)):
                     feat_scaled = scaler.transform(feat)
@@ -654,11 +665,13 @@ def _model_macro_commodity_v2(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Se
     vol_change = vol_20d.pct_change(5)
     skew_20d = rets.rolling(20).skew().abs()
     kurt_252d = rets.rolling(252).kurt()
+    # Momentum factor
+    ret_accel_10d = rets.rolling(10).mean() - rets.rolling(60).mean()
 
     names = ["dxy_z", "go_z", "rr_z", "vix_z", "us10y_z", "dxy_5d",
-             "ret_20d", "vol_20d", "vol_change", "skew_20d", "kurt_252d"]
+             "ret_20d", "vol_20d", "vol_change", "skew_20d", "kurt_252d", "ret_accel_10d"]
     arrays = [dxy_z, go_z, rr_z, vix_z, us10y_z, dxy_5d,
-              ret_20d, vol_20d, vol_change, skew_20d, kurt_252d]
+              ret_20d, vol_20d, vol_change, skew_20d, kurt_252d, ret_accel_10d]
 
     fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
     forecasts = pd.Series(index=oos_idx, dtype=float)
