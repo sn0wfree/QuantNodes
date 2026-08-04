@@ -605,8 +605,27 @@ V10_3J_VOL_LOOKBACK = 60       # 已实现波动率回看窗口 (天)
 V10_3J_MIN_SCALE = 0.5         # 最小缩放系数
 V10_3J_MAX_SCALE = 1.5         # 最大缩放系数
 
-V10_3K_DD_TOLERANCE = 0.08     # 最大容忍回撤 8%
+V10_3K_DD_TOLERANCE = 0.10     # 最大容忍回撤 10%
 V10_3K_DD_MIN_MULT = 0.3       # 最小缩放系数
+
+
+def _dd_mult_gentle(dd: float) -> float:
+    """平缓回撤映射: dd -> multiplier.
+
+    DD=0% -> 1.0, DD=4% -> 0.9, DD=6% -> 0.8,
+    DD=7% -> 0.7, DD=10% -> 0.5, DD>10% -> 0.3
+    """
+    if dd <= 0:
+        return 1.0
+    if dd <= 0.04:
+        return 1.0 - dd / 0.04 * 0.1     # 1.0 -> 0.9
+    if dd <= 0.06:
+        return 0.9 - (dd - 0.04) / 0.02 * 0.1  # 0.9 -> 0.8
+    if dd <= 0.07:
+        return 0.8 - (dd - 0.06) / 0.01 * 0.1  # 0.8 -> 0.7
+    if dd <= 0.10:
+        return 0.7 - (dd - 0.07) / 0.03 * 0.2  # 0.7 -> 0.5
+    return V10_3K_DD_MIN_MULT
 
 
 def scheme_j_vol_target(prices: pd.DataFrame) -> pd.DataFrame:
@@ -640,40 +659,43 @@ def scheme_j_vol_target(prices: pd.DataFrame) -> pd.DataFrame:
 
 
 def scheme_k_dd_control(prices: pd.DataFrame) -> pd.DataFrame:
-    """v10.3 K: I方案 + 回撤控制器 (Grossman-Zhou).
+    """v10.3 K: I方案 + 平缓回撤控制器.
 
-    在 I 方案基础上, 当回撤超过阈时:
-      - 仅缩放权益策略 (v1.0, v7.10) → 变成现金
-      - 保留债券/避险策略 (v9macro, DualMom) 不动
-      - 总仓位 < 100%，差额是隐式现金
+    在 I 方案基础上, 当回撤超过阈值时平缓降低所有仓位:
+      DD=0% -> mult=1.0
+      DD=4% -> mult=0.9
+      DD=6% -> mult=0.8
+      DD=7% -> mult=0.7
+      DD=10% -> mult=0.5
+      DD>10% -> mult=0.3
+
+    调仓: 仅在周频调仓时检查 DD
 
     参数:
-      max_tolerance = 8%
+      max_tolerance = 10%
       min_multiplier = 0.3
     """
-    from QuantNodes.strategy.momentum_etf_rotation.common.drawdown_controller import (
-        drawdown_multiplier)
-
     i_w = scheme_i_blended(prices)
     weights = i_w.copy()
 
     i_nav = compute_nav(prices, i_w, cost_bp=10)
 
-    equity_keys = ['v1.0', 'v7.10']
-    safe_keys = ['v9macro', 'DualMom']
+    weekly_dates = set(prices.index[4::5])
+
+    prev_mult = 1.0
 
     for i in range(252, len(prices)):
         date = prices.index[i]
-        nav_val = i_nav.iloc[i]
-        peak = i_nav.iloc[:i+1].max()
-        mult = drawdown_multiplier(nav_val, peak, V10_3K_DD_TOLERANCE)
-        mult = max(V10_3K_DD_MIN_MULT, mult)
 
-        w = dict(i_w.loc[date])
-        for key in equity_keys:
-            w[key] *= mult
-        # safe_keys stay unchanged
-        weights.loc[date] = pd.Series(w)
+        if date in weekly_dates:
+            nav_val = i_nav.iloc[i]
+            peak = i_nav.iloc[:i+1].max()
+            dd = (peak - nav_val) / peak if peak > 0 else 0
+            new_mult = _dd_mult_gentle(dd)
+            # hysteresis: 只在变化>5%时才更新
+            if abs(new_mult - prev_mult) > 0.05:
+                prev_mult = new_mult
+            weights.loc[date] = i_w.loc[date] * prev_mult
 
     return weights
 
