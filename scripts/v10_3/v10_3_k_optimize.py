@@ -62,7 +62,7 @@ def scheme_k_optimized(prices: pd.DataFrame, bp: list[float], vals: list[float],
 
 
 def objective(trial: optuna.Trial, prices: pd.DataFrame, train_slice: slice) -> float:
-    """Optuna目标: 最大化训练集Sharpe."""
+    """Optuna目标: 最大化训练集Sharpe (含成本 + 换手惩罚)."""
     # 优化断点 (确保单调递增)
     bp1 = trial.suggest_float("bp1", 0.02, 0.05)
     bp2 = trial.suggest_float("bp2", bp1 + 0.01, 0.07)
@@ -82,13 +82,21 @@ def objective(trial: optuna.Trial, prices: pd.DataFrame, train_slice: slice) -> 
     try:
         w = scheme_k_optimized(prices, bp, vals, hyst)
         w_train = w.iloc[train_slice]
+        # 含成本的 NAV
         nav_train = compute_nav(prices.iloc[train_slice], w_train, cost_bp=10)
         m = compute_metrics(nav_train)
         sharpe = m.get("Sharpe", 0)
+
+        # 换手惩罚: 每100%换手惩罚0.05 Sharpe
+        turnover = w_train.diff().abs().sum(axis=1).mean() * 252
+        cost_penalty = turnover * 0.0005
+        sharpe -= cost_penalty
+
+        # MaxDD 惩罚
         maxdd = abs(m.get("MaxDD", -1))
-        # 惩罚: MaxDD > 10% 时大幅惩罚
         if maxdd > 0.10:
             sharpe *= 0.5
+
         return sharpe
     except Exception:
         return -10.0
