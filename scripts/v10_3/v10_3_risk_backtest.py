@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from QuantNodes.strategy.momentum_etf_rotation.v10_3.risk_warning import (
+from QuantNodes.strategy.momentum_etf_rotation.risk import (
     EnsembleRiskWarning, load_etf_data, CONFIGS,
 )
 from sklearn.metrics import roc_auc_score, brier_score_loss

@@ -115,7 +115,7 @@ def _get_risk_model() -> object:
     """Lazy-load the risk warning model."""
     global V10_3H_RISK_MODEL
     if V10_3H_RISK_MODEL is None:
-        from QuantNodes.strategy.momentum_etf_rotation.v10_3.risk_warning import (
+        from QuantNodes.strategy.momentum_etf_rotation.risk import (
             EnsembleRiskWarning, load_etf_data)
         etf_data = load_etf_data()
         V10_3H_RISK_MODEL = EnsembleRiskWarning(etf_data, "equity")
@@ -134,7 +134,7 @@ def _get_all_risk_probs(date: pd.Timestamp) -> dict:
     """
     global _RISK_MODELS
     if not _RISK_MODELS:
-        from QuantNodes.strategy.momentum_etf_rotation.v10_3.risk_warning import (
+        from QuantNodes.strategy.momentum_etf_rotation.risk import (
             EnsembleRiskWarning, load_etf_data)
         etf_data = load_etf_data()
         for asset in ALL_RISK_ASSETS:

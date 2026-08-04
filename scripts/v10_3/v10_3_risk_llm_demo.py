@@ -15,10 +15,10 @@ warnings.filterwarnings("ignore")
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 
-from QuantNodes.strategy.momentum_etf_rotation.v10_3.risk_warning import (
+from QuantNodes.strategy.momentum_etf_rotation.risk import (
     AutoRiskWarning, load_etf_data,
 )
-from QuantNodes.strategy.momentum_etf_rotation.v10_3.risk_llm import LLMInterpreter
+from QuantNodes.strategy.momentum_etf_rotation.risk.llm import LLMInterpreter
 log = print
 
 
