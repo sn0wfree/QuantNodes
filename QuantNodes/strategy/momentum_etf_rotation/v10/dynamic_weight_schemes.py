@@ -618,14 +618,43 @@ def _dd_mult_gentle(dd: float) -> float:
     if dd <= 0:
         return 1.0
     if dd <= 0.04:
-        return 1.0 - dd / 0.04 * 0.1     # 1.0 -> 0.9
+        return 1.0 - dd / 0.04 * 0.1
     if dd <= 0.06:
-        return 0.9 - (dd - 0.04) / 0.02 * 0.1  # 0.9 -> 0.8
+        return 0.9 - (dd - 0.04) / 0.02 * 0.1
     if dd <= 0.07:
-        return 0.8 - (dd - 0.06) / 0.01 * 0.1  # 0.8 -> 0.7
+        return 0.8 - (dd - 0.06) / 0.01 * 0.1
     if dd <= 0.10:
-        return 0.7 - (dd - 0.07) / 0.03 * 0.2  # 0.7 -> 0.5
+        return 0.7 - (dd - 0.07) / 0.03 * 0.2
     return V10_3K_DD_MIN_MULT
+
+
+def _kelly_mult(returns_60d: pd.Series) -> float:
+    """Kelly准则确定基础仓位比例.
+
+    f* = (p*b - q) / b, 用 quarter-Kelly 保守估计.
+    返回 [0.5, 1.0].
+    """
+    if len(returns_60d) < 10:
+        return 0.8
+
+    win_rate = (returns_60d > 0).mean()
+    wins = returns_60d[returns_60d > 0]
+    losses = returns_60d[returns_60d < 0]
+
+    if len(losses) == 0 or len(wins) == 0:
+        return 0.8
+
+    odds = wins.mean() / abs(losses.mean())
+    if odds <= 0:
+        return 0.5
+
+    kelly = (win_rate * odds - (1 - win_rate)) / odds
+    kelly = max(0.0, kelly)
+
+    # quarter-Kelly
+    kelly *= 0.25
+
+    return max(0.5, min(1.0, 0.5 + kelly))
 
 
 def scheme_j_vol_target(prices: pd.DataFrame) -> pd.DataFrame:
@@ -692,7 +721,7 @@ def scheme_k_dd_control(prices: pd.DataFrame) -> pd.DataFrame:
             peak = i_nav.iloc[:i+1].max()
             dd = (peak - nav_val) / peak if peak > 0 else 0
             new_mult = _dd_mult_gentle(dd)
-            # hysteresis: 只在变化>5%时才更新
+            # hysteresis
             if abs(new_mult - prev_mult) > 0.05:
                 prev_mult = new_mult
             weights.loc[date] = i_w.loc[date] * prev_mult
