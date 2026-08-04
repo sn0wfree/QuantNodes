@@ -145,7 +145,7 @@ def _model_harrv(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
                     forecasts[fd] = m.predict(feat)[0]
         except Exception:
             continue
-    return forecasts.fillna(method="ffill")
+    return forecasts.ffill()
 
 
 def _model_climatology(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
@@ -158,7 +158,7 @@ def _model_climatology(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
             forecasts[d] = doy_vals.mean()
         else:
             forecasts[d] = hist.dropna().mean()
-    return forecasts.fillna(method="ffill")
+    return forecasts.ffill()
 
 
 def _model_ewma(rets: pd.Series, oos_idx: pd.Index, lam: float = 0.94) -> pd.Series:
@@ -173,12 +173,12 @@ def _model_ewma(rets: pd.Series, oos_idx: pd.Index, lam: float = 0.94) -> pd.Ser
     for d in oos_idx:
         if d in var_series.index:
             forecasts[d] = np.sqrt(var_series.loc[d]) * np.sqrt(252)
-    return forecasts.fillna(method="ffill")
+    return forecasts.ffill()
 
 
 def _model_current_vol(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     vol = rets.rolling(20).std() / 100 * np.sqrt(252)
-    return vol.reindex(oos_idx).fillna(method="ffill")
+    return vol.reindex(oos_idx).ffill()
 
 
 def _model_macro_equity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
@@ -225,7 +225,7 @@ def _model_macro_equity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
                     forecasts[fd] = m.predict(feat)[0]
         except Exception:
             continue
-    return forecasts.fillna(method="ffill")
+    return forecasts.ffill()
 
 
 def _model_macro_commodity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
@@ -272,7 +272,7 @@ def _model_macro_commodity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
                     forecasts[fd] = m.predict(feat)[0]
         except Exception:
             continue
-    return forecasts.fillna(method="ffill")
+    return forecasts.ffill()
 
 
 def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
@@ -318,7 +318,7 @@ def _model_macro_gold(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
                     forecasts[fd] = m.predict(feat)[0]
         except Exception:
             continue
-    return forecasts.fillna(method="ffill")
+    return forecasts.ffill()
 
 
 MACRO_MODELS = {
@@ -553,6 +553,6 @@ class EnsembleRiskWarning:
         df = pd.DataFrame({"y_true": self.y_true, "ensemble": self._ensemble_prob})
         for key in self._prob:
             df[f"prob_{key}"] = self._prob[key]
-        for i, key in enumerate(self._prob):
-            df[f"weight_{key}"] = self._ensemble_weights.iloc[:, i]
+        for key in self._prob:
+            df[f"weight_{key}"] = self._ensemble_weights[key]
         return df

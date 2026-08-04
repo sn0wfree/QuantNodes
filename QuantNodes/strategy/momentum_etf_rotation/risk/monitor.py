@@ -181,58 +181,6 @@ class ModelMonitor:
         return "\n".join(lines)
 
 
-# ── VersionManager ──────────────────────────────────────────────
-
-class VersionManager:
-    """Track weekly model version snapshots for comparison."""
-
-    def __init__(self, asset: str):
-        self.asset = asset
-        self.version_dir = MON_DIR / "versions"
-        self.version_dir.mkdir(exist_ok=True, parents=True)
-        self._seq = 0
-
-    def save(self, snapshot: dict) -> Path:
-        now = pd.Timestamp.now()
-        self._seq += 1
-        date = now.strftime("%Y-%m-%d")
-        path = self.version_dir / f"{self.asset}_v{date}_s{self._seq:03d}.parquet"
-        snapshot["version_date"] = str(now)
-        snapshot["version_seq"] = self._seq
-        pd.DataFrame([snapshot]).to_parquet(path)
-        return path
-
-    def list_versions(self) -> pd.DataFrame:
-        files = sorted(self.version_dir.glob(f"{self.asset}_v*.parquet"))
-        if not files:
-            return pd.DataFrame()
-        records = []
-        for f in files:
-            df = pd.read_parquet(f)
-            records.append(df.iloc[0].to_dict())
-        df = pd.DataFrame(records)
-        if "version_seq" in df.columns:
-            df = df.sort_values("version_seq")
-        return df
-
-    def compare(self, seq1: int, seq2: int) -> dict:
-        files = sorted(self.version_dir.glob(f"{self.asset}_v*_s{seq1:03d}.parquet"))
-        f1 = files[0] if files else None
-        files = sorted(self.version_dir.glob(f"{self.asset}_v*_s{seq2:03d}.parquet"))
-        f2 = files[0] if files else None
-        if f1 is None or f2 is None:
-            return {"error": f"Version not found: {seq1} or {seq2}"}
-        d1 = pd.read_parquet(f1).iloc[0]
-        d2 = pd.read_parquet(f2).iloc[0]
-        diff = {}
-        for col in d1.index:
-            if col in d2.index:
-                v1, v2 = d1[col], d2[col]
-                if isinstance(v1, (int, float)) and isinstance(v2, (int, float)):
-                    diff[col] = float(v2 - v1)
-        return diff
-
-
 # ── SelfEvaluator ────────────────────────────────────────────────
 
 class SelfEvaluator:

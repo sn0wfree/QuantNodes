@@ -61,18 +61,16 @@ class VersionManager:
         return diff
 
 
-# ── SelfEvaluator ────────────────────────────────────────────────
-
 # ── AutoRiskWarning ──────────────────────────────────────────────
 
 class AutoRiskWarning:
     """Automatic learning framework: Bayesian weights + self-evaluation + versioning.
 
     Weekly workflow:
-      1. Evaluate all 4 layers
+      1. Evaluate all layers
       2. Bayesian weight update (Dirichlet prior)
       3. SelfEvaluator health score
-      4. Route action based on status
+      4. AutoOptimizer route action based on status
       5. Save version snapshot
 
     Usage:
@@ -86,6 +84,7 @@ class AutoRiskWarning:
         self.asset = asset
         self.evaluator = SelfEvaluator(self.rw)
         self.versions = VersionManager(asset)
+        self.optimizer = AutoOptimizer(self.rw)
         self._init_weights()
 
     def _init_weights(self):
@@ -99,9 +98,7 @@ class AutoRiskWarning:
         prob = self.rw._prob[key]
         yt = self.rw.y_true.reindex(prob.index).dropna()
         common = yt.index.intersection(prob.dropna().index)
-        if len(common) < window:
-            common = common
-        else:
+        if len(common) >= window:
             common = common[-window:]
         if len(common) < 10:
             return 0.25
@@ -145,10 +142,14 @@ class AutoRiskWarning:
     def weekly_update(self) -> dict:
         self.evaluator.refresh()
         self._update_weights_bayesian()
+        status = self.evaluator.status()
+        opt_result = self.optimizer.run(status)
         detail = self.evaluator.detail()
         detail["weights"] = dict(self.weights)
         detail["weight_uncertainty"] = dict(self.weight_uncertainty)
         detail["alpha"] = self.alpha.tolist()
+        detail["optimizer"] = opt_result
+        detail["fallback_active"] = self.optimizer.fallback_active
         self.versions.save(detail)
         return detail
 
@@ -210,31 +211,3 @@ class AutoOptimizer:
         self.rw._ensemble_prob = self.rw._prob["climatology"].copy()
         self.fallback_active = True
         return True
-
-
-# ── Integrated AutoRiskWarning.weekly_update ────────────────────
-
-# Patch: override weekly_update in AutoRiskWarning to include AutoOptimizer
-def _auto_weekly_update(self) -> dict:
-    self.evaluator.refresh()
-    self._update_weights_bayesian()
-    status = self.evaluator.status()
-    opt_result = self.optimizer.run(status)
-    detail = self.evaluator.detail()
-    detail["weights"] = dict(self.weights)
-    detail["weight_uncertainty"] = dict(self.weight_uncertainty)
-    detail["alpha"] = self.alpha.tolist()
-    detail["optimizer"] = opt_result
-    detail["fallback_active"] = self.optimizer.fallback_active
-    self.versions.save(detail)
-    return detail
-
-# Apply the patch
-AutoRiskWarning.weekly_update = _auto_weekly_update
-
-# Update __init__ to include optimizer
-_orig_init = AutoRiskWarning.__init__
-def _auto_init(self, etf_data: pd.DataFrame, asset: str):
-    _orig_init(self, etf_data, asset)
-    self.optimizer = AutoOptimizer(self.rw)
-AutoRiskWarning.__init__ = _auto_init
