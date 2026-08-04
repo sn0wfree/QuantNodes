@@ -9,6 +9,7 @@
       Layer 1: equity 风险 → 动态防御底仓
       Layer 2: 商品/黄金风险 → 子策略权重调节
       Layer 3: 系统性风险 → 全防御
+   I: Blended - 连续风险-趋势混合, 无二元切换
 
 Baseline:
   Static: 固定权重 (74/9/12/5)
@@ -67,6 +68,11 @@ V10_3H_V1_NORMAL = 0.25       # 低风险时 v1.0 最低权重
 V10_3H_V1_HIGH = 0.90         # 高风险时 v1.0 最高权重
 V10_3H_RISK_MODEL = None      # 延迟初始化: EnsembleRiskWarning 实例
 
+# v10.3 Blended (I) 参数
+V10_3I_RISK_WEIGHT = 0.6      # 风险因子权重 (1-趋势权重)
+V10_3I_V1_LOW = 0.25          # 最低 v1.0 权重
+V10_3I_V1_HIGH = 0.90         # 最高 v1.0 权重
+
 
 def _risk_prob_to_min_defensive(prob: float) -> float:
     """Map risk probability [0,1] to min_defensive [0.25, 0.90].
@@ -87,6 +93,22 @@ def _risk_prob_to_min_defensive(prob: float) -> float:
     if prob <= 0.9:
         return 0.65 + (prob - 0.7) * (0.85 - 0.65) / 0.2
     return 0.90
+
+
+def blended_min_defensive(trend_strength: float, risk_prob: float) -> float:
+    """Continuous min_defensive based on trend and risk.
+
+    Args:
+        trend_strength: [0,1], 0=weak trend, 1=strong trend
+        risk_prob: [0,1], 0=low risk, 1=high risk
+
+    Returns:
+        min_defensive: [V10_3I_V1_LOW, V10_3I_V1_HIGH]
+    """
+    risk_factor = risk_prob
+    trend_factor = 1 - trend_strength
+    combined = V10_3I_RISK_WEIGHT * risk_factor + (1 - V10_3I_RISK_WEIGHT) * trend_factor
+    return V10_3I_V1_LOW + combined * (V10_3I_V1_HIGH - V10_3I_V1_LOW)
 
 
 def _get_risk_model() -> object:
@@ -531,6 +553,53 @@ def scheme_h_risk_aware(prices: pd.DataFrame) -> pd.DataFrame:
     return weights
 
 
+def scheme_i_blended(prices: pd.DataFrame) -> pd.DataFrame:
+    """v10.3 I: Blended - 连续风险-趋势混合.
+
+    核心: 用 risk_prob + trend_strength 连续混合, 不做二元切换.
+    - trend_strength: 5日市场收益归一化到 [0,1]
+    - risk_prob: equity风险概率 [0,1]
+    - min_defensive = f(trend_strength, risk_prob) 连续变化
+
+    调仓: 始终周频 (weekly_dates)
+    """
+    weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+
+    weekly_dates = set(prices.index[4::5])
+
+    market_ret_5d = prices['v7.10'].pct_change(V10_3G_TREND_WINDOW)
+    trend_raw = market_ret_5d / (V10_3G_TREND_THRESH * 2)
+    trend_strength = trend_raw.clip(0, 1)
+
+    risk_model = None
+
+    prev_w = dict(BASE_WEIGHTS)
+    for i in range(min(252, len(prices))):
+        weights.iloc[i] = prev_w
+
+    last_trade_w = dict(BASE_WEIGHTS)
+    for i in range(252, len(prices)):
+        date = prices.index[i]
+
+        if date in weekly_dates:
+            if risk_model is None:
+                risk_model = _get_risk_model()
+            equity_prob = risk_model.predict(date)
+            ts = trend_strength.iloc[i] if i < len(trend_strength) else 0.5
+            min_def = blended_min_defensive(ts, equity_prob)
+            target = _compute_target_weights(prices, i)
+            all_probs = _get_all_risk_probs(date)
+            adjusted = _apply_risk_layers(target, prev_w, all_probs)
+            change = sum(abs(adjusted.get(k, 0) - last_trade_w.get(k, 0)) for k in adjusted)
+            if change > V10_3G_WEEKLY_MIN_CHANGE:
+                prev_w = _apply_constraints(adjusted, prev_w, min_defensive=min_def)
+                last_trade_w = dict(prev_w)
+
+        weights.loc[date] = prev_w
+
+    return weights
+
+
 def _compute_sharpes(prices: pd.DataFrame, i: int) -> dict:
     """计算各策略近 12M Sharpe."""
     sharpes = {}
@@ -576,6 +645,7 @@ def main():
         'F_v10_3_conservative': scheme_f_conservative,
         'G_v10_3_trend_adaptive': scheme_g_trend_adaptive,
         'H_v10_3_risk_aware': scheme_h_risk_aware,
+        'I_v10_3_blended': scheme_i_blended,
     }
 
     # 静态 baseline
