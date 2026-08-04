@@ -600,6 +600,75 @@ def scheme_i_blended(prices: pd.DataFrame) -> pd.DataFrame:
     return weights
 
 
+V10_3J_TARGET_VOL = 0.07       # 目标年化波动率 7%
+V10_3J_VOL_LOOKBACK = 60       # 已实现波动率回看窗口 (天)
+V10_3J_MIN_SCALE = 0.5         # 最小缩放系数
+V10_3J_MAX_SCALE = 1.5         # 最大缩放系数
+
+V10_3K_DD_TOLERANCE = 0.08     # 最大容忍回撤 8%
+V10_3K_DD_MIN_MULT = 0.3       # 最小缩放系数
+
+
+def scheme_j_vol_target(prices: pd.DataFrame) -> pd.DataFrame:
+    """v10.3 J: I方案 + 波动率目标.
+
+    在 I 方案基础上, 用已实现波动率缩放总仓位:
+      scale = target_vol / realized_vol
+      当 realized_vol 高时减仓, 低时加仓
+
+    参数:
+      target_vol = 7% (年化)
+      lookback = 60天
+      min_scale = 0.5, max_scale = 1.5
+    """
+    i_w = scheme_i_blended(prices)
+    weights = i_w.copy()
+
+    port_rets = (i_w * prices.pct_change()).sum(axis=1)
+
+    for i in range(V10_3J_VOL_LOOKBACK + 252, len(prices)):
+        date = prices.index[i]
+        realized_vol = port_rets.iloc[i-V10_3J_VOL_LOOKBACK:i].std() * np.sqrt(252)
+        if realized_vol > 0:
+            scale = V10_3J_TARGET_VOL / realized_vol
+            scale = max(V10_3J_MIN_SCALE, min(V10_3J_MAX_SCALE, scale))
+        else:
+            scale = 1.0
+        weights.loc[date] = i_w.loc[date] * scale
+
+    return weights
+
+
+def scheme_k_dd_control(prices: pd.DataFrame) -> pd.DataFrame:
+    """v10.3 K: I方案 + 回撤控制器 (Grossman-Zhou).
+
+    在 I 方案基础上, 当回撤超过阈值时线性降低仓位:
+      dd = (peak - equity) / peak
+      multiplier = max(min_mult, 1 - dd / tolerance)
+
+    参数:
+      max_tolerance = 8%
+      min_multiplier = 0.3
+    """
+    from QuantNodes.strategy.momentum_etf_rotation.common.drawdown_controller import (
+        drawdown_multiplier)
+
+    i_w = scheme_i_blended(prices)
+    weights = i_w.copy()
+
+    i_nav = compute_nav(prices, i_w, cost_bp=10)
+
+    for i in range(252, len(prices)):
+        date = prices.index[i]
+        nav_val = i_nav.iloc[i]
+        peak = i_nav.iloc[:i+1].max()
+        mult = drawdown_multiplier(nav_val, peak, V10_3K_DD_TOLERANCE)
+        mult = max(V10_3K_DD_MIN_MULT, mult)
+        weights.loc[date] = i_w.loc[date] * mult
+
+    return weights
+
+
 def _compute_sharpes(prices: pd.DataFrame, i: int) -> dict:
     """计算各策略近 12M Sharpe."""
     sharpes = {}
@@ -646,6 +715,8 @@ def main():
         'G_v10_3_trend_adaptive': scheme_g_trend_adaptive,
         'H_v10_3_risk_aware': scheme_h_risk_aware,
         'I_v10_3_blended': scheme_i_blended,
+        'J_v10_3_vol_target': scheme_j_vol_target,
+        'K_v10_3_dd_control': scheme_k_dd_control,
     }
 
     # 静态 baseline
