@@ -228,6 +228,114 @@ def _model_macro_equity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     return forecasts.ffill()
 
 
+def _model_macro_equity_v3(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Series, pd.Series]:
+    """Equity macro model v3: Bootstrap ElasticNet with expanded factors.
+
+    Factors:
+        - vix_z: VIX 252-day z-score
+        - vix_change_5d: VIX 5-day percentage change
+        - vix_rank20: VIX 20-day percentile rank
+        - vol_20d: 20-day realized volatility
+        - vol_5d: 5-day realized volatility
+        - gk_vol_20d: Garman-Klass 20-day volatility
+        - vol_ratio: Volume ratio (current / 20-day avg)
+        - pcr_volume: Put-Call Ratio (volume)
+    """
+    from sklearn.linear_model import ElasticNet
+    from sklearn.preprocessing import StandardScaler
+
+    # ── VIX factors ──
+    vix = pd.read_parquet(HF_DIR / "macro_vix_daily.parquet")["vix"]
+    vix.index = pd.to_datetime(vix.index)
+    idx = rets.index
+    vix = vix.reindex(idx).ffill()
+
+    vix_z = (vix - vix.rolling(252).mean()) / vix.rolling(252).std().clip(lower=1e-6)
+    vix_change_5d = vix.pct_change(5)
+    vix_rank20 = vix.rolling(20).rank(pct=True)
+
+    # ── HAR-RV components ──
+    vol_20d = rets.rolling(20).std()
+    vol_5d = rets.rolling(5).std()
+
+    # ── Garman-Klass volatility ──
+    ohlcv = pd.read_parquet(REPO / "data/real/etf_ohlcv_2018-01-01_2026-06-30.parquet")
+    o = ohlcv["510300"]["open"].reindex(idx).ffill()
+    h = ohlcv["510300"]["high"].reindex(idx).ffill()
+    l = ohlcv["510300"]["low"].reindex(idx).ffill()
+    c = ohlcv["510300"]["close"].reindex(idx).ffill()
+    gk = np.sqrt((0.5 * np.log(h / l) ** 2) - ((2 * np.log(2) - 1) * np.log(c / o) ** 2))
+    gk_vol_20d = gk.rolling(20).mean()
+
+    # ── Volume ratio ──
+    v = ohlcv["510300"]["volume"].reindex(idx).ffill()
+    vol_ratio = v / v.rolling(20).mean()
+
+    # ── Put-Call Ratio from DuckDB ──
+    try:
+        import duckdb
+        db_path = str(REPO.parent / "DataCache/futures_options_daily.duckdb")
+        conn = duckdb.connect(db_path, read_only=True)
+        pcr_df = conn.execute("""
+            SELECT trade_date as date, pcr_volume
+            FROM options_pcr_daily
+            WHERE product = 'IO'
+        """).fetchdf()
+        conn.close()
+        pcr_df["date"] = pd.to_datetime(pcr_df["date"])
+        pcr_df = pcr_df.set_index("date").sort_index()
+        pcr = pcr_df["pcr_volume"].reindex(idx).ffill()
+    except Exception:
+        pcr = pd.Series(index=idx, dtype=float)
+
+    # ── Assemble factor matrix ──
+    names = ["vix_z", "vix_change_5d", "vix_rank20", "vol_20d", "vol_5d",
+             "gk_vol_20d", "vol_ratio", "pcr"]
+    arrays = [vix_z, vix_change_5d, vix_rank20, vol_20d, vol_5d,
+              gk_vol_20d, vol_ratio, pcr]
+
+    fwd_vol = rets.rolling(20).std().shift(-20) / 100 * np.sqrt(252)
+    forecasts = pd.Series(index=oos_idx, dtype=float)
+    uncertainty = pd.Series(index=oos_idx, dtype=float)
+
+    for rd in oos_idx[::20]:
+        ri = idx.get_indexer([rd], method="ffill")[0]
+        if ri < 504:
+            continue
+        X = pd.DataFrame({n: f.loc[:rd] for n, f in zip(names, arrays)})
+        y = fwd_vol.loc[:rd]
+        valid = X.notna().all(axis=1) & y.notna()
+        Xc, yc = X.loc[valid].values, y.loc[valid].values
+        if len(Xc) < 100:
+            continue
+        scaler = StandardScaler()
+        Xc_scaled = scaler.fit_transform(Xc)
+        try:
+            rng = np.random.RandomState(42)
+            boot_models = []
+            for _ in range(50):
+                boot_idx = rng.choice(len(Xc), size=len(Xc), replace=True)
+                m = ElasticNet(alpha=0.01, l1_ratio=0.5, fit_intercept=False,
+                               max_iter=10000, random_state=42)
+                m.fit(Xc_scaled[boot_idx], yc[boot_idx])
+                boot_models.append(m)
+            for fd in pd.bdate_range(rd + pd.Timedelta(days=1), periods=20):
+                if fd not in forecasts.index:
+                    continue
+                fi = idx.get_indexer([fd], method="ffill")[0]
+                if fi < 1:
+                    continue
+                feat = np.array([f.iloc[fi - 1] for f in arrays]).reshape(1, -1)
+                if not np.any(np.isnan(feat)):
+                    feat_scaled = scaler.transform(feat)
+                    preds = np.array([bm.predict(feat_scaled)[0] for bm in boot_models])
+                    forecasts[fd] = preds.mean()
+                    uncertainty[fd] = preds.std()
+        except Exception:
+            continue
+    return forecasts, uncertainty
+
+
 def _model_macro_commodity(rets: pd.Series, oos_idx: pd.Index) -> pd.Series:
     from sklearn.linear_model import LinearRegression
     dxy = pd.read_parquet(HF_DIR / "macro_dxy_daily_v2.parquet")["dxy"]
@@ -582,7 +690,7 @@ def _model_macro_commodity_v2(rets: pd.Series, oos_idx: pd.Index) -> tuple[pd.Se
 
 
 MACRO_MODELS = {
-    "equity": _model_macro_equity,
+    "equity": _model_macro_equity_v3,
     "commodity": _model_macro_commodity_v2,
     "gold": _model_macro_gold,
 }
@@ -681,10 +789,8 @@ class EnsembleRiskWarning:
                 models[key] = MODEL_FNS[key]
 
         for key, fn in models.items():
-            if key == "macro" and self.asset in ("gold", "commodity"):
+            if key == "macro" and self.asset in ("gold", "commodity", "equity"):
                 self._raw[key], self._macro_uncertainty = fn(self.rets, self.oos_idx)
-            elif key == "macro" and self.asset == "equity":
-                self._raw[key] = fn(self.rets, self.oos_idx)
             else:
                 self._raw[key] = fn(self.rets, self.oos_idx)
             common = self._raw[key].dropna().index.intersection(self.y_true.dropna().index)
