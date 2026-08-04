@@ -5,7 +5,10 @@
   D: 信号强度加权 (Signal-Weighted) — 基准方案
   F: Conservative - D + 防御底仓 + 换手上限 + hysteresis
   G: Trend-Adaptive - F + v10.2 TrendFilter (生产推荐)
-   H: Risk-Aware - G + EnsembleRiskWarning 动态防御底仓
+   H: Risk-Aware - G + 三层防御:
+      Layer 1: equity 风险 → 动态防御底仓
+      Layer 2: 商品/黄金风险 → 子策略权重调节
+      Layer 3: 系统性风险 → 全防御
 
 Baseline:
   Static: 固定权重 (74/9/12/5)
@@ -95,6 +98,61 @@ def _get_risk_model() -> object:
         etf_data = load_etf_data()
         V10_3H_RISK_MODEL = EnsembleRiskWarning(etf_data, "equity")
     return V10_3H_RISK_MODEL
+
+
+ALL_RISK_ASSETS = ["equity", "commodity", "gold", "soybean",
+                   "silver", "energy_chem", "commodity_ex_gold"]
+_RISK_MODELS = {}
+
+
+def _get_all_risk_probs(date: pd.Timestamp) -> dict:
+    """Get risk probabilities for all 7 assets.
+
+    Lazy-loads individual models and caches them.
+    """
+    global _RISK_MODELS
+    if not _RISK_MODELS:
+        from QuantNodes.strategy.momentum_etf_rotation.v10_3.risk_warning import (
+            EnsembleRiskWarning, load_etf_data)
+        etf_data = load_etf_data()
+        for asset in ALL_RISK_ASSETS:
+            _RISK_MODELS[asset] = EnsembleRiskWarning(etf_data, asset)
+    return {a: m.predict(date) for a, m in _RISK_MODELS.items()}
+
+
+def _apply_risk_layers(target: dict, prev_w: dict, probs: dict) -> dict:
+    """Three-layer risk-aware weight adjustment.
+
+    Layer 1: equity risk → min_defensive (handled by caller via _apply_constraints)
+    Layer 2: sub-strategy adjustments per asset risk
+    Layer 3: systemic risk → full defense when 3+ assets are high risk
+    """
+    w = dict(target)
+
+    # Layer 2: sub-strategy adjustments
+    if probs.get("commodity_ex_gold", 0) > 0.7:
+        w["v7.10"] = w.get("v7.10", 0) * 0.5
+    if probs.get("gold", 0) > 0.7:
+        w["v9macro"] = w.get("v9macro", 0) * 1.2
+    if probs.get("silver", 0) > 0.7:
+        w["DualMom"] = w.get("DualMom", 0) * 0.5
+
+    # Layer 3: systemic risk
+    high_risk = sum(
+        probs.get(a, 0) > 0.8
+        for a in ["equity", "commodity", "gold", "silver", "commodity_ex_gold"]
+    )
+    if high_risk >= 3:
+        w = {k: 0.0 for k in w}
+        w["v1.0"] = 0.90
+        return w
+
+    for k in w:
+        w[k] = max(0.0, w[k])
+    total = sum(w.values())
+    if total > 0:
+        w = {k: v / total for k, v in w.items()}
+    return w
 
 
 def load_navs() -> pd.DataFrame:
@@ -411,16 +469,15 @@ def scheme_g_trend_adaptive(prices: pd.DataFrame) -> pd.DataFrame:
 
 
 def scheme_h_risk_aware(prices: pd.DataFrame) -> pd.DataFrame:
-    """v10.3 H: Risk-Aware - G + 风险预警动态防御底仓.
+    """v10.3 H: Risk-Aware - 三层防御.
 
-    在 G 基础上叠加 EnsembleRiskWarning 风险概率:
+    Layer 1: equity 风险 → 动态防御底仓 (min_defensive)
+    Layer 2: 商品/黄金风险 → 子策略权重调节
+    Layer 3: 系统性风险 → 3+ 资产高风险时强制全防御
+
+    趋势逻辑同 G:
       - 5 日市场收益 > 2.5% → D 模式 (signal-weighted)
-      - 5 日市场收益 < 1.5% → F 模式, 但 min_defensive 由风险概率动态决定
-        prob=0.3 → 0.25, prob=0.5 → 0.40, prob=0.7 → 0.60, prob=0.9 → 0.85
-
-    调仓规则同 G:
-      - 月度: 强制调仓 (所有模式)
-      - 周度: D 模式可选, 变化率 < 5% 不调仓
+      - 5 日市场收益 < 1.5% → F 模式 (risk-aware)
     """
     weights = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
 
@@ -462,10 +519,12 @@ def scheme_h_risk_aware(prices: pd.DataFrame) -> pd.DataFrame:
         elif date in monthly_dates:
             if risk_model is None:
                 risk_model = _get_risk_model()
-            risk_prob = risk_model.predict(date)
-            min_def = _risk_prob_to_min_defensive(risk_prob)
+            equity_prob = risk_model.predict(date)
+            min_def = _risk_prob_to_min_defensive(equity_prob)
             target = _compute_target_weights(prices, i)
-            prev_w = _apply_constraints(target, prev_w, min_defensive=min_def)
+            all_probs = _get_all_risk_probs(date)
+            adjusted = _apply_risk_layers(target, prev_w, all_probs)
+            prev_w = _apply_constraints(adjusted, prev_w, min_defensive=min_def)
 
         weights.loc[date] = prev_w
 
