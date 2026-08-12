@@ -65,6 +65,21 @@ def _mk_spread(n=120):
     return pd.DataFrame(rows)
 
 
+def _mk_vix_series(n=260):
+    """VIX 序列: 前平后升."""
+    idx = pd.date_range("2024-01-01", periods=n, freq="B")
+    return pd.Series(
+        np.concatenate([np.full(n // 2, 15.0), np.linspace(15, 35, n - n // 2)]),
+        index=idx,
+    )
+
+
+def _mk_dxy_series(n=260):
+    """DXY 序列."""
+    idx = pd.date_range("2024-01-01", periods=n, freq="B")
+    return pd.Series(np.linspace(100, 105, n), index=idx)
+
+
 def _mk_basis(n=120):
     idx = pd.date_range("2024-01-01", periods=n, freq="B")
     return pd.DataFrame({
@@ -121,14 +136,29 @@ _FACTOR_INPUTS = {
     "TurnoverFactor": lambda: _mk_vol_oi(),
     "VolumeConfirmationFactor": lambda: _mk_vol_oi(),
     "PriceVolumeDivergenceFactor": lambda: _mk_vol_oi(),
+    "OIPriceDivergenceFactor": lambda: _mk_vol_oi(),
     # 期限结构 (spread long-form)
     "BasisFactor": lambda: (_mk_spread(), {}),
     "RollYieldFactor": lambda: (_mk_spread(), {}),
     "TermSlopeFactor": lambda: (_mk_spread(), {}),
     "TermCurvatureFactor": lambda: (_mk_spread(), {}),
     "NearBasisFactor": lambda: (_mk_basis(), {}),
+    "BasisMomentumFactor": lambda: (_mk_basis(), {}),
+    "BasisLevelFactor": lambda: (_mk_basis(), {}),
     "OIConcentrationFactor": lambda: (_mk_spread(), {}),
     "FrontMonthOIShareFactor": lambda: (_mk_spread(), {}),
+    # 风险类 (价格面板)
+    "DownsideVolFactor": lambda: (_mk_prices(), {}),
+    "MaxDrawdownFactor": lambda: (_mk_prices(), {}),
+    "TailRiskFactor": lambda: (_mk_prices(), {}),
+    # 事件类 (价格面板)
+    "ExtremeMoveFactor": lambda: (_mk_prices(), {}),
+    "GapStreakFactor": lambda: (_mk_prices(), {}),
+    "LimitMoveFactor": lambda: (_mk_prices(), {}),
+    # 宏观联动 (价格面板 + vix/dxy 序列)
+    "VIXLinkFactor": lambda: (_mk_prices(), {}),
+    "DXYLinkFactor": lambda: (_mk_prices(), {}),
+    "MacroStateFactor": lambda: (_mk_prices(), {}),
     # 产业链
     "ChainMarginFactor": lambda: (_mk_prices(), {}),
     "PriceRatioFactor": lambda: (_mk_prices(), {}),
@@ -178,9 +208,11 @@ def _compute(instance, name):
     """调用 compute, 处理不同签名."""
     args, kwargs = _get_inputs(name)
     if name in ("VolumeTrendFactor", "OBVFactor", "VolumeConfirmationFactor",
-                "PriceVolumeDivergenceFactor"):
+                "PriceVolumeDivergenceFactor", "OIPriceDivergenceFactor"):
         prices = _mk_prices()
-        vols, _ = _mk_vol_oi()
+        vols, ois = _mk_vol_oi()
+        if name == "OIPriceDivergenceFactor":
+            return instance.compute(prices, ois, **kwargs)
         return instance.compute(prices, vols, **kwargs)
     if name in ("VolumeBreakoutFactor",):
         _, vols = _mk_vol_oi()
@@ -205,12 +237,18 @@ def _compute(instance, name):
         return instance.compute(_mk_spread(), **kwargs)
     if name == "NearBasisFactor":
         return instance.compute(_mk_basis(), **kwargs)
+    if name in ("BasisMomentumFactor", "BasisLevelFactor"):
+        return instance.compute(_mk_basis(), **kwargs)
     if name in ("ChainMarginFactor", "MarginMomentumFactor"):
         return instance.compute(_mk_prices(), **kwargs)
     if name == "PriceRatioFactor":
         return instance.compute(_mk_prices(), **kwargs)
     if name == "LeadLagFactor":
         return instance.compute(_mk_prices(), **kwargs)
+    if name in ("VIXLinkFactor", "MacroStateFactor"):
+        return instance.compute(_mk_prices(), _mk_vix_series(), **kwargs)
+    if name == "DXYLinkFactor":
+        return instance.compute(_mk_prices(), _mk_dxy_series(), **kwargs)
     return instance.compute(_mk_prices(), **kwargs)
 
 

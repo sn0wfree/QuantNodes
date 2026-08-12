@@ -187,3 +187,37 @@ class VolumePriceCorrFactor(Factor):
         sig[corr > self.threshold] = 1.0
         sig[corr < -self.threshold] = -1.0
         return sig
+
+
+class OIPriceDivergenceFactor(Factor):
+    """持仓量-价格背离因子.
+
+    价涨仓减 (OI 降) → 多头获利了结 → 反转预警 (顶背离);
+    价跌仓增 (OI 升) → 空头加仓 → 趋势延续 (顺势空).
+    研报: 中信期货资金面/持仓结构研究.
+
+    参数:
+        window: OI 变化窗口
+        price_window: 价格变化窗口
+    """
+
+    name = "oi_price_divergence"
+
+    def __init__(self, window: int = 5, price_window: int = 5):
+        self.window = window
+        self.price_window = price_window
+
+    def compute(self, prices: pd.DataFrame, open_interest: pd.DataFrame,
+                **kwargs) -> pd.DataFrame:
+        price_ret = prices.pct_change(self.price_window)
+        oi_change = open_interest.diff(self.window)
+        sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+        # 价涨仓减 → 顶背离 → 空
+        sig[(price_ret > 0) & (oi_change < 0)] = -1.0
+        # 价跌仓增 → 空头加仓 → 顺势空
+        sig[(price_ret < 0) & (oi_change > 0)] = -1.0
+        # 价涨仓增 → 多头加仓 → 顺势多
+        sig[(price_ret > 0) & (oi_change > 0)] = 1.0
+        # 价跌仓减 → 空头回补 → 底背离 → 多
+        sig[(price_ret < 0) & (oi_change < 0)] = 1.0
+        return sig

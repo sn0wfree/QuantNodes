@@ -14,6 +14,10 @@
 | **微观结构** | `microstructure.py` | Overnight / Intraday / Divergence / Gap / CloseLocation |
 | **复合增强** | `composite.py` | MultiHorizonMomentum / SharpeMomentum / MomentumCrashFilter |
 | **产业链** | `industrial_chain.py` | ChainMargin / PriceRatio / MarginMomentum / LeadLag |
+| **基差动量** | `basis_momentum.py` | BasisMomentum / BasisLevel |
+| **风险类** | `risk.py` | DownsideVol / MaxDrawdown / TailRisk |
+| **宏观联动** | `macro_link.py` | VIXLink / DXYLink / MacroState |
+| **事件/跳变** | `event.py` | ExtremeMove / GapStreak / LimitMove |
 | **日历效应** | `calendar.py` | Seasonality / Weekday / MonthTurn |
 | **资金面** | `capital.py` | CapitalInflow / Turnover |
 | **持仓结构** | `position.py` | OIConcentration / FrontMonthOIShare |
@@ -54,6 +58,7 @@
 | 因子 | 逻辑 | 参数 | 用途 |
 |---|---|---|---|
 | `VolumeTrendFactor` | 价方向 × 量方向 | window=20 | 量价配合确认 |
+| `OIPriceDivergenceFactor` | 价与持仓量背离 (增仓涨/减仓跌) | window=5 | 持仓-价格背离 |
 | `VolumeBreakoutFactor` | 量 > N 日均量 × 倍数 | multiplier=2 | 放量突破 |
 | `OpenInterestTrendFactor` | sign(OI 变化) | window=5 | 持仓增减方向 |
 | `OBVFactor` | sign(OBV 变化) | window=20 | 能量潮趋势 |
@@ -112,7 +117,42 @@
 
 内置配方 (8 个): steel_profit_rb/hc, coke_profit, pta_fee, polyester_profit, mto_profit, crush_profit, hog_feed_cost
 
-### 九、日历效应因子 (`calendar.py`)
+### 九、基差动量因子 (`basis_momentum.py`)
+
+基于 spot_basis_daily 基差率 (近月/主力):
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `BasisMomentumFactor` | 基差率变化方向 | window=10 | 基差走强/走弱 |
+| `BasisLevelFactor` | 基差率水平 (贴水/升水) | window=5, threshold=0.005 | 期现基差回归 |
+
+### 十、风险类因子 (`risk.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `DownsideVolFactor` | 下行波动率 z-score | window=20 | 下跌风险 |
+| `MaxDrawdownFactor` | 滚动最大回撤 z-score | window=60 | 回撤风险 |
+| `TailRiskFactor` | 历史 VaR (5% 分位) z-score | window=60 | 尾部风险 |
+
+### 十一、宏观联动因子 (`macro_link.py`)
+
+基于 VIX/DXY 宏观指标 (data/high_freq_macro):
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `VIXLinkFactor` | VIX 大涨 → 商品空 (risk-off) | window=5 | 风险偏好 |
+| `DXYLinkFactor` | 美元走强 → 商品空 | window=5 | 美元-商品跷跷板 |
+| `MacroStateFactor` | VIX 高位+上升 → risk-off | vix_window=20 | 宏观状态择时 |
+
+### 十二、事件/跳变因子 (`event.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `ExtremeMoveFactor` | 单日极端涨跌 | window=20, mult=3 | 极端事件 |
+| `GapStreakFactor` | 连续同向跳空计数 | streak=3 | 跳空趋势 |
+| `LimitMoveFactor` | 接近涨跌停 | limit_pct=0.05 | 涨跌停事件 |
+
+### 十三、日历效应因子 (`calendar.py`)
 
 | 因子 | 逻辑 | 参数 | 用途 |
 |---|---|---|---|

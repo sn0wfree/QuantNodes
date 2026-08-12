@@ -59,6 +59,7 @@ from .volatility import (
 )
 from .volume import (
     AmihudFactor,
+    OIPriceDivergenceFactor,
     OBVFactor,
     OpenInterestTrendFactor,
     VolOIRatioFactor,
@@ -118,6 +119,25 @@ from .correlation import (
     AvgCorrelationFactor,
     DispersionFactor,
 )
+from .basis_momentum import (
+    BasisLevelFactor,
+    BasisMomentumFactor,
+)
+from .risk import (
+    DownsideVolFactor,
+    MaxDrawdownFactor,
+    TailRiskFactor,
+)
+from .macro_link import (
+    DXYLinkFactor,
+    MacroStateFactor,
+    VIXLinkFactor,
+)
+from .event import (
+    ExtremeMoveFactor,
+    GapStreakFactor,
+    LimitMoveFactor,
+)
 
 __all__ = [
     # base
@@ -160,6 +180,7 @@ __all__ = [
     "vol_target_positions",
     # volume
     "AmihudFactor",
+    "OIPriceDivergenceFactor",
     "OBVFactor",
     "OpenInterestTrendFactor",
     "VolOIRatioFactor",
@@ -208,4 +229,19 @@ __all__ = [
     # correlation
     "AvgCorrelationFactor",
     "DispersionFactor",
+    # basis momentum
+    "BasisLevelFactor",
+    "BasisMomentumFactor",
+    # risk
+    "DownsideVolFactor",
+    "MaxDrawdownFactor",
+    "TailRiskFactor",
+    # macro link
+    "DXYLinkFactor",
+    "MacroStateFactor",
+    "VIXLinkFactor",
+    # event
+    "ExtremeMoveFactor",
+    "GapStreakFactor",
+    "LimitMoveFactor",
 ]

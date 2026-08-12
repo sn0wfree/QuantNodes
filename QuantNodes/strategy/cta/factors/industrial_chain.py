@@ -7,7 +7,7 @@
     - MarginMomentumFactor: 利润动量因子 (利润变化方向)
     - LeadLagFactor: 上下游传导因子 (上游对下游滚动相关)
 
-内置主流产业链配方 (见 docs/91-产业链上下游因子调研.md).
+内置主流产业链配方 (见 docs/93-CTA因子调研合集.md).
 """
 from __future__ import annotations
 
