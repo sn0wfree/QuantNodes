@@ -102,3 +102,38 @@ class BasisXSFactor(Factor):
             sig.loc[date, row > hi] = 1.0      # 贴水深 → 多
             sig.loc[date, row < lo] = -1.0     # 升水深 → 空
         return sig
+
+
+class AmihudXSFactor(Factor):
+    """横截面非流动性因子.
+
+    非流动性低 (流动性好) 的品种相对表现更优:
+    signal = +1 非流动性排名低 (流动性好) → 多; 高 → 空.
+    研报: Amihud (2002) 横截面应用.
+
+    参数:
+        window: Amihud 计算窗口
+        top_pct: 多空分组分位
+    """
+
+    name = "amihud_xs"
+
+    def __init__(self, window: int = 20, top_pct: float = 0.2):
+        self.window = window
+        self.top_pct = top_pct
+
+    def compute(self, prices: pd.DataFrame, volumes: pd.DataFrame,
+                **kwargs) -> pd.DataFrame:
+        ret = prices.pct_change().abs()
+        illiq = ret / volumes.replace(0, np.nan)
+        illiq_smooth = illiq.rolling(self.window).mean()
+        sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+        for date in illiq_smooth.index:
+            row = illiq_smooth.loc[date].dropna()
+            if len(row) < 3:
+                continue
+            lo = row.quantile(self.top_pct)
+            hi = row.quantile(1 - self.top_pct)
+            sig.loc[date, row < lo] = 1.0      # 流动性好 → 多
+            sig.loc[date, row > hi] = -1.0     # 流动性差 → 空
+        return sig

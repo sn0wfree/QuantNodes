@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 from .base import Factor
-from .indicators import adx, bollinger_percent_b, efficiency_ratio, rsi
+from .indicators import adx, atr, bollinger_percent_b, efficiency_ratio, rsi
 
 
 class DonchianChannelFactor(Factor):
@@ -234,3 +234,63 @@ class ADXFilterFactor(Factor):
             {"adx": adx(ohlc, self.window)},
             index=ohlc.index,
         )
+
+
+class ATRBreakoutFactor(Factor):
+    """ATR 通道突破因子.
+
+    价格突破 N×ATR 通道 (海龟风格, 波动率自适应):
+    close > 前日收盘 + N×ATR → 多头; close < 前日收盘 - N×ATR → 空头.
+    研报: 海龟法则, ATR 波动率通道.
+
+    参数:
+        atr_window: ATR 窗口
+        mult: 通道倍数
+    """
+
+    name = "atr_breakout"
+
+    def __init__(self, atr_window: int = 14, mult: float = 2.0):
+        self.atr_window = atr_window
+        self.mult = mult
+
+    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        req = {"high", "low", "close"}
+        if not req.issubset(ohlc.columns):
+            raise ValueError(f"ATRBreakoutFactor requires columns {req}")
+        a = atr(ohlc, self.atr_window)
+        prev_close = ohlc["close"].shift(1)
+        sig = pd.DataFrame(0.0, index=ohlc.index, columns=["atr_breakout"])
+        sig.loc[ohlc["close"] > prev_close + self.mult * a, "atr_breakout"] = 1.0
+        sig.loc[ohlc["close"] < prev_close - self.mult * a, "atr_breakout"] = -1.0
+        return sig
+
+
+class BIASFactor(Factor):
+    """乖离率因子.
+
+    BIAS = (close - MA_N) / MA_N: 价格偏离均线程度.
+    正乖离过大 → 超买; 负乖离过大 → 超卖.
+    研报: 经典乖离率指标.
+
+    参数:
+        window: 均线窗口
+        z_threshold: z-score 阈值
+    """
+
+    name = "bias"
+
+    def __init__(self, window: int = 20, z_threshold: float = 1.0):
+        self.window = window
+        self.z_threshold = z_threshold
+
+    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        ma = prices.rolling(self.window).mean()
+        bias = prices / ma.replace(0, np.nan) - 1
+        mean = bias.rolling(self.window).mean()
+        std = bias.rolling(self.window).std()
+        z = (bias - mean) / std.replace(0, np.nan)
+        sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+        sig[z > self.z_threshold] = -1.0    # 正乖离过大 → 回落
+        sig[z < -self.z_threshold] = 1.0    # 负乖离过大 → 反弹
+        return sig

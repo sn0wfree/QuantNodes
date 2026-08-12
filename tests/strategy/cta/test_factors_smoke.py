@@ -35,6 +35,13 @@ def _mk_ohlc(n=260):
     }, index=prices.index)
 
 
+def _mk_ohlcv(n=260):
+    ohlc = _mk_ohlc(n)
+    rng = np.random.RandomState(7)
+    ohlc["volume"] = rng.randint(1000, 5000, n)
+    return ohlc
+
+
 def _mk_vol_oi(n=260):
     prices = _mk_prices(n)
     idx = prices.index
@@ -159,6 +166,48 @@ _FACTOR_INPUTS = {
     "VIXLinkFactor": lambda: (_mk_prices(), {}),
     "DXYLinkFactor": lambda: (_mk_prices(), {}),
     "MacroStateFactor": lambda: (_mk_prices(), {}),
+    # 价格位置/趋势质量/量能退潮
+    "PriceLocationFactor": lambda: (_mk_prices(), {}),
+    "TrendQualityFactor": lambda: (_mk_prices(), {}),
+    "MomentumSlopeFactor": lambda: (_mk_prices(), {}),
+    "VolatilityConeFactor": lambda: (_mk_prices(), {}),
+    "VWAPDeviationFactor": lambda: (_mk_ohlc(), {}),
+    "OpenLocationFactor": lambda: (_mk_ohlc(), {}),
+    "VolumeDecayFactor": lambda: _mk_vol_oi(),
+    "AmihudXSFactor": lambda: _mk_vol_oi(),
+    # 第六轮: K线形态/协整/市场结构
+    "LongBodyFactor": lambda: (_mk_ohlc(), {}),
+    "DojiFactor": lambda: (_mk_ohlc(), {}),
+    "HammerFactor": lambda: (_mk_ohlc(), {}),
+    "EngulfingFactor": lambda: (_mk_ohlc(), {}),
+    "ATRBreakoutFactor": lambda: (_mk_ohlc(), {}),
+    "BIASFactor": lambda: (_mk_prices(), {}),
+    "NewHighLowFactor": lambda: (_mk_prices(), {}),
+    "FractalDimensionFactor": lambda: (_mk_prices(), {}),
+    "SpreadMeanReversionFactor": lambda: (_mk_prices(), {}),
+    "PairRatioMeanReversionFactor": lambda: (_mk_prices(), {}),
+    "VolumeReturnResidualFactor": lambda: _mk_vol_oi(),
+    # 第七轮: 资金流/量能指标
+    "MFIFactor": lambda: (_mk_ohlcv(), {}),
+    "CMFFactor": lambda: (_mk_ohlcv(), {}),
+    "EaseOfMovementFactor": lambda: (_mk_ohlcv(), {}),
+    "KlingerOscillatorFactor": lambda: (_mk_ohlcv(), {}),
+    "VolumeRatioFactor": lambda: _mk_vol_oi(),
+    "VolumeMACrossFactor": lambda: _mk_vol_oi(),
+    "PVTFactor": lambda: _mk_vol_oi(),
+    "ForceIndexFactor": lambda: _mk_vol_oi(),
+    # 第八轮: 振荡/趋势进阶/均值回归
+    "MACDFactor": lambda: (_mk_prices(), {}),
+    "AroonFactor": lambda: (_mk_prices(), {}),
+    "TRIXFactor": lambda: (_mk_prices(), {}),
+    "LinearSlopeFactor": lambda: (_mk_prices(), {}),
+    "HalfLifeFactor": lambda: (_mk_prices(), {}),
+    "StochasticFactor": lambda: (_mk_ohlc(), {}),
+    "CCIFactor": lambda: (_mk_ohlc(), {}),
+    "WilliamsRFactor": lambda: (_mk_ohlc(), {}),
+    "VortexFactor": lambda: (_mk_ohlc(), {}),
+    "ChandelierExitFactor": lambda: (_mk_ohlc(), {}),
+    "SqueezeFactor": lambda: (_mk_ohlc(), {}),
     # 产业链
     "ChainMarginFactor": lambda: (_mk_prices(), {}),
     "PriceRatioFactor": lambda: (_mk_prices(), {}),
@@ -179,6 +228,7 @@ _SPECIAL_ARGS = {
     "MarginMomentumFactor": {"formula": "crush_profit"},
     "PriceRatioFactor": {"num_product": "A", "den_product": "B"},
     "LeadLagFactor": {"upstream": "A", "downstream": "B"},
+    "PairRatioMeanReversionFactor": {"num_product": "A", "den_product": "B"},
     "BasisXSFactor": {},
 }
 
@@ -227,10 +277,40 @@ def _compute(instance, name):
         if name in ("VolOIRatioFactor", "CapitalInflowFactor"):
             return instance.compute(prices, ois, **kwargs)
         return instance.compute(prices, vols, **kwargs)
+    if name == "VolumeDecayFactor":
+        _, vols = _mk_vol_oi()
+        return instance.compute(vols, **kwargs)
+    if name == "VolumeReturnResidualFactor":
+        prices = _mk_prices()
+        vols, _ = _mk_vol_oi()
+        return instance.compute(prices, vols, **kwargs)
+    if name == "AmihudXSFactor":
+        prices = _mk_prices()
+        vols, _ = _mk_vol_oi()
+        return instance.compute(prices, vols, **kwargs)
+    if name in ("LongBodyFactor", "DojiFactor", "HammerFactor",
+                "EngulfingFactor", "ATRBreakoutFactor"):
+        return instance.compute(_mk_ohlc(), **kwargs)
+    if name in ("MFIFactor", "CMFFactor", "EaseOfMovementFactor",
+                "KlingerOscillatorFactor"):
+        return instance.compute(_mk_ohlcv(), **kwargs)
+    if name in ("VolumeRatioFactor", "VolumeMACrossFactor"):
+        _, vols = _mk_vol_oi()
+        return instance.compute(vols, **kwargs)
+    if name in ("PVTFactor", "ForceIndexFactor"):
+        prices = _mk_prices()
+        vols, _ = _mk_vol_oi()
+        return instance.compute(prices, vols, **kwargs)
+    if name == "SpreadMeanReversionFactor":
+        return instance.compute(_mk_prices()["A"], **kwargs)
     if name in ("ADXFilterFactor", "ParkinsonFactor", "OvernightReturnFactor",
                 "IntradayReturnFactor", "OvernightIntradayDivergenceFactor",
-                "GapFactor", "CloseLocationFactor"):
+                "GapFactor", "CloseLocationFactor", "OpenLocationFactor",
+                "StochasticFactor", "CCIFactor", "WilliamsRFactor",
+                "VortexFactor", "ChandelierExitFactor", "SqueezeFactor"):
         return instance.compute(_mk_ohlc(), **kwargs)
+    if name == "VWAPDeviationFactor":
+        return instance.compute(_mk_ohlcv(), **kwargs)
     if name in ("BasisFactor", "RollYieldFactor", "TermSlopeFactor",
                 "TermCurvatureFactor", "OIConcentrationFactor",
                 "FrontMonthOIShareFactor"):

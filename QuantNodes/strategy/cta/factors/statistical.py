@@ -191,3 +191,42 @@ class SkewnessFactor(Factor):
         sig[skew < -self.threshold] = 1.0   # 负偏 → 多
         sig[skew > self.threshold] = -1.0   # 正偏 → 空
         return sig
+
+
+def _fractal_dimension(series: pd.Series, max_lag: int = 10) -> float:
+    """估计价格序列的分形维度 D (基于 Hurst: D = 2 - H).
+
+    D ≈ 1.5 随机游走; D > 1.5 反持续; D < 1.5 趋势.
+    """
+    h = hurst_exponent(series, max_lag)
+    return float(2.0 - h)
+
+
+class FractalDimensionFactor(Factor):
+    """分形维度因子.
+
+    D = 2 - Hurst: D < 1.5 → 趋势 (H>0.5) → 顺势; D > 1.5 → 反持续 → 反转.
+    研报: 分形市场假说, 与 Hurst 互补.
+
+    参数:
+        window: 滚动窗口
+        max_lag: Hurst 最大滞后
+        threshold: 偏离 1.5 阈值
+    """
+
+    name = "fractal_dim"
+
+    def __init__(self, window: int = 120, max_lag: int = 20, threshold: float = 0.05):
+        self.window = window
+        self.max_lag = max_lag
+        self.threshold = threshold
+
+    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+        for col in prices.columns:
+            d = prices[col].rolling(self.window).apply(
+                lambda s: _fractal_dimension(s, self.max_lag), raw=False,
+            )
+            sig.loc[d < 1.5 - self.threshold, col] = 1.0   # 趋势 → 多
+            sig.loc[d > 1.5 + self.threshold, col] = -1.0  # 反持续 → 空
+        return sig

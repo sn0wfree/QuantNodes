@@ -202,7 +202,84 @@
 | 连续跳空 | 连续同向跳空天数 | 跳空缺口策略 | ✅ `GapStreakFactor` |
 | 涨跌停近似 | 单日收益接近涨跌停 | 涨跌停事件效应 | ✅ `LimitMoveFactor` |
 
-### 19. 技术指标 (indicators.py)
+### 19. 价格位置 (price_location.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| 价格位置 | 收盘价在滚动区间分位 | 价格强弱位置 | ✅ `PriceLocationFactor` |
+| VWAP 偏离 | 收盘价偏离 VWAP | 日内买卖主导 | ✅ `VWAPDeviationFactor` |
+| 开盘位置 | 开盘价在当日区间位置 | 隔夜信息强弱 | ✅ `OpenLocationFactor` |
+
+### 20. 趋势质量 (trend_quality.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| 趋势纯度 | 对数价格 R² 拟合 | 过滤假突破 | ✅ `TrendQualityFactor` |
+| 动量斜率 | 动量变化率 (加速度) | 趋势加速/衰竭 | ✅ `MomentumSlopeFactor` |
+
+### 21. 量能退潮 (volume_decay.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| 量能衰减 | 近期量/高峰量 | 热度退潮 | ✅ `VolumeDecayFactor` |
+| 波动率锥 | 短/长波动比 | 波动放大 | ✅ `VolatilityConeFactor` |
+
+### 22. K线形态 (candlestick.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| 长实体 | 大阳/大阴线 | 强趋势 K 线 | ✅ `LongBodyFactor` |
+| 十字星 | 实体极小 | 多空犹豫/反转 | ✅ `DojiFactor` |
+| 锤子线 | 长影线+小实体 | 反转形态 | ✅ `HammerFactor` |
+| 吞没形态 | 今实体吞昨实体 | 强反转 | ✅ `EngulfingFactor` |
+
+### 23. 协整/均值回归 (cointegration.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| 价差均值回归 | 跨品种价差 z-score | 统计套利 | ✅ `SpreadMeanReversionFactor` |
+| 比价均值回归 | 比价偏离均值 | 配对交易 | ✅ `PairRatioMeanReversionFactor` |
+
+### 24. 市场结构 (market_structure.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| 新高-新低 | NH-NL 计数 | 市场宽度 | ✅ `NewHighLowFactor` |
+| 量价残差 | 量不能解释的价变动 | 独立涨跌 | ✅ `VolumeReturnResidualFactor` |
+
+### 25. 资金流 (money_flow.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| 资金流量指数 MFI | RSI 量能加权版 | 超买超卖 | ✅ `MFIFactor` |
+| 蔡金资金流 CMF | 量×CLV 累计 | 资金流入流出 | ✅ `CMFFactor` |
+| 价量趋势 PVT | 收益×量累计 | 量价累计方向 | ✅ `PVTFactor` |
+| 力量指数 | 量×价变动 | 变动量能支撑 | ✅ `ForceIndexFactor` |
+
+### 26. 量能指标 (volume_indicators.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| 量比 | 当日量/均量 | 放量缩量 | ✅ `VolumeRatioFactor` |
+| 量能均线交叉 | 短/长量均线 | 量能趋势 | ✅ `VolumeMACrossFactor` |
+| EMV | 价变动难易度 | 量价效率 | ✅ `EaseOfMovementFactor` |
+| 克凌格振荡器 | 短/长 EMA 量能趋势 | 量能摆动 | ✅ `KlingerOscillatorFactor` |
+
+### 27. 趋势/统计扩展 (trend.py / statistical.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| ATR 通道突破 | 价格突破 N×ATR | 波动率自适应突破 | ✅ `ATRBreakoutFactor` |
+| 乖离率 BIAS | 价格偏离均线 | 超买超卖 | ✅ `BIASFactor` |
+| 分形维度 | D = 2 - Hurst | 趋势/反持续 | ✅ `FractalDimensionFactor` |
+
+### 28. 横截面补充 (momentum_xs.py)
+
+| 因子 | 定义 | 逻辑 | 状态 |
+|---|---|---|---|
+| 横截面非流动性 | Amihud 横截面排名 | 流动性溢价 | ✅ `AmihudXSFactor` |
+
+### 29. 技术指标 (indicators.py)
 
 纯 pandas 向量化实现, 无 TA-Lib 依赖:
 `rsi` / `atr` / `adx` / `bollinger_bands` / `bollinger_percent_b` / `efficiency_ratio` / `donchian` / `zscore`
@@ -211,18 +288,18 @@
 
 ## 三、已实现因子统计
 
-- **68 个因子** + 8 个技术指标函数 + 4 个工具函数 (vol_target_positions / basis_to_signal / chain_margin_series / compute_atr)
-- **19 大类**: 时序趋势 / 期限结构 / 波动率 / 量价 / 横截面 / 统计特征 / 微观结构 / 复合增强 / 产业链 / 日历效应 / 资金面 / 持仓结构 / 量价背离 / 相关性结构 / 基差动量 / 风险类 / 宏观联动 / 事件跳变 / 技术指标
+- **106 个因子** + 8 个技术指标函数 + 4 个工具函数 (vol_target_positions / basis_to_signal / chain_margin_series / compute_atr)
+- **34 大类**: 时序趋势 / 期限结构 / 波动率 / 量价 / 横截面 / 统计特征 / 微观结构 / 复合增强 / 产业链 / 日历效应 / 资金面 / 持仓结构 / 量价背离 / 相关性结构 / 基差动量 / 风险类 / 宏观联动 / 事件跳变 / 价格位置 / 趋势质量 / 量能退潮 / K线形态 / 协整均值回归 / 市场结构 / 资金流 / 量能指标 / 振荡指标 / 趋势进阶 / 均值回归 / 技术指标
 - 全部基于现有 DuckDB 数据 (continuous_main / inter_contract_spread / spot_basis_daily / high_freq_macro)
 
 | 模块 | 因子数 | 数据源 |
 |---|---|---|
-| trend.py | 8 | continuous_main |
+| trend.py | 10 (含 ATRBreakout/BIAS) | continuous_main |
 | term_structure.py | 5 | inter_contract_spread / spot_basis_daily |
 | volatility.py | 6 + vol_target | continuous_main |
 | volume.py | 8 | continuous_main (含 volume/oi) |
-| momentum_xs.py | 3 | continuous_main / 派生表 |
-| statistical.py | 4 | continuous_main |
+| momentum_xs.py | 4 (含 AmihudXS) | continuous_main / 派生表 |
+| statistical.py | 5 (含 FractalDim) | continuous_main |
 | microstructure.py | 5 | continuous_main (OHLC) |
 | composite.py | 3 | continuous_main |
 | industrial_chain.py | 4 | continuous_main |
@@ -235,6 +312,17 @@
 | risk.py | 3 | continuous_main |
 | macro_link.py | 3 | high_freq_macro (VIX/DXY) |
 | event.py | 3 | continuous_main |
+| price_location.py | 3 | continuous_main (OHLCV) |
+| trend_quality.py | 2 | continuous_main |
+| volume_decay.py | 2 | continuous_main |
+| candlestick.py | 4 | continuous_main (OHLC) |
+| cointegration.py | 2 | 连续面板/价差 |
+| market_structure.py | 2 | continuous_main |
+| money_flow.py | 4 | continuous_main (OHLCV) |
+| volume_indicators.py | 4 | continuous_main (OHLCV) |
+| oscillators.py | 4 | continuous_main (OHLC) |
+| trend_advanced.py | 5 | continuous_main (OHLC) |
+| mean_reversion.py | 2 | continuous_main (OHLC) |
 | indicators.py | 8 函数 | — |
 
 ---
@@ -258,13 +346,15 @@
 
 ```bash
 python -m pytest tests/strategy/cta/ -q
-# 289 passed, 16 skipped (值类因子), ruff clean
+# 421 passed, 16 skipped (值类因子), ruff clean
 ```
 
 真实数据验证:
 - AU/RB/M 期限结构正确区分 contango (AU) 与 backwardation (M)
 - 产业链利润序列合理 (螺纹利润~1200, 压榨利润~-600)
-- VIX/DXY 联动、事件因子均产生有效信号
+- VIX/DXY 联动、K线形态、资金流 (MFI/CMF)、量能指标均产生有效信号
+- 振荡指标 (MACD/KDJ/CCI) 与趋势进阶 (Aroon/Vortex/斜率) 真实数据有效
+- 冒烟测试覆盖全部 106 因子 (实例化 + compute + 值域)
 
 ---
 
@@ -275,3 +365,7 @@ python -m pytest tests/strategy/cta/ -q
 - 原 docs/91 (三轮: 产业链)
 - 原 docs/92 (四轮: 日历/资金/持仓/背离/相关)
 - 2026-08-12: 合并为本文档, 并纳入基差动量/风险类/宏观联动/事件类
+- 2026-08-12: 第五轮 — 价格位置/趋势质量/量能退潮/横截面 Amihud, 76 因子, 317 测试通过
+- 2026-08-12: 第六轮 — K线形态/协整均值回归/市场结构/ATR突破/乖离率/分形维度, 87 因子, 356 测试通过
+- 2026-08-12: 第七轮 — 资金流 (MFI/CMF/PVT/ForceIndex) + 量能指标 (量比/量能均线/EMV/Klinger), 95 因子, 383 测试通过
+- 2026-08-12: 第八轮 — 振荡指标 (MACD/KDJ/CCI/威廉%R) + 趋势进阶 (Aroon/涡旋/斜率/TRIX/吊灯) + 均值回归 (OU半衰期/波动收缩), 106 因子, 421 测试通过

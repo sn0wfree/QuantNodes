@@ -18,6 +18,17 @@
 | **风险类** | `risk.py` | DownsideVol / MaxDrawdown / TailRisk |
 | **宏观联动** | `macro_link.py` | VIXLink / DXYLink / MacroState |
 | **事件/跳变** | `event.py` | ExtremeMove / GapStreak / LimitMove |
+| **价格位置** | `price_location.py` | PriceLocation / VWAPDeviation / OpenLocation |
+| **趋势质量** | `trend_quality.py` | TrendQuality / MomentumSlope |
+| **量能退潮** | `volume_decay.py` | VolumeDecay / VolatilityCone |
+| **K线形态** | `candlestick.py` | LongBody / Doji / Hammer / Engulfing |
+| **协整/均值回归** | `cointegration.py` | SpreadMeanReversion / PairRatioMR |
+| **市场结构** | `market_structure.py` | NewHighLow / VolumeReturnResidual |
+| **资金流** | `money_flow.py` | MFI / CMF / PVT / ForceIndex |
+| **量能指标** | `volume_indicators.py` | VolumeRatio / VolumeMACross / EMV / Klinger |
+| **振荡指标** | `oscillators.py` | MACD / Stochastic / CCI / WilliamsR |
+| **趋势进阶** | `trend_advanced.py` | Aroon / Vortex / LinearSlope / TRIX / Chandelier |
+| **均值回归** | `mean_reversion.py` | HalfLife / Squeeze |
 | **日历效应** | `calendar.py` | Seasonality / Weekday / MonthTurn |
 | **资金面** | `capital.py` | CapitalInflow / Turnover |
 | **持仓结构** | `position.py` | OIConcentration / FrontMonthOIShare |
@@ -152,7 +163,110 @@
 | `GapStreakFactor` | 连续同向跳空计数 | streak=3 | 跳空趋势 |
 | `LimitMoveFactor` | 接近涨跌停 | limit_pct=0.05 | 涨跌停事件 |
 
-### 十三、日历效应因子 (`calendar.py`)
+### 十三、价格位置因子 (`price_location.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `PriceLocationFactor` | 收盘价在滚动区间分位 | window=20 | 价格强弱位置 |
+| `VWAPDeviationFactor` | 收盘价偏离 VWAP | window=5 | 日内买卖主导 |
+| `OpenLocationFactor` | 开盘价在当日区间位置 | window=5 | 隔夜信息强弱 |
+
+### 十四、趋势质量因子 (`trend_quality.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `TrendQualityFactor` | 对数价格 R² 拟合 (趋势纯度) | window=30 | 过滤假突破 |
+| `MomentumSlopeFactor` | 动量变化率 (加速度) | lookback=20 | 趋势加速/衰竭 |
+
+### 十五、量能退潮因子 (`volume_decay.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `VolumeDecayFactor` | 近期量能/高峰量衰减 | peak=60 | 热度退潮 |
+| `VolatilityConeFactor` | 短/长波动比 (波动率锥) | short=10, long=120 | 波动放大 |
+
+### 十六、横截面补充 (`momentum_xs.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `AmihudXSFactor` | 横截面非流动性排名 | window=20 | 流动性溢价 |
+
+### 十七、K线形态因子 (`candlestick.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `LongBodyFactor` | 长实体大阳/大阴 | window=20 | 强趋势 K 线 |
+| `DojiFactor` | 十字星 (实体极小) | body_threshold=0.1 | 多空犹豫/反转 |
+| `HammerFactor` | 锤子线/上吊线 | shadow_mult=2 | 反转形态 |
+| `EngulfingFactor` | 吞没形态 | body_min=0.3 | 强反转 |
+
+### 十八、协整/均值回归因子 (`cointegration.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `SpreadMeanReversionFactor` | 跨品种价差 z-score 回归 | window=60, z=1.5 | 统计套利 |
+| `PairRatioMeanReversionFactor` | 比价均值回归 | window=60 | 配对交易 |
+
+### 十九、市场结构因子 (`market_structure.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `NewHighLowFactor` | 新高-新低计数 (NH-NL) | window=60 | 市场宽度 |
+| `VolumeReturnResidualFactor` | 量价回归残差 | window=30 | 独立涨跌 |
+
+### 二十、趋势扩展 (`trend.py` / `statistical.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `ATRBreakoutFactor` | ATR 通道突破 | atr=14, mult=2 | 波动率自适应突破 |
+| `BIASFactor` | 乖离率 (价格偏离均线) | window=20 | 超买超卖 |
+| `FractalDimensionFactor` | 分形维度 (D=2-H) | window=120 | 趋势/反持续 |
+
+### 二十一、资金流因子 (`money_flow.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `MFIFactor` | 资金流量指数 (RSI 量能版) | window=14 | 超买超卖 |
+| `CMFFactor` | 蔡金资金流 (量×CLV) | window=20 | 资金流入流出 |
+| `PVTFactor` | 价量趋势 (收益×量累计) | window=20 | 量价累计方向 |
+| `ForceIndexFactor` | 力量指数 (量×价变动) | window=13 | 变动量能支撑 |
+
+### 二十二、量能指标因子 (`volume_indicators.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `VolumeRatioFactor` | 量比 (当日/均量) | window=5 | 放量缩量 |
+| `VolumeMACrossFactor` | 量能均线交叉 | short=5, long=20 | 量能趋势 |
+| `EaseOfMovementFactor` | EMV (价变动难易度) | window=14 | 量价效率 |
+| `KlingerOscillatorFactor` | 克凌格量能振荡器 | short=34, long=55 | 量能摆动 |
+
+### 二十三、振荡指标因子 (`oscillators.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `MACDFactor` | MACD 金叉/死叉 | fast=12, slow=26 | 趋势动能 |
+| `StochasticFactor` | KDJ 随机指标交叉 | window=14 | 摆动 |
+| `CCIFactor` | 商品通道指数超买超卖 | window=20 | 通道偏离 |
+| `WilliamsRFactor` | 威廉 %R 超买超卖 | window=14 | 摆动 |
+
+### 二十四、趋势进阶因子 (`trend_advanced.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `AroonFactor` | 阿里翁趋势强度差 | window=25 | 趋势主导 |
+| `VortexFactor` | 涡旋指标 VI± 交叉 | window=14 | 趋势方向 |
+| `LinearSlopeFactor` | 对数价格回归斜率 | window=20 | 趋势方向强度 |
+| `TRIXFactor` | 三重指数平滑上穿 0 | window=15 | 长期趋势 |
+| `ChandelierExitFactor` | 吊灯止损 (ATR 回落) | window=22 | 止损位 |
+
+### 二十五、均值回归因子 (`mean_reversion.py`)
+
+| 因子 | 逻辑 | 参数 | 用途 |
+|---|---|---|---|
+| `HalfLifeFactor` | OU 半衰期 (回归速度) | window=60 | 反转 vs 趋势 |
+| `SqueezeFactor` | 布林带内于 Keltner (收缩) | window=20 | 突破前兆 |
+
+### 二十六、日历效应因子 (`calendar.py`)
 
 | 因子 | 逻辑 | 参数 | 用途 |
 |---|---|---|---|

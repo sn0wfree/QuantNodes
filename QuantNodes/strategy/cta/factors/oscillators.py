@@ -1,0 +1,155 @@
+# coding=utf-8
+"""经典振荡指标因子.
+
+基于 OHLCV 的经典摆动/振荡指标:
+    - MACDFactor: MACD 金叉/死叉
+    - StochasticFactor: 随机指标 KDJ
+    - CCIFactor: 商品通道指数
+    - WilliamsRFactor: 威廉 %R
+"""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+
+from .base import Factor
+
+
+class MACDFactor(Factor):
+    """MACD 因子.
+
+    MACD = EMA12 - EMA26, 信号线 = EMA9(MACD).
+    金叉 (MACD 上穿信号线) → 多; 死叉 → 空.
+    研报: 经典趋势指标 (Appel).
+
+    参数:
+        fast: 快线 EMA (默认 12)
+        slow: 慢线 EMA (默认 26)
+        signal: 信号线 EMA (默认 9)
+    """
+
+    name = "macd"
+
+    def __init__(self, fast: int = 12, slow: int = 26, signal: int = 9):
+        self.fast = fast
+        self.slow = slow
+        self.signal = signal
+
+    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        ema_fast = prices.ewm(span=self.fast, adjust=False).mean()
+        ema_slow = prices.ewm(span=self.slow, adjust=False).mean()
+        macd = ema_fast - ema_slow
+        signal_line = macd.ewm(span=self.signal, adjust=False).mean()
+        sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+        # 金叉/死叉
+        cross_up = (macd > signal_line) & (macd.shift(1) <= signal_line.shift(1))
+        cross_down = (macd < signal_line) & (macd.shift(1) >= signal_line.shift(1))
+        sig[cross_up] = 1.0
+        sig[cross_down] = -1.0
+        return sig
+
+
+class StochasticFactor(Factor):
+    """随机指标 KDJ 因子.
+
+    K = SMA(%K, 3), %K = (close - low_n)/(high_n - low_n)×100.
+    K 上穿 D → 多; 下穿 → 空.
+    研报: 经典随机指标 (Lane).
+
+    参数:
+        window: %K 窗口
+        smooth: K 平滑窗口
+    """
+
+    name = "stochastic"
+
+    def __init__(self, window: int = 14, smooth: int = 3):
+        self.window = window
+        self.smooth = smooth
+
+    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        req = {"high", "low", "close"}
+        if not req.issubset(ohlc.columns):
+            raise ValueError(f"StochasticFactor requires columns {req}")
+        high_n = ohlc["high"].rolling(self.window).max()
+        low_n = ohlc["low"].rolling(self.window).min()
+        pct_k = (ohlc["close"] - low_n) / (high_n - low_n).replace(0, np.nan) * 100
+        k = pct_k.rolling(self.smooth).mean()
+        d = k.rolling(self.smooth).mean()
+        sig = pd.DataFrame(0.0, index=ohlc.index, columns=["stochastic"])
+        cross_up = (k > d) & (k.shift(1) <= d.shift(1))
+        cross_down = (k < d) & (k.shift(1) >= d.shift(1))
+        sig.loc[cross_up, "stochastic"] = 1.0
+        sig.loc[cross_down, "stochastic"] = -1.0
+        return sig
+
+
+class CCIFactor(Factor):
+    """商品通道指数因子.
+
+    CCI = (TP - SMA(TP,n)) / (0.015 × 平均偏差).
+    CCI > 100 → 超买; < -100 → 超卖.
+    研报: 经典商品通道指数 (Lambert).
+
+    参数:
+        window: CCI 窗口
+        high_threshold: 超买线 (默认 100)
+        low_threshold: 超卖线 (默认 -100)
+    """
+
+    name = "cci"
+
+    def __init__(self, window: int = 20, high_threshold: float = 100.0,
+                 low_threshold: float = -100.0):
+        self.window = window
+        self.high = high_threshold
+        self.low = low_threshold
+
+    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        req = {"high", "low", "close"}
+        if not req.issubset(ohlc.columns):
+            raise ValueError(f"CCIFactor requires columns {req}")
+        tp = (ohlc["high"] + ohlc["low"] + ohlc["close"]) / 3
+        tp_sma = tp.rolling(self.window).mean()
+        mean_dev = tp.rolling(self.window).apply(
+            lambda s: np.mean(np.abs(s - s.mean())), raw=True,
+        )
+        cci = (tp - tp_sma) / (0.015 * mean_dev.replace(0, np.nan))
+        sig = pd.DataFrame(0.0, index=ohlc.index, columns=["cci"])
+        sig.loc[cci < self.low, "cci"] = 1.0    # 超卖 → 多
+        sig.loc[cci > self.high, "cci"] = -1.0  # 超买 → 空
+        return sig
+
+
+class WilliamsRFactor(Factor):
+    """威廉 %R 因子.
+
+    %R = (high_n - close) / (high_n - low_n) × -100.
+    %R < -80 超卖 → 多; > -20 超买 → 空.
+    研报: 经典威廉指标 (Williams).
+
+    参数:
+        window: %R 窗口
+        low_threshold: 超卖线 (默认 -80)
+        high_threshold: 超买线 (默认 -20)
+    """
+
+    name = "williams_r"
+
+    def __init__(self, window: int = 14, low_threshold: float = -80.0,
+                 high_threshold: float = -20.0):
+        self.window = window
+        self.low = low_threshold
+        self.high = high_threshold
+
+    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        req = {"high", "low", "close"}
+        if not req.issubset(ohlc.columns):
+            raise ValueError(f"WilliamsRFactor requires columns {req}")
+        high_n = ohlc["high"].rolling(self.window).max()
+        low_n = ohlc["low"].rolling(self.window).min()
+        wr = (high_n - ohlc["close"]) / (high_n - low_n).replace(0, np.nan) * -100
+        sig = pd.DataFrame(0.0, index=ohlc.index, columns=["williams_r"])
+        sig.loc[wr < self.low, "williams_r"] = 1.0    # 超卖 → 多
+        sig.loc[wr > self.high, "williams_r"] = -1.0  # 超买 → 空
+        return sig

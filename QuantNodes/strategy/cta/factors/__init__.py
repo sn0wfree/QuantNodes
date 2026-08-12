@@ -31,6 +31,8 @@ from .indicators import (
 )
 from .trend import (
     ADXFilterFactor,
+    ATRBreakoutFactor,
+    BIASFactor,
     BollingerFactor,
     DonchianChannelFactor,
     EfficiencyFactor,
@@ -68,12 +70,14 @@ from .volume import (
     VolumeTrendFactor,
 )
 from .momentum_xs import (
+    AmihudXSFactor,
     BasisXSFactor,
     MomentumXSFactor,
     VolatilityXSFactor,
 )
 from .statistical import (
     AutocorrelationFactor,
+    FractalDimensionFactor,
     HurstExponentFactor,
     SkewnessFactor,
     VarianceRatioFactor,
@@ -137,6 +141,62 @@ from .event import (
     ExtremeMoveFactor,
     GapStreakFactor,
     LimitMoveFactor,
+)
+from .price_location import (
+    OpenLocationFactor,
+    PriceLocationFactor,
+    VWAPDeviationFactor,
+)
+from .trend_quality import (
+    MomentumSlopeFactor,
+    TrendQualityFactor,
+)
+from .volume_decay import (
+    VolatilityConeFactor,
+    VolumeDecayFactor,
+)
+from .candlestick import (
+    DojiFactor,
+    EngulfingFactor,
+    HammerFactor,
+    LongBodyFactor,
+)
+from .cointegration import (
+    PairRatioMeanReversionFactor,
+    SpreadMeanReversionFactor,
+)
+from .market_structure import (
+    NewHighLowFactor,
+    VolumeReturnResidualFactor,
+)
+from .money_flow import (
+    CMFFactor,
+    ForceIndexFactor,
+    MFIFactor,
+    PVTFactor,
+)
+from .volume_indicators import (
+    EaseOfMovementFactor,
+    KlingerOscillatorFactor,
+    VolumeMACrossFactor,
+    VolumeRatioFactor,
+)
+from .oscillators import (
+    CCIFactor,
+    MACDFactor,
+    StochasticFactor,
+    WilliamsRFactor,
+)
+from .trend_advanced import (
+    AroonFactor,
+    ChandelierExitFactor,
+    LinearSlopeFactor,
+    TRIXFactor,
+    VortexFactor,
+)
+from .mean_reversion import (
+    HalfLifeFactor,
+    SqueezeFactor,
 )
 
 __all__ = [
@@ -244,4 +304,56 @@ __all__ = [
     "ExtremeMoveFactor",
     "GapStreakFactor",
     "LimitMoveFactor",
+    # price location
+    "OpenLocationFactor",
+    "PriceLocationFactor",
+    "VWAPDeviationFactor",
+    # trend quality
+    "MomentumSlopeFactor",
+    "TrendQualityFactor",
+    # volume decay / volatility cone
+    "VolatilityConeFactor",
+    "VolumeDecayFactor",
+    # cross-sectional amihud
+    "AmihudXSFactor",
+    # candlestick
+    "DojiFactor",
+    "EngulfingFactor",
+    "HammerFactor",
+    "LongBodyFactor",
+    # cointegration
+    "PairRatioMeanReversionFactor",
+    "SpreadMeanReversionFactor",
+    # market structure
+    "NewHighLowFactor",
+    "VolumeReturnResidualFactor",
+    # trend extras
+    "ATRBreakoutFactor",
+    "BIASFactor",
+    # statistical extras
+    "FractalDimensionFactor",
+    # money flow
+    "CMFFactor",
+    "ForceIndexFactor",
+    "MFIFactor",
+    "PVTFactor",
+    # volume indicators
+    "EaseOfMovementFactor",
+    "KlingerOscillatorFactor",
+    "VolumeMACrossFactor",
+    "VolumeRatioFactor",
+    # oscillators
+    "CCIFactor",
+    "MACDFactor",
+    "StochasticFactor",
+    "WilliamsRFactor",
+    # trend advanced
+    "AroonFactor",
+    "ChandelierExitFactor",
+    "LinearSlopeFactor",
+    "TRIXFactor",
+    "VortexFactor",
+    # mean reversion
+    "HalfLifeFactor",
+    "SqueezeFactor",
 ]
