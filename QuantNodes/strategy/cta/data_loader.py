@@ -9,8 +9,8 @@
 DuckDB 表结构:
     - per-product: {exchange_lowercase}_{product_lowercase}_{kind}_daily
       e.g. cffex_if_futures_daily, shfe_au_options_daily
-    - v_all_futures: 1.3M 跨所聚合, 含 symbol_raw / symbol
-    - v_all_options: 17M 跨所聚合, 含 strike_yuan / combo_components
+    - v_all_futures: 1.3M 跨所聚合, 含 symbol / 全行情列
+    - v_all_options: 17M 跨所聚合, 含 underlying / strike_price
     - contract_specs: 91 行, exchange/product/multiplier/tick/price_unit
     - trading_calendar: 交易日历 (由 build_derived_tables.py 生成)
     - main_contract_mapping: 主力合约映射 (每日每产品 OI 最大)
@@ -30,6 +30,8 @@ DuckDB 表结构:
     .load_trading_calendar()        → 交易日历 DataFrame
     .load_main_contract_mapping(product=)  → 主力映射 DataFrame
     .load_continuous_main(product)  → 主力连续面板 DataFrame
+    .load_spot_basis(product=, start=, end=) → 现货基差 (akshare 补全)
+    .load_futures_rule()            → 交易规则快照 (保证金/涨跌停/乘数)
 """
 from __future__ import annotations
 
@@ -47,14 +49,17 @@ KNOWN_EXCHANGES: tuple[str, ...] = ("CFFEX", "SHFE", "DCE", "CZCE", "INE", "GFEX
 
 # v_all_* 视图的固定列 (供外部引用)
 V_ALL_FUTURES_COLS: tuple[str, ...] = (
-    "exchange", "product", "symbol_raw", "symbol",
+    "exchange", "product", "symbol",
     "trade_date", "open", "high", "low", "close",
     "volume", "turnover", "open_interest", "pre_settlement", "pre_close",
+    "pre_open_interest", "src_file",
 )
 V_ALL_OPTIONS_COLS: tuple[str, ...] = (
-    "exchange", "product", "symbol_raw", "symbol",
-    "underlying", "option_type", "strike_price", "strike_yuan",
+    "exchange", "product", "symbol",
+    "underlying", "option_type", "strike_price",
     "trade_date", "open", "high", "low", "close", "volume",
+    "turnover", "open_interest", "pre_settlement", "pre_close",
+    "pre_open_interest", "src_file",
 )
 
 
@@ -315,7 +320,7 @@ class CtaDataLoader:
         products: Iterable[str] | None = None,
         exchanges: Iterable[str] | None = None,
     ) -> pd.DataFrame:
-        """读 v_all_options 统一视图 (17M rows, 含 strike_yuan / combo_components)."""
+        """读 v_all_options 统一视图 (17M rows, 含 underlying / strike_price)."""
         conds: list[str] = []
         if start:
             conds.append(f"trade_date >= DATE '{start}'")
@@ -430,6 +435,58 @@ class CtaDataLoader:
                 parts = name.replace("continuous_main_", "").replace("_daily", "")
                 products.append(parts.upper())
             return sorted(products)
+        finally:
+            con.close()
+
+    def load_spot_basis(
+        self,
+        product: str | None = None,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> pd.DataFrame:
+        """读现货基差 (akshare 补全, 2018~2025-07).
+
+        Args:
+            product: 可选, 品种代码 'AU' / 'RB' (symbol 列)
+            start / end: 'YYYY-MM-DD', 可选
+
+        Returns:
+            pd.DataFrame, 列: trade_date, symbol, spot_price,
+                near_contract, near_contract_price,
+                dominant_contract, dominant_contract_price,
+                near_basis, dom_basis, near_basis_rate, dom_basis_rate
+        """
+        conds: list[str] = []
+        if product:
+            conds.append(f"symbol = '{product.upper()}'")
+        if start:
+            conds.append(f"trade_date >= DATE '{start}'")
+        if end:
+            conds.append(f"trade_date <= DATE '{end}'")
+        where = (" WHERE " + " AND ".join(conds)) if conds else ""
+        con = self._connect()
+        try:
+            return con.execute(
+                f"SELECT * FROM spot_basis_daily{where} ORDER BY symbol, trade_date"
+            ).df()
+        finally:
+            con.close()
+
+    def load_futures_rule(self) -> pd.DataFrame:
+        """读交易规则快照 (akshare 补全, 最新 as_of).
+
+        Returns:
+            pd.DataFrame, 列: as_of_date, exchange, product, code,
+                margin_ratio, limit_ratio, contract_multiplier,
+                tick_size, max_order_vol, special_note
+        """
+        con = self._connect()
+        try:
+            return con.execute(
+                "SELECT * FROM futures_rule_snapshot "
+                "WHERE as_of_date = (SELECT MAX(as_of_date) FROM futures_rule_snapshot) "
+                "ORDER BY exchange, code"
+            ).df()
         finally:
             con.close()
 

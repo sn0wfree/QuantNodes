@@ -167,6 +167,9 @@ exclude_lines = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+extend-exclude = [
+    "QuantNodes/strategy/cta/common/option_greeks",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]
@@ -175,6 +178,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# CTA data loader: 继承历史长行风格 (SQL 拼接/推导式), 保持不动
+"QuantNodes/strategy/cta/data_loader.py" = ["E501"]
 # Symbolic dialect implements an abstract SQL dialect interface; one-liner
 # method bodies are intentional for line-by-line parity with the other dialects.
 "QuantNodes/symbolic/dialect.py" = ["E701", "E501"]
