@@ -156,3 +156,75 @@ class TestSqueeze:
         ohlc = _mk_ohlc()
         sig = SqueezeFactor(20, 2.0, 1.5).compute(ohlc)
         assert set(sig["squeeze"].unique()).issubset({-1.0, 0.0, 1.0})
+
+
+# ── raw_value 连续值测试 ─────────────────────────────────────────────────────
+
+class TestRawValue:
+    """raw_value 连续化: 形状对齐 + 有有效值 + 事件型保持 0/±1."""
+
+    def test_macd_continuous(self):
+        prices = _mk_prices()
+        raw = MACDFactor().raw_value(prices)
+        assert raw.shape == prices.shape
+        assert raw.notna().sum().sum() > 100
+
+    def test_stochastic_continuous(self):
+        ohlc = _mk_ohlc()
+        raw = StochasticFactor().raw_value(ohlc)
+        assert len(raw) == len(ohlc)
+        assert raw.notna().sum().sum() > 100
+
+    def test_cci_continuous(self):
+        ohlc = _mk_ohlc()
+        raw = CCIFactor().raw_value(ohlc)
+        assert len(raw) == len(ohlc)
+        assert raw.notna().sum().sum() > 100
+
+    def test_williams_r_continuous(self):
+        ohlc = _mk_ohlc()
+        raw = WilliamsRFactor().raw_value(ohlc)
+        assert len(raw) == len(ohlc)
+        assert raw.notna().sum().sum() > 100
+
+    def test_aroon_continuous(self):
+        prices = _mk_prices()
+        raw = AroonFactor().raw_value(prices)
+        assert raw.shape == prices.shape
+        # B 单调上行 → Aroon 差值应接近 +100
+        assert raw["B"].tail(20).mean() > 50
+
+    def test_vortex_continuous(self):
+        ohlc = _mk_ohlc()
+        raw = VortexFactor().raw_value(ohlc)
+        assert len(raw) == len(ohlc)
+        assert raw.notna().sum().sum() > 100
+
+    def test_linear_slope_continuous(self):
+        prices = _mk_prices()
+        raw = LinearSlopeFactor().raw_value(prices)
+        assert raw.shape == prices.shape
+        # B 单调上行 → 斜率为正
+        assert raw["B"].tail(20).mean() > 0
+
+    def test_trix_continuous(self):
+        prices = _mk_prices()
+        raw = TRIXFactor().raw_value(prices)
+        assert raw.shape == prices.shape
+        assert raw.notna().sum().sum() > 100
+
+    def test_half_life_continuous(self):
+        prices = _mk_prices()
+        raw = HalfLifeFactor().raw_value(prices)
+        assert raw.shape == prices.shape
+        assert raw.notna().sum().sum() > 50
+
+    def test_chandelier_event(self):
+        ohlc = _mk_ohlc()
+        raw = ChandelierExitFactor().raw_value(ohlc)
+        assert set(raw["chandelier"].unique()).issubset({-1.0, 0.0, 1.0})
+
+    def test_squeeze_event(self):
+        ohlc = _mk_ohlc()
+        raw = SqueezeFactor().raw_value(ohlc)
+        assert set(raw["squeeze"].unique()).issubset({-1.0, 0.0, 1.0})

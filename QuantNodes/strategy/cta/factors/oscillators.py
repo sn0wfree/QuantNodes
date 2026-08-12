@@ -35,10 +35,15 @@ class MACDFactor(Factor):
         self.slow = slow
         self.signal = signal
 
-    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def raw_value(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: MACD 柱 (macd - 信号线), 柱为正 → 多头."""
         ema_fast = prices.ewm(span=self.fast, adjust=False).mean()
         ema_slow = prices.ewm(span=self.slow, adjust=False).mean()
         macd = ema_fast - ema_slow
+        return macd - macd.ewm(span=self.signal, adjust=False).mean()
+
+    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        macd = self.raw_value(prices)
         signal_line = macd.ewm(span=self.signal, adjust=False).mean()
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         # 金叉/死叉
@@ -67,15 +72,24 @@ class StochasticFactor(Factor):
         self.window = window
         self.smooth = smooth
 
-    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def raw_value(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: k − d, 上穿为正 → 多头."""
         req = {"high", "low", "close"}
         if not req.issubset(ohlc.columns):
             raise ValueError(f"StochasticFactor requires columns {req}")
+        k, d = self._kd(ohlc)
+        return pd.DataFrame({"stochastic": k - d}, index=ohlc.index)
+
+    def _kd(self, ohlc: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
         high_n = ohlc["high"].rolling(self.window).max()
         low_n = ohlc["low"].rolling(self.window).min()
         pct_k = (ohlc["close"] - low_n) / (high_n - low_n).replace(0, np.nan) * 100
         k = pct_k.rolling(self.smooth).mean()
         d = k.rolling(self.smooth).mean()
+        return k, d
+
+    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        k, d = self._kd(ohlc)
         sig = pd.DataFrame(0.0, index=ohlc.index, columns=["stochastic"])
         cross_up = (k > d) & (k.shift(1) <= d.shift(1))
         cross_down = (k < d) & (k.shift(1) >= d.shift(1))
@@ -105,7 +119,8 @@ class CCIFactor(Factor):
         self.high = high_threshold
         self.low = low_threshold
 
-    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def raw_value(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: cci 值, >0 强势 / <0 弱势."""
         req = {"high", "low", "close"}
         if not req.issubset(ohlc.columns):
             raise ValueError(f"CCIFactor requires columns {req}")
@@ -115,6 +130,10 @@ class CCIFactor(Factor):
             lambda s: np.mean(np.abs(s - s.mean())), raw=True,
         )
         cci = (tp - tp_sma) / (0.015 * mean_dev.replace(0, np.nan))
+        return pd.DataFrame({"cci": cci}, index=ohlc.index)
+
+    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        cci = self.raw_value(ohlc)["cci"]
         sig = pd.DataFrame(0.0, index=ohlc.index, columns=["cci"])
         sig.loc[cci < self.low, "cci"] = 1.0    # 超卖 → 多
         sig.loc[cci > self.high, "cci"] = -1.0  # 超买 → 空
@@ -142,13 +161,18 @@ class WilliamsRFactor(Factor):
         self.low = low_threshold
         self.high = high_threshold
 
-    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def raw_value(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: %R 值, 越高越接近超买 (空头侧)."""
         req = {"high", "low", "close"}
         if not req.issubset(ohlc.columns):
             raise ValueError(f"WilliamsRFactor requires columns {req}")
         high_n = ohlc["high"].rolling(self.window).max()
         low_n = ohlc["low"].rolling(self.window).min()
         wr = (high_n - ohlc["close"]) / (high_n - low_n).replace(0, np.nan) * -100
+        return pd.DataFrame({"williams_r": wr}, index=ohlc.index)
+
+    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        wr = self.raw_value(ohlc)["williams_r"]
         sig = pd.DataFrame(0.0, index=ohlc.index, columns=["williams_r"])
         sig.loc[wr < self.low, "williams_r"] = 1.0    # 超卖 → 多
         sig.loc[wr > self.high, "williams_r"] = -1.0  # 超买 → 空

@@ -33,7 +33,8 @@ class AroonFactor(Factor):
     def __init__(self, window: int = 25):
         self.window = window
 
-    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def raw_value(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: Aroon 差值 up − down, 上趋势主导为正 → 多头."""
         # 距创新高/新低天数: 窗口内最高/最低位置
         def _days_since_high(s):
             return self.window - 1 - int(np.argmax(s)) if len(s) == self.window else np.nan
@@ -47,7 +48,10 @@ class AroonFactor(Factor):
         down = 100 * (self.window - prices.rolling(self.window).apply(
             _days_since_low, raw=True,
         )) / self.window
-        diff = up - down
+        return up - down
+
+    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        diff = self.raw_value(prices)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         # Aroon 差值: >50 上趋势主导 → 多; < -50 → 空
         sig[diff > 50] = 1.0
@@ -71,7 +75,8 @@ class VortexFactor(Factor):
     def __init__(self, window: int = 14):
         self.window = window
 
-    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def raw_value(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: vi_plus − vi_minus, 上涨动量主导为正 → 多头."""
         req = {"high", "low", "close"}
         if not req.issubset(ohlc.columns):
             raise ValueError(f"VortexFactor requires columns {req}")
@@ -87,10 +92,14 @@ class VortexFactor(Factor):
         ], axis=1).max(axis=1).rolling(self.window).sum().replace(0, np.nan)
         vi_plus = vm_plus / tr
         vi_minus = vm_minus / tr
+        return pd.DataFrame({"vortex": vi_plus - vi_minus}, index=ohlc.index)
+
+    def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        diff = self.raw_value(ohlc)["vortex"]
         sig = pd.DataFrame(0.0, index=ohlc.index, columns=["vortex"])
-        prev_p, prev_m = vi_plus.shift(1), vi_minus.shift(1)
-        sig.loc[(vi_plus > vi_minus) & (prev_p <= prev_m), "vortex"] = 1.0
-        sig.loc[(vi_plus < vi_minus) & (prev_p >= prev_m), "vortex"] = -1.0
+        prev = diff.shift(1)
+        sig.loc[(diff > 0) & (prev <= 0), "vortex"] = 1.0
+        sig.loc[(diff < 0) & (prev >= 0), "vortex"] = -1.0
         return sig
 
 
@@ -112,7 +121,8 @@ class LinearSlopeFactor(Factor):
         self.window = window
         self.z_threshold = z_threshold
 
-    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def raw_value(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: 窗口内对数价格回归斜率, 斜率为正 → 上行趋势."""
         def _slope(s):
             s = s.dropna()
             if len(s) < 5:
@@ -121,7 +131,10 @@ class LinearSlopeFactor(Factor):
             y = np.log(s.values)
             return float(np.polyfit(x, y, 1)[0])
 
-        slope = prices.rolling(self.window).apply(_slope, raw=False)
+        return prices.rolling(self.window).apply(_slope, raw=False)
+
+    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        slope = self.raw_value(prices)
         # 斜率方向直接作信号: 恒定斜率时 z-score 无意义, 用符号判别
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         sig[slope > 0] = 1.0
@@ -145,11 +158,15 @@ class TRIXFactor(Factor):
     def __init__(self, window: int = 15):
         self.window = window
 
-    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    def raw_value(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: TRIX 变化率 (%), 为正 → 多头."""
         ema1 = prices.ewm(span=self.window, adjust=False).mean()
         ema2 = ema1.ewm(span=self.window, adjust=False).mean()
         ema3 = ema2.ewm(span=self.window, adjust=False).mean()
-        trix = ema3.pct_change() * 100
+        return ema3.pct_change() * 100
+
+    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        trix = self.raw_value(prices)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         prev = trix.shift(1)
         sig[(trix > 0) & (prev <= 0)] = 1.0
@@ -176,6 +193,10 @@ class ChandelierExitFactor(Factor):
         self.window = window
         self.atr_window = atr_window
         self.mult = mult
+
+    def raw_value(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """事件型因子: 与 compute 一致 (0/±1, 破位事件)."""
+        return self.compute(ohlc, **kwargs)
 
     def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
         req = {"high", "low", "close"}

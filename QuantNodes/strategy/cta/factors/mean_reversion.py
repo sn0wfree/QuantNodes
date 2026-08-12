@@ -35,6 +35,32 @@ class HalfLifeFactor(Factor):
         self.short = short_threshold
         self.long = long_threshold
 
+    def raw_value(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: −半衰期, 短半衰期 (快均值回归) → 值大 → 反转多头.
+
+        无均值回归 (b>=0 或 b<=-1) → NaN (不参与 z-score).
+        """
+        def _half_life(s):
+            s = s.dropna()
+            if len(s) < 10:
+                return np.nan
+            y = s.values
+            dy = np.diff(y)
+            y_lag = y[:-1]
+            # 回归 dy = a + b*y_lag
+            n = len(y_lag)
+            x = np.column_stack([np.ones(n), y_lag])
+            try:
+                beta = np.linalg.lstsq(x, dy, rcond=None)[0]
+            except np.linalg.LinAlgError:
+                return np.nan
+            b = beta[1]
+            if b >= 0 or b <= -1:
+                return np.nan
+            return -np.log(2) / np.log(1 + b)
+
+        return -prices.rolling(self.window).apply(_half_life, raw=False)
+
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
         def _half_life(s):
             s = s.dropna()
@@ -82,6 +108,10 @@ class SqueezeFactor(Factor):
         self.window = window
         self.mult_bb = mult_bb
         self.mult_kt = mult_kt
+
+    def raw_value(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """事件型因子: 与 compute 一致 (0/±1, 收缩状态 + 突破事件)."""
+        return self.compute(ohlc, **kwargs)
 
     def compute(self, ohlc: pd.DataFrame, **kwargs) -> pd.DataFrame:
         req = {"high", "low", "close"}
