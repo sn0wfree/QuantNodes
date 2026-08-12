@@ -1,0 +1,2 @@
+asset,model,auc_binary,auc_cont,prauc_cont,brier_cont,n_fits
+gold,gold_gjrgarch_t,0.5716612738797039,0.6847503303879142,0.4695305918966981,0.28399180288982256,1064

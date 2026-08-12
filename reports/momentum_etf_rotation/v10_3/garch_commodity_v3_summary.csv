@@ -1,0 +1,2 @@
+asset,model,auc_binary,auc_cont,prauc_cont,brier_cont,n_fits
+commodity,rs_gjrgarch_t,0.5390207513902074,0.6790720581921046,0.49906589317774463,0.25432615714436513,1034

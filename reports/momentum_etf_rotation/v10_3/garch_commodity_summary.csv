@@ -1,0 +1,2 @@
+asset,model,auc_binary,auc_cont,prauc_binary,prauc_cont,brier_binary,brier_cont,pos_rate,n_samples,n_fits,avg_train_size
+commodity,"GARCH(1,1)",0.4053507400937758,0.6424740484429066,0.26111448587406993,0.4441165368645081,0.5836575875486382,0.2672810418903417,0.2898832684824903,1028,55,1020.4
