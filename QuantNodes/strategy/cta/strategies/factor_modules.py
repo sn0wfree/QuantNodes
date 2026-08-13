@@ -1,20 +1,35 @@
 # coding=utf-8
-"""多因子 CTA 策略 — 三模块子策略 + 组合 (策略 v2).
+"""多因子 CTA 策略 — 四模块子策略 + 组合 (策略 v3).
 
-设计依据: docs/94-多因子CTA策略设计.md (业界主流: 连续信号加权 + 单一资金池)
+设计依据: docs/94-多因子CTA策略设计.md + 106 因子全库扩展调研
 
 结构:
-    信号层: 因子 raw_value → winsorize → 滚动 z-score (clip ±3)
-            事件型因子 (Chandelier/Squeeze) 保持 0/±1, 不标准化
-    合成层: 模块内等权求和 → 模块连续信号; 因子级信号面板保留 (归因)
-    执行层: sign(模块信号) → vol_target_positions (单一资金池) → 手数 → 回测
+    信号层: 全因子 compute() 信号 (-1/0/+1) 统一投票, 因子级面板保留 (归因)
+    合成层: 模块内等权求和 → 模块方向; 4 组: 趋势动量/均值回归/量能资金流/事件日历
+    执行层: 模块加权合成净信号 → sign → vol_target_positions (单一资金池) → 回测
+    过滤层: 波动率风险类因子 (HV/GARCH/统计/回撤等) 第二阶段接入
+
+输入类型约定 (FACTORS 元组):
+    panel      → 作用于 close 面板
+    ohlc       → 逐品种 OHLC
+    ohlcv      → 逐品种 OHLCV
+    price_vol  → (close 面板, volume 面板)
+    price_oi   → (close 面板, OI 面板)
+    vols       → 逐品种 volume 面板
+    ois        → 逐品种 OI 面板
+    spread     → 全品种近远月期限结构 long-form (load_term_structure)
+    basis      → 全品种现货基差 long-form (spot_basis_daily)
+    macro_vix  → (close 面板, VIX 序列)
+    macro_dxy  → (close 面板, DXY 序列)
+    series     → 逐品种单序列 (每列独立 compute)
+    chain      → 产业链因子, 按模块 CHAIN_MAP 映射到品种列
 
 用法:
     from QuantNodes.strategy.cta.strategies.factor_modules import (
-        OscillatorModuleStrategy, FactorModuleComboStrategy,
+        TrendMomentumModuleStrategy, FactorModuleComboStrategy,
     )
 
-    strat = OscillatorModuleStrategy(products=["AU", "RB"], start="2018-01-01")
+    strat = TrendMomentumModuleStrategy(products=["AU", "RB"], start="2018-01-01")
     result = strat.run()
     print(result.metrics)
 """
@@ -35,21 +50,71 @@ from ..backtest.cta_engine import (
 )
 from ..backtest.cta_contract import CtaContractRegistry
 from ..backtest.cta_risk import PositionLimitRisk
+from ..factors.calendar import MonthTurnFactor, SeasonalityFactor, WeekdayFactor
+from ..factors.candlestick import (
+    DojiFactor, EngulfingFactor, HammerFactor, LongBodyFactor,
+)
+from ..factors.capital import CapitalInflowFactor, TurnoverFactor
+from ..factors.composite import (
+    MomentumCrashFilterFactor, MultiHorizonMomentumFactor, SharpeMomentumFactor,
+)
+from ..factors.divergence import (
+    PriceVolumeDivergenceFactor, VolumeConfirmationFactor,
+)
+from ..factors.event import ExtremeMoveFactor, GapStreakFactor, LimitMoveFactor
+from ..factors.market_structure import NewHighLowFactor, VolumeReturnResidualFactor
 from ..factors.mean_reversion import HalfLifeFactor, SqueezeFactor
+from ..factors.microstructure import (
+    CloseLocationFactor, GapFactor, IntradayReturnFactor,
+    OvernightIntradayDivergenceFactor, OvernightReturnFactor,
+)
+from ..factors.momentum_xs import AmihudXSFactor, MomentumXSFactor
+from ..factors.money_flow import CMFFactor, ForceIndexFactor, MFIFactor, PVTFactor
 from ..factors.oscillators import (
     CCIFactor, MACDFactor, StochasticFactor, WilliamsRFactor,
+)
+from ..factors.price_location import (
+    OpenLocationFactor, PriceLocationFactor, VWAPDeviationFactor,
+)
+from ..factors.trend import (
+    ATRBreakoutFactor, BIASFactor, BollingerFactor,
+    EfficiencyFactor, MAFactor, MomentumFactor, RSIFactor,
 )
 from ..factors.trend_advanced import (
     AroonFactor, ChandelierExitFactor, LinearSlopeFactor, TRIXFactor, VortexFactor,
 )
+from ..factors.trend_quality import MomentumSlopeFactor, TrendQualityFactor
+from ..factors.volume import (
+    AmihudFactor, OBVFactor, OIPriceDivergenceFactor, OpenInterestTrendFactor,
+    VolOIRatioFactor, VolumeBreakoutFactor, VolumePriceCorrFactor, VolumeTrendFactor,
+)
+from ..factors.volume_decay import VolumeDecayFactor
+from ..factors.volume_indicators import (
+    EaseOfMovementFactor, KlingerOscillatorFactor, VolumeMACrossFactor,
+    VolumeRatioFactor,
+)
 from ..factors.volatility import vol_target_positions
+from ..factors.term_structure import TermSlopeFactor
+from ..factors.basis_momentum import BasisLevelFactor
+from ..factors.macro_link import DXYLinkFactor, MacroStateFactor, VIXLinkFactor
+from ..factors.industrial_chain import (
+    ChainMarginFactor, LeadLagFactor, MarginMomentumFactor, PriceRatioFactor,
+)
+from ..factors.cointegration import SpreadMeanReversionFactor
 
-# 默认中池 10 品种 (设计文档 §一)
-DEFAULT_PRODUCTS = ["AU", "RB", "M", "CU", "IF", "I", "T", "TA", "MA", "C"]
-
-Z_WINDOW = 252        # 滚动 z-score 窗口
-Z_CLIP = 3.0          # z-score 截断
-WINSOR_P = 0.01       # winsorize 分位
+# 默认品种池: 全部有交易量品种 (2023-2025 日均成交量 ≥ 1 万手, 82→72)
+# 覆盖全部产业链配方品种: 钢铁 RB/I/J/HC, 焦化 J/JM, PTA/聚酯 TA/PX/PF/EG,
+# MTO PP/MA, 压榨 M/Y/A, 饲料 LH/C
+DEFAULT_PRODUCTS = [
+    "RB", "FG", "SA", "M", "TA", "MA", "V", "P", "RM", "HC",
+    "LC", "Y", "AG", "FU", "I", "C", "UR", "OI", "JM", "SM",
+    "PP", "CF", "L", "RU", "SI", "EB", "SR", "PS", "SP", "SH",
+    "EG", "SF", "JD", "AO", "BU", "PX", "AP", "AL", "IM", "PF",
+    "AU", "ZN", "SS", "NI", "PK", "A", "CS", "CJ", "EC", "B",
+    "T", "TL", "PG", "IF", "CU", "TF", "IC", "LU", "SN", "BR",
+    "NR", "LH", "PT", "PR", "SC", "PB", "TS", "IH", "PD", "LG",
+    "J", "PL",
+]
 
 
 @dataclass
@@ -61,19 +126,20 @@ class ModuleConfig:
     max_leverage: float = 3.0       # 最大杠杆
     initial_cash: float = 2_000_000.0
     commission_rate: float = 0.0001
-    z_window: int = Z_WINDOW
-    z_clip: float = Z_CLIP
-    winsor_p: float = WINSOR_P
+    aggregation: str = "equal"      # 组内聚合: equal | inv_vol | regression
+    agg_window: int = 252           # inv_vol/regression 滚动窗口
+    agg_update: int = 21            # 权重更新频率 (天)
 
 
 class _ModuleStrategy:
     """模块子策略执行层基类.
 
-    子类只需定义 FACTORS: list[(因子名, 因子实例, 输入类型, 是否事件型)]
-    输入类型: "panel" → compute 于 close 面板; "ohlc" → 逐品种 OHLC.
+    子类定义 FACTORS: list[(因子名, 因子类, 输入类型)].
+    信号 = 组内因子 compute() 信号 (-1/0/+1) 等权求和 → sign.
     """
 
-    FACTORS: list[tuple[str, object, str, bool]] = []
+    FACTORS: list[tuple[str, object, str]] = []
+    CHAIN_MAP: dict[str, str] = {}   # 产业链因子名 → 目标品种/配对 ("A-B")
 
     def __init__(
         self,
@@ -92,13 +158,19 @@ class _ModuleStrategy:
 
         self._price_panel: pd.DataFrame | None = None
         self._ohlc_map: dict[str, pd.DataFrame] = {}
+        self._vols: pd.DataFrame | None = None
+        self._ois: pd.DataFrame | None = None
+        self._spread_df: pd.DataFrame | None = None
+        self._basis_df: pd.DataFrame | None = None
+        self._vix: pd.Series | None = None
+        self._dxy: pd.Series | None = None
         self.factor_signals: dict[str, pd.DataFrame] = {}
 
     # ── 数据 ────────────────────────────────────────────────────────────
 
     def load_panel(self) -> pd.DataFrame:
-        """加载全部产品主力连续 → close 面板 + OHLC 映射."""
-        closes, ohlcs = {}, {}
+        """加载全部产品主力连续 → close/volume/OI 面板 + OHLC 映射."""
+        closes, ohlcs, vols, ois = {}, {}, {}, {}
         for product in self._products:
             try:
                 df = self._dl.load_continuous_main(
@@ -110,60 +182,188 @@ class _ModuleStrategy:
                 df = df.set_index("trade_date").sort_index()
                 closes[product] = df["close"]
                 ohlcs[product] = df[["open", "high", "low", "close"]]
+                vols[product] = df["volume"]
+                ois[product] = df["open_interest"]
             except Exception as e:
                 print(f"  [{product}] load failed: {e}")
         panel = pd.DataFrame(closes).sort_index().dropna(how="all")
+        # 固定品种列 (新上市品种早期无数据 → NaN 列, 回测自动跳过)
+        panel = panel.reindex(columns=self._products)
         self._price_panel = panel
         self._ohlc_map = ohlcs
+        self._vols = pd.DataFrame(vols).reindex(index=panel.index, columns=self._products)
+        self._ois = pd.DataFrame(ois).reindex(index=panel.index, columns=self._products)
         return panel
 
     # ── 信号层 ──────────────────────────────────────────────────────────
 
-    def _raw_panel(self, factor, input_type: str) -> pd.DataFrame:
-        """因子 raw_value → (T,N) 面板.
+    def _ensure_external(self) -> None:
+        """懒加载外部数据 (期限结构/基差/宏观序列)."""
+        if self._spread_df is None:
+            parts = []
+            for product in self._products:
+                ts = self._dl.load_term_structure(
+                    product, start=self._start, end=self._end,
+                )
+                if not ts.empty:
+                    parts.append(ts)
+            self._spread_df = pd.concat(parts) if parts else pd.DataFrame()
+        if self._basis_df is None:
+            try:
+                self._basis_df = self._dl.load_spot_basis(
+                    start=self._start, end=min(self._end, "2025-07-31"),
+                )
+            except Exception:
+                self._basis_df = pd.DataFrame()
+        if self._vix is None:
+            try:
+                self._vix = self._dl.load_macro_series("vix")
+            except Exception:
+                self._vix = pd.Series(dtype=float)
+        if self._dxy is None:
+            try:
+                self._dxy = self._dl.load_macro_series("dxy")
+            except Exception:
+                self._dxy = pd.Series(dtype=float)
 
-        panel: 直接作用于 close 面板; ohlc: 逐品种 OHLC 合并.
-        """
+    def _signal_panel(self, factor, input_type: str, name: str | None = None) -> pd.DataFrame:
+        """因子 compute() 信号 → (T,N) 面板 (-1/0/+1)."""
         if input_type == "panel":
-            return factor.raw_value(self._price_panel)
-        cols = {}
-        for p, ohlc in self._ohlc_map.items():
-            out = factor.raw_value(ohlc)
-            cols[p] = out[out.columns[0]]
-        return pd.DataFrame(cols).reindex(self._price_panel.index)
-
-    @staticmethod
-    def _normalize(raw: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
-        """winsorize → 滚动 z-score → clip (逐品种时序, 无前视)."""
-        lo = raw.rolling(cfg.z_window, min_periods=20).quantile(cfg.winsor_p)
-        hi = raw.rolling(cfg.z_window, min_periods=20).quantile(1 - cfg.winsor_p)
-        clipped = raw.clip(lo, hi, axis=0)
-        mu = clipped.rolling(cfg.z_window, min_periods=20).mean()
-        sd = clipped.rolling(cfg.z_window, min_periods=20).std()
-        z = (clipped - mu) / sd.replace(0, np.nan)
-        return z.clip(-cfg.z_clip, cfg.z_clip)
+            out = factor.compute(self._price_panel)
+        elif input_type == "series":
+            cols = {}
+            for p in self._price_panel.columns:
+                r = factor.compute(self._price_panel[p])
+                cols[p] = r if isinstance(r, pd.Series) else r.iloc[:, 0]
+            return pd.DataFrame(cols).reindex(self._price_panel.index)
+        elif input_type == "chain":
+            out = factor.compute(self._price_panel)
+            col = out.columns[0]
+            target = self.CHAIN_MAP[name]
+            panel = pd.DataFrame(0.0, index=self._price_panel.index,
+                                 columns=self._price_panel.columns)
+            if "-" in target:  # 配对: 分子=sig, 分母=-sig
+                num, den = target.split("-")
+                panel[num] = out[col]
+                panel[den] = -out[col]
+            else:
+                panel[target] = out[col]
+            return panel
+        elif input_type == "ohlc":
+            cols = {}
+            for p, ohlc in self._ohlc_map.items():
+                r = factor.compute(ohlc)
+                cols[p] = r[r.columns[0]]
+            return pd.DataFrame(cols).reindex(self._price_panel.index)
+        elif input_type == "ohlcv":
+            cols = {}
+            for p, ohlc in self._ohlc_map.items():
+                df = ohlc.copy()
+                df["volume"] = self._vols[p]
+                r = factor.compute(df)
+                cols[p] = r[r.columns[0]]
+            return pd.DataFrame(cols).reindex(self._price_panel.index)
+        elif input_type == "price_vol":
+            out = factor.compute(self._price_panel, self._vols)
+        elif input_type == "price_oi":
+            out = factor.compute(self._price_panel, self._ois)
+        elif input_type == "vols":
+            out = factor.compute(self._vols)
+        elif input_type == "ois":
+            out = factor.compute(self._ois)
+        elif input_type == "spread":
+            self._ensure_external()
+            out = factor.compute(self._spread_df)
+            if isinstance(out, pd.Series):
+                out = out.unstack()
+            return out.reindex(self._price_panel.index)
+        elif input_type == "basis":
+            self._ensure_external()
+            out = factor.compute(self._basis_df)
+            if isinstance(out, pd.Series):
+                out = out.unstack()
+            out.columns = [str(c).upper() for c in out.columns]
+            cols = [p for p in self._products if p in out.columns]
+            return out.reindex(index=self._price_panel.index, columns=cols)
+        elif input_type == "macro_vix":
+            self._ensure_external()
+            out = factor.compute(self._price_panel, self._vix)
+        elif input_type == "macro_dxy":
+            self._ensure_external()
+            out = factor.compute(self._price_panel, self._dxy)
+        else:
+            raise ValueError(f"unknown input_type: {input_type}")
+        return out.reindex(self._price_panel.index)
 
     def _signals_raw(self) -> pd.DataFrame:
-        """模块内因子 z-score 等权求和 (事件型直接 0/±1)."""
+        """模块内因子信号 → 模块信号 (按 aggregation 聚合).
+
+        equal:      等权平均 (Σsig/n, ∈ [-1,1], 修复组间尺度不均衡)
+        inv_vol:    滚动窗口信号波动率倒数加权 (w_k ∝ 1/σ_k)
+        regression: 滚动窗口 OLS 学权重 (sig → 未来收益, w = 系数, 无前视)
+        """
         if self._price_panel is None:
             self.load_panel()
-        cfg = self._config
         self.factor_signals = {}
-        summed = pd.DataFrame(0.0, index=self._price_panel.index,
+        panels = {}
+        for name, cls, input_type in self.FACTORS:
+            sig = self._signal_panel(cls(), input_type, name)
+            # 统一行列: 缺列品种 (早期无数据) → NaN → 求和前 fillna(0)
+            sig = sig.reindex(index=self._price_panel.index,
                               columns=self._price_panel.columns)
-        for name, factor, input_type, event in self.FACTORS:
-            raw = self._raw_panel(factor, input_type)
-            if event:
-                self.factor_signals[name] = raw
-                summed += raw
-            else:
-                z = self._normalize(raw, cfg)
-                self.factor_signals[name] = z
-                summed += z.fillna(0)
-        return summed
+            self.factor_signals[name] = sig
+            panels[name] = sig.fillna(0)
+        agg = self._config.aggregation
+        if agg == "equal":
+            return sum(panels.values()) / len(panels)
+        if agg in ("inv_vol", "regression"):
+            return self._agg_weighted(panels)
+        raise ValueError(f"unknown aggregation: {agg}")
+
+    def _agg_weights(self, panels: dict[str, pd.DataFrame]) -> tuple[np.ndarray, list[str]]:
+        """滚动窗口因子权重 (T, K): inv_vol = 1/σ, regression = OLS 系数.
+
+        无前视: t 期权重只用 [t-window, t) 数据, 每 agg_update 天更新一次.
+        """
+        names = list(panels)
+        T = len(self._price_panel)
+        W = np.full((T, len(names)), 1.0 / len(names))
+        cols = list(self._price_panel.columns)
+        unified = [panels[n].reindex(columns=cols, fill_value=0.0) for n in names]
+        stack = np.stack([p.values for p in unified], axis=-1)
+        win = self._config.agg_window
+        if self._config.aggregation == "inv_vol":
+            for t in range(win, T, self._config.agg_update):
+                x = stack[t - win:t].reshape(-1, len(names))
+                std = np.nanstd(x, axis=0)
+                safe = np.where(std > 1e-9, std, np.nan)
+                w = np.where(np.isnan(safe), 0.0, 1.0 / safe)
+                w = w / w.sum() if w.sum() > 0 else np.full(len(names), 1.0 / len(names))
+                W[t:min(t + self._config.agg_update, T)] = w
+            return W, names
+        if self._config.aggregation == "regression":
+            Y = self._price_panel.pct_change().shift(-1).values
+            for t in range(win, T, self._config.agg_update):
+                x = stack[t - win:t].reshape(-1, len(names))
+                y = Y[t - win:t].reshape(-1)
+                mask = ~np.isnan(y) & ~np.any(np.isnan(x), axis=1)
+                if mask.sum() > len(names) * 2:
+                    beta, *_ = np.linalg.lstsq(x[mask], y[mask], rcond=None)
+                    W[t:min(t + self._config.agg_update, T)] = beta
+            return W, names
+        raise ValueError(f"unknown aggregation: {self._config.aggregation}")
+
+    def _agg_weighted(self, panels: dict[str, pd.DataFrame]) -> pd.DataFrame:
+        """按 (T,K) 权重矩阵加权合成模块信号."""
+        W, names = self._agg_weights(panels)
+        out = None
+        for j, n in enumerate(names):
+            contrib = panels[n].mul(W[:, j], axis=0)
+            out = contrib if out is None else out + contrib
+        return out
 
     def _signals(self) -> pd.DataFrame:
-        """模块连续信号 → 方向 (-1/0/+1)."""
+        """模块信号 → 方向 (-1/0/+1)."""
         return np.sign(self._signals_raw())
 
     # ── 仓位与回测 ──────────────────────────────────────────────────────
@@ -172,6 +372,9 @@ class _ModuleStrategy:
         """方向 × 波动率目标 → 目标手数 (当日活跃品种等分资金)."""
         cfg = self._config
         signals = self._signals()
+        return self._signal_to_lots(signals, cfg)
+
+    def _signal_to_lots(self, signals: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
         weights = vol_target_positions(
             signals,
             self._price_panel,
@@ -179,13 +382,11 @@ class _ModuleStrategy:
             vol_lookback=cfg.vol_lookback,
             max_leverage=cfg.max_leverage,
         )
-
         equity = cfg.initial_cash
         signal_on = (weights.abs() > 1e-9).astype(float)
         n_active = signal_on.sum(axis=1).clip(lower=1)
-
-        lots = pd.DataFrame(0.0, index=weights.index, columns=weights.columns)
-        for product in weights.columns:
+        lots = pd.DataFrame(0.0, index=signals.index, columns=signals.columns)
+        for product in signals.columns:
             price = self._price_panel[product]
             spec = self._registry.get_or_default(product)
             notional_per_lot = price * spec.contract_multiplier
@@ -196,87 +397,11 @@ class _ModuleStrategy:
             lots[product] = target
         return lots
 
-    def run(self) -> CtaBacktestResult:
-        """运行完整回测 (方向变化才调仓)."""
-        price_panel = self.load_panel()
-        positions = self._positions()
-
-        cols = [p for p in self._products if p in price_panel.columns]
-        prices_map = {p: price_panel[p].tolist() for p in cols}
-        products_map = {p: p for p in prices_map}
-
-        class _PanelStrategy(CtaStrategy):
-            def __init__(self, pos_df):
-                self._pos = pos_df
-                self._last = {}
-
-            def target_positions(self, date, data):
-                if date not in self._pos.index:
-                    return {}
-                row = self._pos.loc[date]
-                targets = {
-                    p: float(row[p]) for p in self._pos.columns if abs(row[p]) > 1e-9
-                }
-                changed = False
-                for p in set(targets) | set(self._last):
-                    def _sgn(x):
-                        return 1 if x > 0 else (-1 if x < 0 else 0)
-                    new_s = _sgn(targets.get(p, 0))
-                    old_s = _sgn(self._last.get(p, 0))
-                    if new_s != old_s:
-                        changed = True
-                        break
-                if not changed:
-                    return {}
-                self._last = targets
-                return targets
-
-        risk = PositionLimitRisk(products=products_map, registry=self._registry)
-        result = run_cta_backtest(
-            dates=list(price_panel.index),
-            prices=prices_map,
-            products=products_map,
-            strategy=_PanelStrategy(positions),
-            config=CtaBacktestConfig(
-                initial_cash=self._config.initial_cash,
-                commission_rate=self._config.commission_rate,
-            ),
-            registry=self._registry,
-            risk=risk,
-        )
-        return result
-
-    # ── 归因 ────────────────────────────────────────────────────────────
-
-    def run_factor(self, name: str) -> CtaBacktestResult:
-        """单因子独立回测 (因子级归因)."""
-        if name not in self.factor_signals:
-            self._signals_raw()
-        z = self.factor_signals[name]
-        sig = np.sign(z)
-        return self._run_signal(sig)
-
     def _run_signal(self, sig: pd.DataFrame) -> CtaBacktestResult:
         """给定方向面板直接跑回测 (组合/归因共用)."""
         cfg = self._config
+        lots = self._signal_to_lots(sig, cfg)
         price_panel = self._price_panel
-        weights = vol_target_positions(
-            sig, price_panel, target_vol=cfg.target_vol,
-            vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,
-        )
-        equity = cfg.initial_cash
-        signal_on = (weights.abs() > 1e-9).astype(float)
-        n_active = signal_on.sum(axis=1).clip(lower=1)
-        lots = pd.DataFrame(0.0, index=sig.index, columns=sig.columns)
-        for product in sig.columns:
-            price = price_panel[product]
-            spec = self._registry.get_or_default(product)
-            notional_per_lot = price * spec.contract_multiplier
-            capital_per_product = signal_on[product] * equity / n_active
-            with np.errstate(divide="ignore", invalid="ignore"):
-                target = weights[product] * capital_per_product / notional_per_lot
-            target = target.replace([np.inf, -np.inf], np.nan).fillna(0).round()
-            lots[product] = target
 
         class _PanelStrategy(CtaStrategy):
             def __init__(self, pos_df):
@@ -320,8 +445,21 @@ class _ModuleStrategy:
             risk=risk,
         )
 
+    def run(self) -> CtaBacktestResult:
+        """运行完整回测 (方向变化才调仓)."""
+        self.load_panel()
+        return self._run_signal(self._signals())
+
+    # ── 归因 ────────────────────────────────────────────────────────────
+
+    def run_factor(self, name: str) -> CtaBacktestResult:
+        """单因子独立回测 (因子级归因)."""
+        if name not in self.factor_signals:
+            self._signals_raw()
+        return self._run_signal(np.sign(self.factor_signals[name]))
+
     def signal_correlation(self) -> pd.DataFrame:
-        """因子级 z-score 信号相关矩阵 (列两两 Pearson)."""
+        """因子级信号相关矩阵 (列两两 Pearson, 逐日逐品种配对)."""
         if not self.factor_signals:
             self._signals_raw()
         frame = pd.DataFrame({
@@ -334,53 +472,225 @@ class _ModuleStrategy:
         return self._products
 
 
-# ── 三个模块子策略 ─────────────────────────────────────────────────────────
+# ── 波动率风险过滤层 ───────────────────────────────────────────────────────
 
-class OscillatorModuleStrategy(_ModuleStrategy):
-    """振荡模块: MACD / Stochastic / CCI / WilliamsR."""
+class VolRiskFilter:
+    """波动率风险过滤层: 输出全局仓位系数 (T,) ∈ [0,1].
+
+    市场级危机过滤 (业界标准, 实验增益): 全市场平均 HV 滚动 z-score
+    超过阈值 → 全局降仓. 10 品种实验: z>1.0 → 0.5x 使 Sharpe 1.109→1.190.
+    单品种级过滤 (HV 逐品种 z-score) 实验无增益, 默认关闭.
+    """
+
+    def __init__(
+        self,
+        z_window: int = 252,
+        mkt_z_threshold: float = 1.0,
+        mkt_coef: float = 0.5,
+        product_z_threshold: float = 2.0,
+        product_coef: float = 0.5,
+        apply_per_product: bool = False,
+    ):
+        self.z_window = z_window
+        self.mkt_z_threshold = mkt_z_threshold
+        self.mkt_coef = mkt_coef
+        self.product_z_threshold = product_z_threshold
+        self.product_coef = product_coef
+        self.apply_per_product = apply_per_product
+
+    def coefficients(self, price_panel: pd.DataFrame) -> pd.DataFrame:
+        """返回 (T,N) 仓位系数矩阵."""
+        from ..factors.volatility import HVFactor
+        hv = HVFactor().compute(price_panel)
+        mu = hv.rolling(self.z_window, min_periods=20).mean()
+        sd = hv.rolling(self.z_window, min_periods=20).std()
+        hv_z = (hv - mu) / sd.replace(0, np.nan)
+        coef = pd.DataFrame(1.0, index=price_panel.index, columns=price_panel.columns)
+        mkt_z = hv_z.mean(axis=1)
+        coef.loc[mkt_z > self.mkt_z_threshold, :] = self.mkt_coef
+        if self.apply_per_product:
+            coef[hv_z > self.product_z_threshold] = self.product_coef
+        return coef
+
+
+# ── 四个方向子策略 ─────────────────────────────────────────────────────────
+
+class TrendMomentumModuleStrategy(_ModuleStrategy):
+    """趋势动量组: 价格趋势/动量/突破类因子.
+
+    去重 (docs/94 §10.4): donchian×ma 相关 0.798 (72 品种离散信号最高对)
+    且 donchian 单因子 Sharpe 最弱 (-0.52), 删除.
+    """
 
     FACTORS = [
-        ("macd", MACDFactor(), "panel", False),
-        ("stochastic", StochasticFactor(), "ohlc", False),
-        ("cci", CCIFactor(), "ohlc", False),
-        ("williams_r", WilliamsRFactor(), "ohlc", False),
-    ]
-
-
-class TrendAdvancedModuleStrategy(_ModuleStrategy):
-    """趋势进阶模块: Aroon / Vortex / LinearSlope / TRIX / Chandelier."""
-
-    FACTORS = [
-        ("aroon", AroonFactor(), "panel", False),
-        ("vortex", VortexFactor(), "ohlc", False),
-        ("linear_slope", LinearSlopeFactor(), "panel", False),
-        ("trix", TRIXFactor(), "panel", False),
-        ("chandelier", ChandelierExitFactor(), "ohlc", True),
+        ("ma", MAFactor, "panel"),
+        ("momentum", MomentumFactor, "panel"),
+        ("rsi", RSIFactor, "panel"),
+        ("efficiency", EfficiencyFactor, "panel"),
+        ("aroon", AroonFactor, "panel"),
+        ("linear_slope", LinearSlopeFactor, "panel"),
+        ("trix", TRIXFactor, "panel"),
+        ("macd", MACDFactor, "panel"),
+        ("multi_horizon_mom", MultiHorizonMomentumFactor, "panel"),
+        ("sharpe_mom", SharpeMomentumFactor, "panel"),
+        ("mom_crash_filter", MomentumCrashFilterFactor, "panel"),
+        ("mom_slope", MomentumSlopeFactor, "panel"),
+        ("trend_quality", TrendQualityFactor, "panel"),
+        ("new_high_low", NewHighLowFactor, "panel"),
+        ("momentum_xs", MomentumXSFactor, "panel"),
+        ("atr_breakout", ATRBreakoutFactor, "ohlc"),
+        ("overnight_ret", OvernightReturnFactor, "ohlc"),
+        ("intraday_ret", IntradayReturnFactor, "ohlc"),
+        ("overnight_intraday_div", OvernightIntradayDivergenceFactor, "ohlc"),
+        ("long_body", LongBodyFactor, "ohlc"),
+        ("vortex", VortexFactor, "ohlc"),
+        ("chandelier", ChandelierExitFactor, "ohlc"),
     ]
 
 
 class MeanReversionModuleStrategy(_ModuleStrategy):
-    """均值回归模块: HalfLife / Squeeze."""
+    """均值回归组: 超买超卖/价格位置/K线反转/价差回归类因子."""
 
     FACTORS = [
-        ("half_life", HalfLifeFactor(), "panel", False),
-        ("squeeze", SqueezeFactor(), "ohlc", True),
+        ("bollinger", BollingerFactor, "panel"),
+        ("bias", BIASFactor, "panel"),
+        ("half_life", HalfLifeFactor, "panel"),
+        ("price_location", PriceLocationFactor, "panel"),
+        ("spread_mr", SpreadMeanReversionFactor, "series"),
+        ("stochastic", StochasticFactor, "ohlc"),
+        ("cci", CCIFactor, "ohlc"),
+        ("williams_r", WilliamsRFactor, "ohlc"),
+        ("squeeze", SqueezeFactor, "ohlc"),
+        ("close_location", CloseLocationFactor, "ohlc"),
+        ("open_location", OpenLocationFactor, "ohlc"),
+        ("doji", DojiFactor, "ohlc"),
+        ("hammer", HammerFactor, "ohlc"),
+        ("engulfing", EngulfingFactor, "ohlc"),
+        ("gap", GapFactor, "ohlc"),
     ]
+
+
+class VolumeFlowModuleStrategy(_ModuleStrategy):
+    """量能资金流组: 量价/持仓/资金流类因子."""
+
+    FACTORS = [
+        ("volume_trend", VolumeTrendFactor, "price_vol"),
+        ("volume_breakout", VolumeBreakoutFactor, "vols"),
+        ("obv", OBVFactor, "price_vol"),
+        ("oi_trend", OpenInterestTrendFactor, "ois"),
+        ("vol_oi_ratio", VolOIRatioFactor, "price_oi"),
+        ("amihud", AmihudFactor, "price_vol"),
+        ("volume_price_corr", VolumePriceCorrFactor, "price_vol"),
+        ("volume_confirmation", VolumeConfirmationFactor, "price_vol"),
+        ("price_vol_divergence", PriceVolumeDivergenceFactor, "price_vol"),
+        ("oi_price_divergence", OIPriceDivergenceFactor, "price_oi"),
+        ("volume_decay", VolumeDecayFactor, "vols"),
+        ("volume_ret_residual", VolumeReturnResidualFactor, "price_vol"),
+        ("capital_inflow", CapitalInflowFactor, "price_oi"),
+        ("turnover", TurnoverFactor, "price_vol"),
+        ("mfi", MFIFactor, "ohlcv"),
+        ("cmf", CMFFactor, "ohlcv"),
+        ("ease_of_movement", EaseOfMovementFactor, "ohlcv"),
+        ("klinger", KlingerOscillatorFactor, "ohlcv"),
+        ("volume_ratio", VolumeRatioFactor, "vols"),
+        ("volume_ma_cross", VolumeMACrossFactor, "vols"),
+        ("pvt", PVTFactor, "price_vol"),
+        ("force_index", ForceIndexFactor, "price_vol"),
+        ("vwap_deviation", VWAPDeviationFactor, "ohlcv"),
+        ("amihud_xs", AmihudXSFactor, "price_vol"),
+    ]
+
+
+class EventCalendarModuleStrategy(_ModuleStrategy):
+    """事件日历组: 极端波动/跳变/日历效应类因子."""
+
+    FACTORS = [
+        ("extreme_move", ExtremeMoveFactor, "panel"),
+        ("gap_streak", GapStreakFactor, "panel"),
+        ("limit_move", LimitMoveFactor, "panel"),
+        ("seasonality", SeasonalityFactor, "panel"),
+        ("weekday", WeekdayFactor, "panel"),
+        ("month_turn", MonthTurnFactor, "panel"),
+    ]
+
+
+class TermBasisModuleStrategy(_ModuleStrategy):
+    """期限结构/基差组: 近远月价差 + 现货基差类因子.
+
+    数据: load_term_structure (近远月 OI top-4 合约) + spot_basis_daily.
+    因子选择 (docs/94 §7.5/§8.9): 9 因子归因仅 term_slope/basis_level 为正
+    (basis/roll_yield/term_curvature/oi_concentration/front_month_oi/
+    near_basis/basis_momentum 单边信号在国内商品系统性失效, 剔除).
+    basis_level 单因子 72 品种归因转负 (-0.44) 但组合层面为正贡献
+    (sign 非线性), 保留.
+    IF/T 等无现货基差品种无信号 (NaN → 0).
+    """
+
+    FACTORS = [
+        ("term_slope", TermSlopeFactor, "spread"),
+        ("basis_level", BasisLevelFactor, "basis"),
+    ]
+
+
+class MacroModuleStrategy(_ModuleStrategy):
+    """宏观联动组: VIX/DXY 与品种联动类因子."""
+
+    FACTORS = [
+        ("vix_link", VIXLinkFactor, "macro_vix"),
+        ("dxy_link", DXYLinkFactor, "macro_dxy"),
+        ("macro_state", MacroStateFactor, "macro_vix"),
+    ]
+
+
+class IndustrialChainModuleStrategy(_ModuleStrategy):
+    """产业链组: 盘面利润/利润动量/比价/上下游传导.
+
+    信号 → 品种映射 (CHAIN_MAP):
+        chain_margin_rb  → RB   (螺纹盘面利润, 交易下游成品)
+        chain_margin_pp  → PP   (MTO 利润)
+        margin_momentum_m → M   (压榨利润动量)
+        price_ratio_au_cu → AU-CU 配对 (比价高估 → 空 AU 多 CU)
+        lead_lag_i_rb    → RB   (铁矿传导顺畅 → 做多下游螺纹)
+    """
+
+    FACTORS = [
+        ("chain_margin_rb", lambda: ChainMarginFactor("steel_profit_rb"), "chain"),
+        ("chain_margin_pp", lambda: ChainMarginFactor("mto_profit"), "chain"),
+        ("margin_momentum_m", lambda: MarginMomentumFactor("crush_profit"), "chain"),
+        ("price_ratio_au_cu", lambda: PriceRatioFactor("AU", "CU"), "chain"),
+        ("lead_lag_i_rb", lambda: LeadLagFactor("I", "RB"), "chain"),
+    ]
+
+    CHAIN_MAP = {
+        "chain_margin_rb": "RB",
+        "chain_margin_pp": "PP",
+        "margin_momentum_m": "M",
+        "price_ratio_au_cu": "AU-CU",
+        "lead_lag_i_rb": "RB",
+    }
 
 
 # ── 组合策略 ───────────────────────────────────────────────────────────────
 
 @dataclass
 class ComboConfig(ModuleConfig):
-    """组合策略配置: 模块权重 (振荡/趋势/均值回归)."""
+    """组合策略配置: 模块权重 (趋势/均值回归/量能/事件/期限基差/宏观/产业链) + 过滤层.
 
-    module_weights: tuple[float, float, float] = (0.3, 0.5, 0.2)
+    权重策略: 默认等权 1/7 (7 组), 简单稳健, 不做样本内调优
+    (调优结果仅记录于 docs/94, 不设为默认).
+    """
+
+    module_weights: tuple[float, float, float, float, float, float, float] = (
+        1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7,
+    )
+    filter_enabled: bool = True      # 市场级波动危机过滤 (Sharpe 1.109→1.190)
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
-    """组合策略: 三模块信号加权 → 单一资金池 vol targeting.
+    """组合策略: 四模块方向信号加权 → 单一资金池 vol targeting.
 
-    模块权重默认 0.3/0.5/0.2 (趋势主导, 业界 CTA 惯例).
+    模块权重默认等权 0.25×4 (可调, 趋势主导可改为 0.4/0.2/0.3/0.1).
+    波动率风险过滤层 (HV/GARCH/统计/回撤类) 第二阶段接入.
     """
 
     def __init__(self, **kwargs):
@@ -392,22 +702,54 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             })
         cfg = self._config
         self._modules = [
-            OscillatorModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
-            TrendAdvancedModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
+            TrendMomentumModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
             MeanReversionModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
+            VolumeFlowModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
+            EventCalendarModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
+            TermBasisModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
+            MacroModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
+            IndustrialChainModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
         ]
         self.module_signals: dict[str, pd.DataFrame] = {}
-        self._combo_raw: pd.DataFrame | None = None
+        self._filter = VolRiskFilter() if self._config.filter_enabled else None
+
+    def _signal_to_lots(self, signals: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
+        """组合层: vol_target 权重 × 波动率过滤系数 → 手数."""
+        weights = vol_target_positions(
+            signals, self._price_panel, target_vol=cfg.target_vol,
+            vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,
+        )
+        if self._filter is not None:
+            weights = weights * self._filter.coefficients(self._price_panel)
+        return self._weights_to_lots(weights, cfg)
+
+    def _weights_to_lots(self, weights: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
+        equity = cfg.initial_cash
+        signal_on = (weights.abs() > 1e-9).astype(float)
+        n_active = signal_on.sum(axis=1).clip(lower=1)
+        lots = pd.DataFrame(0.0, index=weights.index, columns=weights.columns)
+        for product in weights.columns:
+            price = self._price_panel[product]
+            spec = self._registry.get_or_default(product)
+            notional_per_lot = price * spec.contract_multiplier
+            capital_per_product = signal_on[product] * equity / n_active
+            with np.errstate(divide="ignore", invalid="ignore"):
+                target = weights[product] * capital_per_product / notional_per_lot
+            target = target.replace([np.inf, -np.inf], np.nan).fillna(0).round()
+            lots[product] = target
+        return lots
 
     def load_panel(self) -> pd.DataFrame:
         panel = super().load_panel()
         for m in self._modules:
             m._price_panel = panel
             m._ohlc_map = self._ohlc_map
+            m._vols = self._vols
+            m._ois = self._ois
         return panel
 
     def _signals_raw(self) -> pd.DataFrame:
-        """加权合成: 0.3×振荡 + 0.5×趋势 + 0.2×均值回归."""
+        """模块信号加权求和 (默认等权)."""
         w = self._config.module_weights
         self.module_signals = {}
         combo = None
@@ -415,7 +757,6 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             sig = m._signals_raw()
             self.module_signals[m.__class__.__name__] = sig
             combo = sig * w_i if combo is None else combo + sig * w_i
-        self._combo_raw = combo
         return combo
 
     def _signals(self) -> pd.DataFrame:
@@ -425,8 +766,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         """组合策略按模块归因 (而非单因子)."""
         if not self.module_signals:
             self._signals_raw()
-        sig = np.sign(self.module_signals[name])
-        return self._run_signal(sig)
+        return self._run_signal(np.sign(self.module_signals[name]))
 
     def module_correlation(self) -> pd.DataFrame:
         """模块级信号相关矩阵."""

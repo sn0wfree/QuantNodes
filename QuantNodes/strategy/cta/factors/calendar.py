@@ -2,12 +2,13 @@
 """日历效应因子.
 
 基于交易日历的商品期货日历效应:
-    - SeasonalityFactor: 月份季节性 (同月历史平均收益)
-    - WeekdayFactor: 周内效应 (周一/周五)
+    - SeasonalityFactor: 月份季节性 (同月历史平均收益, expanding 无前视)
+    - WeekdayFactor: 周内效应 (周一/周五, expanding 无前视)
     - MonthTurnFactor: 月末/月初效应
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from .base import Factor
@@ -35,15 +36,17 @@ class SeasonalityFactor(Factor):
         month = prices.index.month
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         for col in prices.columns:
-            monthly_ret = ret[col].groupby(month).mean()
-            counts = ret[col].groupby(month).count()
-            valid_months = monthly_ret[counts >= self.min_years * 10]
-            for m, avg_ret in valid_months.items():
+            s = ret[col]
+            for m in range(1, 13):
+                mask = s.index.month == m
+                # expanding 因果统计: 截至当日的历史 m 月平均收益 (无前视)
+                exp_sum = s.where(mask).expanding().sum()
+                exp_cnt = pd.Series(mask, index=s.index).expanding().sum()
+                avg = exp_sum / exp_cnt.replace(0, np.nan)
                 cur_month = month == m
-                if avg_ret > self.threshold:
-                    sig.loc[cur_month, col] = 1.0
-                elif avg_ret < -self.threshold:
-                    sig.loc[cur_month, col] = -1.0
+                valid = (exp_cnt >= self.min_years * 10) & cur_month
+                sig.loc[valid & (avg > self.threshold), col] = 1.0
+                sig.loc[valid & (avg < -self.threshold), col] = -1.0
         return sig
 
 
@@ -69,15 +72,17 @@ class WeekdayFactor(Factor):
         dow = prices.index.dayofweek
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         for col in prices.columns:
-            daily_ret = ret[col].groupby(dow).mean()
-            counts = ret[col].groupby(dow).count()
-            valid = daily_ret[counts >= self.min_weeks]
-            for d, avg_ret in valid.items():
+            s = ret[col]
+            for d in range(5):
+                mask = s.index.dayofweek == d
+                # expanding 因果统计: 截至当日的历史 d 日平均收益 (无前视)
+                exp_sum = s.where(mask).expanding().sum()
+                exp_cnt = pd.Series(mask, index=s.index).expanding().sum()
+                avg = exp_sum / exp_cnt.replace(0, np.nan)
                 cur_dow = dow == d
-                if avg_ret > self.threshold:
-                    sig.loc[cur_dow, col] = 1.0
-                elif avg_ret < -self.threshold:
-                    sig.loc[cur_dow, col] = -1.0
+                valid = (exp_cnt >= self.min_weeks) & cur_dow
+                sig.loc[valid & (avg > self.threshold), col] = 1.0
+                sig.loc[valid & (avg < -self.threshold), col] = -1.0
         return sig
 
 

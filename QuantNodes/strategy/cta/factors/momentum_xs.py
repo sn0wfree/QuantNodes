@@ -38,8 +38,8 @@ class MomentumXSFactor(Factor):
                 continue
             lo = row.quantile(self.top_pct)
             hi = row.quantile(1 - self.top_pct)
-            sig.loc[date, row > hi] = 1.0
-            sig.loc[date, row < lo] = -1.0
+            sig.loc[date, row[row > hi].index] = 1.0
+            sig.loc[date, row[row < lo].index] = -1.0
         return sig
 
 
@@ -70,8 +70,8 @@ class VolatilityXSFactor(Factor):
                 continue
             lo = row.quantile(self.top_pct)
             hi = row.quantile(1 - self.top_pct)
-            sig.loc[date, row < lo] = 1.0       # 低波 → 多
-            sig.loc[date, row > hi] = -1.0      # 高波 → 空
+            sig.loc[date, row[row < lo].index] = 1.0       # 低波 → 多
+            sig.loc[date, row[row > hi].index] = -1.0      # 高波 → 空
         return sig
 
 
@@ -99,8 +99,8 @@ class BasisXSFactor(Factor):
                 continue
             lo = row.quantile(self.top_pct)
             hi = row.quantile(1 - self.top_pct)
-            sig.loc[date, row > hi] = 1.0      # 贴水深 → 多
-            sig.loc[date, row < lo] = -1.0     # 升水深 → 空
+            sig.loc[date, row[row > hi].index] = 1.0      # 贴水深 → 多
+            sig.loc[date, row[row < lo].index] = -1.0     # 升水深 → 空
         return sig
 
 
@@ -134,6 +134,6 @@ class AmihudXSFactor(Factor):
                 continue
             lo = row.quantile(self.top_pct)
             hi = row.quantile(1 - self.top_pct)
-            sig.loc[date, row < lo] = 1.0      # 流动性好 → 多
-            sig.loc[date, row > hi] = -1.0     # 流动性差 → 空
+            sig.loc[date, row[row < lo].index] = 1.0      # 流动性好 → 多
+            sig.loc[date, row[row > hi].index] = -1.0     # 流动性差 → 空
         return sig

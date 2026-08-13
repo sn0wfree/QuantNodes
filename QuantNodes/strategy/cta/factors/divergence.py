@@ -34,12 +34,12 @@ class PriceVolumeDivergenceFactor(Factor):
         vol_high = volumes.rolling(self.window).max()
         # 价创新高 (今日=窗口最高) 但量未创新高
         price_new_high = (prices >= price_high) & (prices.shift(1) < price_high.shift(1))
-        vol_not_high = volumes < vol_high.shift(1)
+        vol_not_high = (volumes < vol_high.shift(1)).fillna(False).astype(bool)
         # 价创新低但量未创新低 → 下跌衰竭
         price_low = prices.rolling(self.window).min()
         vol_low = volumes.rolling(self.window).min()
         price_new_low = (prices <= price_low) & (prices.shift(1) > price_low.shift(1))
-        vol_not_low = volumes > vol_low.shift(1)
+        vol_not_low = (volumes > vol_low.shift(1)).fillna(False).astype(bool)
 
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         sig[price_new_high & vol_not_high] = -1.0  # 顶背离 → 空
@@ -67,7 +67,7 @@ class VolumeConfirmationFactor(Factor):
     def compute(self, prices: pd.DataFrame, volumes: pd.DataFrame,
                 **kwargs) -> pd.DataFrame:
         vol_ma = volumes.rolling(self.window).mean()
-        vol_expand = volumes > vol_ma.replace(0, np.nan) * self.mult
+        vol_expand = (volumes > vol_ma.replace(0, np.nan) * self.mult).fillna(False).astype(bool)
         ret = prices.pct_change()
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         sig[vol_expand & (ret > 0)] = 1.0   # 放量上涨 → 多

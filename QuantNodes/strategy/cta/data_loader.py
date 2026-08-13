@@ -40,6 +40,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
 
 DEFAULT_DUCKDB_PATH = Path("~/Public/DataCache/futures_options_daily.duckdb").expanduser()
@@ -438,6 +439,37 @@ class CtaDataLoader:
         finally:
             con.close()
 
+    def list_active_products(
+        self,
+        min_daily_volume: float = 10_000.0,
+        lookback_start: str = "2023-01-01",
+        lookback_end: str | None = None,
+    ) -> list[str]:
+        """列出有交易量的全部品种 (按近 N 年日均成交量过滤).
+
+        Args:
+            min_daily_volume: 日均成交量下限 (手)
+            lookback_start / lookback_end: 成交量统计区间 (默认近 3 年)
+
+        Returns:
+            活跃品种代码列表 (按成交量降序)
+        """
+        out = []
+        for p in self.list_continuous_products():
+            try:
+                df = self.load_continuous_main(
+                    p, start=lookback_start, end=lookback_end,
+                )
+            except Exception:
+                continue
+            if df is None or df.empty or "volume" not in df.columns:
+                continue
+            avg_vol = df["volume"].mean()
+            if avg_vol and avg_vol >= min_daily_volume:
+                out.append((p, avg_vol))
+        out.sort(key=lambda x: -x[1])
+        return [p for p, _ in out]
+
     def load_spot_basis(
         self,
         product: str | None = None,
@@ -489,6 +521,81 @@ class CtaDataLoader:
             ).df()
         finally:
             con.close()
+
+    def load_term_structure(
+        self,
+        product: str,
+        start: str | None = None,
+        end: str | None = None,
+        n_contracts: int = 4,
+    ) -> pd.DataFrame:
+        """构造单品种近远月期限结构 long-form.
+
+        每交易日按 OI 取前 n_contracts 个合约, 输出对齐
+        inter_contract_spread 格式 (供期限结构/持仓结构因子使用):
+            trade_date / product / close_near..close_near{n}
+            / spread_1_2 / oi_near..oi_near{n}
+
+        Args:
+            product: 产品代码
+            start / end: 'YYYY-MM-DD'
+            n_contracts: 取合约数 (默认 4)
+        """
+        df = self.load_futures_daily(
+            product, start=start, end=end,
+            columns=["trade_date", "symbol", "close", "open_interest"],
+        )
+        if df.empty:
+            return pd.DataFrame()
+        df["trade_date"] = pd.to_datetime(df["trade_date"])
+        df = df.sort_values(["trade_date", "open_interest"], ascending=[True, False])
+        top = df.groupby("trade_date").head(n_contracts)
+        rows = []
+        for date, grp in top.groupby("trade_date"):
+            grp = grp.reset_index(drop=True)
+            if len(grp) < 2:
+                continue
+            rec = {"trade_date": date, "product": product.upper()}
+            closes, ois = [], []
+            for i in range(n_contracts):
+                if i < len(grp):
+                    closes.append(grp.loc[i, "close"])
+                    ois.append(grp.loc[i, "open_interest"])
+                else:
+                    closes.append(np.nan)
+                    ois.append(np.nan)
+            for i in range(n_contracts):
+                rec["close_near" if i == 0 else f"close_near{i + 1}"] = closes[i]
+                rec["oi_near" if i == 0 else f"oi_near{i + 1}"] = ois[i]
+            rec["spread_1_2"] = closes[0] - closes[1]
+            rows.append(rec)
+        return pd.DataFrame(rows)
+
+    def load_macro_series(self, name: str = "vix") -> pd.Series:
+        """读宏观代理序列 (VIX/DXY) 供宏观联动因子使用.
+
+        Args:
+            name: 'vix' 或 'dxy' (macd 风格 v2 序列 1971-2026)
+
+        Returns:
+            pd.Series, index=DatetimeIndex, name=name
+        """
+        base = Path("~/Public/DataCache/high_freq_macro").expanduser()
+        if not base.exists():
+            base = Path("data/high_freq_macro")
+        if name == "vix":
+            f = base / "macro_vix_daily.parquet"
+        elif name == "dxy":
+            f = base / "macro_dxy_daily_v2.parquet"
+        else:
+            raise ValueError(f"unknown macro series: {name}")
+        if not f.exists():
+            raise FileNotFoundError(f"macro series not found: {f}")
+        df = pd.read_parquet(f)
+        s = df.iloc[:, 0]
+        s.index = pd.to_datetime(df.index)
+        s.name = name
+        return s.sort_index()
 
     def info(self) -> dict:
         """元数据摘要: 总 products / options / 行数 / 日期范围.
