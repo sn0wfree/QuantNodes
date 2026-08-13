@@ -132,6 +132,9 @@ class ModuleConfig:
     tvpr_lambda_tv: float = 0.5     # 组内 TV-PR TV 罚项 (β 平滑度)
     tvpr_lambda_l1: float = 0.0     # 组内 TV-PR L1 罚项 (>0 组内稀疏过滤因子)
     tvpr_min_history: int = 252     # 组内 TV-PR 最少历史天数
+    execution_lag: int = 1          # 信号执行滞后 (天): 1 = T+1 生产口径
+                                    # (T 收盘算信号, T+1 收盘成交); 0 = 回测口径
+    margin_call: bool = False       # True: 保证金不足拒绝开仓 (真实保证金率)
 
 
 class _ModuleStrategy:
@@ -430,10 +433,18 @@ class _ModuleStrategy:
             lots[product] = target
         return lots
 
+    def _exec_sig(self, sig: pd.DataFrame) -> pd.DataFrame:
+        """应用执行滞后: T 收盘算信号 → T+lag 成交 (生产口径)."""
+        lag = self._config.execution_lag
+        return sig.shift(lag).fillna(0) if lag > 0 else sig
+
     def _run_signal(self, sig: pd.DataFrame) -> CtaBacktestResult:
-        """给定方向面板直接跑回测 (组合/归因共用)."""
+        """给定方向面板直接跑回测 (组合/归因共用).
+
+        统一应用 execution_lag (T+1 生产口径).
+        """
         cfg = self._config
-        lots = self._signal_to_lots(sig, cfg)
+        lots = self._signal_to_lots(self._exec_sig(sig), cfg)
         return self._run_with_lots(lots)
 
     def _run_with_lots(self, lots: pd.DataFrame) -> CtaBacktestResult:
@@ -478,6 +489,7 @@ class _ModuleStrategy:
             strategy=_PanelStrategy(lots),
             config=CtaBacktestConfig(
                 initial_cash=cfg.initial_cash, commission_rate=cfg.commission_rate,
+                margin_call=cfg.margin_call,
             ),
             registry=self._registry,
             risk=risk,
@@ -857,6 +869,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         sig = self._signals()
         cfg = self._config
         if cfg.leverage_hard_cap > 0:
+            sig = self._exec_sig(sig)
             weights = vol_target_positions(
                 sig, self._price_panel, target_vol=cfg.target_vol,
                 vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,

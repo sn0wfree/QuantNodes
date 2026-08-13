@@ -206,8 +206,9 @@ class TestCombo:
             for p in prices.columns if p in pos.columns
         }).sum(axis=1)
         lev = gross / equity.replace(0, np.nan)
-        assert lev.max() < 2.5  # floor 缩放 + 价格跳空允许小幅余量
-        assert lev.quantile(0.95) <= 2.1
+        # T+1 执行: floor 缩放基于当日价格, 成交在次日 → 允许更大余量
+        assert lev.max() < 2.8
+        assert lev.quantile(0.95) <= 2.2
 
     def test_combo_signals_valid(self):
         s = FactorModuleComboStrategy(products=_TEST_POOL, start="2020-01-01")
@@ -258,3 +259,26 @@ class TestModuleConfig:
         cfg = ModuleConfig()
         assert cfg.target_vol == 0.15
         assert cfg.initial_cash == 2_000_000
+        assert cfg.execution_lag == 1  # 生产口径 T+1
+
+    def test_execution_lag_shift(self):
+        """T+1 口径: 信号滞后 1 天执行."""
+        s = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(aggregation="equal", execution_lag=1),
+        )
+        s.load_panel()
+        # T+1: 信号滞后执行, 回测可完成
+        r = s.run()
+        assert r.metrics["Years"] > 0
+
+    def test_execution_lag_zero_matches_manual(self):
+        """lag=0 时信号不滞后, 与手动 shift 等价."""
+        s = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(aggregation="equal", execution_lag=0),
+        )
+        s.load_panel()
+        sig = s._signals()
+        shifted = s._exec_sig(sig)
+        assert (shifted == sig).all().all()
