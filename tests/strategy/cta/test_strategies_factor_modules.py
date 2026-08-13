@@ -185,6 +185,30 @@ class TestCombo:
         # 过滤生效: 启用后非零信号应 ≤ 关闭（空仓率升高）
         assert (sig_on != 0).sum().sum() <= (sig_off != 0).sum().sum()
 
+    def test_leverage_hard_cap(self):
+        """杠杆硬限 (docs/95): 组合总杠杆 ≤ cap."""
+        import pandas as pd
+        s = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(
+                aggregation="equal", module_weighting="fixed",
+                target_vol=0.30, leverage_hard_cap=2.0,
+            ),
+        )
+        r = s.run()
+        idx = pd.DatetimeIndex(r.dates)
+        prices = s._price_panel.reindex(idx)
+        pos = pd.DataFrame(r.positions, index=idx)
+        equity = pd.Series(r.equity, index=idx)
+        gross = pd.DataFrame({
+            p: pos[p].abs() * prices[p]
+            * s._registry.get_or_default(p).contract_multiplier
+            for p in prices.columns if p in pos.columns
+        }).sum(axis=1)
+        lev = gross / equity.replace(0, np.nan)
+        assert lev.max() < 2.5  # floor 缩放 + 价格跳空允许小幅余量
+        assert lev.quantile(0.95) <= 2.1
+
     def test_combo_signals_valid(self):
         s = FactorModuleComboStrategy(products=_TEST_POOL, start="2020-01-01")
         s.load_panel()

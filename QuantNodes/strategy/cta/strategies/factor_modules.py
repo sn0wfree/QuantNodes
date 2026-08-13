@@ -725,6 +725,7 @@ class ComboConfig(ModuleConfig):
     filter_enabled: bool = True      # 市场级波动危机过滤 (Sharpe 1.109→1.190)
     momentum_filter_window: int = 0  # 信号动量过滤窗口 (天), 0=关闭 (docs/94 §10.7)
     momentum_filter_coef: float = 0.0  # 动量为负时仓位系数 (0=全空仓, 1=不过滤)
+    leverage_hard_cap: float = 0.0   # 组合总杠杆硬上限 (逐日 gross/equity), 0=关闭
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
@@ -824,6 +825,72 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             coef[mom < 0] = cfg.momentum_filter_coef
             raw = raw * coef
         return np.sign(raw)
+
+    def _leverage_cap_coef(self, sig: pd.DataFrame) -> pd.Series:
+        """两遍法计算杠杆硬限系数 (T,).
+
+        第一遍回测拿 NAV/仓位 → 逐日 gross/equity → 超限日等比缩放.
+        系数因果 (只用第一遍 t 期数据), 第二遍用缩放权重重跑.
+        """
+        r1 = self._run_signal(sig)
+        cap = self._config.leverage_hard_cap
+        idx = pd.DatetimeIndex(r1.dates)
+        equity = pd.Series(r1.equity, index=idx)
+        prices = self._price_panel.reindex(idx)
+        pos = pd.DataFrame(r1.positions, index=idx)
+        gross = pd.DataFrame({
+            p: pos[p].abs() * prices[p]
+            * self._registry.get_or_default(p).contract_multiplier
+            for p in prices.columns if p in pos.columns
+        }).sum(axis=1)
+        lev = gross / equity.replace(0, np.nan)
+        coef = (cap / lev).clip(upper=1.0).fillna(1.0)
+        return coef.clip(lower=0.0)
+
+    def run(self) -> CtaBacktestResult:
+        """运行完整回测.
+
+        leverage_hard_cap > 0 时两遍法: 第一遍无硬限拿 NAV → 缩放权重 →
+        第二遍带杠杆硬限重跑 (总杠杆 ≤ cap).
+        """
+        self.load_panel()
+        sig = self._signals()
+        cfg = self._config
+        if cfg.leverage_hard_cap > 0:
+            weights = vol_target_positions(
+                sig, self._price_panel, target_vol=cfg.target_vol,
+                vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,
+            )
+            if self._filter is not None:
+                weights = weights * self._filter.coefficients(self._price_panel)
+            # 多轮迭代: 权重层等比缩放 → 手数层 floor 缩放, 保证总杠杆 ≤ cap
+            coef = pd.Series(1.0, index=sig.index)
+            lots = None
+            for _ in range(3):
+                lots = self._weights_to_lots(weights.mul(coef, axis=0), cfg)
+                r_cur = self._run_with_lots(lots)
+                idx = pd.DatetimeIndex(r_cur.dates)
+                equity = pd.Series(r_cur.equity, index=idx)
+                prices = self._price_panel.reindex(idx)
+                pos = pd.DataFrame(r_cur.positions, index=idx)
+                gross = pd.DataFrame({
+                    p: pos[p].abs() * prices[p]
+                    * self._registry.get_or_default(p).contract_multiplier
+                    for p in prices.columns if p in pos.columns
+                }).sum(axis=1)
+                lev = gross / equity.replace(0, np.nan)
+                if lev.max() <= cfg.leverage_hard_cap * 1.02:
+                    return r_cur
+                coef_new = coef * (cfg.leverage_hard_cap / lev).clip(upper=1.0).fillna(1.0)
+                coef_new = coef_new.clip(lower=0.0)
+                if (coef_new - coef).abs().max() < 1e-6:
+                    break
+                coef = coef_new
+            # 手数层 floor 缩放兜底 (取整粒度无法由权重缩放消除)
+            scale = (cfg.leverage_hard_cap / lev).clip(upper=1.0).fillna(1.0)
+            lots_final = lots.mul(scale, axis=0).apply(np.floor)
+            return self._run_with_lots(lots_final)
+        return self._run_signal(sig)
 
     def run_factor(self, name: str) -> CtaBacktestResult:
         """组合策略按模块归因 (而非单因子)."""
