@@ -434,6 +434,11 @@ class _ModuleStrategy:
         """给定方向面板直接跑回测 (组合/归因共用)."""
         cfg = self._config
         lots = self._signal_to_lots(sig, cfg)
+        return self._run_with_lots(lots)
+
+    def _run_with_lots(self, lots: pd.DataFrame) -> CtaBacktestResult:
+        """给定目标手数面板直接跑回测 (方向变化才调仓)."""
+        cfg = self._config
         price_panel = self._price_panel
 
         class _PanelStrategy(CtaStrategy):
@@ -462,7 +467,7 @@ class _ModuleStrategy:
                 self._last = targets
                 return targets
 
-        cols = [p for p in sig.columns if p in price_panel.columns]
+        cols = [p for p in lots.columns if p in price_panel.columns]
         prices_map = {p: price_panel[p].tolist() for p in cols}
         products_map = {p: p for p in prices_map}
         risk = PositionLimitRisk(products=products_map, registry=self._registry)
@@ -718,6 +723,8 @@ class ComboConfig(ModuleConfig):
     )
     module_weighting: str = "fixed"  # 组间加权: fixed | inv_vol (波动率倒数)
     filter_enabled: bool = True      # 市场级波动危机过滤 (Sharpe 1.109→1.190)
+    momentum_filter_window: int = 0  # 信号动量过滤窗口 (天), 0=关闭 (docs/94 §10.7)
+    momentum_filter_coef: float = 0.0  # 动量为负时仓位系数 (0=全空仓, 1=不过滤)
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
@@ -791,7 +798,6 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             self.module_signals[m.__class__.__name__] = sig
             sigs.append(sig)
         if self._config.module_weighting == "inv_vol":
-            # 模块级波动率倒数加权 (T,7), 逐日归一化, 无前视 (rolling)
             w = pd.concat([
                 s.rolling(self._config.agg_window, min_periods=20).std().mean(axis=1)
                 for s in sigs
@@ -809,7 +815,15 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         return combo
 
     def _signals(self) -> pd.DataFrame:
-        return np.sign(self._signals_raw())
+        """组合方向 (-1/0/+1), 可选信号动量过滤 (见 ComboConfig)."""
+        raw = self._signals_raw()
+        cfg = self._config
+        if cfg.momentum_filter_window > 0:
+            mom = raw.rolling(cfg.momentum_filter_window, min_periods=10).mean()
+            coef = pd.DataFrame(1.0, index=raw.index, columns=raw.columns)
+            coef[mom < 0] = cfg.momentum_filter_coef
+            raw = raw * coef
+        return np.sign(raw)
 
     def run_factor(self, name: str) -> CtaBacktestResult:
         """组合策略按模块归因 (而非单因子)."""

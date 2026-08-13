@@ -166,6 +166,25 @@ class TestCombo:
         # 前 agg_window 天为等权 fallback, 之后 inv_vol
         assert not combo.isna().all().all()
 
+    def test_momentum_filter(self):
+        """信号动量过滤 (docs/94 §10.7): 组合信号 N 日均 < 0 → 降仓."""
+        # window=0: 关闭, 与 baseline 一致
+        s_off = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(momentum_filter_window=0),
+        )
+        s_off.load_panel()
+        sig_off = s_off._signals()
+        # window=60: 启用
+        s_on = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(momentum_filter_window=60, momentum_filter_coef=0.0),
+        )
+        s_on.load_panel()
+        sig_on = s_on._signals()
+        # 过滤生效: 启用后非零信号应 ≤ 关闭（空仓率升高）
+        assert (sig_on != 0).sum().sum() <= (sig_off != 0).sum().sum()
+
     def test_combo_signals_valid(self):
         s = FactorModuleComboStrategy(products=_TEST_POOL, start="2020-01-01")
         s.load_panel()

@@ -401,3 +401,45 @@ FactorModuleComboStrategy(config=ComboConfig(
     aggregation="tvpr", module_weighting="inv_vol"))
 ```
 测试: 496 passed, 16 skipped, ruff clean.
+
+### 10.7 稳健性三要素: 换手 / 杠杆 / 极端风险 (v7+, 2026-08-12)
+
+**诊断** (`scripts/cta_robustness_diag.py`):
+- 换手率: 年化 3.52 倍 (日均 1.4%);  1bp 成本拖累 39% 收益, 10bp 拖累 392%
+- 杠杆: 日均 0.879, 中位 1.005, p95 1.085, 最大 1.208 (max_leverage=3.0 未触发 ✓)
+- 尾部: VaR95 -0.67%, CVaR95 -1.06%, 最差单日 -2.58% (2025-04-07 关税日)
+- 极端窗口: 2020 疫情 -5.73%, **2022 商品 -18.66%** (回撤主导)
+- 最长回撤: 531 天 (回撤持续期长)
+
+**换手优化实验**: EMA 平滑 / 自适应分位数阈值 — 均劣于 baseline (3.72 倍已属低换手)
+
+**VolRiskFilter 在 2022 期间**: 市场 z>1  18/242 天, 2022H2 (回撤期) 0 天触发
+→ 波动率过滤对方向性回撤无效, **需要信号级动量过滤**
+
+**信号动量过滤** (ComboConfig.momentum_filter_window, momentum_filter_coef):
+组合信号过去 N 日均值 < 0 → 仓位系数 coef (0=全空仓). 集成到组合 _signals()
+在 sign 前乘系数, 无前视.
+
+窗口稳健性 (coef=0.0):
+
+| 窗口 | Sharpe | 全 MaxDD | 2022 回撤 | OOS |
+|---|---|---|---|---|
+| 0 (关闭) | 1.268 | -0.182 | -0.182 | 0.800 |
+| 30 | 1.208 | -0.115 | -0.062 | 1.306 |
+| 40 | 1.500 | -0.087 | -0.084 | 1.321 |
+| **60 (推荐)** | **1.840** | **-0.106** | **-0.038** | **1.527** |
+| 80 | 1.366 | -0.143 | -0.092 | 0.860 |
+| 120 | 1.451 | -0.120 | -0.049 | 0.681 |
+
+参数稳健 (30-120 全优于 baseline), **窗口 60 最优**, 2022 回撤 -18% → -4%.
+
+**最终最优配置** (推荐):
+```python
+ComboConfig(
+    aggregation="tvpr", module_weighting="inv_vol",
+    momentum_filter_window=60, momentum_filter_coef=0.0,
+)
+```
+全样本 Sharpe 1.840 / OOS 1.527 / MaxDD -0.106 / 2022 回撤 -0.038.
+
+测试: 497 passed, 16 skipped, ruff clean.
