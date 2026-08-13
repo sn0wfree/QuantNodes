@@ -374,3 +374,30 @@ divergence.py 布尔掩码 object dtype、_ohlc_map 列数不统一.
 β 后期趋于稳定 (TV 平滑), 但权重方向 (含反用) 显著优于固定等权.
 
 测试: 493 passed, 16 skipped, ruff clean (含 TV-PR 6 测试).
+
+### 10.6 组内 TV-PR × 组间 inv_vol (v7, 2026-08-12)
+
+用户方案: 组内因子级 TV-PR (可 L1 稀疏过滤因子) + 组间模块 inv_vol 聚合.
+实现: ModuleConfig.aggregation="tvpr" (组内 expanding TV-PR 学因子权重,
+模块信号 = X@β_t) + ComboConfig.module_weighting="inv_vol" (模块信号滚动
+波动率倒数加权).
+
+**对比 (72 品种, 全样本 NAV 切段)**:
+
+| 组内 | 组间 | 全 Sharpe | IS | OOS | MaxDD |
+|---|---|---|---|---|---|
+| equal | fixed | 0.097 | 0.684 | -0.216 | -0.249 |
+| equal | inv_vol | 0.645 | 0.605 | 0.798 | -0.212 |
+| tvpr | fixed | 1.001 | 1.981 | 0.494 | -0.230 |
+| **tvpr** | **inv_vol** | **1.251** | **2.051** | **0.767** | **-0.187** |
+
+**组内 L1 稀疏实验**: λ_l1=0.01/0.03/0.05 均劣于 0 (全 Sharpe 0.88-1.00,
+OOS 0.51-0.55) — 组内因子虽冗余但各有信息, 强制稀疏丢信息, **λ_l1=0 保留**.
+
+结论: 组内 TV-PR + 组间 inv_vol 为当前最优配置 (超越组间 TV-PR 的
+1.099/0.618), 使用方式:
+```python
+FactorModuleComboStrategy(config=ComboConfig(
+    aggregation="tvpr", module_weighting="inv_vol"))
+```
+测试: 496 passed, 16 skipped, ruff clean.

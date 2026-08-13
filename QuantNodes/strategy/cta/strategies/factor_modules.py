@@ -126,9 +126,12 @@ class ModuleConfig:
     max_leverage: float = 3.0       # 最大杠杆
     initial_cash: float = 2_000_000.0
     commission_rate: float = 0.0001
-    aggregation: str = "equal"      # 组内聚合: equal | inv_vol | regression
-    agg_window: int = 252           # inv_vol/regression 滚动窗口
+    aggregation: str = "equal"      # 组内聚合: equal | inv_vol | regression | tvpr
+    agg_window: int = 252           # inv_vol/regression/tvpr 滚动窗口
     agg_update: int = 21            # 权重更新频率 (天)
+    tvpr_lambda_tv: float = 0.5     # 组内 TV-PR TV 罚项 (β 平滑度)
+    tvpr_lambda_l1: float = 0.0     # 组内 TV-PR L1 罚项 (>0 组内稀疏过滤因子)
+    tvpr_min_history: int = 252     # 组内 TV-PR 最少历史天数
 
 
 class _ModuleStrategy:
@@ -318,7 +321,37 @@ class _ModuleStrategy:
             return sum(panels.values()) / len(panels)
         if agg in ("inv_vol", "regression"):
             return self._agg_weighted(panels)
+        if agg == "tvpr":
+            return self._agg_tvpr(panels)
         raise ValueError(f"unknown aggregation: {agg}")
+
+    def _agg_tvpr(self, panels: dict[str, pd.DataFrame]) -> pd.DataFrame:
+        """组内 TV-PR 聚合: 因子信号 → 未来收益 的时变权重 β_t.
+
+        X (T,N,K) = 组内因子信号, Y (T,N) = 品种未来 1 日收益,
+        β_t = expanding TV-PR (ADMM, 无前视), λ_l1>0 可在组内稀疏过滤因子.
+        模块信号 = Σ_k β_t,k × X_t,i,k.
+        """
+        from QuantNodes.strategy.momentum_etf_rotation.v7.tvpr_estimator import (
+            tvpr_estimator,
+        )
+        cfg = self._config
+        names = list(panels)
+        cols = list(self._price_panel.columns)
+        X = np.stack([
+            panels[n].reindex(columns=cols).values for n in names
+        ], axis=-1)
+        Y = self._price_panel.pct_change().shift(-1)
+        beta = tvpr_estimator(
+            Y, X,
+            lambda_tv=cfg.tvpr_lambda_tv,
+            lambda_l1=cfg.tvpr_lambda_l1,
+            method="expanding",
+            min_history=cfg.tvpr_min_history,
+            step=cfg.agg_update,
+        )
+        combo = np.einsum("tni,ti->tn", X, beta.values)
+        return pd.DataFrame(combo, index=self._price_panel.index, columns=cols)
 
     def _agg_weights(self, panels: dict[str, pd.DataFrame]) -> tuple[np.ndarray, list[str]]:
         """滚动窗口因子权重 (T, K): inv_vol = 1/σ, regression = OLS 系数.
@@ -683,6 +716,7 @@ class ComboConfig(ModuleConfig):
     module_weights: tuple[float, float, float, float, float, float, float] = (
         1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7,
     )
+    module_weighting: str = "fixed"  # 组间加权: fixed | inv_vol (波动率倒数)
     filter_enabled: bool = True      # 市场级波动危机过滤 (Sharpe 1.109→1.190)
 
 
@@ -749,13 +783,28 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         return panel
 
     def _signals_raw(self) -> pd.DataFrame:
-        """模块信号加权求和 (默认等权)."""
-        w = self._config.module_weights
+        """模块信号加权求和 (fixed: 固定权重; inv_vol: 滚动波动率倒数)."""
         self.module_signals = {}
-        combo = None
-        for m, w_i in zip(self._modules, w):
+        sigs = []
+        for m in self._modules:
             sig = m._signals_raw()
             self.module_signals[m.__class__.__name__] = sig
+            sigs.append(sig)
+        if self._config.module_weighting == "inv_vol":
+            # 模块级波动率倒数加权 (T,7), 逐日归一化, 无前视 (rolling)
+            w = pd.concat([
+                s.rolling(self._config.agg_window, min_periods=20).std().mean(axis=1)
+                for s in sigs
+            ], axis=1)
+            inv = 1.0 / w.replace(0, np.nan)
+            w_norm = inv.div(inv.sum(axis=1), axis=0).fillna(1 / len(sigs))
+            combo = None
+            for sig, wi in zip(sigs, [w_norm[c] for c in w_norm.columns]):
+                combo = sig.mul(wi, axis=0) if combo is None else combo + sig.mul(wi, axis=0)
+            return combo
+        w = self._config.module_weights
+        combo = None
+        for sig, w_i in zip(sigs, w):
             combo = sig * w_i if combo is None else combo + sig * w_i
         return combo
 

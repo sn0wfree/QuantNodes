@@ -127,6 +127,44 @@ class TestCombo:
         assert abs(sum(cfg.module_weights) - 1.0) < 1e-9
         assert len(set(round(w, 6) for w in cfg.module_weights)) == 1
         assert cfg.filter_enabled is True
+        assert cfg.module_weighting == "fixed"
+
+    def test_tvpr_inv_vol_combo(self):
+        """组内 TV-PR × 组间 inv_vol (docs/94 §10.6 最优配置)."""
+        s = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2019-01-01", end="2021-12-31",
+            config=ComboConfig(
+                aggregation="tvpr", module_weighting="inv_vol",
+                tvpr_min_history=120,
+            ),
+        )
+        sig = s._signals()
+        assert set(sig["AU"].unique()).issubset({-1.0, 0.0, 1.0})
+        # N=11 品种 ≥ 10 样本下限, 应有信号
+        assert (sig != 0).sum().sum() > 0
+
+    def test_tvpr_inv_vol_run(self):
+        s = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2019-01-01", end="2021-12-31",
+            config=ComboConfig(
+                aggregation="tvpr", module_weighting="inv_vol",
+                tvpr_min_history=120,
+            ),
+        )
+        result = s.run()
+        assert result.metrics["Years"] > 0
+
+    def test_inv_vol_module_weighting(self):
+        """组间 inv_vol: 模块信号波动率倒数加权."""
+        s = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(module_weighting="inv_vol"),
+        )
+        s.load_panel()
+        combo = s._signals_raw()
+        assert combo.shape == s._price_panel.shape
+        # 前 agg_window 天为等权 fallback, 之后 inv_vol
+        assert not combo.isna().all().all()
 
     def test_combo_signals_valid(self):
         s = FactorModuleComboStrategy(products=_TEST_POOL, start="2020-01-01")
