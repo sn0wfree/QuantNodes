@@ -89,8 +89,8 @@ Sharpe 全起点为正 → 收益能力不依赖起点, CTA 常见特性.
 | 策略代码 | `strategies/factor_modules.py` (7 模块+组合+过滤+硬限) / `tvpr_combo.py` |
 | 数据管线 | `data_loader.py`: load_term_structure / load_macro_series / list_active_products |
 | 脚本 | verify_round8_factors / cta_robustness_diag / cta_factor_stability / cta_overfitting_check |
-| 文档 | docs/94 (迭代 10 章) + docs/95 (规格 7 章) + 本文 (现状快照) |
-| 测试 | tests/strategy/cta/: 498 passed, 16 skipped, ruff clean |
+| 文档 | docs/94 (迭代 10 章) + docs/95 (规格 8 章) + 本文 (现状快照 + 生产化评估) |
+| 测试 | tests/strategy/cta/: 500 passed, 16 skipped, ruff clean |
 
 ## 七、残余风险与下一步
 
@@ -103,3 +103,64 @@ Sharpe 全起点为正 → 收益能力不依赖起点, CTA 常见特性.
 | 5 | 16 个外部数据因子 | 产业链/期限/宏观已纳入, 基差失效因子已剔除 |
 | 6 | **资金规模** | 200 万为性能瓶颈 (MaxDD -17%); **建议 ≥500 万, 1000 万+ 收敛** |
 | 7 | **生产系统** | 策略层就绪 (T+1/margin_call/杠杆硬限), 执行/数据/基础设施待建 (docs/95 §8, 阶段 2-3) |
+
+## 八、生产化评估 (2026-08-12)
+
+### 8.1 结论
+
+**策略层就绪, 系统层缺失 — 当前不能直接上生产交易.**
+T+1 严格口径 + 保证金建模下仍稳健 (OOS > 1.0), 但执行/数据/基础设施
+为空白, 需按阶段 2-3 补齐.
+
+### 8.2 已具备 (策略层)
+
+| 项 | 状态 |
+|---|---|
+| 回测引擎 | 逐日、手续费、保证金 (margin_call 透传) |
+| 无前视 | TV-PR expanding + 75 因子审计 + 一致性测试 |
+| 过拟合验证 | 严格 OOS 1.345 / Bootstrap 15.9% / walk-forward 1.788 |
+| 风控 | vol targeting + 危机过滤 + 动量过滤 + 杠杆硬限 (≤3.2) |
+| 执行口径 | T+1 正式化 (execution_lag=1), 损失 ~20% 但仍稳健 |
+| 资金建议 | ≥500 万 (200 万单品种 1-2 手, 取整瓶颈) |
+
+### 8.3 缺失 (生产系统, 按严重度)
+
+| # | 缺口 | 说明 |
+|---|---|---|
+| 1 | 执行层 | 无券商接口/OMS/订单管理/成交回报 |
+| 2 | 实时数据链路 | 数据在离线 DuckDB; 需日终数据入库 + 定时信号计算 |
+| 3 | 基础设施 | 无调度/监控告警 (数据缺失/信号异常/NAV 回撤)/状态持久化 |
+| 4 | 账户对接 | 无实盘账户/资金/保证金实时/强平保护 |
+| 5 | 冲击成本 | 仅固定佣金; 大资金需冲击成本模型 |
+
+### 8.4 分阶段路径
+
+- **阶段 1 (已完成, 2026-08-12)**: T+1 口径正式化 + margin_call 透传
+  + 资金规模敏感性 → 正式口径 Sharpe 1.462 / 年化 16.8% / OOS 1.015
+  (docs/95 §8)
+- **阶段 2 (待建)**: 日终批量执行 — 信号生成脚本化 (收盘后出次日
+  订单文件/API) → 对账
+- **阶段 3 (待建)**: 生产化 — 调度 + 监控告警 + 状态持久化 + 实盘
+  账户对接 (需券商资质)
+
+### 8.5 正式口径最终配置 (生产推荐)
+
+```python
+FactorModuleComboStrategy(config=ComboConfig(
+    aggregation="tvpr", module_weighting="inv_vol",
+    momentum_filter_window=60, momentum_filter_coef=0.0,
+    target_vol=0.30, max_leverage=3.0, leverage_hard_cap=3.0,
+    margin_call=True, execution_lag=1,   # 生产口径
+    initial_cash=5_000_000,              # 建议 ≥500 万
+))
+```
+
+### 8.6 正式口径业绩 (2x + 硬限 + T+1, 72 品种)
+
+| 指标 | T+0 旧口径 | T+1 正式 |
+|---|---|---|
+| Sharpe | 1.830 | **1.462** |
+| 年化 | 19.6% | **16.8%** |
+| MaxDD | -14.1% | -17.1% |
+| OOS Sharpe | 1.241 | **1.015** |
+| 500 万资金 | — | 1.769 / MaxDD -7.9% / OOS 1.520 |
