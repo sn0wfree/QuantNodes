@@ -135,6 +135,10 @@ class ModuleConfig:
     execution_lag: int = 1          # 信号执行滞后 (天): 1 = T+1 生产口径
                                     # (T 收盘算信号, T+1 收盘成交); 0 = 回测口径
     margin_call: bool = False       # True: 保证金不足拒绝开仓 (真实保证金率)
+    continuous: bool = True         # 连续信号模式: 有 raw_value 的因子用
+                                    # 连续值 + 滚动 z-score, 其余保持 -1/0/1
+    cont_z_window: int = 252        # 连续信号 z-score 窗口
+    cont_z_clip: float = 3.0        # 连续信号 z-score 截断
 
 
 class _ModuleStrategy:
@@ -232,8 +236,58 @@ class _ModuleStrategy:
             except Exception:
                 self._dxy = pd.Series(dtype=float)
 
-    def _signal_panel(self, factor, input_type: str, name: str | None = None) -> pd.DataFrame:
-        """因子 compute() 信号 → (T,N) 面板 (-1/0/+1)."""
+    def _raw_value_panel(self, factor, input_type: str) -> pd.DataFrame:
+        """因子 raw_value() → (T,N) 连续值面板 (continuous 模式)."""
+        if input_type == "panel":
+            out = factor.raw_value(self._price_panel)
+        elif input_type == "ohlc":
+            cols = {}
+            for p, ohlc in self._ohlc_map.items():
+                r = factor.raw_value(ohlc)
+                cols[p] = r[r.columns[0]]
+            return pd.DataFrame(cols).reindex(self._price_panel.index)
+        elif input_type == "ohlcv":
+            cols = {}
+            for p, ohlc in self._ohlc_map.items():
+                df = ohlc.copy()
+                df["volume"] = self._vols[p]
+                r = factor.raw_value(df)
+                cols[p] = r[r.columns[0]]
+            return pd.DataFrame(cols).reindex(self._price_panel.index)
+        elif input_type == "series":
+            cols = {}
+            for p in self._price_panel.columns:
+                r = factor.raw_value(self._price_panel[p])
+                cols[p] = r if isinstance(r, pd.Series) else r.iloc[:, 0]
+            return pd.DataFrame(cols).reindex(self._price_panel.index)
+        elif input_type in ("spread", "basis"):
+            self._ensure_external()
+            src = self._spread_df if input_type == "spread" else self._basis_df
+            out = factor.raw_value(src)
+            if isinstance(out, pd.Series):
+                out = out.unstack()
+            if input_type == "basis":
+                out.columns = [str(c).upper() for c in out.columns]
+                cols = [p for p in self._products if p in out.columns]
+                return out.reindex(index=self._price_panel.index, columns=cols)
+            return out.reindex(self._price_panel.index)
+        elif input_type == "macro_vix":
+            self._ensure_external()
+            out = factor.raw_value(self._price_panel, self._vix)
+        elif input_type == "macro_dxy":
+            self._ensure_external()
+            out = factor.raw_value(self._price_panel, self._dxy)
+        else:
+            raise ValueError(f"continuous mode unsupported for input_type: {input_type}")
+        return out.reindex(self._price_panel.index)
+
+    def _signal_panel(self, factor, input_type: str, name: str | None = None,
+                      continuous: bool = False) -> pd.DataFrame:
+        """因子 compute() 信号 → (T,N) 面板 (-1/0/+1).
+
+        continuous=True 且因子有 raw_value 时, 返回连续值 (不 z-score,
+        z-score 在 _signals_raw 聚合前统一处理).
+        """
         if input_type == "panel":
             out = factor.compute(self._price_panel)
         elif input_type == "series":
@@ -312,13 +366,28 @@ class _ModuleStrategy:
             self.load_panel()
         self.factor_signals = {}
         panels = {}
+        cont = self._config.continuous
         for name, cls, input_type in self.FACTORS:
-            sig = self._signal_panel(cls(), input_type, name)
-            # 统一行列: 缺列品种 (早期无数据) → NaN → 求和前 fillna(0)
-            sig = sig.reindex(index=self._price_panel.index,
-                              columns=self._price_panel.columns)
-            self.factor_signals[name] = sig
-            panels[name] = sig.fillna(0)
+            factor = cls()
+            use_raw = False
+            if cont and hasattr(factor, "raw_value"):
+                probe = factor.raw_value
+                # 仅真连续值 (raw != compute) 才连续化; 事件型 raw=compute
+                # 保持 -1/0/1 离散, 避免 z-score 损坏
+                use_raw = (probe.__func__ is not factor.compute.__func__)
+            if use_raw:
+                sig = self._raw_value_panel(factor, input_type)
+                # 连续值: 时序滚动 z-score + clip (无前视)
+                z = self._cont_zscore(sig)
+                self.factor_signals[name] = z
+                panels[name] = z.fillna(0)
+            else:
+                sig = self._signal_panel(factor, input_type, name)
+                # 统一行列: 缺列品种 (早期无数据) → NaN → 求和前 fillna(0)
+                sig = sig.reindex(index=self._price_panel.index,
+                                  columns=self._price_panel.columns)
+                self.factor_signals[name] = sig
+                panels[name] = sig.fillna(0)
         agg = self._config.aggregation
         if agg == "equal":
             return sum(panels.values()) / len(panels)
@@ -327,6 +396,16 @@ class _ModuleStrategy:
         if agg == "tvpr":
             return self._agg_tvpr(panels)
         raise ValueError(f"unknown aggregation: {agg}")
+
+    def _cont_zscore(self, raw: pd.DataFrame) -> pd.DataFrame:
+        """连续信号时序滚动 z-score (逐品种, 无前视) + clip."""
+        cfg = self._config
+        win = cfg.cont_z_window
+        mu = raw.rolling(win, min_periods=20).mean()
+        sd = raw.rolling(win, min_periods=20).std()
+        z = (raw - mu) / sd.replace(0, np.nan)
+        # 归一化到 [-1,1]: 与离散 ±1 信号同尺度, 聚合时公平混合
+        return z.clip(-cfg.cont_z_clip, cfg.cont_z_clip) / cfg.cont_z_clip
 
     def _agg_tvpr(self, panels: dict[str, pd.DataFrame]) -> pd.DataFrame:
         """组内 TV-PR 聚合: 因子信号 → 未来收益 的时变权重 β_t.

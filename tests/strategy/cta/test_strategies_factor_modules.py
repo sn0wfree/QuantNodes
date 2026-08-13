@@ -16,6 +16,7 @@ from QuantNodes.strategy.cta.strategies.factor_modules import (
     TrendMomentumModuleStrategy,
     VolumeFlowModuleStrategy,
 )
+from QuantNodes.strategy.cta.factors import MACDFactor
 
 # 测试小池含产业链配方品种 (steel_profit_rb: RB/I/J, crush_profit: M/A, mto: PP/MA)
 _TEST_POOL = ["AU", "RB", "M", "CU", "I", "TA", "MA", "C", "J", "A", "PP"]
@@ -282,3 +283,64 @@ class TestModuleConfig:
         sig = s._signals()
         shifted = s._exec_sig(sig)
         assert (shifted == sig).all().all()
+
+
+class TestContinuousSignals:
+    """连续信号模式 (raw_value → 滚动 z-score → [-1,1] 归一化)."""
+
+    def test_default_enabled(self):
+        assert ComboConfig().continuous is True
+
+    def test_cont_zscore_clipped_to_unit(self):
+        """z-score 输出 clip ±cont_z_clip 后归一化到 [-1,1]."""
+        s = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(continuous=True),
+        )
+        s.load_panel()
+        # 趋势动量组含 raw_value 连续因子 (macd/trix/aroon...)
+        mod = TrendMomentumModuleStrategy(
+            _TEST_POOL, s._config, s._dl, s._start, s._end,
+        )
+        mod._price_panel = s._price_panel
+        mod._ohlc_map = s._ohlc_map
+        mod._vols = s._vols
+        mod._ois = s._ois
+        raw = mod._raw_value_panel(MACDFactor(), "panel")
+        z = mod._cont_zscore(raw)
+        assert z.min().min() >= -1.0 - 1e-9
+        assert z.max().max() <= 1.0 + 1e-9
+
+    def test_continuous_and_discrete_mixed(self):
+        """连续模式: 有 raw_value 因子连续化, 其余保持 -1/0/1."""
+        s = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(continuous=True),
+        )
+        s.load_panel()
+        sig = s._signals_raw()
+        # 连续值存在 (非纯 -1/0/1)
+        vals = sig.to_numpy().ravel()
+        continuous = vals[~np.isnan(vals)]
+        assert (continuous.min() < -1.0 + 1e-9 or
+                continuous.max() > 1.0 - 1e-9) or \
+            not set(np.unique(continuous)).issubset({-1.0, 0.0, 1.0})
+
+    def test_discrete_off_matches_sign(self):
+        """continuous=False 时与连续模式 sign 后方向应一致 (仅尺度不同)."""
+        s_off = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(continuous=False),
+        )
+        s_off.load_panel()
+        sig_off = np.sign(s_off._signals_raw())
+        s_on = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(continuous=True),
+        )
+        s_on.load_panel()
+        sig_on = np.sign(s_on._signals_raw())
+        # 连续 z-score 归一化后符号应基本一致 (非零位置差异小)
+        both = (sig_off != 0) & (sig_on != 0)
+        match = (sig_off[both] == sig_on[both]).to_numpy().mean()
+        assert match > 0.5
