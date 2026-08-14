@@ -18,13 +18,15 @@ from .cta_contract import CtaContract, CtaContractRegistry
 
 @dataclass(slots=True)
 class Position:
-    """单合约持仓."""
+    """单合约持仓 (期货/期权)."""
 
     symbol: str
     product: str
-    qty: float = 0.0           # 手数 (正=多, 负=空)
-    avg_price: float = 0.0     # 开仓均价
+    qty: float = 0.0           # 手数 (正=多, 负=空; 期权买方 qty≥0)
+    avg_price: float = 0.0     # 开仓均价 (期货: 合约价; 期权: 权利金)
     realized_pnl: float = 0.0  # 累计已实现盈亏
+    kind: str = "future"       # "future" | "option_buy"
+    option_spec: object = None # 期权时填入 (OptionContractSpec), 期货 None
 
 
 @dataclass(slots=True)
@@ -95,10 +97,15 @@ class CtaBroker:
         return pos.qty * pos.avg_price * spec.contract_multiplier
 
     def margin_used(self) -> float:
-        """全部持仓占用保证金 (按最新价, 简化: 用持仓均价)."""
+        """全部持仓占用保证金 (按最新价, 简化: 用持仓均价).
+
+        期权买方 (kind=option_buy) 无保证金, 跳过.
+        """
         total = 0.0
         for pos in self._positions.values():
             if pos.qty == 0:
+                continue
+            if pos.kind == "option_buy":
                 continue
             spec = self._registry.get_or_default(pos.product)
             total += abs(pos.qty) * pos.avg_price * spec.contract_multiplier * spec.margin_ratio
@@ -117,8 +124,12 @@ class CtaBroker:
         for pos in self._positions.values():
             if pos.qty == 0:
                 continue
-            spec = self._registry.get_or_default(pos.product)
             price = mark_prices.get(pos.symbol, pos.avg_price) if mark_prices else pos.avg_price
+            if pos.kind == "option_buy" and pos.option_spec is not None:
+                mult = pos.option_spec.contract_multiplier
+                floating += pos.qty * (price - pos.avg_price) * mult
+                continue  # 买方无保证金
+            spec = self._registry.get_or_default(pos.product)
             floating += pos.qty * (price - pos.avg_price) * spec.contract_multiplier
             margin += abs(pos.qty) * price * spec.contract_multiplier * spec.margin_ratio
         return cash + margin + floating
@@ -134,15 +145,11 @@ class CtaBroker:
         price: float,
         contract: Optional[CtaContract] = None,
     ) -> bool:
-        """执行目标手数调仓 (当前 qty → target_qty).
+        """执行目标手数调仓 (当前 qty → target_qty). 期货/期权统一入口.
 
-        Args:
-            date: 交易日
-            symbol: 合约代码 (e.g. 'IF2608')
-            product: 产品代码 (e.g. 'IF')
-            target_qty: 目标持仓手数 (可为 0 平仓)
-            price: 成交价
-            contract: 可选合约规格 (用于校验)
+        期权合约通过 contract.is_option=True 走买方分支:
+            开仓扣权利金 (qty × price × multiplier), 无保证金;
+            平仓按当前权利金结算已实现盈亏.
 
         Returns:
             bool 是否全部成交
@@ -156,6 +163,13 @@ class CtaBroker:
         mult = spec.contract_multiplier
         margin = spec.margin_ratio
         fee_rate = self._commission_rate
+        is_option = contract is not None and contract.is_option
+
+        # ── 期权买方分支 (MVP) ─────────────────────────────────────────────
+        if is_option:
+            return self._place_option_order(
+                date, symbol, product, target_qty, price, contract, fee_rate,
+            )
 
         # ── 第 1 步: 平仓 (翻转平旧仓, 或同向减仓) ──────────────────────────
         if cur is not None and abs(cur_qty) > 1e-9:
@@ -215,6 +229,12 @@ class CtaBroker:
             price = mark_prices.get(pos.symbol)
             if price is None or price <= 0:
                 continue
+            if pos.kind == "option_buy" and pos.option_spec is not None:
+                mult = pos.option_spec.contract_multiplier
+                unrealized = pos.qty * (price - pos.avg_price) * mult
+                self._cash += unrealized
+                pos.avg_price = price
+                continue
             spec = self._registry.get_or_default(pos.product)
             unrealized = pos.qty * (price - pos.avg_price) * spec.contract_multiplier
             # 浮动盈亏计入现金 (简化逐日结算), 均价重置为市价
@@ -222,11 +242,94 @@ class CtaBroker:
             pos.avg_price = price
         self._equity_history.append(self.equity())
 
-    def _record(self, date, symbol, product, side, qty, price, fee):
+    def _record(self, date, symbol, product, side, qty, price, fee, mult=None):
         spec = self._registry.get_or_default(product)
+        m = mult if mult else spec.contract_multiplier
         self._trades.append(TradeRecord(
             date=date, symbol=symbol, product=product, side=side, qty=abs(qty),
             price=price, fee=fee,
-            notional=abs(qty) * price * spec.contract_multiplier,
+            notional=abs(qty) * price * m,
             margin=abs(qty) * price * spec.contract_multiplier * spec.margin_ratio,
         ))
+
+    # ── 期权买方逻辑 (MVP) ──────────────────────────────────────────────
+
+    def _place_option_order(
+        self,
+        date: str,
+        symbol: str,
+        product: str,
+        target_qty: float,
+        price: float,
+        contract: Optional[CtaContract],
+        fee_rate: float,
+    ) -> bool:
+        """期权买方调仓 (仅允许买入/平仓, qty ≥ 0).
+
+        开仓: 扣权利金 = qty × price × 乘数 (一次支出, 无保证金).
+        平仓: 按当前权利金结算已实现盈亏 (平仓所得权利金).
+        """
+        cur = self._positions.get(symbol)
+        cur_qty = cur.qty if cur else 0.0
+        if target_qty < 0:
+            return False  # MVP 买方 only, 不卖期权
+        opt_spec = contract.option_spec
+        mult = opt_spec.contract_multiplier if opt_spec else 1.0
+
+        # 平仓 (target < cur)
+        if target_qty < cur_qty and cur is not None and cur_qty > 0:
+            close_qty = cur_qty - target_qty
+            premium_in = close_qty * price * mult
+            # 已实现盈亏 = (当前权利金 - 开仓权利金) × 手数 × 乘数
+            realized = close_qty * (price - cur.avg_price) * mult
+            fee_c = close_qty * price * mult * fee_rate
+            cur.realized_pnl += realized
+            self._cash += premium_in - fee_c
+            self._record(date, symbol, product, "close", close_qty, price, fee_c, mult=mult)
+            cur.qty = target_qty
+            if abs(cur.qty) < 1e-9:
+                self._positions.pop(symbol, None)
+            return True
+
+        # 开仓 (target > cur)
+        if target_qty > cur_qty:
+            open_qty = target_qty - cur_qty
+            fee = open_qty * price * mult * fee_rate
+            premium_out = open_qty * price * mult
+            if premium_out + fee > self._cash + 1e-6 and self._margin_call:
+                return False
+            self._cash -= premium_out + fee
+            if cur is not None and cur_qty > 0:
+                new_avg = (cur_qty * cur.avg_price + open_qty * price) / target_qty
+            else:
+                new_avg = price
+            self._positions[symbol] = Position(
+                symbol=symbol, product=product, qty=target_qty, avg_price=new_avg,
+                kind="option_buy", option_spec=opt_spec,
+            )
+            self._record(date, symbol, product, "open", open_qty, price, fee, mult=mult)
+            return True
+        return True
+
+    def _expire_options(self, date: str, settle_prices: dict[str, float]) -> None:
+        """到期结算: 期权到期日按内在价值结算 (买方).
+
+        settle_prices: {option_symbol: 结算价} (内在价值):
+            Call: max(S - K, 0) × 乘数;  Put: max(K - S, 0) × 乘数
+        结算后仓位清零.
+        """
+        for symbol, pos in list(self._positions.items()):
+            if pos.kind != "option_buy":
+                continue
+            spec = pos.option_spec
+            if spec is None or spec.expiry_date != date:
+                continue
+            settle = settle_prices.get(symbol)
+            if settle is None:
+                continue
+            realized = pos.qty * (settle - pos.avg_price) * spec.contract_multiplier
+            pos.realized_pnl += realized
+            self._cash += pos.qty * settle * spec.contract_multiplier
+            self._record(date, symbol, pos.product, "expire", pos.qty, settle, 0.0,
+                         mult=spec.contract_multiplier)
+            self._positions.pop(symbol)

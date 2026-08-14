@@ -66,6 +66,8 @@ def run_cta_backtest(
     config: CtaBacktestConfig | None = None,
     registry: CtaContractRegistry | None = None,
     risk: CtaRisk | None = None,
+    option_contracts: dict[str, object] | None = None,
+    option_settle: dict[str, dict[str, float]] | None = None,
 ) -> CtaBacktestResult:
     """运行 CTA 回测.
 
@@ -77,6 +79,8 @@ def run_cta_backtest(
         config: 回测配置
         registry: 合约规格
         risk: 风控 (可选, 拦截目标持仓)
+        option_contracts: {option_symbol: CtaContract} 期权合约 (place_order 传 contract)
+        option_settle: {option_symbol: {date: 结算价}} 到期结算价 (内在价值)
     """
     config = config or CtaBacktestConfig()
     registry = registry or CtaContractRegistry()
@@ -96,6 +100,7 @@ def run_cta_backtest(
 
     for i, date in enumerate(dates):
         mark_prices = {s: p[i] for s, p in prices.items() if p[i] == p[i]}
+        date_str = str(date.date())
 
         # 1. 信号 → 目标持仓
         targets = strategy.target_positions(date, {"prices": prices, "dates": dates})
@@ -109,13 +114,25 @@ def run_cta_backtest(
             price = mark_prices.get(symbol)
             if price is None or price <= 0:
                 continue
+            contract = None
+            if option_contracts and symbol in option_contracts:
+                contract = option_contracts[symbol]
             broker.place_order(
-                date=str(date.date()), symbol=symbol,
+                date=date_str, symbol=symbol,
                 product=products[symbol], target_qty=target_qty, price=price,
+                contract=contract,
             )
 
+        # 3.5 期权到期结算 (买方按内在价值)
+        if option_settle:
+            settle_prices = {
+                sym: daily.get(date_str, 0.0)
+                for sym, daily in option_settle.items()
+            }
+            broker._expire_options(date_str, settle_prices)
+
         # 4. 日终结算
-        broker.mark_to_market(mark_prices, str(date.date()))
+        broker.mark_to_market(mark_prices, date_str)
         equity_hist.append(broker.equity())
         cash_hist.append(broker.cash)
         for s in pos_hist:

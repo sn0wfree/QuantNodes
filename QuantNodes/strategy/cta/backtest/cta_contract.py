@@ -31,18 +31,40 @@ class CtaContractSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class OptionContractSpec:
+    """单只期权合约参数 (买方 only, MVP 简化)."""
+
+    exchange: str
+    product: str          # 标的品种 (e.g. 'RB' / 'IO')
+    underlying: str       # 标的合约代码 (e.g. 'rb2605' / 'IF2605')
+    option_type: str      # 'C' (call) / 'P' (put)
+    strike: float         # 行权价
+    expiry_date: str      # 到期日 'YYYY-MM-DD'
+    contract_multiplier: float   # 复用标的期货乘数
+    premium_unit: float = 1.0    # 权利金单位 (元/手), 实际 = price × multiplier
+
+
+@dataclass(frozen=True, slots=True)
 class CtaContract:
-    """单张期货合约 (含到期月份, 用于换月识别)."""
+    """单张期货/期权合约 (含到期月份, 用于换月识别).
+
+    期权时 option_type 非 None; 期货时 None.
+    """
 
     product: str
-    symbol: str          # 'IF2608' / 'au2602'
+    symbol: str          # 'IF2608' / 'au2602' / 'rb2605C600-P-5000'
     expiry_year: int
     expiry_month: int
     spec: CtaContractSpec
+    option_spec: OptionContractSpec | None = None  # 期权时填入
 
     @property
     def key(self) -> str:
         return self.symbol
+
+    @property
+    def is_option(self) -> bool:
+        return self.option_spec is not None
 
 
 @lru_cache(maxsize=8)
@@ -119,3 +141,67 @@ class CtaContractRegistry:
     @property
     def products(self) -> list[str]:
         return sorted(self._specs.keys())
+
+    # ── 期权合约解析 (买方 only, MVP) ─────────────────────────────────
+
+    def get_option(
+        self, symbol: str, trade_date: str | None = None,
+    ) -> CtaContract:
+        """解析期权合约 → CtaContract (option_spec 填入).
+
+        Args:
+            symbol: 期权合约代码 (如 'rb2605C600-P-5000' / 'IO2502-C-3700')
+            trade_date: 交易日 (用于从 DuckDB 查实际到期日, 默认 None)
+
+        Returns:
+            CtaContract 含 OptionContractSpec; 期货代码或未知时 OptionContractSpec 为 None
+
+        期权合约乘数继承 product 的期货乘数 (RB 与 rb 同乘数).
+        """
+        from ..options.symbol_parser import parse_symbol
+
+        # 先用 parse_symbol 推断产品码 (它处理各交易所格式差异)
+        exchange_guess = ""
+        fut_spec = None
+        product = ""
+        # 从已知规格反查可能的交易所, 逐个尝试解析
+        for spec in self._specs.values():
+            candidate = parse_symbol(symbol, spec.exchange)
+            if candidate is not None:
+                product = candidate.product.upper()
+                fut_spec = self._specs.get(product)
+                exchange_guess = spec.exchange
+                break
+        if fut_spec is None and not product:
+            return CtaContract(
+                product=symbol[:2].upper(), symbol=symbol,
+                expiry_year=0, expiry_month=0,
+                spec=self.get_or_default(symbol[:2].upper()),
+            )
+        exchange = exchange_guess
+        mult = fut_spec.contract_multiplier if fut_spec else 1.0
+        parsed = parse_symbol(symbol, exchange)
+        if parsed is None:
+            return CtaContract(
+                product=product, symbol=symbol, expiry_year=0, expiry_month=0,
+                spec=fut_spec or self.get_or_default(product),
+            )
+        year = parsed.expiry_year
+        month = parsed.expiry_month
+        # 到期日: 当月最后一天 (简化, 精确到期日需交易日历)
+        expiry = f"{year:04d}-{month:02d}-01" if year else ""
+        opt_spec = OptionContractSpec(
+            exchange=exchange,
+            product=product,
+            underlying=parsed.underlying or "",
+            option_type=parsed.option_type or "",
+            strike=float(parsed.strike_price or 0),
+            expiry_date=expiry or "",
+            contract_multiplier=mult,
+        )
+        return CtaContract(
+            product=product, symbol=symbol,
+            expiry_year=year, expiry_month=month,
+            spec=fut_spec or self.get_or_default(product),
+            option_spec=opt_spec,
+        )
