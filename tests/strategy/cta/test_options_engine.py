@@ -110,3 +110,87 @@ class TestOptionBacktest:
         )
         assert r.metrics["Years"] > 0
         assert r.positions["rb2605P600"][-1] == 1.0
+
+
+class TestOptionSell:
+    def _broker(self):
+        return CtaBroker(CtaContractRegistry(), initial_cash=1_000_000.0)
+
+    def _contract(self):
+        return CtaContract(
+            product="RB", symbol="rb2605P3100", expiry_year=2026, expiry_month=5,
+            spec=CtaContractRegistry().get_or_default("RB"),
+            option_spec=OptionContractSpec(
+                exchange="SHFE", product="RB", underlying="rb2605",
+                option_type="P", strike=3100.0, expiry_date="2026-05-01",
+                contract_multiplier=10.0,
+            ),
+        )
+
+    def test_sell_option_receives_premium(self):
+        """卖 1 手 Put: 收权利金, 扣保证金."""
+        b = self._broker()
+        ok = b.place_order("2026-01-05", "rb2605P3100", "RB", -1, 30.0, self._contract())
+        assert ok
+        pos = b.positions["rb2605P3100"]
+        assert pos.kind == "option_sell"
+        assert pos.qty == -1
+        # 权利金收入 30 × 10 = 300, 保证金 30 × 10 × 0.15 = 45
+        expected_cash = 1_000_000 + 300 - 45 - 0.03
+        assert abs(b.cash - expected_cash) < 1e-6
+
+    def test_sell_option_mark_to_market(self):
+        """卖方: 价格下降赚钱, 价格上升亏钱."""
+        b = self._broker()
+        b.place_order("2026-01-05", "rb2605P3100", "RB", -1, 30.0, self._contract())
+        cash_after_sell = b.cash
+        # 价格降到 20 → 赚 (30-20)×10 = 100
+        b.mark_to_market({"rb2605P3100": 20.0}, "2026-01-06")
+        assert b.cash > cash_after_sell  # 现金增加 (赚)
+        cash_at_20 = b.cash
+        # 价格升到 40 → 亏 (20-40)×10 = -200 (相对 20)
+        b.mark_to_market({"rb2605P3100": 40.0}, "2026-01-07")
+        assert b.cash < cash_at_20  # 现金减少 (亏)
+
+    def test_sell_option_expire(self):
+        """到期结算: 卖方支付内在价值."""
+        b = self._broker()
+        b.place_order("2026-01-05", "rb2605P3100", "RB", -1, 30.0, self._contract())
+        # 到期标的 3050 → Put 内在 = (3100-3050)×10 = 500
+        b._expire_options("2026-05-01", {"rb2605P3100": 50.0})
+        assert "rb2605P3100" not in b.positions
+        # 初始 1M + 收入 300 - 保证金释放 - fee - 赔付 500 = 约 999,755
+        assert b.cash < 1_000_000
+
+    def test_put_spread_accounting(self):
+        """Put Spread: 卖 P3100 + 买 P3000, defined risk."""
+        b = self._broker()
+        reg = CtaContractRegistry()
+        sell_spec = OptionContractSpec("SHFE","RB","rb2605","P",3100.0,"2026-05-01",10.0)
+        buy_spec  = OptionContractSpec("SHFE","RB","rb2605","P",3000.0,"2026-05-01",10.0)
+        sell_c = CtaContract("RB","rb2605P3100",2026,5,reg.get_or_default("RB"),sell_spec)
+        buy_c  = CtaContract("RB","rb2605P3000",2026,5,reg.get_or_default("RB"),buy_spec)
+        # 卖 P3100 at 30, 买 P3000 at 10
+        b.place_order("2026-01-05","rb2605P3100","RB",-1,30.0,contract=sell_c)
+        b.place_order("2026-01-05","rb2605P3000","RB",1,10.0,contract=buy_c)
+        # 净权利金收入 = 300 - 100 = 200 (减去 fee)
+        assert "rb2605P3100" in b.positions
+        assert "rb2605P3000" in b.positions
+        assert b.positions["rb2605P3100"].kind == "option_sell"
+        assert b.positions["rb2605P3000"].kind == "option_buy"
+
+    def test_put_spread_expire_defined_risk(self):
+        """Put Spread 到期: 最大亏损 = spread_width × mult."""
+        b = self._broker()
+        reg = CtaContractRegistry()
+        sell_spec = OptionContractSpec("SHFE","RB","rb2605","P",3100.0,"2026-05-01",10.0)
+        buy_spec  = OptionContractSpec("SHFE","RB","rb2605","P",3000.0,"2026-05-01",10.0)
+        sell_c = CtaContract("RB","rb2605P3100",2026,5,reg.get_or_default("RB"),sell_spec)
+        buy_c  = CtaContract("RB","rb2605P3000",2026,5,reg.get_or_default("RB"),buy_spec)
+        b.place_order("2026-01-05","rb2605P3100","RB",-1,30.0,contract=sell_c)
+        b.place_order("2026-01-05","rb2605P3000","RB",1,10.0,contract=buy_c)
+        cash_before = b.cash
+        # 到期标的 2800: P3100 内在=(3100-2800)×10=3000, P3000 内在=(3000-2800)×10=2000
+        b._expire_options("2026-05-01", {"rb2605P3100": 300.0, "rb2605P3000": 200.0})
+        # 卖方赔付 3000, 买方收取 2000, 净赔付 1000
+        assert abs(b.cash - (cash_before - 1000)) < 1e-6
