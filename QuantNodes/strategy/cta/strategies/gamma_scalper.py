@@ -38,6 +38,7 @@ from ..options.slippage import estimate_option_spread, apply_slippage
 from ..options.underlying_map import UnderlyingMap
 from ..options.expiry import OptionExpiry
 from ..options.greeks import compute_greeks_for_option, days_to_expiry
+from ..options.iv_panel import load_iv_panel
 
 
 @dataclass
@@ -58,6 +59,11 @@ class GammaScalperConfig:
     hedge_threshold: float = 0.3   # |delta| > threshold × multiplier 时调仓
     delta_hedge_mode: str = "option"  # "option" | "futures" (预留)
     delta_adj_side: str = "buy"     # "buy" = 买方调, "sell" = 卖方调
+
+    # 入场过滤
+    iv_pct_max: float = 0.40       # IV 分位 < 此值才入场 (低 IV 便宜)
+    hv_iv_ratio_min: float = 1.0   # HV/IV > 此值才入场 (realized > implied)
+    hv_window: int = 20            # HV 计算窗口 (天)
 
 
 @dataclass
@@ -136,11 +142,21 @@ class GammaScalper(CtaStrategy):
             except Exception:
                 pass
 
-        # IV 面板
-        try:
-            self._iv_data = load_iv_panel(start=start, end=end)
-        except Exception:
-            self._iv_data = None
+        # IV 面板 + 分位 (提前加载 252 天用于滚动分位)
+        from ..options.iv_panel import add_percentile
+        from datetime import timedelta
+        iv_start = (pd.Timestamp(start) - timedelta(days=300)).strftime("%Y-%m-%d")
+        raw_iv = load_iv_panel(start=iv_start, end=end)
+        self._iv_data = raw_iv
+        self._iv_pct_data = add_percentile(raw_iv, window=min(252, max(20, len(raw_iv) - 1)))
+
+        # 预计算 HV (历史波动率)
+        self._hv_data: dict[str, pd.Series] = {}
+        for prod, series in self._price_data.items():
+            if series is not None and len(series) > self._cfg.hv_window:
+                log_ret = np.log(series / series.shift(1))
+                hv = log_ret.rolling(self._cfg.hv_window, min_periods=10).std() * np.sqrt(252)
+                self._hv_data[prod] = hv
 
     # ── 期权数据查询 ──────────────────────────────────────────────────────
 
@@ -172,6 +188,50 @@ class GammaScalper(CtaStrategy):
             v = self._iv_data.loc[date, product]
             return float(v) if pd.notna(v) and v > 0 else None
         return None
+
+    def _get_iv_pct(self, product: str, date: pd.Timestamp) -> float | None:
+        """获取 IV 分位 (0~1, 低=便宜)."""
+        if self._iv_pct_data is None or self._iv_pct_data.empty:
+            return None
+        if date in self._iv_pct_data.index and product in self._iv_pct_data.columns:
+            v = self._iv_pct_data.loc[date, product]
+            return float(v) if pd.notna(v) else None
+        return None
+
+    def _get_hv(self, product: str, date: pd.Timestamp) -> float | None:
+        """获取 HV (年化历史波动率)."""
+        series = self._hv_data.get(product)
+        if series is None or series.empty:
+            return None
+        if date in series.index:
+            v = series.loc[date]
+            return float(v) if pd.notna(v) and v > 0 else None
+        idx = series.index.get_indexer([date], method="ffill")
+        if idx[0] >= 0:
+            v = series.iloc[idx[0]]
+            return float(v) if pd.notna(v) and v > 0 else None
+        return None
+
+    def _check_entry_signal(self, product: str, date: pd.Timestamp) -> bool:
+        """检查入场信号: IV 低 + HV > IV.
+
+        Returns:
+            True = 允许入场
+        """
+        iv_pct = self._get_iv_pct(product, date)
+        hv = self._get_hv(product, date)
+        iv = self._get_iv(product, date)
+
+        # IV 分位过滤: 必须有数据且低于阈值
+        if iv_pct is not None and iv_pct > self._cfg.iv_pct_max:
+            return False
+
+        # HV/IV 过滤: HV 必须 > IV (realized > implied)
+        if hv is not None and iv is not None and iv > 0:
+            if hv / iv < self._cfg.hv_iv_ratio_min:
+                return False
+
+        return True
 
     def _compute_straddle_greeks(
         self, product: str, date: pd.Timestamp,
@@ -252,53 +312,62 @@ class GammaScalper(CtaStrategy):
                     self._holdings.pop(product, None)
                     holding = None
 
-            # 3. 入场: 无持仓时买新 straddle
+            # 3. 入场: 无持仓 + 信号满足时买新 straddle
             if holding is None:
-                straddle = select_straddle(
-                    product, date, spot,
-                    min_days=self._cfg.min_days,
-                    max_days=self._cfg.max_days,
-                    loader=self._loader, um=self._um, oe=self._oe,
-                )
-                if straddle is not None:
-                    self._holdings[product] = StraddleHolding(
-                        product=product,
-                        call_symbol=straddle.call.symbol,
-                        put_symbol=straddle.put.symbol,
-                        strike=straddle.strike,
-                        expiry=pd.Timestamp(straddle.expiry),
-                        cost=straddle.cost,
-                        entry_date=date_str,
-                        delta=straddle.delta,
-                        gamma=straddle.gamma,
-                        theta=straddle.theta,
-                        vega=straddle.vega,
+                if self._check_entry_signal(product, date):
+                    straddle = select_straddle(
+                        product, date, spot,
+                        min_days=self._cfg.min_days,
+                        max_days=self._cfg.max_days,
+                        loader=self._loader, um=self._um, oe=self._oe,
                     )
-                    targets[straddle.call.symbol] = 1.0
-                    targets[straddle.put.symbol] = 1.0
+                    if straddle is not None:
+                        self._holdings[product] = StraddleHolding(
+                            product=product,
+                            call_symbol=straddle.call.symbol,
+                            put_symbol=straddle.put.symbol,
+                            strike=straddle.strike,
+                            expiry=pd.Timestamp(straddle.expiry),
+                            cost=straddle.cost,
+                            entry_date=date_str,
+                            delta=straddle.delta,
+                            gamma=straddle.gamma,
+                            theta=straddle.theta,
+                            vega=straddle.vega,
+                        )
+                        targets[straddle.call.symbol] = 1.0
+                        targets[straddle.put.symbol] = 1.0
 
-            # 4. Delta 对冲 (用期权调整)
+            # 4. Delta 对冲
             holding = self._holdings.get(product)
             if holding is not None:
                 spec = self._registry.get_or_default(product)
                 mult = spec.contract_multiplier
                 total_delta = holding.delta * 1.0 * mult  # 1 lot
 
-                # |delta| 超过阈值 → 选调整期权
-                if abs(total_delta) > self._cfg.hedge_threshold * mult:
-                    adj_type, adj_qty, _ = self._delta_mgr.compute_option_delta_adjustment(
-                        current_delta=total_delta,
-                        target_delta=0.0,
-                        product=product,
-                        side=self._cfg.delta_adj_side,
+                if self._cfg.delta_hedge_mode == "futures":
+                    # 用期货对冲: hedge_qty = -delta / mult
+                    hedge_targets = self._delta_mgr.compute_hedge_target(
+                        {product: total_delta},
                     )
-                    if adj_qty > 0 and adj_type:
-                        adj = select_option_for_delta(
-                            product, date, spot, adj_type,
-                            loader=self._loader, um=self._um, oe=self._oe,
+                    for sym, qty in hedge_targets.items():
+                        targets[product] = qty
+                else:
+                    # 用期权对冲
+                    if abs(total_delta) > self._cfg.hedge_threshold * mult:
+                        adj_type, adj_qty, _ = self._delta_mgr.compute_option_delta_adjustment(
+                            current_delta=total_delta,
+                            target_delta=0.0,
+                            product=product,
+                            side=self._cfg.delta_adj_side,
                         )
-                        if adj is not None:
-                            targets[adj.symbol] = adj_qty
+                        if adj_qty > 0 and adj_type:
+                            adj = select_option_for_delta(
+                                product, date, spot, adj_type,
+                                loader=self._loader, um=self._um, oe=self._oe,
+                            )
+                            if adj is not None:
+                                targets[adj.symbol] = adj_qty
 
         return targets
 
