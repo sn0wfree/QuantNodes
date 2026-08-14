@@ -7,9 +7,13 @@
     - underlying_map: 期权标的 → 期货价格映射
     - expiry:        期权到期日推断 (数据驱动)
     - iv_panel:      ATM IV 面板 + 分位 + DuckDB 缓存
-    - selector:      虚值 Put/Call/PutSpread/Collar 合约选择器
+    - selector:      虚值 Put/Call/PutSpread/Collar/Straddle 合约选择器
     - hedge_layer:   对冲框架 (timing_mode 参数化)
     - hedge_data:    月差 + VRP 面板加载
+    - delta_hedge:   Delta 对冲管理器 (portfolio delta → futures hedge)
+    - pnl_decompose: P&L 分解 (theta/gamma/vega/delta)
+    - roll_manager:  展期管理 (到期前自动换月)
+    - slippage:      Bid-Ask 成本模型 (high-low 估计)
 """
 from __future__ import annotations
 
@@ -27,8 +31,9 @@ from .greeks import (
 from .underlying_map import UnderlyingMap
 from .expiry import OptionExpiry
 from .selector import (
-    OptionSelection, PutSpread, select_call, select_collar,
-    select_put, select_put_spread,
+    OptionSelection, PutSpread, StraddleSelection,
+    select_call, select_collar, select_put, select_put_spread,
+    select_straddle,
 )
 from .hedge_layer import (
     HedgeConfig,
@@ -44,6 +49,10 @@ from .hedge_data import (
     load_vrp_panel,
     vrp_percentile_panel,
 )
+from .delta_hedge import DeltaHedgeManager, HedgeRecord
+from .pnl_decompose import PnlDecomposer, PnlSnapshot
+from .roll_manager import RollManager, RollAction
+from .slippage import apply_slippage, estimate_option_spread, estimate_spread
 
 __all__ = [
     "OptionSymbol",
@@ -60,10 +69,12 @@ __all__ = [
     "OptionExpiry",
     "OptionSelection",
     "PutSpread",
+    "StraddleSelection",
     "select_call",
     "select_collar",
     "select_put",
     "select_put_spread",
+    "select_straddle",
     "HedgeConfig",
     "compute_hedge_targets",
     "iv_coefficient",
@@ -74,4 +85,13 @@ __all__ = [
     "load_vrp_panel",
     "vrp_percentile_panel",
     "load_vrp_detail",
+    "DeltaHedgeManager",
+    "HedgeRecord",
+    "PnlDecomposer",
+    "PnlSnapshot",
+    "RollManager",
+    "RollAction",
+    "apply_slippage",
+    "estimate_option_spread",
+    "estimate_spread",
 ]

@@ -323,3 +323,153 @@ def select_collar(
     if put is None or call is None:
         return None
     return put, call
+
+
+# ── Straddle (ATM) 选择 ──────────────────────────────────────────────────
+
+
+@dataclass(slots=True)
+class StraddleSelection:
+    """ATM Straddle 两腿 (call + put 同 strike 同到期)."""
+
+    product: str
+    call: OptionSelection
+    put: OptionSelection
+    strike: float
+    expiry: str
+    days_to_expiry: int
+    cost: float               # call.premium + put.premium
+    delta: float              # 组合 delta (~0)
+    gamma: float              # 组合 gamma
+    theta: float              # 组合 theta (负)
+    vega: float               # 组合 vega
+
+
+def select_straddle(
+    product: str,
+    trade_date: str | pd.Timestamp,
+    underlying_price: float,
+    min_days: int = 30,
+    max_days: int = 60,
+    loader: CtaDataLoader | None = None,
+    um: UnderlyingMap | None = None,
+    oe: OptionExpiry | None = None,
+    risk_free_rate: float = 0.02,
+) -> StraddleSelection | None:
+    """选 ATM Straddle: |strike - spot| 最小的 call + put 同 strike 同到期.
+
+    Gamma Scalping 核心选择器 — 选最接近 ATM 的跨式组合.
+
+    Args:
+        product: 品种代码
+        trade_date: 交易日
+        underlying_price: 标的期货当日收盘价
+        min_days / max_days: 到期天数窗口
+        risk_free_rate: 无风险利率
+
+    Returns:
+        StraddleSelection 或 None (无合适合约对)
+    """
+    from .greeks import compute_straddle_greeks
+
+    loader = loader or CtaDataLoader()
+    um = um or UnderlyingMap(loader)
+    oe = oe or OptionExpiry(loader)
+    ts = pd.Timestamp(trade_date)
+
+    df = loader.load_v_all_options(
+        products=[product],
+        start=str(ts.date()), end=str(ts.date()),
+    )
+    if df is None or df.empty:
+        return None
+    df["trade_date"] = pd.to_datetime(df["trade_date"])
+    day = df[df["trade_date"] == ts]
+    if day.empty:
+        return None
+    day = _filter_liquid(day)
+
+    # 到期日 → 剩余天数
+    syms = day["symbol"].unique().tolist()
+    exp_frame = oe.get_frame(syms)
+    exp_map = dict(zip(exp_frame["symbol"], exp_frame["expiry_date"]))
+    day["_expiry"] = day["symbol"].str.upper().map(exp_map)
+    day["_expiry"] = pd.to_datetime(day["_expiry"], errors="coerce")
+    day["_ttm_days"] = (day["_expiry"] - ts).dt.days
+
+    # 到期窗口过滤
+    in_window = day[day["_ttm_days"].between(min_days, max_days)]
+    if in_window.empty and day["_ttm_days"].notna().any():
+        min_ttm = day["_ttm_days"].min()
+        in_window = day[day["_ttm_days"] == min_ttm]
+    if in_window.empty:
+        return None
+
+    # 按 (strike, expiry) 分组, 找同时有 call + put 的组
+    calls = in_window[in_window["option_type"].str.upper() == "C"]
+    puts = in_window[in_window["option_type"].str.upper() == "P"]
+    if calls.empty or puts.empty:
+        return None
+
+    best = None
+    best_dist = np.inf
+
+    for strike in calls["strike_price"].unique():
+        c_row = calls[calls["strike_price"] == strike]
+        p_row = puts[puts["strike_price"] == strike]
+        if c_row.empty or p_row.empty:
+            continue
+
+        c = c_row.iloc[0]
+        p = p_row.iloc[0]
+        ttm = c["_ttm_days"] / 365.0 if pd.notna(c["_ttm_days"]) else None
+        if ttm is None or ttm <= 0:
+            continue
+
+        g_call = compute_greeks_for_option(
+            symbol=c["symbol"], option_type="C",
+            strike_price=strike, underlying_price=underlying_price,
+            market_price=c["close"], time_to_maturity=ttm,
+            risk_free_rate=risk_free_rate,
+        )
+        g_put = compute_greeks_for_option(
+            symbol=p["symbol"], option_type="P",
+            strike_price=strike, underlying_price=underlying_price,
+            market_price=p["close"], time_to_maturity=ttm,
+            risk_free_rate=risk_free_rate,
+        )
+        if not g_call.valid or not g_put.valid:
+            continue
+
+        sg = compute_straddle_greeks(g_call, g_put)
+        if sg is None:
+            continue
+
+        dist = abs(strike - underlying_price)
+        if dist < best_dist:
+            best_dist = dist
+            expiry_str = str(c["_expiry"].date()) if pd.notna(c["_expiry"]) else ""
+            best = StraddleSelection(
+                product=product,
+                call=OptionSelection(
+                    product=product, symbol=c["symbol"], option_type="C",
+                    strike=strike, underlying_price=underlying_price,
+                    delta=g_call.delta, premium=float(c["close"]),
+                    expiry=expiry_str, days_to_expiry=int(c["_ttm_days"]),
+                ),
+                put=OptionSelection(
+                    product=product, symbol=p["symbol"], option_type="P",
+                    strike=strike, underlying_price=underlying_price,
+                    delta=g_put.delta, premium=float(p["close"]),
+                    expiry=expiry_str, days_to_expiry=int(c["_ttm_days"]),
+                ),
+                strike=strike,
+                expiry=expiry_str,
+                days_to_expiry=int(c["_ttm_days"]),
+                cost=sg.cost,
+                delta=sg.delta,
+                gamma=sg.gamma,
+                theta=sg.theta,
+                vega=sg.vega,
+            )
+    return best
