@@ -7,6 +7,15 @@
     - describe(): 策略描述
 
 策略通过 register() 注册到 STRATEGY_REGISTRY, 按名称调用.
+
+已注册策略:
+    - short_strangle: 卖宽跨式
+    - iron_condor: 铁秃鹰
+    - calendar_spread: 日历价差
+    - covered_call: 备兑看涨
+    - bull_call_spread: 牛市看涨价差
+    - bear_put_spread: 熊市看跌价差
+    - regime_adaptive: Regime 自适应 (根据 IV/HV 路由)
 """
 from __future__ import annotations
 
