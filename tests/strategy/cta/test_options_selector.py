@@ -9,7 +9,8 @@ from QuantNodes.strategy.cta.options.hedge_layer import (
     timing_coefficient,
 )
 from QuantNodes.strategy.cta.options.selector import (
-    OptionSelection, select_call, select_put,
+    OptionSelection, PutSpread, select_call, select_collar,
+    select_put, select_put_spread,
 )
 from QuantNodes.strategy.cta.options.underlying_map import UnderlyingMap
 from QuantNodes.strategy.cta.data_loader import CtaDataLoader
@@ -189,3 +190,70 @@ class TestHedgeLayer:
         out = compute_hedge_targets(cta, iv, px, config=cfg,
                                     select_fun=fake_select)
         assert out == {}
+
+
+class TestPutSpread:
+    def _setup(self):
+        loader = CtaDataLoader()
+        return loader, UnderlyingMap(loader), OptionExpiry(loader)
+
+    def test_select_put_spread_rb(self):
+        """RB Put Spread: long 0.25Δ + short 0.10Δ."""
+        loader, um, oe = self._setup()
+        px = um.get_at("rb2505", "2025-01-10")
+        spread = select_put_spread("RB", "2025-01-10", px,
+                                   buy_delta=0.25, sell_delta=0.10,
+                                   loader=loader, um=um, oe=oe)
+        if spread is not None:
+            assert spread.long_put.strike > spread.short_put.strike
+            assert spread.net_premium > 0
+            assert spread.long_put.delta < 0
+            assert spread.short_put.delta < 0
+            assert abs(abs(spread.long_put.delta) - 0.25) < 0.15
+            assert abs(abs(spread.short_put.delta) - 0.10) < 0.15
+
+    def test_select_put_spread_strike_order(self):
+        """long strike > short strike."""
+        loader, um, oe = self._setup()
+        px = um.get_at("rb2505", "2025-01-10")
+        spread = select_put_spread("RB", "2025-01-10", px,
+                                   loader=loader, um=um, oe=oe)
+        if spread is not None:
+            assert spread.long_put.strike > spread.short_put.strike
+
+    def test_select_put_spread_unknown_product(self):
+        loader, um, oe = self._setup()
+        spread = select_put_spread("XX", "2025-01-10", 100.0,
+                                   loader=loader, um=um, oe=oe)
+        assert spread is None
+
+    def test_select_put_spread_putspread_properties(self):
+        """PutSpread 属性: max_profit, max_loss."""
+        ps = PutSpread(
+            long_put=OptionSelection("RB", "rb2505P3100", "P", 3100.0,
+                                     3200.0, -0.25, 30.0, "2025-03-10", 40),
+            short_put=OptionSelection("RB", "rb2505P3000", "P", 3000.0,
+                                      3200.0, -0.10, 10.0, "2025-03-10", 40),
+            net_premium=20.0,
+        )
+        assert ps.max_loss == 20.0
+        assert ps.max_profit == (3100.0 - 3000.0) - 20.0  # = 80.0
+
+
+class TestCollar:
+    def _setup(self):
+        loader = CtaDataLoader()
+        return loader, UnderlyingMap(loader), OptionExpiry(loader)
+
+    def test_select_collar_rb(self):
+        """RB Collar: long put + short call."""
+        loader, um, oe = self._setup()
+        px = um.get_at("rb2505", "2025-01-10")
+        result = select_collar("RB", "2025-01-10", px,
+                               loader=loader, um=um, oe=oe)
+        if result is not None:
+            put, call = result
+            assert put.option_type == "P"
+            assert call.option_type == "C"
+            assert put.strike < px  # OTM put
+            assert call.strike > px  # OTM call

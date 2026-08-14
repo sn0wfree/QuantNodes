@@ -230,3 +230,96 @@ def select_call(
                 days_to_expiry=int(row["_ttm_days"]),
             )
     return best
+
+
+@dataclass(slots=True)
+class PutSpread:
+    """Put Spread 两腿."""
+    long_put: OptionSelection   # 多腿 (较高 delta, 较高 strike)
+    short_put: OptionSelection  # 空腿 (较低 delta, 较低 strike)
+    net_premium: float          # 净成本 (long premium − short premium)
+
+    @property
+    def max_profit(self) -> float:
+        """最大利润 (标的跌到 short strike 以下)."""
+        return (self.long_put.strike - self.short_put.strike) - self.net_premium
+
+    @property
+    def max_loss(self) -> float:
+        """最大亏损 (净权利金)."""
+        return self.net_premium
+
+
+def select_put_spread(
+    product: str,
+    trade_date: str | pd.Timestamp,
+    underlying_price: float,
+    buy_delta: float = 0.25,
+    sell_delta: float = 0.10,
+    min_days: int = 30,
+    max_days: int = 60,
+    loader: CtaDataLoader | None = None,
+    um: UnderlyingMap | None = None,
+    oe: OptionExpiry | None = None,
+    risk_free_rate: float = 0.02,
+) -> PutSpread | None:
+    """选 Put Spread: long 0.25Δ + short 0.10Δ (同到期月).
+
+    Args:
+        buy_delta: 多腿目标 delta (取绝对值, 如 0.25 → ~0.25Δ put)
+        sell_delta: 空腿目标 delta (取绝对值, 如 0.10 → ~0.10Δ put)
+
+    Returns:
+        PutSpread 或 None (无合适合约对)
+    """
+    target_buy = abs(buy_delta)
+    target_sell = abs(sell_delta)
+
+    # 分别选两条腿 (同到期窗口)
+    long_leg = select_put(product, trade_date, underlying_price,
+                          target_delta=target_buy, min_days=min_days,
+                          max_days=max_days, loader=loader, um=um, oe=oe,
+                          risk_free_rate=risk_free_rate)
+    short_leg = select_put(product, trade_date, underlying_price,
+                           target_delta=target_sell, min_days=min_days,
+                           max_days=max_days, loader=loader, um=um, oe=oe,
+                           risk_free_rate=risk_free_rate)
+    if long_leg is None or short_leg is None:
+        return None
+    # long strike 必须 > short strike (均为 OTM)
+    if long_leg.strike <= short_leg.strike:
+        return None
+    net = long_leg.premium - short_leg.premium
+    if net < 0:
+        return None  # 不合理
+    return PutSpread(long_put=long_leg, short_put=short_leg, net_premium=net)
+
+
+def select_collar(
+    product: str,
+    trade_date: str | pd.Timestamp,
+    underlying_price: float,
+    put_delta: float = 0.25,
+    call_delta: float = 0.30,
+    min_days: int = 30,
+    max_days: int = 60,
+    loader: CtaDataLoader | None = None,
+    um: UnderlyingMap | None = None,
+    oe: OptionExpiry | None = None,
+    risk_free_rate: float = 0.02,
+) -> tuple[OptionSelection, OptionSelection] | None:
+    """选 Collar: long put (0.25Δ) + short call (0.30Δ) 同到期月.
+
+    适用于 CTA 净多头: 保护下行, 卖 call 融资.
+    """
+    put = select_put(product, trade_date, underlying_price,
+                     target_delta=put_delta, min_days=min_days,
+                     max_days=max_days, loader=loader, um=um, oe=oe,
+                     risk_free_rate=risk_free_rate)
+    call = select_call(product, trade_date, underlying_price,
+                       target_delta=call_delta, min_days=min_days,
+                       max_days=max_days, loader=loader, um=um, oe=oe,
+                       risk_free_rate=risk_free_rate)
+    if put is None or call is None:
+        return None
+    return put, call

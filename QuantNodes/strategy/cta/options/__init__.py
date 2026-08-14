@@ -7,8 +7,9 @@
     - underlying_map: 期权标的 → 期货价格映射
     - expiry:        期权到期日推断 (数据驱动)
     - iv_panel:      ATM IV 面板 + 分位 + DuckDB 缓存
-    - selector:      虚值 Put/Call 合约选择器 (目标 delta)
-    - hedge_layer:   对冲框架接口 (策略逻辑后延)
+    - selector:      虚值 Put/Call/PutSpread/Collar 合约选择器
+    - hedge_layer:   对冲框架 (timing_mode 参数化)
+    - hedge_data:    月差 + VRP 面板加载
 """
 from __future__ import annotations
 
@@ -25,7 +26,10 @@ from .greeks import (
 )
 from .underlying_map import UnderlyingMap
 from .expiry import OptionExpiry
-from .selector import OptionSelection, select_call, select_put
+from .selector import (
+    OptionSelection, PutSpread, select_call, select_collar,
+    select_put, select_put_spread,
+)
 from .hedge_layer import (
     HedgeConfig,
     basis_coefficient,
@@ -33,7 +37,13 @@ from .hedge_layer import (
     iv_coefficient,
     timing_coefficient,
 )
-from .hedge_data import basis_percentile_panel, load_basis_panel
+from .hedge_data import (
+    basis_percentile_panel,
+    load_basis_panel,
+    load_vrp_detail,
+    load_vrp_panel,
+    vrp_percentile_panel,
+)
 
 __all__ = [
     "OptionSymbol",
@@ -49,8 +59,11 @@ __all__ = [
     "UnderlyingMap",
     "OptionExpiry",
     "OptionSelection",
+    "PutSpread",
     "select_call",
+    "select_collar",
     "select_put",
+    "select_put_spread",
     "HedgeConfig",
     "compute_hedge_targets",
     "iv_coefficient",
@@ -58,4 +71,7 @@ __all__ = [
     "timing_coefficient",
     "basis_percentile_panel",
     "load_basis_panel",
+    "load_vrp_panel",
+    "vrp_percentile_panel",
+    "load_vrp_detail",
 ]
