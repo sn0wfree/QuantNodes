@@ -33,7 +33,7 @@ from .expiry import OptionExpiry
 from .selector import (
     OptionSelection, PutSpread, StraddleSelection,
     select_call, select_collar, select_put, select_put_spread,
-    select_straddle,
+    select_straddle, select_option_for_delta,
 )
 from .hedge_layer import (
     HedgeConfig,
@@ -75,6 +75,7 @@ __all__ = [
     "select_put",
     "select_put_spread",
     "select_straddle",
+    "select_option_for_delta",
     "HedgeConfig",
     "compute_hedge_targets",
     "iv_coefficient",

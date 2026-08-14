@@ -5,6 +5,7 @@ import pandas as pd
 
 from QuantNodes.strategy.cta.options.selector import (
     StraddleSelection,
+    select_option_for_delta,
     select_straddle,
 )
 from QuantNodes.strategy.cta.options.delta_hedge import DeltaHedgeManager
@@ -102,12 +103,37 @@ class TestSelectStraddle:
         assert sel is None
 
 
+class TestSelectOptionForDelta:
+    def _setup(self):
+        loader = CtaDataLoader()
+        return loader, UnderlyingMap(loader), OptionExpiry(loader)
+
+    def test_select_put_for_delta(self):
+        """选 put 做 delta 调整."""
+        loader, um, oe = self._setup()
+        px = um.get_at("rb2505", "2025-01-10")
+        sel = select_option_for_delta("RB", "2025-01-10", px, option_type="P",
+                                      loader=loader, um=um, oe=oe)
+        assert sel is not None
+        assert sel.option_type == "P"
+        assert sel.strike < px
+
+    def test_select_call_for_delta(self):
+        """选 call 做 delta 调整."""
+        loader, um, oe = self._setup()
+        px = um.get_at("rb2505", "2025-01-10")
+        sel = select_option_for_delta("RB", "2025-01-10", px, option_type="C",
+                                      loader=loader, um=um, oe=oe)
+        assert sel is not None
+        assert sel.option_type == "C"
+        assert abs(sel.delta) > 0.3  # ATM delta ≈ 0.5
+
+
 class TestDeltaHedgeManager:
     def _make_registry(self):
         reg = CtaContractRegistry.__new__(CtaContractRegistry)
         reg._specs = {}
         reg._margin = {}
-        # 注册 RB 规格 (乘数 10)
         reg._specs["RB"] = CtaContractSpec(
             exchange="SHFE", product="RB",
             contract_multiplier=10.0, price_unit="元/吨",
@@ -137,18 +163,50 @@ class TestDeltaHedgeManager:
 
     def test_compute_hedge_target_small(self):
         mgr = DeltaHedgeManager(self._make_registry())
-        # RB delta=10, price=3500, mult=10
-        # hedge_qty = -10 / (3500 × 10) = -0.000286 → rounds to 0
-        targets = mgr.compute_hedge_target({"RB": 10.0}, {"RB": 3500.0})
-        # Delta 太小, 四舍五入后为 0, abs(0) < 1e-9 → 不含
-        assert targets == {}
+        # RB delta=10, mult=10 → hedge_qty = -10/10 = -1.0
+        targets = mgr.compute_hedge_target({"RB": 10.0})
+        assert targets["RB"] == -1.0
 
     def test_compute_hedge_target_large(self):
         mgr = DeltaHedgeManager(self._make_registry())
-        # RB total_delta=35000, price=3500, mult=10
-        # hedge_qty = -35000 / (3500 × 10) = -1.0
-        targets = mgr.compute_hedge_target({"RB": 35000.0}, {"RB": 3500.0})
-        assert targets["RB"] == -1.0
+        # RB delta=35000, mult=10 → hedge_qty = -35000/10 = -3500
+        targets = mgr.compute_hedge_target({"RB": 35000.0})
+        assert targets["RB"] == -3500.0
+
+    def test_compute_hedge_target_zero(self):
+        mgr = DeltaHedgeManager(self._make_registry())
+        targets = mgr.compute_hedge_target({"RB": 0.0})
+        assert targets == {}
+
+    def test_compute_option_delta_adjustment_buy_put(self):
+        """delta > 0 → 买 put 补负 delta."""
+        mgr = DeltaHedgeManager(self._make_registry())
+        # RB delta=+5, mult=10 → gap=-5, need put, qty = 5/(0.5*10)=1
+        opt_type, qty, delta_per_lot = mgr.compute_option_delta_adjustment(
+            current_delta=5.0, target_delta=0.0, product="RB", side="buy",
+        )
+        assert opt_type == "P"
+        assert qty == 1.0
+        assert delta_per_lot == -5.0  # -0.5 × 10
+
+    def test_compute_option_delta_adjustment_buy_call(self):
+        """delta < 0 → 买 call 补正 delta."""
+        mgr = DeltaHedgeManager(self._make_registry())
+        # RB delta=-5, mult=10 → gap=+5, need call, qty = 5/(0.5*10)=1
+        opt_type, qty, delta_per_lot = mgr.compute_option_delta_adjustment(
+            current_delta=-5.0, target_delta=0.0, product="RB", side="buy",
+        )
+        assert opt_type == "C"
+        assert qty == 1.0
+        assert delta_per_lot == 5.0
+
+    def test_compute_option_delta_adjustment_no_change(self):
+        mgr = DeltaHedgeManager(self._make_registry())
+        opt_type, qty, _ = mgr.compute_option_delta_adjustment(
+            current_delta=0.0, target_delta=0.0, product="RB",
+        )
+        assert opt_type == ""
+        assert qty == 0.0
 
     def test_record_rebalance(self):
         mgr = DeltaHedgeManager(self._make_registry())

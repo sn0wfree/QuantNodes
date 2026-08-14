@@ -473,3 +473,40 @@ def select_straddle(
                 vega=sg.vega,
             )
     return best
+
+
+# ── Delta 调整用 Option 选择 ──────────────────────────────────────────────
+
+
+def select_option_for_delta(
+    product: str,
+    trade_date: str | pd.Timestamp,
+    underlying_price: float,
+    option_type: str = "P",
+    min_days: int = 30,
+    max_days: int = 60,
+    loader: CtaDataLoader | None = None,
+    um: UnderlyingMap | None = None,
+    oe: OptionExpiry | None = None,
+    risk_free_rate: float = 0.02,
+) -> OptionSelection | None:
+    """选 ATM option 用于 delta 调整 (call 或 put).
+
+    Args:
+        option_type: "C" = 买 call 补正 delta; "P" = 买 put 补负 delta
+
+    Returns:
+        OptionSelection 或 None
+    """
+    if option_type.upper() == "C":
+        return select_call(
+            product, trade_date, underlying_price,
+            target_delta=0.5, min_days=min_days, max_days=max_days,
+            loader=loader, um=um, oe=oe, risk_free_rate=risk_free_rate,
+        )
+    else:
+        return select_put(
+            product, trade_date, underlying_price,
+            target_delta=0.25, min_days=min_days, max_days=max_days,
+            loader=loader, um=um, oe=oe, risk_free_rate=risk_free_rate,
+        )
