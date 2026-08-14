@@ -130,9 +130,9 @@ class TestHedgeLayer:
         cfg = HedgeConfig(timing_mode="iv")
         out = compute_hedge_targets(cta, iv, px, config=cfg,
                                     select_fun=fake_select)
-        # 净敞口 = 10 × 3200 × mult(registry=None→1) = 32000
-        # 预算 = 32000 × 0.4 = 12800; 手数 = 12800/(30×1) = 426
-        assert out == {"rb2505P3100": 426.0}
+        # delta 对冲: n = qty × ratio / |delta| = 10 × 0.4 / 0.25 = 16
+        # 预算约束: budget = 0.005 × 1M = 5000; max = 5000/(30×1) = 166; min(16,166)=16
+        assert out == {"rb2505P3100": 16.0}
 
     def test_compute_iv_high_blocks(self):
         """IV 分位高 → 不买."""

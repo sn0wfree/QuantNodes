@@ -98,27 +98,33 @@ def timing_coefficient(
 
 
 def _hedge_qty(
-    net_notional: float,
-    premium: float,
-    multiplier: float,
+    net_qty: float,
+    put_delta: float,
     ratio: float,
+    premium: float = 0.0,
+    multiplier: float = 1.0,
+    budget_cap: float = 0.0,
 ) -> float:
-    """预算约束下目标手数: 对冲名义 / (权利金 × 乘数), 向下取整.
+    """Delta 对冲手数: hedge_ratio × qty / |delta|, 预算约束取 min.
 
     Args:
-        net_notional: 净多头敞口名义价值
-        premium: 单位权利金 (点)
-        multiplier: 合约乘数 (元/手)
-        ratio: 对冲比例 (hedge_ratio)
+        net_qty: 净多头手数
+        put_delta: put 的 delta (负值)
+        ratio: 对冲比例 (hedge_ratio × timing_coef)
+        premium: 单位权利金 (可选, 预算约束)
+        multiplier: 合约乘数 (可选)
+        budget_cap: 权利金预算上限 (可选, 0=不约束)
     Returns:
-        目标手数 (int), 取整
+        目标手数 (向下取整)
     """
-    if premium is None or premium <= 0 or multiplier is None or multiplier <= 0:
+    abs_delta = abs(put_delta)
+    if abs_delta < 1e-6 or net_qty <= 0:
         return 0.0
-    budget = net_notional * ratio
-    if budget <= 0:
-        return 0.0
-    return float(np.floor(budget / (premium * multiplier)))
+    n = net_qty * ratio / abs_delta
+    if budget_cap > 0 and premium > 0 and multiplier > 0:
+        max_by_budget = budget_cap / (premium * multiplier)
+        n = min(n, max_by_budget)
+    return float(np.floor(n))
 
 
 # ── 对冲目标计算接口 ───────────────────────────────────────────────────
@@ -189,8 +195,12 @@ def compute_hedge_targets(
                          min_days=config.min_days, max_days=config.max_days)
         if sel is None:
             continue
-        n = _hedge_qty(net_notional, sel.premium, mult or 1.0,
-                       config.hedge_ratio * coef)
+        n = _hedge_qty(
+            net_qty=qty, put_delta=sel.delta,
+            ratio=config.hedge_ratio * coef,
+            premium=sel.premium, multiplier=mult or 1.0,
+            budget_cap=config.budget_pct * 1_000_000,  # 年化预算 (简化)
+        )
         if n > 0:
             targets[sel.symbol] = n
     return targets
