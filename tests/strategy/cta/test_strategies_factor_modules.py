@@ -1,6 +1,7 @@
 # coding=utf-8
 """多因子模块子策略测试 (策略 v3: 4 组方向子策略)."""
 import numpy as np
+import pandas as pd
 import pytest
 
 from QuantNodes.strategy.cta.strategies.factor_modules import (
@@ -344,3 +345,53 @@ class TestContinuousSignals:
         both = (sig_off != 0) & (sig_on != 0)
         match = (sig_off[both] == sig_on[both]).to_numpy().mean()
         assert match > 0.5
+
+
+class TestDDFilter:
+    """NAV 回撤降杠杆 (dd_filter): 回撤超阈值降仓, 创新高恢复."""
+
+    def _strat(self, **cfg):
+        return FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(**cfg),
+        )
+
+    def test_dd_coef_bounded(self):
+        """dd_coef ∈ {1.0, dd_filter_coef}, 触发后保持到新高."""
+        s = self._strat(dd_filter_enabled=True, dd_filter_threshold=0.02,
+                        dd_filter_coef=0.4)
+        s.load_panel()
+        nav = pd.Series(
+            [1.0, 1.10, 1.05, 1.03, 1.02, 1.12, 1.15],
+            index=pd.date_range("2020-01-01", periods=7),
+        )
+        coef = s._dd_coef(nav)
+        # t2: 1.05/1.10-1=-0.045 < -0.02 → 触发 0.4; t3,t4 保持; t5 新高恢复
+        assert (coef.to_numpy() == [1.0, 1.0, 0.4, 0.4, 0.4, 1.0, 1.0]).all()
+        assert coef.min() >= 0.0 and coef.max() <= 1.0
+
+    def test_dd_off_by_default(self):
+        assert ComboConfig().dd_filter_enabled is False
+
+    def test_dd_reduces_drawdown(self):
+        """dd 开启后 MaxDD 应 ≤ 关闭 (同池同配置, 数值上更浅)."""
+        base = dict(aggregation="equal")
+        r_off = self._strat(**base).run()
+        r_on = self._strat(**base, dd_filter_enabled=True,
+                           dd_filter_threshold=0.05, dd_filter_coef=0.5).run()
+        # MaxDD 为负值: on ≥ off 数值 = 回撤更浅
+        assert r_on.metrics["MaxDD"] >= r_off.metrics["MaxDD"] - 1e-9
+        assert r_on.metrics["Years"] > 0
+
+    def test_dd_run_completes_with_hard_cap(self):
+        """dd + 杠杆硬限组合可跑通."""
+        s = FactorModuleComboStrategy(
+            products=_TEST_POOL, start="2020-01-01",
+            config=ComboConfig(
+                aggregation="equal", leverage_hard_cap=3.0,
+                dd_filter_enabled=True, dd_filter_threshold=0.05,
+                dd_filter_coef=0.5,
+            ),
+        )
+        r = s.run()
+        assert r.metrics["Years"] > 0

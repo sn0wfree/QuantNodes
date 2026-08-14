@@ -816,6 +816,9 @@ class ComboConfig(ModuleConfig):
     filter_enabled: bool = True      # 市场级波动危机过滤 (Sharpe 1.109→1.190)
     momentum_filter_window: int = 0  # 信号动量过滤窗口 (天), 0=关闭 (docs/94 §10.7)
     momentum_filter_coef: float = 0.0  # 动量为负时仓位系数 (0=全空仓, 1=不过滤)
+    dd_filter_enabled: bool = False  # NAV 回撤降杠杆: 回撤超阈值 → 全局降杠杆
+    dd_filter_threshold: float = 0.05  # 回撤触发阈值 (5% = 0.05)
+    dd_filter_coef: float = 0.5     # 触发后杠杆系数 (0.5 = 半仓)
     leverage_hard_cap: float = 0.0   # 组合总杠杆硬上限 (逐日 gross/equity), 0=关闭
 
 
@@ -938,15 +941,42 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         coef = (cap / lev).clip(upper=1.0).fillna(1.0)
         return coef.clip(lower=0.0)
 
+    def _dd_coef(self, nav: pd.Series) -> pd.Series:
+        """NAV 回撤降杠杆系数 (T,) ∈ [0,1], 无前视.
+
+        回撤超阈值 → 降杠杆系数持续生效, 直到 NAV 创新高才恢复 1.0.
+        (触发后保持低仓, 避免回撤中反复抄底; 新高恢复, 滞后但稳健)
+        """
+        cfg = self._config
+        thr = cfg.dd_filter_threshold
+        coef_val = cfg.dd_filter_coef
+        dd = nav / nav.cummax() - 1
+        coef = pd.Series(1.0, index=nav.index)
+        in_dd = False
+        for t in range(len(nav)):
+            if dd.iloc[t] < -thr:
+                in_dd = True
+            if in_dd and nav.iloc[t] == nav.iloc[:t + 1].max():
+                in_dd = False
+            if in_dd:
+                coef.iloc[t] = coef_val
+        return coef
+
     def run(self) -> CtaBacktestResult:
         """运行完整回测.
 
         leverage_hard_cap > 0 时两遍法: 第一遍无硬限拿 NAV → 缩放权重 →
         第二遍带杠杆硬限重跑 (总杠杆 ≤ cap).
+        dd_filter_enabled 时两遍法: 第一遍拿 NAV → 回撤系数 → 第二遍乘系数重跑
+        (回撤系数无前视, 只用第一遍 t 期及之前数据).
         """
         self.load_panel()
         sig = self._signals()
         cfg = self._config
+        dd_coef = None
+        if cfg.dd_filter_enabled:
+            nav0 = self._run_signal(sig).nav
+            dd_coef = self._dd_coef(nav0)
         if cfg.leverage_hard_cap > 0:
             sig = self._exec_sig(sig)
             weights = vol_target_positions(
@@ -955,6 +985,8 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             )
             if self._filter is not None:
                 weights = weights * self._filter.coefficients(self._price_panel)
+            if dd_coef is not None:
+                weights = weights.mul(dd_coef, axis=0)
             # 多轮迭代: 权重层等比缩放 → 手数层 floor 缩放, 保证总杠杆 ≤ cap
             coef = pd.Series(1.0, index=sig.index)
             lots = None
@@ -982,6 +1014,8 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             scale = (cfg.leverage_hard_cap / lev).clip(upper=1.0).fillna(1.0)
             lots_final = lots.mul(scale, axis=0).apply(np.floor)
             return self._run_with_lots(lots_final)
+        if dd_coef is not None:
+            sig = sig.mul(dd_coef, axis=0)
         return self._run_signal(sig)
 
     def run_factor(self, name: str) -> CtaBacktestResult:
