@@ -14,6 +14,13 @@
     - pnl_decompose: P&L 分解 (theta/gamma/vega/delta)
     - roll_manager:  展期管理 (到期前自动换月)
     - slippage:      Bid-Ask 成本模型 (high-low 估计)
+    - utils:         工具函数 (cal_pnl, required_share, find_third_friday)
+    - contract_marking: c1-c5 主力合约标记 + OTM
+    - iv_computer:   IV 批量并行计算 (boost_up)
+    - match_engine:  FIFO/LIFO 交易匹配
+    - optimizer:     SLSQP 组合优化
+    - backtest_bridge: 策略权重 → 交易记录 → P&L
+    - strategies:    期权策略池
 """
 from __future__ import annotations
 
