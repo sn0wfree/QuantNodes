@@ -1,7 +1,7 @@
 # 96. CTA 多因子策略现状总结
 
-> 快照日期: 2026-08-12
-> 关联: docs/94 (迭代记录) / docs/95 (策略规格)
+> 快照日期: 2026-08-14
+> 关联: docs/94 (迭代记录) / docs/95 (策略规格) / docs/97 (因子到策略流程)
 
 ## 一、策略体系
 
@@ -10,6 +10,9 @@
   → 7 模块:
       趋势动量 22 / 均值回归 15 / 量能资金流 24 / 事件日历 6
       期限基差 2 / 宏观 3 / 产业链 5
+    → 因子信号 (continuous=True 默认): 有 raw_value 且 raw!=compute 的因子
+      走连续值 → 逐品种滚动 z-score → 归一化 [-1,1] (覆盖 11 个核心因子);
+      其余保持 -1/0/1 离散
     → 组内聚合: 因子级 TV-PR 学权重 (λ_tv=0.5, λ_l1=0 全维度保留,
        β 正负自由自动反用, expanding 每 21 天更新, 无前视)
       → 组间: 模块 inv_vol 波动率倒数加权 (滚动 252 天, 逐日归一化)
@@ -28,6 +31,9 @@
 FactorModuleComboStrategy(config=ComboConfig(
     aggregation="tvpr",              # 组内 TV-PR 因子级学权重
     module_weighting="inv_vol",      # 组间模块波动率倒数加权
+    continuous=True,                 # 连续信号模式 (默认开启, 1.462→2.006)
+    cont_z_window=252,               # z-score 滚动窗口
+    cont_z_clip=3.0,                 # z-score 截断 → 归一化 [-1,1]
     momentum_filter_window=60,       # 信号动量过滤
     momentum_filter_coef=0.0,        # 动量为负 → 全空仓
     target_vol=0.30,                 # 2 倍杠杆
@@ -38,15 +44,16 @@ FactorModuleComboStrategy(config=ComboConfig(
 
 ## 三、业绩表现 (72 品种, 2018-2025)
 
-### 3.1 正式口径业绩 (T+1, 2026-08-12 起默认)
+### 3.1 正式口径业绩 (T+1, 2026-08-14 连续信号模式)
 
-| 配置 | Sharpe | 年化 | MaxDD | Calmar | OOS 年化 |
+| 配置 | Sharpe | 年化 | MaxDD | Calmar | OOS Sharpe |
 |---|---|---|---|---|---|
-| 1x (0.15) T+1 | ~1.44 | ~11% | ~-11% | ~1.0 | ~9% |
-| **2x + 硬限 3.0 (T+1)** | **1.462** | **16.8%** | -17.1% | 0.985 | 13.3% |
+| 离散信号 (2026-08-12 旧) | 1.462 | 16.8% | -17.1% | 0.985 | 1.015 |
+| **连续信号 (2026-08-14, 默认)** | **2.006** | **19.7%** | **-11.1%** | **1.775** | **1.507** |
 
-注: T+1 口径 (信号次日成交, 生产要求) 较 T+0 理想化口径损失 ~20% Sharpe
-(1.83→1.46), 但 OOS > 1.0 仍稳健. 详见 docs/95 §8.1.
+连续信号模式 (continuous=True): 覆盖 11 个核心因子 (趋势 6 + 均值回归 5),
+z-score 归一化到 [-1,1] 与离散同尺度, TV-PR 学到的权重更稳定.
+全维度提升: Sharpe +37% / MaxDD 改善 35% / OOS +48% (详见 docs/97 §9).
 
 OOS = 2022-2025 段 (全样本 NAV 切段统计).
 
@@ -89,7 +96,7 @@ Sharpe 全起点为正 → 收益能力不依赖起点, CTA 常见特性.
 | 策略代码 | `strategies/factor_modules.py` (7 模块+组合+过滤+硬限) / `tvpr_combo.py` |
 | 数据管线 | `data_loader.py`: load_term_structure / load_macro_series / list_active_products |
 | 脚本 | verify_round8_factors / cta_robustness_diag / cta_factor_stability / cta_overfitting_check |
-| 文档 | docs/94 (迭代 10 章) + docs/95 (规格 8 章) + 本文 (现状快照 + 生产化评估) |
+| 文档 | docs/94 (迭代 10 章) + docs/95 (规格 8 章) + docs/96 (本文 现状快照) + docs/97 (因子到策略流程 + 量级研究) |
 | 测试 | tests/strategy/cta/: 500 passed, 16 skipped, ruff clean |
 
 ## 七、残余风险与下一步
@@ -103,6 +110,7 @@ Sharpe 全起点为正 → 收益能力不依赖起点, CTA 常见特性.
 | 5 | 16 个外部数据因子 | 产业链/期限/宏观已纳入, 基差失效因子已剔除 |
 | 6 | **资金规模** | 200 万为性能瓶颈 (MaxDD -17%); **建议 ≥500 万, 1000 万+ 收敛** |
 | 7 | **生产系统** | 策略层就绪 (T+1/margin_call/杠杆硬限), 执行/数据/基础设施待建 (docs/95 §8, 阶段 2-3) |
+| 8 | **量级保留 (fut_v2) 已验证放弃** | tvpr β 已隐式做量级加权, 再叠 conv 是 redundant; 4 种变体 + 阈值扫描全部劣于 v1 (docs/97 §10) |
 
 ## 八、生产化评估 (2026-08-12)
 
@@ -148,6 +156,8 @@ T+1 严格口径 + 保证金建模下仍稳健 (OOS > 1.0), 但执行/数据/基
 ```python
 FactorModuleComboStrategy(config=ComboConfig(
     aggregation="tvpr", module_weighting="inv_vol",
+    continuous=True,                 # 连续信号模式 (默认, 2.006)
+    cont_z_window=252, cont_z_clip=3.0,
     momentum_filter_window=60, momentum_filter_coef=0.0,
     target_vol=0.30, max_leverage=3.0, leverage_hard_cap=3.0,
     margin_call=True, execution_lag=1,   # 生产口径
@@ -155,12 +165,12 @@ FactorModuleComboStrategy(config=ComboConfig(
 ))
 ```
 
-### 8.6 正式口径业绩 (2x + 硬限 + T+1, 72 品种)
+### 8.6 正式口径业绩 (2x + 硬限 + T+1, 72 品种, 连续信号模式)
 
-| 指标 | T+0 旧口径 | T+1 正式 |
+| 指标 | 离散 (2026-08-12) | **连续 (2026-08-14, 默认)** |
 |---|---|---|
-| Sharpe | 1.830 | **1.462** |
-| 年化 | 19.6% | **16.8%** |
-| MaxDD | -14.1% | -17.1% |
-| OOS Sharpe | 1.241 | **1.015** |
-| 500 万资金 | — | 1.769 / MaxDD -7.9% / OOS 1.520 |
+| Sharpe | 1.462 | **2.006** |
+| 年化 | 16.8% | **19.7%** |
+| MaxDD | -17.1% | **-11.1%** |
+| OOS Sharpe | 1.015 | **1.507** |
+| 换手率 | 7.80 | 7.80 |
