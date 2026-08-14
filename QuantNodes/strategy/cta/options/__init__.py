@@ -21,6 +21,7 @@
     - optimizer:     SLSQP 组合优化
     - backtest_bridge: 策略权重 → 交易记录 → P&L
     - strategies:    期权策略池
+    - vol_signals:   IVS 斜率 + P/C IV ratio + Regime switching
 """
 from __future__ import annotations
 
