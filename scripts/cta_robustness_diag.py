@@ -9,7 +9,13 @@ from QuantNodes.strategy.cta.strategies.factor_modules import (
     ComboConfig, FactorModuleComboStrategy,
 )
 
-CFG = ComboConfig(aggregation="tvpr", module_weighting="inv_vol")
+CFG = ComboConfig(
+    aggregation="tvpr", module_weighting="inv_vol",
+    continuous=True, cont_z_window=252, cont_z_clip=3.0,
+    momentum_filter_window=60, momentum_filter_coef=0.0,
+    target_vol=0.30, max_leverage=3.0, leverage_hard_cap=3.0,
+    margin_call=True,
+)
 
 
 def main():
