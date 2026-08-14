@@ -5,9 +5,12 @@ import pandas as pd
 
 from QuantNodes.strategy.cta.options.expiry import OptionExpiry
 from QuantNodes.strategy.cta.options.hedge_layer import (
-    HedgeConfig, compute_hedge_targets, iv_coefficient,
+    HedgeConfig, basis_coefficient, compute_hedge_targets, iv_coefficient,
+    timing_coefficient,
 )
-from QuantNodes.strategy.cta.options.selector import select_call, select_put
+from QuantNodes.strategy.cta.options.selector import (
+    OptionSelection, select_call, select_put,
+)
 from QuantNodes.strategy.cta.options.underlying_map import UnderlyingMap
 from QuantNodes.strategy.cta.data_loader import CtaDataLoader
 
@@ -65,12 +68,124 @@ class TestHedgeLayer:
         cfg = HedgeConfig()
         assert iv_coefficient(np.nan, cfg) == 1.0
 
-    def test_compute_hedge_targets_placeholder(self):
-        """框架占位: 当前返回空 dict (策略后延)."""
-        out = compute_hedge_targets(
-            cta_positions=pd.DataFrame(),
-            iv_panel=pd.DataFrame(),
-            prices=pd.DataFrame(),
-            config=HedgeConfig(),
-        )
+    def test_basis_coefficient_deep_back(self):
+        """深贴水 (分位高) → 全额买."""
+        cfg = HedgeConfig()
+        assert basis_coefficient(0.90, cfg) == 1.0
+
+    def test_basis_coefficient_mid(self):
+        cfg = HedgeConfig()
+        assert basis_coefficient(0.50, cfg) == 0.5
+
+    def test_basis_coefficient_contango(self):
+        """深升水 (分位低) → 不买."""
+        cfg = HedgeConfig()
+        assert basis_coefficient(0.10, cfg) == 0.0
+
+    def test_basis_coefficient_nan(self):
+        cfg = HedgeConfig()
+        assert basis_coefficient(np.nan, cfg) == 1.0
+
+    def test_timing_none(self):
+        cfg = HedgeConfig(timing_mode="none")
+        assert timing_coefficient(0.9, 0.1, cfg) == 1.0
+
+    def test_timing_both_min(self):
+        """both: iv 全额但 basis 不买 → 0."""
+        cfg = HedgeConfig(timing_mode="both")
+        assert timing_coefficient(0.1, 0.1, cfg) == 0.0
+
+    def test_timing_both_allow(self):
+        cfg = HedgeConfig(timing_mode="both")
+        assert timing_coefficient(0.1, 0.9, cfg) == 1.0
+
+    def test_compute_empty(self):
+        out = compute_hedge_targets(pd.DataFrame(), pd.DataFrame(),
+                                    pd.DataFrame(), config=HedgeConfig())
+        assert out == {}
+
+    def test_compute_short_not_hedged(self):
+        """净空头 → 不买 put (MVP 单边保护)."""
+        idx = pd.DatetimeIndex(["2025-01-10"])
+        cta = pd.DataFrame({"RB": [-5.0]}, index=idx)
+        iv = pd.DataFrame({"RB": [0.1]}, index=idx)
+        px = pd.DataFrame({"RB": [3200.0]}, index=idx)
+        out = compute_hedge_targets(cta, iv, px, config=HedgeConfig())
+        assert out == {}
+
+    def test_compute_uses_select_fun(self):
+        """注入 select_fun 验证数量计算 (预算约束)."""
+        idx = pd.DatetimeIndex(["2025-01-10"])
+        cta = pd.DataFrame({"RB": [10.0]}, index=idx)
+        iv = pd.DataFrame({"RB": [0.1]}, index=idx)
+        px = pd.DataFrame({"RB": [3200.0]}, index=idx)
+
+        def fake_select(product, ts, price, **kw):
+            return OptionSelection(
+                product="RB", symbol="rb2505P3100", option_type="P",
+                strike=3100.0, underlying_price=3200.0, delta=-0.25,
+                premium=30.0, expiry="2025-03-10", days_to_expiry=40,
+            )
+
+        cfg = HedgeConfig(timing_mode="iv")
+        out = compute_hedge_targets(cta, iv, px, config=cfg,
+                                    select_fun=fake_select)
+        # 净敞口 = 10 × 3200 × mult(registry=None→1) = 32000
+        # 预算 = 32000 × 0.4 = 12800; 手数 = 12800/(30×1) = 426
+        assert out == {"rb2505P3100": 426.0}
+
+    def test_compute_iv_high_blocks(self):
+        """IV 分位高 → 不买."""
+        idx = pd.DatetimeIndex(["2025-01-10"])
+        cta = pd.DataFrame({"RB": [10.0]}, index=idx)
+        iv = pd.DataFrame({"RB": [0.9]}, index=idx)
+        px = pd.DataFrame({"RB": [3200.0]}, index=idx)
+
+        def fake_select(product, ts, price, **kw):
+            return OptionSelection(
+                product="RB", symbol="rb2505P3100", option_type="P",
+                strike=3100.0, underlying_price=3200.0, delta=-0.25,
+                premium=30.0, expiry="2025-03-10", days_to_expiry=40,
+            )
+
+        out = compute_hedge_targets(cta, iv, px, config=HedgeConfig(),
+                                    select_fun=fake_select)
+        assert out == {}
+
+    def test_compute_basis_contango_blocks(self):
+        """basis 模式: 深升水 → 不买."""
+        idx = pd.DatetimeIndex(["2025-01-10"])
+        cta = pd.DataFrame({"RB": [10.0]}, index=idx)
+        iv = pd.DataFrame({"RB": [np.nan]}, index=idx)
+        px = pd.DataFrame({"RB": [3200.0]}, index=idx)
+        basis = pd.DataFrame({"RB": [0.1]}, index=idx)
+
+        def fake_select(product, ts, price, **kw):
+            return OptionSelection(
+                product="RB", symbol="rb2505P3100", option_type="P",
+                strike=3100.0, underlying_price=3200.0, delta=-0.25,
+                premium=30.0, expiry="2025-03-10", days_to_expiry=40,
+            )
+
+        out = compute_hedge_targets(cta, iv, px, config=HedgeConfig(timing_mode="basis"),
+                                    basis_panel=basis, select_fun=fake_select)
+        assert out == {}
+
+    def test_compute_min_notional(self):
+        """低于 min_net_notional → 不买."""
+        idx = pd.DatetimeIndex(["2025-01-10"])
+        cta = pd.DataFrame({"RB": [1.0]}, index=idx)
+        iv = pd.DataFrame({"RB": [0.1]}, index=idx)
+        px = pd.DataFrame({"RB": [3200.0]}, index=idx)
+
+        def fake_select(product, ts, price, **kw):
+            return OptionSelection(
+                product="RB", symbol="rb2505P3100", option_type="P",
+                strike=3100.0, underlying_price=3200.0, delta=-0.25,
+                premium=30.0, expiry="2025-03-10", days_to_expiry=40,
+            )
+
+        cfg = HedgeConfig(min_net_notional=1e7)
+        out = compute_hedge_targets(cta, iv, px, config=cfg,
+                                    select_fun=fake_select)
         assert out == {}

@@ -26,7 +26,14 @@ from .greeks import (
 from .underlying_map import UnderlyingMap
 from .expiry import OptionExpiry
 from .selector import OptionSelection, select_call, select_put
-from .hedge_layer import HedgeConfig, compute_hedge_targets, iv_coefficient
+from .hedge_layer import (
+    HedgeConfig,
+    basis_coefficient,
+    compute_hedge_targets,
+    iv_coefficient,
+    timing_coefficient,
+)
+from .hedge_data import basis_percentile_panel, load_basis_panel
 
 __all__ = [
     "OptionSymbol",
@@ -47,4 +54,8 @@ __all__ = [
     "HedgeConfig",
     "compute_hedge_targets",
     "iv_coefficient",
+    "basis_coefficient",
+    "timing_coefficient",
+    "basis_percentile_panel",
+    "load_basis_panel",
 ]
