@@ -46,9 +46,11 @@ def compute_full_metrics(nav):
 
 
 def run_baseline_cta(products, start="2023-01-01", end="2025-12-31"):
-    """运行基线 CTA (无期权因子)."""
+    """运行基线 CTA (无期权因子), 使用 CtaBroker."""
     loader = CtaDataLoader()
+    registry = CtaContractRegistry()
 
+    # 加载价格面板
     price_data = {}
     for prod in products:
         try:
@@ -95,7 +97,6 @@ def run_baseline_cta(products, start="2023-01-01", end="2025-12-31"):
         weights[product] = raw.clip(-3, 3).fillna(0)
 
     # 转为手数
-    registry = CtaContractRegistry()
     equity = 10_000_000
     n_active = (weights.abs() > 1e-9).sum(axis=1).clip(lower=1)
     lots = pd.DataFrame(0.0, index=price_panel.index, columns=price_panel.columns)
@@ -106,15 +107,44 @@ def run_baseline_cta(products, start="2023-01-01", end="2025-12-31"):
         with np.errstate(divide="ignore", invalid="ignore"):
             lots[product] = (weights[product] * capital / notional).round()
 
-    # P&L
-    pos_change = lots.diff().fillna(lots.iloc[0])
-    daily_pnl = pd.Series(0.0, index=price_panel.index)
-    for product in price_panel.columns:
-        spec = registry.get_or_default(product)
-        daily_pnl += pos_change[product] * price_panel[product] * spec.contract_multiplier
+    # 使用 CtaBroker 回测
+    class BaselineStrategy(CtaStrategy):
+        def __init__(self, lots_df):
+            self._lots = lots_df
+            self._last = {}
 
-    nav = (1 + daily_pnl / equity).cumprod()
-    return nav
+        def target_positions(self, date, data):
+            if date not in self._lots.index:
+                return {}
+            row = self._lots.loc[date]
+            targets = {p: float(row[p]) for p in self._lots.columns if abs(row[p]) > 1e-9}
+
+            # 方向变化才调仓
+            changed = False
+            for p in set(targets) | set(self._last):
+                def _sgn(x):
+                    return 1 if x > 0 else (-1 if x < 0 else 0)
+                if _sgn(targets.get(p, 0)) != _sgn(self._last.get(p, 0)):
+                    changed = True
+                    break
+            if not changed:
+                return {}
+            self._last = targets
+            return targets
+
+    products_map = {p: p for p in price_panel.columns}
+    risk = PositionLimitRisk(products=products_map, registry=registry)
+
+    result = run_cta_backtest(
+        dates=list(price_panel.index),
+        prices={p: price_panel[p].tolist() for p in price_panel.columns},
+        products=products_map,
+        strategy=BaselineStrategy(lots),
+        config=CtaBacktestConfig(initial_cash=equity, commission_rate=0.0001),
+        registry=registry,
+        risk=risk,
+    )
+    return result.nav
 
 
 def main():
@@ -142,8 +172,56 @@ def main():
         start="2023-01-01",
         end="2025-12-31",
     )
+
+    # 加载价格面板 (与 baseline 相同)
+    loader = CtaDataLoader()
+    price_data = {}
+    for prod in products:
+        try:
+            px = loader.load_continuous_main(prod)
+            if px is not None and not px.empty:
+                px["trade_date"] = pd.to_datetime(px["trade_date"])
+                px = px.set_index("trade_date")
+                price_data[prod] = px["close"]
+        except Exception:
+            pass
+    price_panel = pd.DataFrame(price_data).dropna(how="all")
+    price_panel = price_panel.loc[(price_panel.index >= cfg.start) & (price_panel.index <= cfg.end)]
+
+    # 加载期权因子
+    iv_panel = None
+    vrp_panel = None
+    try:
+        iv_panel = load_iv_panel(start=cfg.start, end=cfg.end)
+    except Exception:
+        pass
+    try:
+        vrp_panel = load_vrp_panel(products=products, start=cfg.start, end=cfg.end)
+    except Exception:
+        pass
+
+    # 创建增强策略
+    enhanced_strategy = OptionsEnhancedCTA(
+        price_panel=price_panel,
+        config=cfg,
+        iv_panel=iv_panel,
+        vrp_panel=vrp_panel,
+    )
+
+    # 运行回测 (CtaBroker)
+    registry = CtaContractRegistry()
+    risk = PositionLimitRisk(products={p: p for p in products}, registry=registry)
+
     t0 = time.time()
-    result = run_options_enhanced_cta(products, cfg)
+    result = run_cta_backtest(
+        dates=list(price_panel.index),
+        prices={p: price_panel[p].tolist() for p in products},
+        products={p: p for p in products},
+        strategy=enhanced_strategy,
+        config=CtaBacktestConfig(initial_cash=cfg.initial_cash, commission_rate=0.0001),
+        registry=registry,
+        risk=risk,
+    )
     m_enh = compute_full_metrics(result.nav)
     t2 = time.time() - t0
     print(f"  AnnRet={m_enh['ann_return']:>6.1%}  Sharpe={m_enh['sharpe']:>6.2f}  "
