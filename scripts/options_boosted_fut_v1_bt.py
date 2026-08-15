@@ -116,7 +116,9 @@ def main():
         execution_lag=1,
         aggregation="tvpr",
     )
-    strat_base = FactorModuleComboStrategy(products=products, config=cfg_base)
+    strat_base = FactorModuleComboStrategy(
+        products=products, config=cfg_base, start=start, end=end,
+    )
     result_base = strat_base.run()
     m_base = compute_full_metrics(result_base.nav)
     t1 = time.time() - t0
@@ -142,6 +144,8 @@ def main():
         option_data=option_data,
         products=products,
         config=cfg_base,
+        start=start,   # 关键: 限制回测日期范围, 避免加载全量数据
+        end=end,
     )
 
     # 运行回测
@@ -150,11 +154,13 @@ def main():
     risk = PositionLimitRisk(products={p: p for p in products}, registry=registry)
 
     # 先跑信号 → 预计算 lots + 期权目标
+    # 关键修复: 必须走 _exec_sig (T+1 lag), 与 fut_v1 原版 _run_signal 一致
     strat_boost.load_panel()
     signals = strat_boost._signals()
-    lots = strat_boost._signal_to_lots(signals, cfg_base)
+    exec_sig = strat_boost._exec_sig(signals)  # T+1: T 日信号 → T+1 日成交
+    lots = strat_boost._signal_to_lots(exec_sig, cfg_base)
     strat_boost._precomputed_lots = lots  # 供 target_positions 使用
-    print("  Precomputing option targets...")
+    print("  Precomputing option targets (T+1)...")
     n_opt = strat_boost._precompute_option_targets()
     n_days_with_opts = sum(1 for v in n_opt.values() if v)
     n_opts = sum(len(v) for v in n_opt.values())

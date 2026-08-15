@@ -93,7 +93,7 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
         return float(vrp) if pd.notna(vrp) else 0.0
 
     def _get_vrp_percentile(self, product: str, date: pd.Timestamp) -> float:
-        """VRP 分位 (0~1)."""
+        """VRP 分位 (0~1) — 只用截至 date 的历史数据, 无前视."""
         if self._vrp_panel is None or product not in self._vrp_panel.columns:
             return 0.5
         if date not in self._vrp_panel.index:
@@ -101,7 +101,8 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
         vrp = self._vrp_panel.loc[date, product]
         if pd.isna(vrp):
             return 0.5
-        hist = self._vrp_panel[product].dropna()
+        # 只用历史: 截至 date 的已实现值 (不含未来)
+        hist = self._vrp_panel[product].loc[:date].dropna()
         if len(hist) < 60:
             return 0.5
         return float((hist < vrp).sum() / len(hist))
@@ -114,13 +115,14 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
         iv_val = self._iv_panel.loc[date, product]
         if pd.isna(iv_val):
             return 0.5
-        hist = self._iv_panel[product].dropna()
+        # 只用历史: 截至 date 的已实现值 (不含未来)
+        hist = self._iv_panel[product].loc[:date].dropna()
         if len(hist) < 60:
             return 0.5
         return float((hist < iv_val).sum() / len(hist))
 
     def _get_iv_zscore(self, product: str, date: pd.Timestamp) -> float:
-        """IV Z-Score."""
+        """IV Z-Score — 只用截至 date 的历史数据, 无前视."""
         if self._iv_panel is None or product not in self._iv_panel.columns:
             return 0.0
         if date not in self._iv_panel.index:
@@ -128,7 +130,7 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
         iv_val = self._iv_panel.loc[date, product]
         if pd.isna(iv_val):
             return 0.0
-        hist = self._iv_panel[product].dropna()
+        hist = self._iv_panel[product].loc[:date].dropna()
         if len(hist) < 60:
             return 0.0
         mu = hist.mean()
