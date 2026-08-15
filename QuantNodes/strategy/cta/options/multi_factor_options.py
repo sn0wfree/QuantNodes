@@ -437,6 +437,16 @@ class MultiFactorOptionsStrategy:
         iv_rank = iv_rank if iv_rank is not None else 0.5
         cta_strength = abs(cta_signal) if cta_signal is not None else 0
 
+        # ═══ 趋势强度过滤: 只在趋势明确时交易 ═══
+        # 弱趋势 (|CTA| < 0.2) + 中性信号 → 不交易
+        if cta_strength < 0.2 and abs(composite) < 0.3:
+            # 无趋势 + 中性: 只做 calendar spread 或不交易
+            if iv_rank > 0.65:
+                return Signal.SELL_STRANGLE
+            elif iv_rank < 0.35:
+                return Signal.CALENDAR_SPREAD
+            return Signal.NO_TRADE
+
         # ═══ 强趋势 (|CTA| > 0.5): 买 Call/Put (gamma 凸性) ═══
         if cta_strength > 0.5:
             if cta_signal > 0.5:
@@ -729,25 +739,42 @@ class MultiFactorOptionsStrategy:
         return margin
 
     def run(self, start: str = "2023-01-01", end: str = "2025-12-31") -> dict:
-        """运行回测.
+        """运行多品种组合回测.
 
-        Returns:
-            dict 含 trades/daily_pnl/factor_values
+        组合逻辑:
+        - 每个品种独立计算信号
+        - 总保证金 ≤ max_margin_pct × 总资金
+        - 每品种独立换月
         """
         import time
         t0 = time.time()
 
         self.load_data(start, end)
 
-        # 逐日模拟
+        # 找公共日期
+        common_dates = None
         for product in self._cfg.products:
             series = self._price_data.get(product)
             if series is None:
                 continue
+            d = series.index[(series.index >= start) & (series.index <= end)]
+            common_dates = d if common_dates is None else common_dates.intersection(d)
+        if common_dates is None:
+            return {"trades": [], "n_trades": 0}
+        common_dates = sorted(common_dates)
 
-            dates = series.index[(series.index >= start) & (series.index <= end)]
+        # 逐日模拟 (组合)
+        for date in common_dates:
+            # 计算当前总保证金
+            total_margin = sum(
+                pos.margin_used for pos in self._positions.values()
+            )
 
-            for date in dates:
+            for product in self._cfg.products:
+                series = self._price_data.get(product)
+                if series is None or date not in series.index:
+                    continue
+
                 spot = float(series.loc[date])
                 if np.isnan(spot) or spot <= 0:
                     continue
@@ -755,39 +782,41 @@ class MultiFactorOptionsStrategy:
                 # 1. 检查换月
                 if self._check_roll(product, date):
                     self._close_position(product, date, spot, "roll")
+                    total_margin = sum(p.margin_used for p in self._positions.values())
 
                 # 2. 最小持仓期检查
                 pos = self._positions.get(product)
                 if pos is not None:
                     days_held = (date - pos.entry_date).days
                     if days_held < self._cfg.min_hold_days:
-                        continue  # 持仓期不足, 不换仓
+                        continue
 
-                # 3. 计算信号
+                # 3. 计算信号 (含趋势强度过滤)
                 signal = self._get_signal(product, date)
 
-                # 4. 信号变化 → 平旧仓
+                # 4. 信号变化检查
                 if not self._check_signal_change(product, date, signal):
-                    continue  # 信号不变, 继续持有
+                    continue
 
                 if signal != Signal.NO_TRADE:
                     # 平旧仓
                     if product in self._positions:
+                        old_margin = self._positions[product].margin_used
                         self._close_position(product, date, spot, "signal_change")
+                        total_margin -= old_margin
 
                     # 开新仓
                     targets = self._select_strategy(signal, product, date, spot)
                     if targets:
-                        # 保证金检查
                         margin = self._estimate_margin(targets, spot)
-                        if margin > self._cfg.initial_cash * self._cfg.max_margin_pct:
-                            continue  # 超过保证金上限
-
+                        # 组合保证金检查
+                        if total_margin + margin > self._cfg.initial_cash * self._cfg.max_margin_pct:
+                            continue
                         self._open_position(product, date, spot, targets, signal)
+                        total_margin += margin
 
         elapsed = time.time() - t0
 
-        # 统计
         n_trades = len(self._trades)
         n_buys = sum(1 for t in self._trades if t["side"] == "open")
         n_sells = sum(1 for t in self._trades if t["side"] == "close")
