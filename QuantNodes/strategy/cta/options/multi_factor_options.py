@@ -238,6 +238,100 @@ class MultiFactorOptionsStrategy:
             self._vol_asym = realized_vol_asymmetry(returns, window=60)
             break
 
+        # CTA Trend Factors
+        if self._cfg.use_cta_factors:
+            self._compute_cta_factors()
+
+    def _compute_cta_factors(self):
+        """计算 CTA 趋势因子."""
+        from ..factors.trend import (
+            DonchianChannelFactor, MAFactor, MomentumFactor,
+            TSMAFactor, RSIFactor, BollingerFactor, EfficiencyFactor,
+        )
+        from ..factors.composite import MultiHorizonMomentumFactor, SharpeMomentumFactor
+
+        # 构造价格面板
+        price_panel = pd.DataFrame(self._price_data)
+        price_panel = price_panel.dropna(how="all")
+        if price_panel.empty:
+            return
+
+        self._cta_signals = {}
+
+        # 1. Donchian Channel (20/10)
+        donchian = DonchianChannelFactor(entry_window=20, exit_window=10)
+        self._cta_signals["donchian"] = donchian.compute(price_panel)
+
+        # 2. MA Crossover (5/20)
+        ma = MAFactor(short_window=5, long_window=20)
+        self._cta_signals["ma"] = ma.compute(price_panel)
+
+        # 3. Momentum (20-day)
+        mom = MomentumFactor(lookback=20)
+        self._cta_signals["momentum"] = mom.compute(price_panel)
+
+        # 4. TSMOM (60-day, AQR style)
+        tsom = TSMAFactor(lookback=60)
+        self._cta_signals["tsmom"] = tsom.compute(price_panel)
+
+        # 5. Multi-Horizon Momentum (3/6/12m weighted)
+        multi_mom = MultiHorizonMomentumFactor()
+        self._cta_signals["multi_mom"] = multi_mom.compute(price_panel)
+
+        # 6. Sharpe Momentum (momentum / vol)
+        sharpe_mom = SharpeMomentumFactor()
+        self._cta_signals["sharpe_mom"] = sharpe_mom.compute(price_panel)
+
+        # 7. RSI (14-day)
+        rsi = RSIFactor(window=14)
+        self._cta_signals["rsi"] = rsi.compute(price_panel)
+
+        # 8. Bollinger %B
+        boll = BollingerFactor(window=20, n_std=2)
+        self._cta_signals["bollinger"] = boll.compute(price_panel)
+
+        # 9. Efficiency Ratio (10-day)
+        eff = EfficiencyFactor(window=10)
+        self._cta_signals["efficiency"] = eff.compute(price_panel)
+
+    def _get_cta_signal(self, product: str, date: pd.Timestamp) -> float | None:
+        """获取 CTA 综合趋势信号.
+
+        多因子投票: 多个趋势因子一致 → 强信号
+        """
+        if not self._cfg.use_cta_factors or not hasattr(self, "_cta_signals"):
+            return None
+
+        votes = []
+        for name, signal_df in self._cta_signals.items():
+            if product in signal_df.columns and date in signal_df.index:
+                val = signal_df.loc[date, product]
+                if not np.isnan(val):
+                    votes.append(val)
+
+        if not votes:
+            return None
+
+        # 加权投票 (Donchian/MultiMom 权重更高)
+        weights_map = {
+            "donchian": 2.0, "multi_mom": 2.0, "sharpe_mom": 1.5,
+            "tsmom": 1.5, "momentum": 1.0, "ma": 1.0,
+            "rsi": 0.5, "bollinger": 0.5, "efficiency": 1.0,
+        }
+        weighted_votes = []
+        weighted_weights = []
+        for i, (name, signal_df) in enumerate(self._cta_signals.items()):
+            if product in signal_df.columns and date in signal_df.index:
+                val = signal_df.loc[date, product]
+                if not np.isnan(val):
+                    weighted_votes.append(val)
+                    weighted_weights.append(weights_map.get(name, 1.0))
+
+        if not weighted_votes:
+            return None
+
+        return np.average(weighted_votes, weights=weighted_weights)
+
     def _get_signal(self, product: str, date: pd.Timestamp) -> Signal:
         """计算综合信号 → 选择策略."""
         spot = self._get_price(product, date)
@@ -287,11 +381,18 @@ class MultiFactorOptionsStrategy:
             signals.append(np.sign(mom))
             weights.append(self._cfg.w_momentum)
 
-        # 5. Trend (权重 0.15) — 用简单 MA
-        trend = self._get_trend(product, date)
-        if trend is not None:
-            signals.append(trend)
-            weights.append(self._cfg.w_trend)
+        # 5. CTA Trend (动态权重)
+        cta_signal = self._get_cta_signal(product, date)
+        if cta_signal is not None:
+            trend_strength = abs(cta_signal)
+            if trend_strength > 0.5:
+                trend_weight = self._cfg.w_trend * 1.5
+            elif trend_strength < 0.2:
+                trend_weight = self._cfg.w_trend * 0.5
+            else:
+                trend_weight = self._cfg.w_trend
+            signals.append(np.clip(cta_signal, -1, 1))
+            weights.append(trend_weight)
 
         # 6. P/C Volume (权重 0.10)
         pcvr = self._get_pcvr(date)
@@ -310,8 +411,25 @@ class MultiFactorOptionsStrategy:
         # 加权平均
         composite = np.average(signals, weights=weights)
 
-        # 路由到策略
+        # 路由到策略 (CTA 趋势增强方向性)
         iv_rank = iv_rank if iv_rank is not None else 0.5
+
+        # CTA 趋势增强: 强趋势时偏向方向性策略
+        if cta_signal is not None and abs(cta_signal) > 0.5:
+            if cta_signal > 0.5:
+                # 强看涨
+                if iv_rank < 0.4:
+                    return Signal.BUY_STRADDLE
+                else:
+                    return Signal.SELL_PUT_SPREAD
+            else:
+                # 强看跌
+                if iv_rank > 0.6:
+                    return Signal.SELL_STRANGLE
+                elif iv_rank < 0.4:
+                    return Signal.BUY_LONG_PUT
+                else:
+                    return Signal.SELL_CALL_SPREAD
 
         if composite > self._cfg.signal_threshold:
             if iv_rank < 0.4:
