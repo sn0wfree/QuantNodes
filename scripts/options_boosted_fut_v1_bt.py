@@ -85,15 +85,17 @@ def load_option_data(products, start, end):
 
 def main():
     products = ["RB", "I", "AG", "AU", "CU", "M", "TA", "SR", "RU", "PP"]
-    start = "2023-01-01"
+    start = "2018-01-01"       # 全量回测
     end = "2025-12-31"
+    opt_start = "2023-01-01"   # 期权数据只有 2023 起
+    opt_end = "2025-12-31"
 
-    print("Options-Boosted fut_v1 — Multi-Product Portfolio")
+    print("Options-Boosted fut_v1 — Full History (2018-2025)")
     print("=" * 70)
 
-    # 加载期权数据
-    print("\nLoading option data...")
-    option_data, option_contracts = load_option_data(products, start, end)
+    # 加载期权数据 (只 2023-2025)
+    print("\nLoading option data (2023-2025)...")
+    option_data, option_contracts = load_option_data(products, opt_start, opt_end)
     print(f"  Option contracts: {len(option_contracts)}")
     print(f"  Products with options: {list(option_data.keys())}")
 
@@ -130,7 +132,7 @@ def main():
     t0 = time.time()
     boost_cfg = OptionsBoostConfig(
         boost_notional_pct=0.3,
-        boost_max_lots=5,
+        boost_max_lots=30,      # 提高上限: 5 → 30 (匹配 30% 方向敞口)
         iv_high_threshold=0.7,
         iv_zscore_max=2.0,
         min_dte=30, max_dte=60, roll_dte=10,

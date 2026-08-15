@@ -140,22 +140,110 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
         return float((iv_val - mu) / std)
 
     def _get_vrp_size_multiplier(self, product: str, date: pd.Timestamp) -> float:
-        """VRP 动态仓位乘数 (0~1.3)."""
+        """VRP 动态仓位乘数 (0~1.3) — 用于裸买期权 (long gamma).
+
+        核心逻辑: 本策略是买方 (买 Call/Put 加仓),
+        VRP 低 = IV < HV = 期权便宜 = 应加大买入; 反之减少.
+
+        Returns:
+            VRP 分位 < 0.2 → 1.3 (期权便宜, 加仓)
+            VRP 分位 0.2-0.5 → 1.0 (正常)
+            VRP 分位 0.5-0.8 → 0.5 (期权偏贵, 减仓)
+            VRP 分位 > 0.8 → 0.0 (期权太贵, 不买)
+        """
         vrp_pct = self._get_vrp_percentile(product, date)
         cfg = self._boost_cfg
 
         if vrp_pct < cfg.vrp_min_threshold:
-            return 0.0  # VRP 太低, 不交易
+            return 1.3  # VRP 极低: 期权最便宜, 加大买入
         elif vrp_pct < cfg.vrp_boost_low:
-            return 0.5  # 低 VRP: 半仓
+            return 1.0  # 低 VRP: 期权便宜, 正常买
         elif vrp_pct < cfg.vrp_boost_mid:
             return 1.0  # 中 VRP: 正常
         elif vrp_pct < cfg.vrp_boost_high:
-            return 1.0  # 中高 VRP: 正常
+            return 0.5  # 高 VRP: 期权偏贵, 减仓
         else:
-            return 1.3  # 高 VRP: 加仓
+            return 0.0  # VRP 极高: 期权太贵, 不买
 
     # ── 期权选择 ──────────────────────────────────────────────────────────
+
+    def _select_atm_from_cache(
+        self, product: str, date: pd.Timestamp, spot: float, direction: float,
+    ) -> tuple[str, float, str] | None:
+        """内存版 ATM 期权选择 (避免每次查 DuckDB).
+
+        从 self._option_data 缓存中选 delta 最接近 0.40 的合约.
+        方向: >0 买 Call, <0 买 Put.
+
+        Returns:
+            (symbol, premium, expiry) 或 None
+        """
+        df = self._option_data.get(product)
+        if df is None or df.empty:
+            return None
+
+        # 找当日或最近的期权行情
+        day = df[df["trade_date"] == date]
+        if day.empty:
+            dates = df["trade_date"].unique()
+            idx = np.searchsorted(dates, date, side="right") - 1
+            if idx < 0:
+                return None
+            day = df[df["trade_date"] == dates[idx]]
+        if day.empty:
+            return None
+
+        # 过滤流动性
+        liq = day[(day.get("volume", pd.Series(0, index=day.index)).fillna(0) > 0)
+                  | (day.get("open_interest", pd.Series(0, index=day.index)).fillna(0) > 0)]
+        day = liq if not liq.empty else day
+
+        # 选目标期权类型
+        opt_type = "C" if direction > 0 else "P"
+        subset = day[day["option_type"].str.upper() == opt_type]
+        if subset.empty:
+            return None
+
+        # 用 strike 近似 delta (ATM = strike 接近 spot 的 0.40 delta 通常偏 OTM)
+        # 简化: 选 strike 最接近 spot 且 <=/>= spot 的 OTM 合约
+        if opt_type == "C":
+            otm = subset[subset["strike_price"] >= spot]
+        else:
+            otm = subset[subset["strike_price"] <= spot]
+        if otm.empty:
+            otm = subset
+
+        otm = otm.copy()
+        otm["_dist"] = (otm["strike_price"] - spot).abs()
+        best = otm.sort_values("_dist").iloc[0]
+
+        sym = best["symbol"]
+        if sym not in self._option_contracts:
+            return None
+
+        premium = float(best["close"]) if pd.notna(best["close"]) else 0.0
+        if premium <= 0:
+            return None
+
+        # expiry: 用 underlying (如 rb2307) 推断到期月, 失败则近似 date + 60天
+        expiry = ""
+        underlying = str(best.get("underlying", ""))
+        if underlying:
+            # 提取 YYMM
+            digits = "".join(ch for ch in underlying if ch.isdigit())
+            if len(digits) >= 4:
+                yy = int(digits[:2])
+                mm = int(digits[2:4])
+                year = 2000 + yy
+                # 到期约在合约月的 15 日
+                try:
+                    expiry = pd.Timestamp(year=year, month=mm, day=15).strftime("%Y-%m-%d")
+                except Exception:
+                    pass
+        if not expiry:
+            expiry = (pd.Timestamp(date) + pd.Timedelta(days=60)).strftime("%Y-%m-%d")
+
+        return (sym, premium, expiry)
 
     def _select_option_for_boost(
         self, product: str, date: pd.Timestamp, spot: float, direction: float,
@@ -312,14 +400,10 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
     def _precompute_option_targets(self) -> dict[pd.Timestamp, dict[str, float]]:
         """预计算每个交易日的期权目标 (避免日循环中加载数据).
 
+        使用内存版 ATM 选择器, 不查 DuckDB.
         Returns:
             {date: {option_symbol: qty}}
         """
-        from ..options.underlying_map import UnderlyingMap
-        from ..options.expiry import OptionExpiry
-
-        um = UnderlyingMap(self._dl)
-        oe = OptionExpiry(self._dl)
         targets_by_date: dict[pd.Timestamp, dict[str, float]] = {}
         holdings: dict[str, dict] = {}
 
@@ -330,7 +414,8 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
             # Roll / 退出检查
             for product in list(holdings.keys()):
                 h = holdings[product]
-                expiry = pd.Timestamp(h.get("expiry", "2099-01-01"))
+                exp = h.get("expiry") or "2099-01-01"
+                expiry = pd.Timestamp(exp) if exp else pd.Timestamp("2099-01-01")
                 days_left = (expiry - date).days
                 days_held = (date - pd.Timestamp(h["entry_date"])).days
                 if days_left <= self._boost_cfg.roll_dte or days_held > 30:
@@ -370,39 +455,29 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
                 if spot is None or np.isnan(spot) or spot <= 0:
                     continue
 
-                # 选择裸买 Call/Put
-                sel = None
-                if futures_direction > 0:
-                    sel = select_call(
-                        product, date, spot, target_delta=0.40,
-                        min_days=self._boost_cfg.min_dte, max_days=self._boost_cfg.max_dte,
-                        loader=self._dl, um=um, oe=oe,
-                    )
-                else:
-                    sel = select_put(
-                        product, date, spot, target_delta=0.40,
-                        min_days=self._boost_cfg.min_dte, max_days=self._boost_cfg.max_dte,
-                        loader=self._dl, um=um, oe=oe,
-                    )
-
-                if sel is None or sel.symbol not in self._option_contracts:
+                # 选择裸买 Call/Put (内存版, 快)
+                sel = self._select_atm_from_cache(product, date, spot, futures_direction)
+                if sel is None:
+                    continue
+                opt_symbol, opt_premium, opt_expiry = sel
+                if opt_symbol not in self._option_contracts:
                     continue
 
                 spec = self._registry.get_or_default(product)
                 boost_notional = spot * spec.contract_multiplier * self._boost_cfg.boost_notional_pct
-                if sel.premium <= 0:
+                if opt_premium <= 0:
                     continue
-                opt_qty = int(boost_notional / (sel.premium * spec.contract_multiplier))
+                opt_qty = int(boost_notional / (opt_premium * spec.contract_multiplier))
                 opt_qty = min(max(opt_qty, 1), self._boost_cfg.boost_max_lots)
                 opt_qty = max(1, int(opt_qty * size_mult))  # VRP 动态仓位
 
-                targets[sel.symbol] = float(opt_qty)
+                targets[opt_symbol] = float(opt_qty)
                 holdings[product] = {
-                    "symbol": sel.symbol,
+                    "symbol": opt_symbol,
                     "qty": opt_qty,
                     "entry_date": str(date.date()),
                     "direction": futures_direction,
-                    "expiry": sel.expiry,
+                    "expiry": opt_expiry,
                 }
 
             targets_by_date[date] = targets
