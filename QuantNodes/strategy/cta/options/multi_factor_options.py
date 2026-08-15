@@ -38,14 +38,15 @@ from ..backtest.cta_contract import CtaContractRegistry
 
 class Signal(IntEnum):
     """策略信号."""
-    SELL_PUT_SPREAD = 0     # 卖 put spread (低波 + 看涨/中性)
-    SELL_STRANGLE = 1       # 卖 strangle (高波 + 横盘)
-    BUY_PUT_SPREAD = 2      # 买 put spread (看跌保护)
-    BUY_STRADDLE = 3        # 买 straddle (低波 + 预期大波动)
-    BUY_LONG_PUT = 4        # 买 long put (高波 + 看跌)
+    SELL_PUT_SPREAD = 0     # 卖 put spread (中等看涨 + 高 IV)
+    SELL_STRANGLE = 1       # 卖 strangle (高 IV + 横盘)
+    BUY_PUT_SPREAD = 2      # 买 put spread (弱看跌)
+    BUY_STRADDLE = 3        # 买 straddle (低 IV + 预期大波动)
+    BUY_LONG_PUT = 4        # 买 long put (强看跌 + 低 IV)
     SELL_CALL_SPREAD = 5    # 卖 call spread (看跌 + 高 IV)
-    CALENDAR_SPREAD = 6     # 日历价差 (IV contango)
-    NO_TRADE = 7            # 不交易
+    CALENDAR_SPREAD = 6     # 日历价差 (IV contango + 无趋势)
+    BUY_LONG_CALL = 7       # 买 long call (强看涨 + 低 IV) ← NEW
+    NO_TRADE = 8            # 不交易
 
 
 @dataclass
@@ -411,42 +412,49 @@ class MultiFactorOptionsStrategy:
         # 加权平均
         composite = np.average(signals, weights=weights)
 
-        # 路由到策略 (CTA 趋势增强方向性)
+        # 路由到策略 — 核心: CTA 趋势决定策略类型
         iv_rank = iv_rank if iv_rank is not None else 0.5
+        cta_strength = abs(cta_signal) if cta_signal is not None else 0
 
-        # CTA 趋势增强: 强趋势时偏向方向性策略
-        if cta_signal is not None and abs(cta_signal) > 0.5:
+        # ═══ 强趋势 (|CTA| > 0.5): 买 Call/Put (gamma 凸性) ═══
+        if cta_strength > 0.5:
             if cta_signal > 0.5:
-                # 强看涨
+                # 强看涨 → 买 Call
                 if iv_rank < 0.4:
-                    return Signal.BUY_STRADDLE
+                    return Signal.BUY_LONG_CALL   # 低 IV → 便宜买 Call
+                elif iv_rank > 0.7:
+                    return Signal.SELL_PUT_SPREAD  # 高 IV → 卖 put spread (方向+收租)
                 else:
-                    return Signal.SELL_PUT_SPREAD
+                    return Signal.BUY_LONG_CALL   # 中 IV → 买 Call (gamma 凸性)
             else:
-                # 强看跌
-                if iv_rank > 0.6:
-                    return Signal.SELL_STRANGLE
-                elif iv_rank < 0.4:
-                    return Signal.BUY_LONG_PUT
+                # 强看跌 → 买 Put
+                if iv_rank < 0.4:
+                    return Signal.BUY_LONG_PUT    # 低 IV → 便宜买 Put
+                elif iv_rank > 0.7:
+                    return Signal.SELL_CALL_SPREAD # 高 IV → 卖 call spread
                 else:
-                    return Signal.SELL_CALL_SPREAD
+                    return Signal.BUY_LONG_PUT    # 中 IV → 买 Put (gamma 凸性)
 
+        # ═══ 中等趋势 (0.3-0.5): Spread 策略 (有限风险) ═══
+        if cta_strength > 0.3:
+            if cta_signal > 0.3:
+                return Signal.SELL_PUT_SPREAD     # 看涨 → 卖 put spread
+            else:
+                return Signal.SELL_CALL_SPREAD    # 看跌 → 卖 call spread
+
+        # ═══ 弱趋势/无趋势 (<0.3): 卖期权 (theta) 或 Calendar ═══
         if composite > self._cfg.signal_threshold:
-            if iv_rank < 0.4:
-                return Signal.BUY_STRADDLE
-            elif composite > 0.5:
-                return Signal.BUY_PUT_SPREAD
+            if iv_rank < 0.3:
+                return Signal.BUY_STRADDLE        # IV 极低 → 买 straddle
             else:
-                return Signal.SELL_PUT_SPREAD
+                return Signal.SELL_PUT_SPREAD     # 卖 put spread 收 theta
         elif composite < -self._cfg.signal_threshold:
-            if iv_rank > 0.6:
-                return Signal.SELL_STRANGLE
-            elif composite < -0.5:
-                return Signal.SELL_CALL_SPREAD
+            if iv_rank > 0.7:
+                return Signal.SELL_STRANGLE       # IV 极高 → 卖 strangle
             else:
-                return Signal.BUY_LONG_PUT
+                return Signal.SELL_CALL_SPREAD    # 卖 call spread 收 theta
         else:
-            # 中性区域: 看 IV 水平
+            # 中性: IV 高→卖, IV 低→calendar
             if iv_rank > 0.65:
                 return Signal.SELL_STRANGLE
             elif iv_rank < 0.35:
@@ -549,6 +557,8 @@ class MultiFactorOptionsStrategy:
             return self._sell_call_spread(product, date, spot, loader, um, oe)
         elif signal == Signal.CALENDAR_SPREAD:
             return self._calendar_spread(product, date, spot, loader, um, oe)
+        elif signal == Signal.BUY_LONG_CALL:
+            return self._buy_long_call(product, date, spot, loader, um, oe)
         return {}
 
     def _sell_put_spread(self, product, date, spot, loader, um, oe):
@@ -607,6 +617,15 @@ class MultiFactorOptionsStrategy:
                          loader=loader, um=um, oe=oe)
         if put:
             return {put.symbol: 1.0}
+        return {}
+
+    def _buy_long_call(self, product, date, spot, loader, um, oe):
+        """买 Long Call: 强趋势+低IV → gamma 凸性."""
+        call = select_call(product, date, spot, target_delta=0.40,
+                           min_days=self._cfg.min_dte, max_days=self._cfg.max_dte,
+                           loader=loader, um=um, oe=oe)
+        if call:
+            return {call.symbol: 1.0}
         return {}
 
     def _sell_call_spread(self, product, date, spot, loader, um, oe):
