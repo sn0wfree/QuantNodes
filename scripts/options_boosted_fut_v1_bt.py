@@ -130,7 +130,11 @@ def main():
         boost_notional_pct=0.3,
         boost_max_lots=5,
         iv_high_threshold=0.7,
-        min_dte=30, max_dte=60,
+        iv_zscore_max=2.0,
+        min_dte=30, max_dte=60, roll_dte=10,
+        vrp_boost_high=0.8, vrp_boost_mid=0.5, vrp_boost_low=0.2,
+        vrp_min_threshold=0.2,
+        enable_put_spread=False,  # 先禁用 Put Spread 测其他升级
     )
     strat_boost = OptionsBoostedFutV1(
         boost_config=boost_cfg,
@@ -145,82 +149,23 @@ def main():
     from QuantNodes.strategy.cta.backtest.cta_risk import PositionLimitRisk
     risk = PositionLimitRisk(products={p: p for p in products}, registry=registry)
 
-    # 先跑信号
+    # 先跑信号 → 预计算 lots + 期权目标
     strat_boost.load_panel()
     signals = strat_boost._signals()
     lots = strat_boost._signal_to_lots(signals, cfg_base)
+    strat_boost._precomputed_lots = lots  # 供 target_positions 使用
+    print("  Precomputing option targets...")
+    n_opt = strat_boost._precompute_option_targets()
+    n_days_with_opts = sum(1 for v in n_opt.values() if v)
+    n_opts = sum(len(v) for v in n_opt.values())
+    print(f"  Precomputed: {len(n_opt)} days, {n_days_with_opts} days with options, {n_opts} option targets")
 
-    # 用自定义策略跑回测
-    class BoostedStrategy:
-        def __init__(self, lots_df, boost_strat):
-            self._lots = lots_df
-            self._boost = boost_strat
-            self._last = {}
-
-        def target_positions(self, date, data):
-            if date not in self._lots.index:
-                return {}
-            row = self._lots.loc[date]
-            targets = {p: float(row[p]) for p in self._lots.columns if abs(row[p]) > 1e-9}
-
-            # 方向变化才调仓
-            changed = False
-            for p in set(targets) | set(self._last):
-                def _sgn(x):
-                    return 1 if x > 0 else (-1 if x < 0 else 0)
-                if _sgn(targets.get(p, 0)) != _sgn(self._last.get(p, 0)):
-                    changed = True
-                    break
-            if not changed:
-                return {}
-            self._last = targets.copy()
-
-            # 加仓: VRP 确认时买 Call/Put
-            for product in list(targets.keys()):
-                futures_qty = targets[product]
-                if abs(futures_qty) < 1:
-                    continue
-
-                vrp_signal = self._boost._get_vrp_signal(product, date)
-                iv_rank = self._boost._get_iv_rank(product, date)
-
-                if abs(vrp_signal) < 0.01:
-                    continue
-                if iv_rank > self._boost._boost_cfg.iv_high_threshold:
-                    continue
-
-                futures_dir = np.sign(futures_qty)
-                vrp_dir = np.sign(vrp_signal)
-                if futures_dir != vrp_dir:
-                    continue
-
-                # 检查是否已持有期权
-                if product in self._boost._option_holdings:
-                    continue
-
-                # 选择裸买 Call/Put
-                spot = self._boost._price_panel.loc[date, product] if date in self._boost._price_panel.index else None
-                if spot is None or np.isnan(spot):
-                    continue
-
-                result = self._boost._select_option_for_boost(product, date, spot, futures_dir)
-                if result is not None:
-                    opt_symbol, opt_qty = result
-                    targets[opt_symbol] = opt_qty
-                    self._boost._option_holdings[product] = {
-                        "symbol": opt_symbol, "qty": opt_qty,
-                        "entry_date": str(date.date()), "direction": futures_dir,
-                    }
-
-            return targets
-
-    strategy = BoostedStrategy(lots, strat_boost)
     t0 = time.time()
     result_boost = run_cta_backtest(
         dates=list(strat_boost._price_panel.index),
         prices={p: strat_boost._price_panel[p].tolist() for p in products},
         products={p: p for p in products},
-        strategy=strategy,
+        strategy=strat_boost,  # 直接使用增强策略的 target_positions
         config=CtaBacktestConfig(initial_cash=5_000_000, commission_rate=0.0001, margin_call=True),
         registry=registry,
         risk=risk,
@@ -229,7 +174,8 @@ def main():
     m_boost = compute_full_metrics(result_boost.nav)
     t2 = time.time() - t0
     print(f"  AnnRet={m_boost['ann_return']:>6.1%}  Sharpe={m_boost['sharpe']:>6.2f}  "
-          f"MaxDD={m_boost['max_drawdown']:>6.1%}  Calmar={m_boost['calmar']:>6.2f}  ({t2:.0f}s)")
+          f"MaxDD={m_boost['max_drawdown']:>6.1%}  Calmar={m_boost['calmar']:>6.2f}  "
+          f"Trades={len(result_boost.trades):>4d}  ({t2:.0f}s)")
 
     # 对比
     print("\n" + "=" * 70)
