@@ -61,10 +61,10 @@ class MultiFactorConfig:
     max_position_per_product: int = 2  # 每品种最大持仓组数
 
     # 换月
-    roll_days: int = 7                 # 到期前 N 天换月
-    min_dte: int = 20                  # 最小到期天数
-    max_dte: int = 60                  # 最大到期天数
-    min_hold_days: int = 15            # 最小持仓天数 (防止频繁换仓)
+    roll_days: int = 10                # 到期前 N 天换月
+    min_dte: int = 50                  # 最小到期天数 (更长 DTE 减少 theta)
+    max_dte: int = 90                  # 最大到期天数 (60-90 DTE)
+    min_hold_days: int = 25            # 最小持仓天数 (匹配趋势周期)
 
     # 因子权重
     w_iv_rank: float = 0.25            # IV 分位权重
