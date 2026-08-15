@@ -101,9 +101,20 @@ def main():
     print("\n--- Baseline fut_v1 (72 factors) ---")
     t0 = time.time()
     cfg_base = ComboConfig(
-        initial_cash=10_000_000, target_vol=0.15, max_leverage=3.0,
-        vol_lookback=20, momentum_filter_window=60, momentum_filter_coef=0.5,
-        filter_enabled=True, module_weighting="inv_vol",
+        initial_cash=5_000_000,
+        target_vol=0.30,
+        max_leverage=3.0,
+        vol_lookback=20,
+        momentum_filter_window=60,
+        momentum_filter_coef=0.0,
+        filter_enabled=True,
+        module_weighting="inv_vol",
+        continuous=True,
+        cont_z_window=252,
+        cont_z_clip=3.0,
+        margin_call=True,
+        execution_lag=1,
+        aggregation="tvpr",
     )
     strat_base = FactorModuleComboStrategy(products=products, config=cfg_base)
     result_base = strat_base.run()
@@ -210,7 +221,7 @@ def main():
         prices={p: strat_boost._price_panel[p].tolist() for p in products},
         products={p: p for p in products},
         strategy=strategy,
-        config=CtaBacktestConfig(initial_cash=10_000_000, commission_rate=0.0001),
+        config=CtaBacktestConfig(initial_cash=5_000_000, commission_rate=0.0001, margin_call=True),
         registry=registry,
         risk=risk,
         option_contracts=option_contracts,
