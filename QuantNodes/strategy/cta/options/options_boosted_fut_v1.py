@@ -25,8 +25,10 @@ from ..backtest.cta_contract import CtaContractRegistry, OptionContractSpec, Cta
 class OptionsBoostConfig:
     """增强配置."""
     # 加仓比例
-    boost_notional_pct: float = 0.3
-    boost_max_lots: int = 5
+    boost_notional_pct: float = 1.0   # 加仓名义 = 期货仓位 × 100% (覆盖全部方向敞口)
+    boost_max_lots: int = 60          # 最大单品种期权总手数
+    max_options_per_product: int = 2  # 每品种最多同时持有期权数
+    max_premium_pct: float = 0.10     # 组合权利金预算: 所有期权权利金 ≤ 账户 10%
 
     # IV 过滤 (连续)
     iv_high_threshold: float = 0.7
@@ -400,34 +402,52 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
     def _precompute_option_targets(self) -> dict[pd.Timestamp, dict[str, float]]:
         """预计算每个交易日的期权目标 (避免日循环中加载数据).
 
-        使用内存版 ATM 选择器, 不查 DuckDB.
+        支持:
+        - 每品种多个期权同时加仓 (max_options_per_product)
+        - 期权覆盖 100% 期货方向敞口 (boost_notional_pct=1.0)
+        - 组合权利金预算 (max_premium_pct)
+
         Returns:
             {date: {option_symbol: qty}}
         """
         targets_by_date: dict[pd.Timestamp, dict[str, float]] = {}
-        holdings: dict[str, dict] = {}
+        # holdings: {product: [{symbol, qty, entry_date, expiry, ...}]}
+        holdings: dict[str, list[dict]] = {}
 
         dates = self._precomputed_lots.index
+        cfg = self._boost_cfg
+
         for date in dates:
             targets: dict[str, float] = {}
 
-            # Roll / 退出检查
+            # 1. Roll / 退出检查 (每个持仓独立)
             for product in list(holdings.keys()):
-                h = holdings[product]
-                exp = h.get("expiry") or "2099-01-01"
-                expiry = pd.Timestamp(exp) if exp else pd.Timestamp("2099-01-01")
-                days_left = (expiry - date).days
-                days_held = (date - pd.Timestamp(h["entry_date"])).days
-                if days_left <= self._boost_cfg.roll_dte or days_held > 30:
-                    targets[h["symbol"]] = 0.0
+                remaining = []
+                for h in holdings[product]:
+                    exp = h.get("expiry") or "2099-01-01"
+                    expiry = pd.Timestamp(exp) if exp else pd.Timestamp("2099-01-01")
+                    days_left = (expiry - date).days
+                    days_held = (date - pd.Timestamp(h["entry_date"])).days
+                    if days_left <= cfg.roll_dte or days_held > 30:
+                        targets[h["symbol"]] = 0.0  # 平仓
+                    else:
+                        remaining.append(h)
+                if remaining:
+                    holdings[product] = remaining
+                else:
                     holdings.pop(product, None)
 
-            # 期货多头/空头 + VRP 确认 → 裸买 Call/Put
+            # 2. 计算当前组合权利金占用 (估算)
+            # 用持仓量 × 权利金近似 (需要记录 premium)
+            total_premium_used = sum(
+                h.get("premium", 0.0) * h.get("qty", 0) * h.get("mult", 1.0)
+                for hs in holdings.values() for h in hs
+            )
+
+            # 3. 期货多头/空头 + VRP 确认 → 裸买 Call/Put
             row = self._precomputed_lots.loc[date]
             for product in self._products:
                 if product not in row.index or abs(row[product]) < 1:
-                    continue
-                if product in holdings:
                     continue
 
                 futures_qty = float(row[product])
@@ -440,15 +460,20 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
                     continue
 
                 iv_rank = self._get_iv_rank(product, date)
-                if iv_rank > self._boost_cfg.iv_high_threshold:
+                if iv_rank > cfg.iv_high_threshold:
                     continue
 
                 iv_z = self._get_iv_zscore(product, date)
-                if abs(iv_z) > self._boost_cfg.iv_zscore_max:
+                if abs(iv_z) > cfg.iv_zscore_max:
                     continue
 
                 size_mult = self._get_vrp_size_multiplier(product, date)
                 if size_mult <= 0:
+                    continue
+
+                # 每品种持仓数限制
+                n_hold = len(holdings.get(product, []))
+                if n_hold >= cfg.max_options_per_product:
                     continue
 
                 spot = self._price_panel.loc[date, product] if date in self._price_panel.index else None
@@ -464,21 +489,34 @@ class OptionsBoostedFutV1(FactorModuleComboStrategy):
                     continue
 
                 spec = self._registry.get_or_default(product)
-                boost_notional = spot * spec.contract_multiplier * self._boost_cfg.boost_notional_pct
+                mult = spec.contract_multiplier
+
+                # 单个期权覆盖的敞口 = 期货名义 × boost_pct / max_options
+                per_option_ratio = cfg.boost_notional_pct / max(1, cfg.max_options_per_product)
+                boost_notional = spot * mult * per_option_ratio
                 if opt_premium <= 0:
                     continue
-                opt_qty = int(boost_notional / (opt_premium * spec.contract_multiplier))
-                opt_qty = min(max(opt_qty, 1), self._boost_cfg.boost_max_lots)
+                opt_qty = int(boost_notional / (opt_premium * mult))
+                opt_qty = min(max(opt_qty, 1), cfg.boost_max_lots)
                 opt_qty = max(1, int(opt_qty * size_mult))  # VRP 动态仓位
 
+                # 组合权利金预算检查
+                premium_cost = opt_premium * opt_qty * mult
+                equity_base = getattr(self._config, "initial_cash", 5_000_000)
+                if total_premium_used + premium_cost > equity_base * cfg.max_premium_pct:
+                    continue
+
                 targets[opt_symbol] = float(opt_qty)
-                holdings[product] = {
+                holdings.setdefault(product, []).append({
                     "symbol": opt_symbol,
                     "qty": opt_qty,
                     "entry_date": str(date.date()),
                     "direction": futures_direction,
                     "expiry": opt_expiry,
-                }
+                    "premium": opt_premium,
+                    "mult": mult,
+                })
+                total_premium_used += premium_cost
 
             targets_by_date[date] = targets
 

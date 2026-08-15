@@ -131,8 +131,10 @@ def main():
     print("\n--- fut_v1 + Naked Long Options (VRP boost) ---")
     t0 = time.time()
     boost_cfg = OptionsBoostConfig(
-        boost_notional_pct=0.3,
-        boost_max_lots=30,      # 提高上限: 5 → 30 (匹配 30% 方向敞口)
+        boost_notional_pct=1.0,       # 覆盖 100% 期货方向敞口
+        boost_max_lots=60,
+        max_options_per_product=2,    # 每品种最多 2 个期权
+        max_premium_pct=0.10,         # 组合权利金预算 10%
         iv_high_threshold=0.7,
         iv_zscore_max=2.0,
         min_dte=30, max_dte=60, roll_dte=10,
@@ -166,7 +168,31 @@ def main():
     n_opt = strat_boost._precompute_option_targets()
     n_days_with_opts = sum(1 for v in n_opt.values() if v)
     n_opts = sum(len(v) for v in n_opt.values())
+
+    # 期权加仓成本诊断
+    price_map = {}
+    for prod, odf in option_data.items():
+        for sym, grp in odf.groupby("symbol"):
+            price_map[sym] = grp.set_index("trade_date")["close"]
+    total_buy_cost = 0
+    n_buys = 0
+    for d, targets in n_opt.items():
+        for sym, qty in targets.items():
+            if qty > 0:
+                series = price_map.get(sym)
+                contract = option_contracts.get(sym)
+                if series is None or contract is None:
+                    continue
+                before = series[series.index <= d]
+                if before.empty:
+                    continue
+                px = before.iloc[-1]
+                total_buy_cost += px * qty * contract.spec.contract_multiplier
+                n_buys += 1
+
     print(f"  Precomputed: {len(n_opt)} days, {n_days_with_opts} days with options, {n_opts} option targets")
+    print(f"  期权买入次数: {n_buys}, 总权利金成本: {total_buy_cost:,.0f} 元 "
+          f"({total_buy_cost/5_000_000*100:.1f}% 资金累计)")
 
     t0 = time.time()
     result_boost = run_cta_backtest(
