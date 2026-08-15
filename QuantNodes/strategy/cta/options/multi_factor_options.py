@@ -64,6 +64,7 @@ class MultiFactorConfig:
     roll_days: int = 7                 # 到期前 N 天换月
     min_dte: int = 20                  # 最小到期天数
     max_dte: int = 60                  # 最大到期天数
+    min_hold_days: int = 15            # 最小持仓天数 (防止频繁换仓)
 
     # 因子权重
     w_iv_rank: float = 0.25            # IV 分位权重
@@ -75,6 +76,7 @@ class MultiFactorConfig:
 
     # 信号阈值
     signal_threshold: float = 0.3      # 综合信号 > threshold 才交易
+    signal_change_threshold: float = 0.4  # 信号变化 > 此值才换仓
 
     # CTA 因子
     use_cta_factors: bool = True       # 是否使用 CTA 趋势因子
@@ -89,6 +91,7 @@ class Position:
     expiry: pd.Timestamp
     strategy_name: str
     margin_used: float = 0.0
+    entry_signal: Signal | None = None  # 入场信号 (用于比较)
 
 
 class MultiFactorOptionsStrategy:
@@ -296,24 +299,14 @@ class MultiFactorOptionsStrategy:
         self._cta_signals["efficiency"] = eff.compute(price_panel)
 
     def _get_cta_signal(self, product: str, date: pd.Timestamp) -> float | None:
-        """获取 CTA 综合趋势信号.
+        """获取 CTA 综合趋势信号 (平滑版).
 
-        多因子投票: 多个趋势因子一致 → 强信号
+        多因子投票 + 5日滚动平均平滑, 减少噪音.
         """
         if not self._cfg.use_cta_factors or not hasattr(self, "_cta_signals"):
             return None
 
-        votes = []
-        for name, signal_df in self._cta_signals.items():
-            if product in signal_df.columns and date in signal_df.index:
-                val = signal_df.loc[date, product]
-                if not np.isnan(val):
-                    votes.append(val)
-
-        if not votes:
-            return None
-
-        # 加权投票 (Donchian/MultiMom 权重更高)
+        # 加权投票
         weights_map = {
             "donchian": 2.0, "multi_mom": 2.0, "sharpe_mom": 1.5,
             "tsmom": 1.5, "momentum": 1.0, "ma": 1.0,
@@ -321,7 +314,7 @@ class MultiFactorOptionsStrategy:
         }
         weighted_votes = []
         weighted_weights = []
-        for i, (name, signal_df) in enumerate(self._cta_signals.items()):
+        for name, signal_df in self._cta_signals.items():
             if product in signal_df.columns and date in signal_df.index:
                 val = signal_df.loc[date, product]
                 if not np.isnan(val):
@@ -331,7 +324,35 @@ class MultiFactorOptionsStrategy:
         if not weighted_votes:
             return None
 
-        return np.average(weighted_votes, weights=weighted_weights)
+        raw_signal = np.average(weighted_votes, weights=weighted_weights)
+
+        # 5日滚动平均平滑 (减少噪音)
+        series = self._price_data.get(product)
+        if series is None:
+            return raw_signal
+
+        idx = series.index.get_loc(date) if date in series.index else None
+        if idx is None or idx < 5:
+            return raw_signal
+
+        # 收集过去5天的信号
+        recent_signals = []
+        for i in range(max(0, idx - 4), idx + 1):
+            d = series.index[i]
+            votes = []
+            wts = []
+            for name, signal_df in self._cta_signals.items():
+                if product in signal_df.columns and d in signal_df.index:
+                    val = signal_df.loc[d, product]
+                    if not np.isnan(val):
+                        votes.append(val)
+                        wts.append(weights_map.get(name, 1.0))
+            if votes:
+                recent_signals.append(np.average(votes, weights=wts))
+
+        if recent_signals:
+            return np.mean(recent_signals)
+        return raw_signal
 
     def _get_signal(self, product: str, date: pd.Timestamp) -> Signal:
         """计算综合信号 → 选择策略."""
@@ -735,10 +756,17 @@ class MultiFactorOptionsStrategy:
                 if self._check_roll(product, date):
                     self._close_position(product, date, spot, "roll")
 
-                # 2. 计算信号
+                # 2. 最小持仓期检查
+                pos = self._positions.get(product)
+                if pos is not None:
+                    days_held = (date - pos.entry_date).days
+                    if days_held < self._cfg.min_hold_days:
+                        continue  # 持仓期不足, 不换仓
+
+                # 3. 计算信号
                 signal = self._get_signal(product, date)
 
-                # 3. 信号变化 → 平旧仓
+                # 4. 信号变化 → 平旧仓
                 if not self._check_signal_change(product, date, signal):
                     continue  # 信号不变, 继续持有
 
@@ -781,6 +809,7 @@ class MultiFactorOptionsStrategy:
             expiry=date + pd.Timedelta(days=self._cfg.max_dte),
             strategy_name=signal.name.lower(),
             margin_used=self._estimate_margin(targets, spot),
+            entry_signal=signal,
         )
         self._positions[product] = pos
 
