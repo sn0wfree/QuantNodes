@@ -26,6 +26,7 @@ class VrpRouterConfig:
     # 买方 VRP 触发
     buy_vrp_max: float = 0.30        # VRP 分位 < 30% → 买 spread
     iv_rank_max: float | None = None # IV 分位过滤 (None=不启用)
+    skew_threshold: float | None = None  # skew_z 过滤 (关闭: None)
 
     # 品种白名单 (方向由 20 日动量决定)
     long_products: list[str] = field(default_factory=lambda: ["AG", "AU", "CU", "I"])
@@ -66,6 +67,7 @@ class VrpRouterStrategy(FactorModuleComboStrategy):
         self._vrp_pct: pd.DataFrame | None = None
         self._mom20: pd.DataFrame | None = None
         self._iv_pct: pd.DataFrame | None = None
+        self._skew_z: pd.DataFrame | None = None
         self._chains: dict[str, pd.DataFrame] = {}
         for prod, df in (option_data or {}).items():
             if df is not None and not df.empty:
@@ -95,7 +97,7 @@ class VrpRouterStrategy(FactorModuleComboStrategy):
             self._iv_panel = None
 
     def _compute_signal_panels(self):
-        """VRP 分位 / 20日动量 / IV 分位 (rolling, 无前视)."""
+        """VRP 分位 / 20日动量 / IV 分位 / Skew Z-Score (rolling, 无前视)."""
         if self._vrp_pct is not None or self._iv_panel is None:
             return
         iv = self._iv_panel.reindex(index=self._price_panel.index,
@@ -107,6 +109,43 @@ class VrpRouterStrategy(FactorModuleComboStrategy):
         self._mom20 = ret.rolling(20).sum()
         if self._rr_cfg.iv_rank_max is not None:
             self._iv_pct = iv.rolling(252, min_periods=60).rank(pct=True)
+        if self._rr_cfg.skew_threshold is not None:
+            self._skew_z = self._build_skew_z_panel()
+
+    def _build_skew_z_panel(self) -> pd.DataFrame:
+        """从 greeks parquet 构建 skew_z 面板: OLS(IV ~ log(K/S)) → rolling z-score."""
+        try:
+            tbl = pd.read_parquet(
+                "data/cache/option_greeks.parquet",
+                columns=["product", "trade_date", "strike_price",
+                         "spot", "iv", "valid"],
+            )
+            df = tbl[(tbl["valid"]) & (tbl["iv"] > 0)].copy()
+            if df.empty:
+                return pd.DataFrame()
+            df["trade_date"] = pd.to_datetime(df["trade_date"])
+            df["log_moneyness"] = np.log(df["strike_price"] / df["spot"])
+            skew_rows = []
+            for (prod, dt), g in df.groupby(["product", "trade_date"]):
+                v = g[np.isfinite(g["log_moneyness"]) & np.isfinite(g["iv"])]
+                if len(v) < 5:
+                    continue
+                from scipy import stats
+                slope, _, _, _, _ = stats.linregress(
+                    v["log_moneyness"].values, v["iv"].values)
+                skew_rows.append(
+                    {"product": prod, "trade_date": dt, "skew": slope})
+            if not skew_rows:
+                return pd.DataFrame()
+            skew_df = pd.DataFrame(skew_rows).pivot_table(
+                index="trade_date", columns="product", values="skew")
+            mu = skew_df.rolling(252, min_periods=60).mean()
+            sigma = skew_df.rolling(252, min_periods=60).std()
+            skew_z = (skew_df - mu) / sigma.replace(0, np.nan)
+            return skew_z.reindex(index=self._price_panel.index,
+                                  columns=self._price_panel.columns)
+        except Exception:
+            return pd.DataFrame()
 
     # ── 期权链工具 ────────────────────────────────────────────────────
 
@@ -231,6 +270,19 @@ class VrpRouterStrategy(FactorModuleComboStrategy):
                         continue
 
                     opt_type = "C" if side == "buy_call" else "P"
+                    # Skew 确认: skew 方向应与 spread 互补
+                    if self._skew_z is not None and cfg.skew_threshold is not None:
+                        if date in self._skew_z.index and product in self._skew_z.columns:
+                            sz = self._skew_z.loc[date, product]
+                            if not pd.isna(sz):
+                                # buy_call: 需要 skew_z > -阈值 (非 call 过贵)
+                                # buy_put:  需要 skew_z < +阈值 (非 put 过贵)
+                                if side == "buy_call" and sz < -cfg.skew_threshold:
+                                    self.stats["skip_vrp"] += 1
+                                    continue
+                                elif side == "buy_put" and sz > cfg.skew_threshold:
+                                    self.stats["skip_vrp"] += 1
+                                    continue
                     atm = self._pick(product, date, spot, opt_type, cfg.atm_mult)
                     otm = self._pick(product, date, spot, opt_type, otm_mult)
                     if atm is None or otm is None or atm["symbol"] == otm["symbol"]:

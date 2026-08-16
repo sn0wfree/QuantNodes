@@ -89,7 +89,7 @@ def main():
     registry = CtaContractRegistry()
     risk = PositionLimitRisk(products={p: p for p in PRODUCTS}, registry=registry)
 
-    rr = VrpRouterConfig(long_hold=7, short_hold=15, delta_notional_pct=0.25)
+    rr = VrpRouterConfig(long_hold=7, short_hold=15, delta_notional_pct=0.25, skew_threshold=None)
     st = OptionOnlyRouter(
         router_config=rr, option_data=option_data, option_contracts=option_contracts,
         greeks_cache=gcache, products=PRODUCTS, config=cfg_base,

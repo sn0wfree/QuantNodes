@@ -75,7 +75,7 @@ def main():
     print("\n--- fut_v1 + VRP Router (双向) ---")
     t0 = time.time()
     rr_cfg = VrpRouterConfig(
-        buy_vrp_max=0.30, iv_rank_max=None,
+        buy_vrp_max=0.30, iv_rank_max=None, skew_threshold=None,
         long_products=["AG", "AU", "CU", "I"],
         short_products=["M", "SR", "TA"],
         long_hold=7, short_hold=15,
