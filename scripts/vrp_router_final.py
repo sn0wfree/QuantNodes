@@ -61,7 +61,7 @@ def run_one(start, end, opt_data, opt_contracts, gcache, tag):
     reg = CtaContractRegistry()
     risk = PositionLimitRisk(products={p: p for p in PRODUCTS}, registry=reg)
 
-    rr = VrpRouterConfig(long_hold=7, short_hold=15, delta_notional_pct=0.20)
+    rr = VrpRouterConfig(long_hold=7, short_hold=15, delta_notional_pct=0.25)
     st = VrpRouterStrategy(
         router_config=rr, option_data=opt_data, option_contracts=opt_contracts,
         greeks_cache=gcache, products=PRODUCTS, config=cfg_base, start=start, end=end,

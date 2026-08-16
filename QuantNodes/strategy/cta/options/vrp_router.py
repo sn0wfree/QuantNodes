@@ -1,15 +1,13 @@
 # coding=utf-8
-"""双向 VRP 路由期权策略 (docs/105 §4 + 106 研究结论).
+"""VRP 路由买方策略 (docs/105 + 106 研究结论).
 
 核心逻辑:
-    - 低VRP (< buy_vrp_max): 期权便宜 → 按品种方向双向买 spread
-    - 超跌反转 (20日动量<0): long_products (AG/AU/CU/I) → 买 call spread
-    - 超涨转跌 (20日动量>0): short_products (M/SR/TA) → 买 put spread
-    - 中段 VRP / 方向不匹配 / 品种不在白名单: 不参与
-    - 短持有 (long_hold / short_hold): 研究结论 call 5日 / put 10日
-    - 无止损: 买方减少持有 (docs/105 §3.3)
+    - 低VRP (< buy_vrp_max): 期权便宜 → 买 spread
+      · 超跌反转 (mom20<0): long_products → 买 call spread
+      · 超涨转跌 (mom20>0): short_products → 买 put spread
+    - 中段 VRP (≥ 0.30): 不参与
 
-仓位: delta 市值口径 (delta_notional_pct × NAV) 控制敞口.
+仓位: delta 市值口径 (delta_notional_pct × NAV).
 """
 from __future__ import annotations
 
@@ -25,8 +23,8 @@ from ..strategies.factor_modules import FactorModuleComboStrategy
 class VrpRouterConfig:
     """双向 VRP 路由配置."""
 
-    # VRP 触发
-    buy_vrp_max: float = 0.30        # VRP 分位 < 30% → 入场
+    # 买方 VRP 触发
+    buy_vrp_max: float = 0.30        # VRP 分位 < 30% → 买 spread
     iv_rank_max: float | None = None # IV 分位过滤 (None=不启用)
 
     # 品种白名单 (方向由 20 日动量决定)
@@ -45,11 +43,11 @@ class VrpRouterConfig:
     max_dte: int = 40
 
     # 仓位
-    delta_notional_pct: float = 0.15 # delta 市值预算 (NAV %)
+    delta_notional_pct: float = 0.25 # delta 市值预算 (NAV %)
 
 
 class VrpRouterStrategy(FactorModuleComboStrategy):
-    """低VRP双向买 spread: 超跌买 call / 超涨买 put (叠加 fut_v1)."""
+    """低VRP买 spread: 超跌买 call / 超涨买 put (叠加 fut_v1)."""
 
     def __init__(
         self,
@@ -74,8 +72,8 @@ class VrpRouterStrategy(FactorModuleComboStrategy):
                 self._chains[prod] = df.set_index("trade_date").sort_index()
         self._expiry_map: dict[str, pd.Timestamp] = {}
         self._build_expiry_map(option_data or {})
-        self.stats = {"long_buys": 0, "short_buys": 0, "exits": 0,
-                      "skip_vrp": 0, "skip_dir": 0, "skip_wl": 0}
+        self.stats = {"long_buys": 0, "short_buys": 0,
+                      "exits": 0, "skip_vrp": 0, "skip_dir": 0}
 
     def _build_expiry_map(self, option_data: dict[str, pd.DataFrame]):
         for prod, df in option_data.items():
@@ -200,6 +198,7 @@ class VrpRouterStrategy(FactorModuleComboStrategy):
                     v = self._vrp_pct.loc[date, product]
                     if pd.isna(v):
                         continue
+                    # 中段 VRP 不参与
                     if v >= cfg.buy_vrp_max:
                         self.stats["skip_vrp"] += 1
                         continue
@@ -219,21 +218,21 @@ class VrpRouterStrategy(FactorModuleComboStrategy):
                     mom = self._mom20.loc[date, product] if date in self._mom20.index else np.nan
                     if pd.isna(mom):
                         continue
-                    # 方向判定
+
+                    # ── 方向判定 (买方) ──
                     if mom < 0 and product in cfg.long_products:
-                        side, hold = "long", cfg.long_hold
+                        side, hold = "buy_call", cfg.long_hold
                         otm_mult = cfg.call_otm_mult
                     elif mom > 0 and product in cfg.short_products:
-                        side, hold = "short", cfg.short_hold
+                        side, hold = "buy_put", cfg.short_hold
                         otm_mult = cfg.put_otm_mult
                     else:
                         self.stats["skip_dir"] += 1
                         continue
 
-                    atm = self._pick(product, date, spot, "C" if side == "long" else "P",
-                                     cfg.atm_mult)
-                    otm = self._pick(product, date, spot, "C" if side == "long" else "P",
-                                     otm_mult)
+                    opt_type = "C" if side == "buy_call" else "P"
+                    atm = self._pick(product, date, spot, opt_type, cfg.atm_mult)
+                    otm = self._pick(product, date, spot, opt_type, otm_mult)
                     if atm is None or otm is None or atm["symbol"] == otm["symbol"]:
                         continue
                     atm_delta = abs(self._delta_of(product, date, atm, spot))
@@ -254,7 +253,7 @@ class VrpRouterStrategy(FactorModuleComboStrategy):
                         "qty": qty, "hold": hold,
                     }
                     hold_pos[product] = i
-                    if side == "long":
+                    if side == "buy_call":
                         self.stats["long_buys"] += 1
                     else:
                         self.stats["short_buys"] += 1

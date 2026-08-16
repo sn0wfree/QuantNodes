@@ -78,10 +78,10 @@ def main():
         buy_vrp_max=0.30, iv_rank_max=None,
         long_products=["AG", "AU", "CU", "I"],
         short_products=["M", "SR", "TA"],
-        long_hold=5, short_hold=10,
+        long_hold=7, short_hold=15,
         atm_mult=1.00, call_otm_mult=1.12, put_otm_mult=0.88,
         min_dte=15, max_dte=40,
-        delta_notional_pct=0.15,
+        delta_notional_pct=0.25,
     )
     strat = VrpRouterStrategy(
         router_config=rr_cfg,
