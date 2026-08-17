@@ -423,6 +423,11 @@ class _ModuleStrategy:
         X = np.stack([
             panels[n].reindex(columns=cols).values for n in names
         ], axis=-1)
+        # Y[t] = 下一日收益 (预测目标). expanding window 在 τ 时刻只拟合 Y[0:τ-1]
+        # (全部已实现, 最晚到当天收益 r[τ], 依赖 p[τ] 今天收盘可用).
+        # 配合 _exec_sig 的 execution_lag=1 (T+1 执行) → 无前视.
+        # ⚠️ 切勿改 shift(-2): 会让 Y[τ-1]=r[τ+1] 用到明天价格 p[τ+1], 引入前视.
+        #    (scripts/fut_v1_purge_test.py 已验证: shift(-1) vs shift(0) 结果完全一致)
         Y = self._price_panel.pct_change().shift(-1)
         beta = tvpr_estimator(
             Y, X,
@@ -457,6 +462,9 @@ class _ModuleStrategy:
                 W[t:min(t + self._config.agg_update, T)] = w
             return W, names
         if self._config.aggregation == "regression":
+            # 同 _agg_tvpr: Y[t] = 下一日收益. 滚动窗在 t 期拟合 [t-window, t-1]
+            # 的已实现收益, 末项 Y[t-1]=r[t] (今天收益, 依赖 p[t] 今天收盘可用).
+            # 权重应用到 X[t], 配合 execution_lag=1 (T+1 执行) → 无前视.
             Y = self._price_panel.pct_change().shift(-1).values
             for t in range(win, T, self._config.agg_update):
                 x = stack[t - win:t].reshape(-1, len(names))
