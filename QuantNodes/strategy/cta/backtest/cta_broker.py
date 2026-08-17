@@ -13,6 +13,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+import pandas as pd
+
 from .cta_contract import CtaContract, CtaContractRegistry
 
 
@@ -62,6 +64,7 @@ class CtaBroker:
         commission_rate: float = 0.0001,
         allow_short: bool = True,
         margin_call: bool = False,
+        slippage_engine=None,
     ):
         self._registry = registry
         self._initial_cash = initial_cash
@@ -69,6 +72,7 @@ class CtaBroker:
         self._commission_rate = commission_rate
         self._allow_short = allow_short
         self._margin_call = margin_call
+        self._slippage = slippage_engine
 
         self._positions: dict[str, Position] = {}
         self._trades: list[TradeRecord] = []
@@ -145,6 +149,23 @@ class CtaBroker:
 
     # ── 交易 ────────────────────────────────────────────────────────────
 
+    def _apply_slippage(self, price: float, qty: float, product: str,
+                        date: str) -> float:
+        """应用滑点: 买方价格上调, 卖方价格下调. 返回调整后价格."""
+        if self._slippage is None or abs(qty) < 1e-9:
+            return price
+        spec = self._registry.get_or_default(product)
+        notional = abs(qty) * price * spec.contract_multiplier
+        from datetime import date as _date
+        dt = pd.Timestamp(date) if not isinstance(date, pd.Timestamp) else date
+        slip = self._slippage.compute(product, dt, notional, price)
+        slip_pct = slip / notional if notional > 0 else 0
+        # 买方上调, 卖方下调
+        if qty > 0:
+            return price * (1 + slip_pct)
+        else:
+            return price * (1 - slip_pct)
+
     def place_order(
         self,
         date: str,
@@ -192,13 +213,16 @@ class CtaBroker:
             if reversing or reducing:
                 close_qty = abs(cur_qty) if reversing else abs(cur_qty - target_qty)
                 if close_qty > 1e-9:
-                    fee_c = close_qty * price * mult * fee_rate
+                    # 滑点: 平仓方向与持仓相反
+                    close_side = -1 if cur_qty > 0 else 1  # 平多=卖, 平空=买
+                    close_price = self._apply_slippage(price, close_side * close_qty, product, date)
+                    fee_c = close_qty * close_price * mult * fee_rate
                     sign = 1 if cur_qty > 0 else -1
-                    realized = close_qty * (price - cur.avg_price) * mult * sign
+                    realized = close_qty * (close_price - cur.avg_price) * mult * sign
                     released_margin = close_qty * cur.avg_price * mult * margin
                     cur.realized_pnl += realized
                     self._cash += realized - fee_c + released_margin
-                    self._record(date, symbol, product, "close", close_qty, price, fee_c)
+                    self._record(date, symbol, product, "close", close_qty, close_price, fee_c)
                     cur.qty = cur_qty - close_qty * (1 if cur_qty > 0 else -1)
                     if abs(cur.qty) < 1e-9:
                         self._positions.pop(symbol, None)
@@ -213,25 +237,28 @@ class CtaBroker:
         if not self._allow_short and target_qty < 0:
             return False
 
+        # 滑点: 开仓方向与目标一致
+        open_price = self._apply_slippage(price, target_qty - cur_qty, product, date)
+
         # 保证金检查
-        margin_req = abs(target_qty) * price * mult * margin
+        margin_req = abs(target_qty) * open_price * mult * margin
         if margin_req > self._cash + 1e-6 and self._margin_call:
             return False
 
         # 新开仓均价 (加仓取加权, 新开/反手用现价)
         if cur is not None and cur_qty * target_qty > 0:
-            new_avg = (abs(cur_qty) * cur.avg_price + open_qty * price) / abs(target_qty)
+            new_avg = (abs(cur_qty) * cur.avg_price + open_qty * open_price) / abs(target_qty)
         else:
-            new_avg = price
+            new_avg = open_price
 
-        fee = open_qty * price * mult * fee_rate
-        margin_deposit = open_qty * price * mult * margin
+        fee = open_qty * open_price * mult * fee_rate
+        margin_deposit = open_qty * open_price * mult * margin
         self._cash -= margin_deposit + fee
 
         self._positions[symbol] = Position(
             symbol=symbol, product=product, qty=target_qty, avg_price=new_avg,
         )
-        self._record(date, symbol, product, "open", open_qty, price, fee)
+        self._record(date, symbol, product, "open", open_qty, open_price, fee)
         return True
 
     def mark_to_market(self, mark_prices: dict[str, float], date: str) -> None:

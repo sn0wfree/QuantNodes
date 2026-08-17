@@ -29,6 +29,7 @@ class CtaBacktestConfig:
     commission_rate: float = 0.0001
     allow_short: bool = True
     margin_call: bool = False     # True: 保证金不足拒绝开仓; False: 允许超配
+    slippage_engine: object = None  # SlippageEngine 实例, None=无滑点
 
 
 @dataclass
@@ -90,6 +91,7 @@ def run_cta_backtest(
         commission_rate=config.commission_rate,
         allow_short=config.allow_short,
         margin_call=config.margin_call,
+        slippage_engine=config.slippage_engine,
     )
 
     n = len(dates)

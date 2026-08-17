@@ -539,6 +539,23 @@ class _ModuleStrategy:
         cfg = self._config
         price_panel = self._price_panel
 
+        # 构建滑点引擎 (如有 volume 数据)
+        slippage_engine = None
+        if hasattr(cfg, 'slippage_bps') and cfg.slippage_bps is not None:
+            from QuantNodes.strategy.cta.backtest.cta_slippage import (
+                SlippageEngine, SquareRootImpact,
+            )
+            model = SquareRootImpact(scale=cfg.slippage_bps)
+            slippage_engine = SlippageEngine(model=model)
+            # 构建含 volume 的 price panels
+            price_panels = {}
+            for p in cols if 'cols' in dir() else price_panel.columns:
+                if p in self._ohlc_map and p in self._vols.columns:
+                    ohlc = self._ohlc_map[p].copy()
+                    ohlc["volume"] = self._vols[p]
+                    price_panels[p] = ohlc
+            slippage_engine.load(price_panels, list(price_panels.keys()))
+
         class _PanelStrategy(CtaStrategy):
             def __init__(self, pos_df, min_change=0.0):
                 self._pos = pos_df
@@ -584,7 +601,7 @@ class _ModuleStrategy:
             strategy=_PanelStrategy(lots, min_change=cfg.min_position_change),
             config=CtaBacktestConfig(
                 initial_cash=cfg.initial_cash, commission_rate=cfg.commission_rate,
-                margin_call=cfg.margin_call,
+                margin_call=cfg.margin_call, slippage_engine=slippage_engine,
             ),
             registry=self._registry,
             risk=risk,
@@ -837,6 +854,7 @@ class ComboConfig(ModuleConfig):
     dd_filter_coef: float = 0.5     # 触发后杠杆系数 (0.5 = 半仓)
     leverage_hard_cap: float = 0.0   # 组合总杠杆硬上限 (逐日 gross/equity), 0=关闭
     min_position_change: float = 0.20  # 仓位变化 < 此比例不调仓 (降换手), 0=关闭
+    slippage_bps: float | None = None  # L3滑点校准系数 (None=无滑点, 1.0=标准)
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
