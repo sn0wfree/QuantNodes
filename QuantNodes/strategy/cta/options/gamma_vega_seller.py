@@ -33,7 +33,7 @@ class GammaVegaConfig:
         default_factory=lambda: ["I", "AG", "CU", "SR", "TA", "RU", "M"])
 
     # 卖 put 参数
-    short_put_strike_mult: float = 1.05  # OTM put strike 倍数 (1.05× = delta≈0.3)
+    short_put_strike_mult: float = 0.95  # OTM put strike 倍数 (0.95×spot = delta≈0.3)
     min_dte: int = 15
     max_dte: int = 40
     target_delta_pct: float = 0.15    # 卖方 delta 市值上限 = NAV × 15%
