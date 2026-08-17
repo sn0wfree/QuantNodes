@@ -36,16 +36,16 @@ class GammaVegaConfig:
     short_put_strike_mult: float = 0.95  # OTM put strike 倍数 (0.95×spot = delta≈0.3)
     min_dte: int = 15
     max_dte: int = 40
-    target_delta_pct: float = 0.15    # 卖方 delta 市值上限 = NAV × 15%
+    target_delta_pct: float = 0.30    # 卖方 delta 市值上限 = NAV × 30%
 
     # 买权 delta 管理
     hedge_call_strike_mult: float = 1.00  # 买权 hedge strike 倍数 (ATM)
-    hedge_trigger_pct: float = 0.15   # delta 超标阈值: 当前delta市值/NAV > 15% → 买权降敞口
+    hedge_trigger_pct: float = 0.10   # delta 超标阈值: 当前delta市值/NAV > 10% → 买权降敞口
     hedge_reduction_pct: float = 0.30  # 每次买权降敞口 30% (买权 delta ≈ 0.5)
 
     # 持有 + 风控
     hold_to_expiry: bool = True       # 持有到期吃theta
-    stop_loss_pct: float = 0.30       # 裸卖亏损 >30% → 止损 (控左尾)
+    stop_loss_pct: float = 0.20       # 裸卖亏损 >20% → 止损 (优化后更紧)
 
 
 class GammaVegaSeller(FactorModuleComboStrategy):
