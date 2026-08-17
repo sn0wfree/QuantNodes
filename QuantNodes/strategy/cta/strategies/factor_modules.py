@@ -94,7 +94,7 @@ from ..factors.volume_indicators import (
     VolumeRatioFactor,
 )
 from ..factors.volatility import vol_target_positions
-from ..factors.term_structure import TermSlopeFactor, BasisConvergenceFactor
+from ..factors.term_structure import TermSlopeFactor, BasisConvergenceFactor, CalendarSpreadMeanReversion
 from ..factors.basis_momentum import BasisLevelFactor
 from ..factors.macro_link import DXYLinkFactor, MacroStateFactor, VIXLinkFactor
 from ..factors.industrial_chain import (
@@ -828,6 +828,7 @@ class TermBasisModuleStrategy(_ModuleStrategy):
         ("term_slope", TermSlopeFactor, "spread"),
         ("basis_level", BasisLevelFactor, "basis"),
         ("basis_convergence", BasisConvergenceFactor, "basis"),
+        ("calendar_spread_mr", CalendarSpreadMeanReversion, "spread"),
     ]
 
 

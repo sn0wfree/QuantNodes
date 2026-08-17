@@ -172,3 +172,56 @@ class BasisConvergenceFactor(Factor):
         sig[z < -self.z_threshold] = 1.0   # 极度贴水 → 基差收窄 → 多头
         sig[z > self.z_threshold] = -1.0   # 极度升水 → 基差收窄 → 空头
         return sig
+
+
+class CalendarSpreadMeanReversion(Factor):
+    """跨期价差均值回归因子.
+
+    近月-次月价差 (spread_1_2) 做 z-score 均值回归:
+    - z < -z_threshold: 价差极度负 (近月贴水) → 做多价差 (买近卖远)
+    - z > z_threshold: 价差极度正 (近月升水) → 做空价差 (卖近买远)
+
+    与 BasisFactor 的区别:
+    - BasisFactor: 方向性信号 (贴水→多头), 不做均值回归
+    - CalendarSpreadMR: 均值回归信号, 只在极端位置交易
+
+    与 BasisConvergenceFactor 的区别:
+    - BasisConvergence: 用 spot-futures 基差 (需要现货)
+    - CalendarSpreadMR: 用 near-far 跨期价差 (纯期货, 可执行)
+
+    参数:
+        window: 均值/标准差窗口
+        z_threshold: z-score 触发阈值
+    """
+
+    name = "calendar_spread_mr"
+
+    def __init__(self, window: int = 60, z_threshold: float = 1.5):
+        self.window = window
+        self.z_threshold = z_threshold
+
+    def compute(self, spread_df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """从 inter_contract_spread 计算.
+
+        Args:
+            spread_df: 含 trade_date/product/spread_1_2/close_near 的 long-form
+
+        Returns:
+            DataFrame (date × product), 信号: +1 做多价差, -1 做空价差
+        """
+        df = spread_df[["trade_date", "product", "spread_1_2", "close_near"]].copy()
+        # 归一化价差: spread / near_price
+        df["norm_spread"] = df["spread_1_2"] / df["close_near"].replace(0, np.nan)
+        panel = df.pivot_table(index="trade_date", columns="product",
+                               values="norm_spread", aggfunc="first")
+        panel.index = pd.to_datetime(panel.index)
+        panel = panel.sort_index()
+
+        mean = panel.rolling(self.window, min_periods=20).mean()
+        std = panel.rolling(self.window, min_periods=20).std()
+        z = (panel - mean) / std.replace(0, np.nan)
+
+        sig = pd.DataFrame(0.0, index=z.index, columns=z.columns)
+        sig[z < -self.z_threshold] = 1.0   # 价差极低 → 做多价差
+        sig[z > self.z_threshold] = -1.0   # 价差极高 → 做空价差
+        return sig
