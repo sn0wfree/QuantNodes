@@ -42,17 +42,12 @@ class OptionOnlyGV(GammaVegaSeller):
 
 
 class OptionOnlyVR(VrpRouterStrategy):
+    """纯期权层 standalone (不叠加期货)."""
+
     def target_positions(self, date, data):
-        if self._precomputed_lots is None or date not in self._precomputed_lots.index:
+        if not hasattr(self, "_precomputed_router") or date not in self._precomputed_router:
             return {}
-        out = {}
-        row = self._precomputed_lots.loc[date]
-        for product in self._products:
-            if product in row.index and abs(row[product]) > 0:
-                out[product] = float(row[product])
-        if hasattr(self, "_precomputed_router") and date in self._precomputed_router:
-            out.update(self._precomputed_router[date])
-        return out
+        return self._precomputed_router[date]
 
 
 class DualStrategy(GammaVegaSeller):
