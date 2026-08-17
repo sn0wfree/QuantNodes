@@ -423,8 +423,7 @@ class _ModuleStrategy:
         X = np.stack([
             panels[n].reindex(columns=cols).values for n in names
         ], axis=-1)
-        # 额外 shift(1): beta_t 只用 [0, t-1] 的收益, 避免与 X_t 共用当天价格
-        Y = self._price_panel.pct_change().shift(-2)
+        Y = self._price_panel.pct_change().shift(-1)
         beta = tvpr_estimator(
             Y, X,
             lambda_tv=cfg.tvpr_lambda_tv,
@@ -458,8 +457,7 @@ class _ModuleStrategy:
                 W[t:min(t + self._config.agg_update, T)] = w
             return W, names
         if self._config.aggregation == "regression":
-            # 额外 shift(1): beta_t 只用 [0, t-1] 的收益, 避免与 X_t 共用当天价格
-            Y = self._price_panel.pct_change().shift(-2).values
+            Y = self._price_panel.pct_change().shift(-1).values
             for t in range(win, T, self._config.agg_update):
                 x = stack[t - win:t].reshape(-1, len(names))
                 y = Y[t - win:t].reshape(-1)
