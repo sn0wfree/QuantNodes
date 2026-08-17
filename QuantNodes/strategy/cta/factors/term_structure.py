@@ -129,3 +129,46 @@ class NearBasisFactor(Factor):
         df = basis_df.copy()
         df["symbol"] = df["symbol"].astype(str).str.upper()
         return df.set_index(["trade_date", "symbol"])["near_basis_rate"].sort_index()
+
+
+class BasisConvergenceFactor(Factor):
+    """基差收敛因子 (均值回归).
+
+    基差率偏离历史均值过远时, 做回归方向:
+    - z < -z_threshold: 基差极度负 (现货贴水) → 基差将收窄 → 多头
+    - z > z_threshold: 基差极度正 (现货升水) → 基差将收窄 → 空头
+
+    与 NearBasisFactor 的区别:
+    - NearBasisFactor: 方向性信号 (贴水→多头), 国内商品因持续贴水失效
+    - BasisConvergenceFactor: 均值回归信号 (极端→回归), 只在极端位置交易
+
+    参数:
+        window: z-score 计算窗口
+        z_threshold: 极端阈值 (默认2.0 = 2倍标准差)
+        value_col: 基差率列
+    """
+
+    name = "basis_convergence"
+
+    def __init__(self, window: int = 60, z_threshold: float = 2.0,
+                 value_col: str = "near_basis_rate"):
+        self.window = window
+        self.z_threshold = z_threshold
+        self.value_col = value_col
+
+    def compute(self, basis_df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        df = basis_df[["trade_date", "symbol", self.value_col]].copy()
+        df["symbol"] = df["symbol"].astype(str).str.upper()
+        panel = df.pivot_table(index="trade_date", columns="symbol",
+                               values=self.value_col, aggfunc="first")
+        panel.index = pd.to_datetime(panel.index)
+        panel = panel.sort_index()
+
+        mean = panel.rolling(self.window, min_periods=20).mean()
+        std = panel.rolling(self.window, min_periods=20).std()
+        z = (panel - mean) / std.replace(0, np.nan)
+
+        sig = pd.DataFrame(0.0, index=z.index, columns=z.columns)
+        sig[z < -self.z_threshold] = 1.0   # 极度贴水 → 基差收窄 → 多头
+        sig[z > self.z_threshold] = -1.0   # 极度升水 → 基差收窄 → 空头
+        return sig
