@@ -290,6 +290,8 @@ class GammaVegaSeller(FactorModuleComboStrategy):
         for product in self._products:
             if product in row.index and abs(row[product]) > 0:
                 out[product] = float(row[product])
+        if hasattr(self, "_precomputed_router") and date in self._precomputed_router:
+            out.update(self._precomputed_router[date])
         if hasattr(self, "_precomputed_gv") and date in self._precomputed_gv:
             out.update(self._precomputed_gv[date])
         return out
