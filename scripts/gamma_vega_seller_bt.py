@@ -71,11 +71,12 @@ def main():
     print("\n--- fut_v1 + GammaVegaSeller ---")
     t0 = time.time()
     gv_cfg = GammaVegaConfig(
-        down_days=3, vrp_min=0.50,
+        down_days=4, vrp_min=0.50,
         good_products=["I", "AG", "CU", "SR", "TA", "RU", "M"],
         max_batches=3, batch_add_if_down=True, batch_size=1.0 / 3.0,
         atm_mult=1.00, put_otm_mult=0.88, min_dte=15, max_dte=40,
-        hold_days=7, delta_notional_pct=0.10,
+        hold_to_expiry=True, hold_days=7, stop_loss_pct=0.30,
+        batch_delta_pct=0.50,
     )
     strat = GammaVegaSeller(
         gv_config=gv_cfg,
