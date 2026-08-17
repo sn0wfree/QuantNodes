@@ -72,14 +72,23 @@ class SquareRootImpact:
 
 
 class SlippageEngine:
-    """滑点引擎: 预计算每日每品种的滑点参数.
+    """滑点引擎: 预计算每日每品种的滑点参数 + 换月成本.
 
     在回测初始化时调用 load() 预计算, 回测中调用 compute() 快速查询.
     """
 
-    def __init__(self, model=None):
+    def __init__(self, model=None, roll_cost_bps: float = 0.0, roll_days: int = 5):
+        """
+        Args:
+            model: 滑点模型 (FlatSlippage 或 SquareRootImpact)
+            roll_cost_bps: 换月额外成本 (基点), 0=不模拟换月
+            roll_days: 换月成本摊销天数
+        """
         self.model = model or SquareRootImpact()
+        self.roll_cost_bps = roll_cost_bps
+        self.roll_days = roll_days
         self._cache: Dict[str, pd.DataFrame] = {}
+        self._roll_dates: Dict[str, List[pd.Timestamp]] = {}  # {product: [roll_dates]}
 
     def load(self, price_panels: Dict[str, pd.DataFrame], products: List[str]):
         """预计算每日每品种的 volatility 和 ADV.
@@ -128,4 +137,63 @@ class SlippageEngine:
             volume=row["adv"],
             volatility=row["volatility"],
         )
+
+    def load_roll_dates(self, products: List[str], dl=None):
+        """从 main_contract_mapping 加载换月日期.
+
+        Args:
+            products: 品种列表
+            dl: CtaDataLoader 实例
+        """
+        if dl is None:
+            from QuantNodes.strategy.cta.data_loader import CtaDataLoader
+            dl = CtaDataLoader()
+
+        for prod in products:
+            try:
+                mapping = dl.load_main_contract_mapping(prod)
+                if mapping is None or mapping.empty:
+                    self._roll_dates[prod] = []
+                    continue
+                mapping["trade_date"] = pd.to_datetime(mapping["trade_date"])
+                mapping = mapping.sort_values("trade_date")
+                # 检测 symbol 变化 = 换月日
+                symbols = mapping["symbol"].values
+                dates = mapping["trade_date"].values
+                rolls = []
+                for i in range(1, len(symbols)):
+                    if symbols[i] != symbols[i - 1]:
+                        rolls.append(pd.Timestamp(dates[i]))
+                self._roll_dates[prod] = rolls
+            except Exception:
+                self._roll_dates[prod] = []
+
+    def compute(self, product: str, date, notional: float, price: float) -> float:
+        """查询指定日期品种的滑点金额 (含换月成本)."""
+        # 基础滑点
+        if product not in self._cache:
+            base = abs(notional) * 1.0 / 10000
+        else:
+            df = self._cache[product]
+            if date not in df.index:
+                base = abs(notional) * 1.0 / 10000
+            else:
+                row = df.loc[date]
+                base = self.model.compute(
+                    notional=notional, price=price,
+                    volume=row["adv"], volatility=row["volatility"],
+                )
+
+        # 换月成本: 在换月日起 roll_days 天内分摊
+        if self.roll_cost_bps > 0 and product in self._roll_dates:
+            dt = pd.Timestamp(date) if not isinstance(date, pd.Timestamp) else date
+            for roll_date in self._roll_dates[product]:
+                days_since = (dt - roll_date).days
+                if 0 <= days_since < self.roll_days:
+                    # 均匀分摊: 总成本 / roll_days
+                    roll_daily = abs(notional) * self.roll_cost_bps / 10000 / self.roll_days
+                    base += roll_daily
+                    break
+
+        return base
 

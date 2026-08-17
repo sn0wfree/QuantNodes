@@ -546,15 +546,22 @@ class _ModuleStrategy:
                 SlippageEngine, SquareRootImpact,
             )
             model = SquareRootImpact(scale=cfg.slippage_bps)
-            slippage_engine = SlippageEngine(model=model)
+            slippage_engine = SlippageEngine(
+                model=model,
+                roll_cost_bps=getattr(cfg, 'roll_cost_bps', 0.0),
+                roll_days=getattr(cfg, 'roll_days', 5),
+            )
             # 构建含 volume 的 price panels
             price_panels = {}
-            for p in cols if 'cols' in dir() else price_panel.columns:
+            for p in price_panel.columns:
                 if p in self._ohlc_map and p in self._vols.columns:
                     ohlc = self._ohlc_map[p].copy()
                     ohlc["volume"] = self._vols[p]
                     price_panels[p] = ohlc
             slippage_engine.load(price_panels, list(price_panels.keys()))
+            # 加载换月日期
+            if slippage_engine.roll_cost_bps > 0:
+                slippage_engine.load_roll_dates(list(price_panels.keys()), self._dl)
 
         class _PanelStrategy(CtaStrategy):
             def __init__(self, pos_df, min_change=0.0):
@@ -855,6 +862,8 @@ class ComboConfig(ModuleConfig):
     leverage_hard_cap: float = 0.0   # 组合总杠杆硬上限 (逐日 gross/equity), 0=关闭
     min_position_change: float = 0.20  # 仓位变化 < 此比例不调仓 (降换手), 0=关闭
     slippage_bps: float | None = None  # L3滑点校准系数 (None=无滑点, 1.0=标准)
+    roll_cost_bps: float = 0.0  # 换月额外成本 (基点), 0=不模拟换月
+    roll_days: int = 5          # 换月成本摊销天数
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
