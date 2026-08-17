@@ -540,9 +540,10 @@ class _ModuleStrategy:
         price_panel = self._price_panel
 
         class _PanelStrategy(CtaStrategy):
-            def __init__(self, pos_df):
+            def __init__(self, pos_df, min_change=0.0):
                 self._pos = pos_df
                 self._last = {}
+                self._min_change = min_change
 
             def target_positions(self, date, data):
                 if date not in self._pos.index:
@@ -551,19 +552,26 @@ class _ModuleStrategy:
                 targets = {
                     p: float(row[p]) for p in self._pos.columns if abs(row[p]) > 1e-9
                 }
-                changed = False
+                # 过滤: 方向未变 且 幅度变化 < 阈值 → 不调仓
+                filtered = {}
                 for p in set(targets) | set(self._last):
+                    new_qty = targets.get(p, 0)
+                    old_qty = self._last.get(p, 0)
                     def _sgn(x):
                         return 1 if x > 0 else (-1 if x < 0 else 0)
-                    new_s = _sgn(targets.get(p, 0))
-                    old_s = _sgn(self._last.get(p, 0))
-                    if new_s != old_s:
-                        changed = True
-                        break
+                    if _sgn(new_qty) == _sgn(old_qty):
+                        # 同方向: 检查幅度
+                        max_qty = max(abs(old_qty), abs(new_qty), 1)
+                        if abs(new_qty - old_qty) / max_qty < self._min_change:
+                            filtered[p] = old_qty  # 保持旧仓位
+                            continue
+                    filtered[p] = new_qty
+                # 检查是否有变化
+                changed = (filtered != self._last)
                 if not changed:
                     return {}
-                self._last = targets
-                return targets
+                self._last = filtered
+                return filtered
 
         cols = [p for p in lots.columns if p in price_panel.columns]
         prices_map = {p: price_panel[p].tolist() for p in cols}
@@ -573,7 +581,7 @@ class _ModuleStrategy:
             dates=list(price_panel.index),
             prices=prices_map,
             products=products_map,
-            strategy=_PanelStrategy(lots),
+            strategy=_PanelStrategy(lots, min_change=cfg.min_position_change),
             config=CtaBacktestConfig(
                 initial_cash=cfg.initial_cash, commission_rate=cfg.commission_rate,
                 margin_call=cfg.margin_call,
@@ -820,7 +828,7 @@ class ComboConfig(ModuleConfig):
     module_weights: tuple[float, float, float, float, float, float, float] = (
         1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7,
     )
-    module_weighting: str = "fixed"  # 组间加权: fixed | inv_vol (波动率倒数)
+    module_weighting: str = "fixed"  # 组间加权: fixed | inv_vol | regression | tvpr
     filter_enabled: bool = True      # 市场级波动危机过滤 (Sharpe 1.109→1.190)
     momentum_filter_window: int = 0  # 信号动量过滤窗口 (天), 0=关闭 (docs/94 §10.7)
     momentum_filter_coef: float = 0.0  # 动量为负时仓位系数 (0=全空仓, 1=不过滤)
@@ -828,6 +836,7 @@ class ComboConfig(ModuleConfig):
     dd_filter_threshold: float = 0.05  # 回撤触发阈值 (5% = 0.05)
     dd_filter_coef: float = 0.5     # 触发后杠杆系数 (0.5 = 半仓)
     leverage_hard_cap: float = 0.0   # 组合总杠杆硬上限 (逐日 gross/equity), 0=关闭
+    min_position_change: float = 0.20  # 仓位变化 < 此比例不调仓 (降换手), 0=关闭
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
@@ -893,7 +902,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         return panel
 
     def _signals_raw(self) -> pd.DataFrame:
-        """模块信号加权求和 (fixed: 固定权重; inv_vol: 滚动波动率倒数)."""
+        """模块信号加权求和 (fixed/inv_vol/regression)."""
         self.module_signals = {}
         sigs = []
         for m in self._modules:
@@ -911,10 +920,70 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             for sig, wi in zip(sigs, [w_norm[c] for c in w_norm.columns]):
                 combo = sig.mul(wi, axis=0) if combo is None else combo + sig.mul(wi, axis=0)
             return combo
+        if self._config.module_weighting == "regression":
+            return self._agg_module_regression(sigs)
+        if self._config.module_weighting == "tvpr":
+            return self._agg_module_tvpr(sigs)
         w = self._config.module_weights
         combo = None
         for sig, w_i in zip(sigs, w):
             combo = sig * w_i if combo is None else combo + sig * w_i
+        return combo
+
+    def _agg_module_regression(self, sigs: list[pd.DataFrame]) -> pd.DataFrame:
+        """滚动 OLS 学习模块间权重: sig → 未来收益, 每 agg_update 天更新."""
+        T = len(self._price_panel)
+        cols = list(self._price_panel.columns)
+        n_modules = len(sigs)
+        # 构造 X: (T, N, K) — N=品种, K=模块数
+        X = np.stack([
+            s.reindex(columns=cols).values for s in sigs
+        ], axis=-1)
+        # Y: 下一日收益
+        Y = self._price_panel.pct_change().shift(-1).values
+        win = self._config.agg_window
+        agg_update = self._config.agg_update
+        # 初始化等权
+        W = np.full((T, n_modules), 1.0 / n_modules)
+        for t in range(win, T, agg_update):
+            x = X[t - win:t].reshape(-1, n_modules)
+            y = Y[t - win:t].reshape(-1)
+            mask = ~np.isnan(y) & ~np.any(np.isnan(x), axis=1)
+            if mask.sum() > n_modules * 2:
+                beta, *_ = np.linalg.lstsq(x[mask], y[mask], rcond=None)
+                W[t:min(t + agg_update, T)] = beta
+        # 加权求和
+        combo = None
+        for j in range(n_modules):
+            w_j = pd.Series(W[:, j], index=self._price_panel.index)
+            contrib = sigs[j].reindex(columns=cols).mul(w_j, axis=0)
+            combo = contrib if combo is None else combo + contrib
+        return combo
+
+    def _agg_module_tvpr(self, sigs: list[pd.DataFrame]) -> pd.DataFrame:
+        """TVPR 约束版模块间权重: L1+TV罚项防止过拟合."""
+        from QuantNodes.strategy.momentum_etf_rotation.v7.tvpr_estimator import (
+            expanding_window_tvpr,
+        )
+        cfg = self._config
+        cols = list(self._price_panel.columns)
+        n_modules = len(sigs)
+        X = np.stack([
+            s.reindex(columns=cols).values for s in sigs
+        ], axis=-1)
+        Y = self._price_panel.pct_change().shift(-1)
+        beta = expanding_window_tvpr(
+            Y, X,
+            lambda_tv=cfg.tvpr_lambda_tv,
+            lambda_l1=cfg.tvpr_lambda_l1,
+            min_history=cfg.tvpr_min_history,
+            step=cfg.agg_update,
+        )
+        combo = None
+        for j in range(n_modules):
+            w_j = beta.iloc[:, j]
+            contrib = sigs[j].reindex(columns=cols).mul(w_j, axis=0)
+            combo = contrib if combo is None else combo + contrib
         return combo
 
     def _signals(self) -> pd.DataFrame:

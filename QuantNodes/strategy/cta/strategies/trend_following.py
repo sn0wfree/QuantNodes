@@ -57,6 +57,7 @@ class TrendFollowingConfig:
     initial_cash: float = 2_000_000.0
     commission_rate: float = 0.0001
     max_margin_ratio: float = 0.8   # 保证金占用上限
+    min_position_change: float = 0.20  # 仓位变化 < 此比例不调仓 (降换手)
 
 
 class TrendFollowingStrategy:
@@ -174,9 +175,10 @@ class TrendFollowingStrategy:
         # 目标持仓策略: 趋势策略按信号驱动调仓,
         # 仅当方向变化 (0↔±1) 或翻多翻空时调仓, 避免每日波动率微调造成换手.
         class _PanelStrategy(CtaStrategy):
-            def __init__(self, pos_df):
+            def __init__(self, pos_df, min_change=0.0):
                 self._pos = pos_df
                 self._last = {}
+                self._min_change = min_change
 
             def target_positions(self, date, data):
                 if date not in self._pos.index:
@@ -185,20 +187,23 @@ class TrendFollowingStrategy:
                 targets = {
                     p: float(row[p]) for p in self._pos.columns if abs(row[p]) > 1e-9
                 }
-                # 仅方向变化时调仓
-                changed = False
+                filtered = {}
                 for p in set(targets) | set(self._last):
+                    new_qty = targets.get(p, 0)
+                    old_qty = self._last.get(p, 0)
                     def _sgn(x):
                         return 1 if x > 0 else (-1 if x < 0 else 0)
-                    new_s = _sgn(targets.get(p, 0))
-                    old_s = _sgn(self._last.get(p, 0))
-                    if new_s != old_s:
-                        changed = True
-                        break
+                    if _sgn(new_qty) == _sgn(old_qty):
+                        max_qty = max(abs(old_qty), abs(new_qty), 1)
+                        if abs(new_qty - old_qty) / max_qty < self._min_change:
+                            filtered[p] = old_qty
+                            continue
+                    filtered[p] = new_qty
+                changed = (filtered != self._last)
                 if not changed:
                     return {}
-                self._last = targets
-                return targets
+                self._last = filtered
+                return filtered
 
         # 风控: 仓位已由 vol-targeting 限制杠杆, 仅做单品种手数上限
         # (MarginRisk 按资金等比缩放会与手数取整冲突, 造成小数手数微调)
@@ -208,7 +213,7 @@ class TrendFollowingStrategy:
             dates=dates,
             prices=prices_map,
             products=products_map,
-            strategy=_PanelStrategy(positions),
+            strategy=_PanelStrategy(positions, min_change=self._config.min_position_change),
             config=CtaBacktestConfig(
                 initial_cash=self._config.initial_cash,
                 commission_rate=self._config.commission_rate,
