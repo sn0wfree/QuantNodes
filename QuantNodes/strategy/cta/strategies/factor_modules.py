@@ -203,6 +203,22 @@ class _ModuleStrategy:
         self._ohlc_map = ohlcs
         self._vols = pd.DataFrame(vols).reindex(index=panel.index, columns=self._products)
         self._ois = pd.DataFrame(ois).reindex(index=panel.index, columns=self._products)
+
+        # 剔除低成交量品种
+        if hasattr(self._config, 'min_daily_volume') and self._config.min_daily_volume > 0:
+            avg_vol = self._vols.mean()
+            low_vol = avg_vol[avg_vol < self._config.min_daily_volume].index.tolist()
+            if low_vol:
+                keep = [p for p in self._products if p not in low_vol]
+                if len(keep) < len(self._products):
+                    print(f"  剔除低量品种 ({len(self._products)}→{len(keep)}): "
+                          f"{', '.join(low_vol[:10])}{'...' if len(low_vol)>10 else ''}")
+                    self._products = keep
+                    self._price_panel = panel.reindex(columns=keep)
+                    self._ohlc_map = {k: v for k, v in ohlcs.items() if k in keep}
+                    self._vols = self._vols.reindex(columns=keep)
+                    self._ois = self._ois.reindex(columns=keep)
+
         return panel
 
     # ── 信号层 ──────────────────────────────────────────────────────────
@@ -563,11 +579,22 @@ class _ModuleStrategy:
             if slippage_engine.roll_cost_bps > 0:
                 slippage_engine.load_roll_dates(list(price_panels.keys()), self._dl)
 
+        # 第2层: 持仓EMA平滑 — 渐进调整目标手数
+        if cfg.position_ema_alpha > 0:
+            smoothed = lots.copy()
+            prev = pd.Series(0.0, index=lots.columns)
+            for i in range(len(smoothed)):
+                smoothed.iloc[i] = prev + cfg.position_ema_alpha * (lots.iloc[i] - prev)
+                prev = smoothed.iloc[i].copy()
+            lots = smoothed
+
         class _PanelStrategy(CtaStrategy):
-            def __init__(self, pos_df, min_change=0.0):
+            def __init__(self, pos_df, min_change=0.0, dates_list=None, prices_map=None):
                 self._pos = pos_df
                 self._last = {}
                 self._min_change = min_change
+                self._dates_list = dates_list or []
+                self._prices_map = prices_map or {}
 
             def target_positions(self, date, data):
                 if date not in self._pos.index:
@@ -584,13 +611,11 @@ class _ModuleStrategy:
                     def _sgn(x):
                         return 1 if x > 0 else (-1 if x < 0 else 0)
                     if _sgn(new_qty) == _sgn(old_qty):
-                        # 同方向: 检查幅度
                         max_qty = max(abs(old_qty), abs(new_qty), 1)
                         if abs(new_qty - old_qty) / max_qty < self._min_change:
-                            filtered[p] = old_qty  # 保持旧仓位
+                            filtered[p] = old_qty
                             continue
                     filtered[p] = new_qty
-                # 检查是否有变化
                 changed = (filtered != self._last)
                 if not changed:
                     return {}
@@ -599,13 +624,17 @@ class _ModuleStrategy:
 
         cols = [p for p in lots.columns if p in price_panel.columns]
         prices_map = {p: price_panel[p].tolist() for p in cols}
+        dates_list = list(price_panel.index)
         products_map = {p: p for p in prices_map}
         risk = PositionLimitRisk(products=products_map, registry=self._registry)
         return run_cta_backtest(
-            dates=list(price_panel.index),
+            dates=dates_list,
             prices=prices_map,
             products=products_map,
-            strategy=_PanelStrategy(lots, min_change=cfg.min_position_change),
+            strategy=_PanelStrategy(
+                lots, min_change=cfg.min_position_change,
+                dates_list=dates_list, prices_map=prices_map,
+            ),
             config=CtaBacktestConfig(
                 initial_cash=cfg.initial_cash, commission_rate=cfg.commission_rate,
                 margin_call=cfg.margin_call, slippage_engine=slippage_engine,
@@ -860,10 +889,13 @@ class ComboConfig(ModuleConfig):
     dd_filter_threshold: float = 0.05  # 回撤触发阈值 (5% = 0.05)
     dd_filter_coef: float = 0.5     # 触发后杠杆系数 (0.5 = 半仓)
     leverage_hard_cap: float = 0.0   # 组合总杠杆硬上限 (逐日 gross/equity), 0=关闭
-    min_position_change: float = 0.20  # 仓位变化 < 此比例不调仓 (降换手), 0=关闭
+    min_position_change: float = 0.30  # 仓位变化 < 此比例不调仓 (降换手), 0=关闭
     slippage_bps: float | None = None  # L3滑点校准系数 (None=无滑点, 1.0=标准)
     roll_cost_bps: float = 0.0  # 换月额外成本 (基点), 0=不模拟换月
     roll_days: int = 5          # 换月成本摊销天数
+    signal_ema_span: int = 0    # 信号EMA平滑跨度 (天), 0=关闭
+    min_daily_volume: float = 1000.0  # 品种日均成交量阈值 (手), 低于此剔除
+    position_ema_alpha: float = 0.0  # 持仓EMA平滑 (推荐0.15), 0=关闭
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
@@ -1014,7 +1046,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         return combo
 
     def _signals(self) -> pd.DataFrame:
-        """组合方向 (-1/0/+1), 可选信号动量过滤 (见 ComboConfig)."""
+        """组合方向 (-1/0/+1), 可选动量过滤."""
         raw = self._signals_raw()
         cfg = self._config
         if cfg.momentum_filter_window > 0:
@@ -1022,6 +1054,8 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             coef = pd.DataFrame(1.0, index=raw.index, columns=raw.columns)
             coef[mom < 0] = cfg.momentum_filter_coef
             raw = raw * coef
+        if cfg.signal_ema_span > 0:
+            raw = raw.ewm(span=cfg.signal_ema_span, min_periods=1).mean()
         return np.sign(raw)
 
     def _leverage_cap_coef(self, sig: pd.DataFrame) -> pd.Series:
