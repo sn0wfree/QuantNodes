@@ -1046,7 +1046,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
     def _filter_conflicting_signals(self, signals: pd.DataFrame) -> pd.DataFrame:
         """Cluster内信号一致性衰减 (仅极端冲突时).
 
-        只有一致性极低 (<30%) 时才衰减信号, 避免误杀正常分歧.
+        只有一致性极低 (<30%) 时才取消信号 (置零).
         """
         cfg = self._config
         if not cfg.enable_cluster_filter:
@@ -1070,10 +1070,9 @@ class FactorModuleComboStrategy(_ModuleStrategy):
                 other_signs = signs[others].values
                 agree = (other_signs == my_sign[:, np.newaxis]).sum(axis=1)
                 consistency = agree / len(others)
-                # 只有一致性极低 (<30%) 时才衰减
+                # 极端冲突 (<30%一致性) → 取消信号
                 extreme_conflict = consistency < 0.3
-                # 衰减到50%
-                filtered.loc[extreme_conflict, p] *= 0.5
+                filtered.loc[extreme_conflict, p] = 0.0
 
         return filtered
 
@@ -1268,10 +1267,9 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             raw = raw * coef
         if cfg.signal_ema_span > 0:
             raw = raw.ewm(span=cfg.signal_ema_span, min_periods=1).mean()
-        sig = np.sign(raw)
-        # cluster内信号不一致 → 取消
-        sig = self._filter_conflicting_signals(sig)
-        return sig
+        # cluster过滤: 在sign()之前作用于连续信号, 衰减冲突信号
+        raw = self._filter_conflicting_signals(raw)
+        return np.sign(raw)
 
     def _leverage_cap_coef(self, sig: pd.DataFrame) -> pd.Series:
         """两遍法计算杠杆硬限系数 (T,).
