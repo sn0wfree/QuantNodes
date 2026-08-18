@@ -841,6 +841,7 @@ class IndustrialChainModuleStrategy(_ModuleStrategy):
 
     FACTORS = [
         ("chain_margin_rb", lambda: ChainMarginFactor("steel_profit_rb"), "chain"),
+        ("chain_margin_hc", lambda: ChainMarginFactor("steel_profit_rb"), "chain"),
         ("chain_margin_pp", lambda: ChainMarginFactor("mto_profit"), "chain"),
         ("margin_momentum_m", lambda: MarginMomentumFactor("crush_profit"), "chain"),
         ("price_ratio_au_cu", lambda: PriceRatioFactor("AU", "CU"), "chain"),
@@ -848,7 +849,8 @@ class IndustrialChainModuleStrategy(_ModuleStrategy):
     ]
 
     CHAIN_MAP = {
-        "chain_margin_rb": "RB",
+        "chain_margin_rb": "RB",  # 钢铁利润 → RB
+        "chain_margin_hc": "HC",  # 钢铁利润 → HC（同链下游）
         "chain_margin_pp": "PP",
         "margin_momentum_m": "M",
         "price_ratio_au_cu": "AU-CU",
@@ -965,7 +967,7 @@ class ComboConfig(ModuleConfig):
     """
 
     module_weights: tuple = (
-        1 / 8, 1 / 8, 1 / 8, 1 / 8, 1 / 8, 1 / 8, 1 / 8, 1 / 8,
+        1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7,
     )
     module_weighting: str = "fixed"  # 组间加权: fixed | inv_vol | regression | tvpr
     filter_enabled: bool = True      # 市场级波动危机过滤 (Sharpe 1.109→1.190)
@@ -1015,7 +1017,6 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             TermBasisModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
             MacroModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
             IndustrialChainModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
-            VolSurfaceModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
         ]
         self.module_signals: dict[str, pd.DataFrame] = {}
         self._filter = VolRiskFilter() if self._config.filter_enabled else None
