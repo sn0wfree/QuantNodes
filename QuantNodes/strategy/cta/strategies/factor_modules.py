@@ -840,21 +840,25 @@ class IndustrialChainModuleStrategy(_ModuleStrategy):
     """
 
     FACTORS = [
+        # 钢铁链: 铁矿→焦煤→焦炭→螺纹/热卷
         ("chain_margin_rb", lambda: ChainMarginFactor("steel_profit_rb"), "chain"),
-        ("chain_margin_hc", lambda: ChainMarginFactor("steel_profit_rb"), "chain"),
+        ("chain_margin_hc", lambda: ChainMarginFactor("steel_profit_hc"), "chain"),
+        # 化工链: 石化→化工
         ("chain_margin_pp", lambda: ChainMarginFactor("mto_profit"), "chain"),
+        # 农产品链: 大豆压榨
         ("margin_momentum_m", lambda: MarginMomentumFactor("crush_profit"), "chain"),
+        # 跨品种
         ("price_ratio_au_cu", lambda: PriceRatioFactor("AU", "CU"), "chain"),
         ("lead_lag_i_rb", lambda: LeadLagFactor("I", "RB"), "chain"),
     ]
 
     CHAIN_MAP = {
-        "chain_margin_rb": "RB",  # 钢铁利润 → RB
-        "chain_margin_hc": "HC",  # 钢铁利润 → HC（同链下游）
-        "chain_margin_pp": "PP",
-        "margin_momentum_m": "M",
-        "price_ratio_au_cu": "AU-CU",
-        "lead_lag_i_rb": "RB",
+        "chain_margin_rb": "RB",       # 螺纹盘面利润 → RB
+        "chain_margin_hc": "HC",       # 热卷盘面利润 → HC
+        "chain_margin_pp": "PP",       # MTO利润 → PP
+        "margin_momentum_m": "M",      # 大豆压榨利润 → M
+        "price_ratio_au_cu": "AU-CU",  # 比价 → AU和CU
+        "lead_lag_i_rb": "RB",         # 铁矿传导 → RB
     }
 
 
