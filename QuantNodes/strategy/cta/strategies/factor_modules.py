@@ -1062,6 +1062,10 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             with np.errstate(divide="ignore", invalid="ignore"):
                 target = weights[product] * capital_per_product / notional_per_lot
             target = target.replace([np.inf, -np.inf], np.nan).fillna(0).round()
+            # 单品种名义敞口上限: equity × max_leverage × 0.5
+            max_notional = equity * cfg.max_leverage * 0.5
+            max_lots = (max_notional / notional_per_lot).fillna(0)
+            target = target.clip(lower=-max_lots, upper=max_lots).round()
             lots[product] = target
         return lots
 
