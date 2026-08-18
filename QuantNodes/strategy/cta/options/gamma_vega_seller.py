@@ -296,6 +296,68 @@ class GammaVegaSeller(FactorModuleComboStrategy):
             out.update(self._precomputed_gv[date])
         return out
 
+    def _run_with_strategy(self) -> 'CtaBacktestResult':
+        """使用 target_positions() 策略运行回测 (包含期权目标)."""
+        from ..backtest.cta_engine import run_cta_backtest, CtaBacktestConfig
+        from ..backtest.cta_risk import PositionLimitRisk
+        from ..backtest.cta_slippage import SlippageEngine, SquareRootImpact
+        from .slippage import build_option_prices
+
+        cfg = self._config
+        price_panel = self._price_panel
+
+        # 构建滑点引擎
+        slippage_engine = None
+        if hasattr(cfg, 'slippage_bps') and cfg.slippage_bps is not None:
+            model = SquareRootImpact(scale=cfg.slippage_bps)
+            slippage_engine = SlippageEngine(
+                model=model,
+                roll_cost_bps=getattr(cfg, 'roll_cost_bps', 0.0),
+                roll_days=getattr(cfg, 'roll_days', 5),
+            )
+            price_panels = {}
+            for p in price_panel.columns:
+                if p in self._ohlc_map and p in self._vols.columns:
+                    ohlc = self._ohlc_map[p].copy()
+                    ohlc["volume"] = self._vols[p]
+                    price_panels[p] = ohlc
+            slippage_engine.load(price_panels, list(price_panels.keys()))
+            if slippage_engine.roll_cost_bps > 0:
+                slippage_engine.load_roll_dates(list(price_panels.keys()), self._dl)
+
+        # 构建价格映射: 期货 + 期权
+        opt_prices, opt_settle = build_option_prices(
+            list(price_panel.index), self._chains
+        )
+        all_prices = {p: price_panel[p].tolist() for p in price_panel.columns}
+        all_prices.update(opt_prices)
+
+        # 构建产品映射: 期货 + 期权
+        all_products = {p: p for p in price_panel.columns}
+        for sym, c in self._option_contracts.items():
+            all_products[sym] = c.product
+
+        # 使用 self.target_positions 作为策略回调
+        strategy = _GVSellerStrategy(self)
+        risk = PositionLimitRisk(
+            products={p: p for p in price_panel.columns}, registry=self._registry
+        )
+
+        return run_cta_backtest(
+            dates=list(price_panel.index),
+            prices=all_prices,
+            products=all_products,
+            strategy=strategy,
+            config=CtaBacktestConfig(
+                initial_cash=cfg.initial_cash, commission_rate=cfg.commission_rate,
+                margin_call=cfg.margin_call, slippage_engine=slippage_engine,
+            ),
+            registry=self._registry,
+            risk=risk,
+            option_contracts=self._option_contracts,
+            option_settle=opt_settle,
+        )
+
     def run(self):
         self.load_panel()
         self._load_iv_panel()
@@ -305,4 +367,30 @@ class GammaVegaSeller(FactorModuleComboStrategy):
         lots = self._signal_to_lots(exec_sig, self._config)
         self._precomputed_lots = lots
         self._precompute_gv_targets()
-        return self._run_with_lots(lots)
+        return self._run_with_strategy()
+
+
+class _GVSellerStrategy:
+    """包装 GammaVegaSeller.target_positions 为 CtaStrategy 回调."""
+
+    def __init__(self, seller: GammaVegaSeller):
+        self._seller = seller
+        self._last = {}
+
+    def target_positions(self, date, data):
+        raw = self._seller.target_positions(date, data)
+        # min_position_change 过滤
+        filtered = {}
+        for p in set(raw) | set(self._last):
+            new_qty = raw.get(p, 0)
+            old_qty = self._last.get(p, 0)
+            def _sgn(x):
+                return 1 if x > 0 else (-1 if x < 0 else 0)
+            if _sgn(new_qty) == _sgn(old_qty):
+                max_qty = max(abs(old_qty), abs(new_qty), 1)
+                if abs(new_qty - old_qty) / max_qty < self._seller._config.min_position_change:
+                    filtered[p] = old_qty
+                    continue
+            filtered[p] = new_qty
+        self._last = filtered
+        return filtered
