@@ -205,8 +205,6 @@ class _ModuleStrategy:
 
         return panel
 
-        return panel
-
     # ── 信号层 ──────────────────────────────────────────────────────────
 
     def _ensure_external(self) -> None:
