@@ -204,20 +204,7 @@ class _ModuleStrategy:
         self._vols = pd.DataFrame(vols).reindex(index=panel.index, columns=self._products)
         self._ois = pd.DataFrame(ois).reindex(index=panel.index, columns=self._products)
 
-        # 剔除低成交量品种
-        if hasattr(self._config, 'min_daily_volume') and self._config.min_daily_volume > 0:
-            avg_vol = self._vols.mean()
-            low_vol = avg_vol[avg_vol < self._config.min_daily_volume].index.tolist()
-            if low_vol:
-                keep = [p for p in self._products if p not in low_vol]
-                if len(keep) < len(self._products):
-                    print(f"  剔除低量品种 ({len(self._products)}→{len(keep)}): "
-                          f"{', '.join(low_vol[:10])}{'...' if len(low_vol)>10 else ''}")
-                    self._products = keep
-                    self._price_panel = panel.reindex(columns=keep)
-                    self._ohlc_map = {k: v for k, v in ohlcs.items() if k in keep}
-                    self._vols = self._vols.reindex(columns=keep)
-                    self._ois = self._ois.reindex(columns=keep)
+        return panel
 
         return panel
 

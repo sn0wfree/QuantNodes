@@ -209,8 +209,13 @@ class OIPriceDivergenceFactor(Factor):
 
     def compute(self, prices: pd.DataFrame, open_interest: pd.DataFrame,
                 **kwargs) -> pd.DataFrame:
+        # 对齐列
+        common_cols = prices.columns.intersection(open_interest.columns)
+        prices = prices[common_cols]
+        oi = open_interest[common_cols]
+
         price_ret = prices.pct_change(self.price_window)
-        oi_change = open_interest.diff(self.window)
+        oi_change = oi.diff(self.window)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         # 价涨仓减 → 顶背离 → 空
         sig[(price_ret > 0) & (oi_change < 0)] = -1.0

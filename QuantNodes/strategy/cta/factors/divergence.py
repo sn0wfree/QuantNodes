@@ -30,6 +30,11 @@ class PriceVolumeDivergenceFactor(Factor):
 
     def compute(self, prices: pd.DataFrame, volumes: pd.DataFrame,
                 **kwargs) -> pd.DataFrame:
+        # 对齐列: 只用共同的列
+        common_cols = prices.columns.intersection(volumes.columns)
+        prices = prices[common_cols]
+        volumes = volumes[common_cols]
+
         price_high = prices.rolling(self.window).max()
         vol_high = volumes.rolling(self.window).max()
         # 价创新高 (今日=窗口最高) 但量未创新高
@@ -66,6 +71,11 @@ class VolumeConfirmationFactor(Factor):
 
     def compute(self, prices: pd.DataFrame, volumes: pd.DataFrame,
                 **kwargs) -> pd.DataFrame:
+        # 对齐列: 只用共同的列
+        common_cols = prices.columns.intersection(volumes.columns)
+        prices = prices[common_cols]
+        volumes = volumes[common_cols]
+
         vol_ma = volumes.rolling(self.window).mean()
         vol_expand = (volumes > vol_ma.replace(0, np.nan) * self.mult).fillna(False).astype(bool)
         ret = prices.pct_change()

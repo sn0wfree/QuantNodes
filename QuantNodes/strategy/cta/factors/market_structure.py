@@ -68,6 +68,11 @@ class VolumeReturnResidualFactor(Factor):
 
     def compute(self, prices: pd.DataFrame, volumes: pd.DataFrame,
                 **kwargs) -> pd.DataFrame:
+        # 对齐列
+        common_cols = prices.columns.intersection(volumes.columns)
+        prices = prices[common_cols]
+        volumes = volumes[common_cols]
+
         ret = prices.pct_change()
         vol = volumes.pct_change()
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
