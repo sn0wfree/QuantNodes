@@ -365,6 +365,17 @@ class GammaVegaSeller(FactorModuleComboStrategy):
         signals = self._signals()
         exec_sig = self._exec_sig(signals)
         lots = self._signal_to_lots(exec_sig, self._config)
+
+        # EMA平滑 (与基类 _run_with_lots 完全一致)
+        cfg = self._config
+        if cfg.position_ema_alpha > 0:
+            smoothed = lots.copy()
+            prev = pd.Series(0.0, index=lots.columns)
+            for i in range(len(smoothed)):
+                smoothed.iloc[i] = prev + cfg.position_ema_alpha * (lots.iloc[i] - prev)
+                prev = smoothed.iloc[i].copy()
+            lots = smoothed
+
         self._precomputed_lots = lots
         self._precompute_gv_targets()
         return self._run_with_strategy()
