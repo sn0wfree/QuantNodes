@@ -831,10 +831,14 @@ class IndustrialChainModuleStrategy(_ModuleStrategy):
 
     信号 → 品种映射 (CHAIN_MAP):
         chain_margin_rb  → RB   (螺纹盘面利润, 交易下游成品)
+        chain_margin_hc  → HC   (热卷盘面利润)
         chain_margin_pp  → PP   (MTO 利润)
         margin_momentum_m → M   (压榨利润动量)
         price_ratio_au_cu → AU-CU 配对 (比价高估 → 空 AU 多 CU)
         lead_lag_i_rb    → RB   (铁矿传导顺畅 → 做多下游螺纹)
+        chain_margin_j   → J    (焦化利润)
+        chain_margin_ta  → TA   (PTA加工费)
+        chain_margin_lh  → LH   (生猪饲料成本)
     """
 
     FACTORS = [
@@ -848,6 +852,12 @@ class IndustrialChainModuleStrategy(_ModuleStrategy):
         # 跨品种
         ("price_ratio_au_cu", lambda: PriceRatioFactor("AU", "CU"), "chain"),
         ("lead_lag_i_rb", lambda: LeadLagFactor("I", "RB"), "chain"),
+        # 新增: 焦化链
+        ("chain_margin_j", lambda: ChainMarginFactor("coke_profit"), "chain"),
+        # 新增: PTA加工费
+        ("chain_margin_ta", lambda: ChainMarginFactor("pta_fee"), "chain"),
+        # 新增: 生猪饲料成本
+        ("chain_margin_lh", lambda: ChainMarginFactor("hog_feed_cost"), "chain"),
     ]
 
     CHAIN_MAP = {
@@ -857,119 +867,24 @@ class IndustrialChainModuleStrategy(_ModuleStrategy):
         "margin_momentum_m": "M",      # 大豆压榨利润 → M
         "price_ratio_au_cu": "AU-CU",  # 比价 → AU和CU
         "lead_lag_i_rb": "RB",         # 铁矿传导 → RB
+        "chain_margin_j": "J",         # 焦化利润 → J
+        "chain_margin_ta": "TA",       # PTA加工费 → TA
+        "chain_margin_lh": "LH",       # 生猪饲料成本 → LH
     }
 
 
 # ── 组合策略 ───────────────────────────────────────────────────────────────
 
-class VolSurfaceModuleStrategy(_ModuleStrategy):
-    """波动率曲面组: IV skew反转 + IV regime + IV z-score.
-
-    数据: greeks_cache (option_greeks.parquet) — 10个商品品种的IV数据.
-    因子:
-        skew_reversal: skew极端 → 标的反转
-        iv_regime: IV regime变化 → 调整仓位乘数
-        iv_zscore: IV z-score极端 → 均值回归
-    """
-
-    FACTORS = []  # 不使用标准routing, 自定义_signal_panel
-
-    def __init__(self, products=None, config=None, data_loader=None,
-                 start="2018-01-01", end="2025-12-31"):
-        super().__init__(products, config, data_loader, start, end)
-        self._iv_panel = None
-        self._skew_panel = None
-
-    def _ensure_external(self) -> None:
-        """加载IV数据 from greeks cache."""
-        if self._iv_panel is not None:
-            return
-        try:
-            from QuantNodes.strategy.cta.factors.vol_surface import (
-                extract_atm_iv_from_cache, extract_skew_from_cache,
-            )
-            greeks_df = pd.read_parquet("data/cache/option_greeks.parquet")
-            # 只保留我们产品的数据
-            valid_products = [p for p in self._products if p in greeks_df["product"].values]
-            greeks_df = greeks_df[greeks_df["product"].isin(valid_products)]
-
-            self._iv_panel = extract_atm_iv_from_cache(greeks_df)
-            self._skew_panel = extract_skew_from_cache(greeks_df)
-
-            # 对齐到价格面板
-            if self._price_panel is not None:
-                self._iv_panel = self._iv_panel.reindex(
-                    index=self._price_panel.index,
-                    columns=[c for c in self._price_panel.columns if c in self._iv_panel.columns],
-                ).ffill()
-                if not self._skew_panel.empty:
-                    self._skew_panel = self._skew_panel.reindex(
-                        index=self._price_panel.index,
-                        columns=[c for c in self._price_panel.columns if c in self._skew_panel.columns],
-                    ).ffill()
-        except Exception as e:
-            print(f"  [VolSurface] IV load failed: {e}")
-            self._iv_panel = pd.DataFrame()
-            self._skew_panel = pd.DataFrame()
-
-    def _signal_panel(self, factor, input_type, name=None, continuous=False):
-        """自定义信号路由: 传入IV数据给因子."""
-        self._ensure_external()
-
-        if input_type == "iv_skew" and not self._skew_panel.empty:
-            return factor.compute(self._skew_panel)
-        elif input_type == "iv_panel" and not self._iv_panel.empty:
-            return factor.compute(self._iv_panel)
-        else:
-            # 无数据时返回空面板
-            return pd.DataFrame(0.0, index=self._price_panel.index,
-                                columns=self._price_panel.columns)
-
-    def _signals_raw(self):
-        """组合vol surface因子信号."""
-        from QuantNodes.strategy.cta.factors.vol_surface import (
-            SkewReversalFactor, IVRegimeFactor, IVZScoreFactor,
-        )
-
-        panels = {}
-
-        # Skew反转信号
-        skew_factor = SkewReversalFactor(window=60, z_threshold=1.5)
-        panels["skew_reversal"] = self._signal_panel(skew_factor, "iv_skew")
-
-        # IV regime信号 (仓位乘数, 不直接作为方向信号)
-        iv_regime = IVRegimeFactor(iv_lookback=252, iv_momentum_window=20)
-        iv_regime_sig = self._signal_panel(iv_regime, "iv_panel")
-
-        # IV z-score信号
-        iv_zscore = IVZScoreFactor(window=60)
-        panels["iv_zscore"] = self._signal_panel(iv_zscore, "iv_panel")
-
-        # 聚合: 等权平均 (skew_reversal + iv_zscore)
-        sigs = [v for k, v in panels.items() if not v.empty]
-        if not sigs:
-            return pd.DataFrame(0.0, index=self._price_panel.index,
-                                columns=self._price_panel.columns)
-
-        combo = sum(sigs) / len(sigs)
-
-        # IV regime作为乘数调整 (1.0=不变, 0.5-1.5)
-        if not iv_regime_sig.empty:
-            combo = combo * iv_regime_sig
-
-        return combo
-
-
 @dataclass
 class ComboConfig(ModuleConfig):
-    """组合策略配置: 模块权重 (趋势/均值回归/量能/事件/期限基差/宏观/产业链/波动率曲面) + 过滤层.
+    """组合策略配置: 模块权重 (趋势/量能/期限基差/宏观/产业链) + 过滤层.
 
-    权重策略: 默认等权 1/8 (8 组), 简单稳健, 不做样本内调优
+    权重策略: 默认等权 1/5 (5 组), 简单稳健, 不做样本内调优
     (调优结果仅记录于 docs/94, 不设为默认).
     """
 
     module_weights: tuple = (
-        1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7, 1 / 7,
+        1 / 5, 1 / 5, 1 / 5, 1 / 5, 1 / 5,
     )
     module_weighting: str = "fixed"  # 组间加权: fixed | inv_vol | regression | tvpr
     filter_enabled: bool = True      # 市场级波动危机过滤 (Sharpe 1.109→1.190)
@@ -997,9 +912,10 @@ class ComboConfig(ModuleConfig):
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
-    """组合策略: 四模块方向信号加权 → 单一资金池 vol targeting.
+    """组合策略: 五模块方向信号加权 → 单一资金池 vol targeting.
 
-    模块权重默认等权 0.25×4 (可调, 趋势主导可改为 0.4/0.2/0.3/0.1).
+    模块: TrendMomentum + VolumeFlow + TermBasis + Macro + IndustrialChain
+    权重默认等权 0.2×5 (可调, 趋势主导可改为 0.4/0.2/0.3/0.1).
     波动率风险过滤层 (HV/GARCH/统计/回撤类) 第二阶段接入.
     """
 
@@ -1013,9 +929,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         cfg = self._config
         self._modules = [
             TrendMomentumModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
-            MeanReversionModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
             VolumeFlowModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
-            EventCalendarModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
             TermBasisModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
             MacroModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
             IndustrialChainModuleStrategy(self._products, cfg, self._dl, self._start, self._end),
