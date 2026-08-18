@@ -108,12 +108,11 @@ from ..factors.cointegration import SpreadMeanReversionFactor
 DEFAULT_PRODUCTS = [
     "RB", "FG", "SA", "M", "TA", "MA", "V", "P", "RM", "HC",
     "LC", "Y", "AG", "FU", "I", "C", "UR", "OI", "JM", "SM",
-    "PP", "CF", "L", "RU", "SI", "EB", "SR", "PS", "SP", "SH",
+    "PP", "CF", "L", "RU", "SI", "EB", "SR", "SP", "SH",
     "EG", "SF", "JD", "AO", "BU", "PX", "AP", "AL", "IM", "PF",
     "AU", "ZN", "SS", "NI", "PK", "A", "CS", "CJ", "EC", "B",
     "T", "TL", "PG", "IF", "CU", "TF", "IC", "LU", "SN", "BR",
-    "NR", "LH", "PT", "PR", "SC", "PB", "TS", "IH", "PD", "LG",
-    "J", "PL",
+    "NR", "LH", "SC", "PB", "TS", "IH", "J",
 ]
 
 
