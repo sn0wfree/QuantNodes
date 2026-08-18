@@ -996,6 +996,14 @@ class ComboConfig(ModuleConfig):
     signal_ema_span: int = 0    # 信号EMA平滑跨度 (天), 0=关闭
     min_daily_volume: float = 1000.0  # 品种日均成交量阈值 (手), 低于此剔除
     position_ema_alpha: float = 0.0  # 持仓EMA平滑 (推荐0.15), 0=关闭
+    # 信号一致性过滤 (cluster内信号不一致→取消)
+    enable_cluster_filter: bool = True
+    cluster_conflict_threshold: float = 0.5  # cluster内冲突比例>此值→取消信号
+    # 尾部风险保护 (高相关性→全局降仓)
+    tail_risk_enabled: bool = True
+    tail_risk_corr_window: int = 60   # 相关性计算窗口
+    tail_risk_corr_threshold: float = 0.30  # 高相关阈值 (自适应: 品种少时自动提高)
+    tail_risk_scale: float = 0.7      # 高相关时仓位乘数 (0.7=降仓30%)
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
@@ -1026,14 +1034,117 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         self.module_signals: dict[str, pd.DataFrame] = {}
         self._filter = VolRiskFilter() if self._config.filter_enabled else None
 
+    # 品种Cluster定义 (基于相关性分析)
+    CLUSTERS = {
+        'black': ['RB', 'I'],
+        'precious': ['AG', 'AU'],
+        'base': ['CU'],
+        'chemical': ['TA', 'RU', 'PP'],
+        'agri': ['M', 'SR'],
+    }
+
+    def _filter_conflicting_signals(self, signals: pd.DataFrame) -> pd.DataFrame:
+        """Cluster内信号一致性衰减 (仅极端冲突时).
+
+        只有一致性极低 (<30%) 时才衰减信号, 避免误杀正常分歧.
+        """
+        cfg = self._config
+        if not cfg.enable_cluster_filter:
+            return signals
+
+        filtered = signals.copy().astype(float)
+
+        for cluster_name, products in self.CLUSTERS.items():
+            avail = [p for p in products if p in signals.columns]
+            if len(avail) < 2:
+                continue
+
+            cluster_sigs = signals[avail]
+            signs = np.sign(cluster_sigs)
+
+            for p in avail:
+                others = [o for o in avail if o != p]
+                if not others:
+                    continue
+                my_sign = signs[p].values
+                other_signs = signs[others].values
+                agree = (other_signs == my_sign[:, np.newaxis]).sum(axis=1)
+                consistency = agree / len(others)
+                # 只有一致性极低 (<30%) 时才衰减
+                extreme_conflict = consistency < 0.3
+                # 衰减到50%
+                filtered.loc[extreme_conflict, p] *= 0.5
+
+        return filtered
+
+    def _tail_risk_filter(self, weights: pd.DataFrame) -> pd.DataFrame:
+        """板块间尾部风险保护: 板块相关性飙升时全局降仓.
+
+        自适应阈值: 板块内品种越少 (噪声越大), 阈值越高.
+        """
+        cfg = self._config
+        if not cfg.tail_risk_enabled:
+            return weights
+
+        # 构造板块收益序列, 统计每个板块的品种数
+        ret = self._price_panel.pct_change()
+        sector_returns = {}
+        sector_sizes = {}
+        for sector_name, products in self.CLUSTERS.items():
+            avail = [p for p in products if p in ret.columns]
+            if avail:
+                sector_returns[sector_name] = ret[avail].mean(axis=1)
+                sector_sizes[sector_name] = len(avail)
+
+        n_sectors = len(sector_returns)
+        if n_sectors < 2:
+            return weights
+
+        # 自适应阈值: 板块内平均品种数越少 → 阈值越高 (噪声大)
+        avg_products = np.mean(list(sector_sizes.values()))
+        if avg_products <= 1.5:
+            threshold = cfg.tail_risk_corr_threshold + 0.20  # 极少: 0.30→0.50
+        elif avg_products <= 2.5:
+            threshold = cfg.tail_risk_corr_threshold + 0.10  # 少量: 0.30→0.40
+        else:
+            threshold = cfg.tail_risk_corr_threshold          # 充足: 0.30
+
+        sector_df = pd.DataFrame(sector_returns)
+
+        # 计算板块间滚动平均相关性
+        sectors = list(sector_df.columns)
+        corr_sum = None
+        n_pairs = 0
+        for i in range(len(sectors)):
+            for j in range(i + 1, len(sectors)):
+                c = sector_df[sectors[i]].rolling(
+                    cfg.tail_risk_corr_window, min_periods=20
+                ).corr(sector_df[sectors[j]])
+                corr_sum = c if corr_sum is None else corr_sum.add(c, fill_value=0)
+                n_pairs += 1
+
+        if corr_sum is None or n_pairs == 0:
+            return weights
+
+        avg_sector_corr = corr_sum / n_pairs
+
+        # 板块相关性超过阈值 → 降仓
+        scale = pd.Series(1.0, index=weights.index)
+        high_corr = avg_sector_corr > threshold
+        scale[high_corr] = cfg.tail_risk_scale
+
+        return weights.mul(scale, axis=0)
+
     def _signal_to_lots(self, signals: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
-        """组合层: vol_target 权重 × 波动率过滤系数 → 手数."""
+        """组合层: vol_target × 波动率过滤 × 尾部风险过滤 → 手数."""
         weights = vol_target_positions(
             signals, self._price_panel, target_vol=cfg.target_vol,
             vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,
         )
         if self._filter is not None:
             weights = weights * self._filter.coefficients(self._price_panel)
+        # 尾部风险保护: 高相关性时全局降仓
+        weights = self._tail_risk_filter(weights)
         return self._weights_to_lots(weights, cfg)
 
     def _weights_to_lots(self, weights: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
@@ -1147,7 +1258,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         return combo
 
     def _signals(self) -> pd.DataFrame:
-        """组合方向 (-1/0/+1), 可选动量过滤."""
+        """组合方向 (-1/0/+1), 可选动量过滤 + cluster一致性过滤."""
         raw = self._signals_raw()
         cfg = self._config
         if cfg.momentum_filter_window > 0:
@@ -1157,7 +1268,10 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             raw = raw * coef
         if cfg.signal_ema_span > 0:
             raw = raw.ewm(span=cfg.signal_ema_span, min_periods=1).mean()
-        return np.sign(raw)
+        sig = np.sign(raw)
+        # cluster内信号不一致 → 取消
+        sig = self._filter_conflicting_signals(sig)
+        return sig
 
     def _leverage_cap_coef(self, sig: pd.DataFrame) -> pd.Series:
         """两遍法计算杠杆硬限系数 (T,).
