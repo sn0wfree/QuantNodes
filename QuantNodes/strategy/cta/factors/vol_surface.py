@@ -3,7 +3,7 @@
 利用IV曲面的定价异常生成期货交易信号:
 - Skew极端 → 预测标的价格反转
 - IV期限结构异常 → 预测波动率regime切换
-- VRP极端 → 预测均值回归
+- IV Z-Score → 波动率水平信号
 
 数据来源: greeks_cache (option_greeks.parquet) + io_iv_skew_daily.parquet
 """
@@ -15,6 +15,55 @@ import pandas as pd
 from .base import Factor
 
 
+def extract_atm_iv_from_cache(greeks_df: pd.DataFrame) -> pd.DataFrame:
+    """从greeks cache提取每日ATM IV面板 (date × product).
+
+    ATM定义: |delta|最接近0.5的合约.
+    """
+    df = greeks_df[greeks_df["valid"]].copy()
+    df["abs_delta"] = df["delta"].abs()
+    # 每天每品种选|delta|最接近0.5的
+    df["atm_rank"] = df.groupby(["trade_date", "product"])["abs_delta"].transform(
+        lambda x: (x - 0.5).abs()
+    )
+    atm = df.loc[df.groupby(["trade_date", "product"])["atm_rank"].idxmin()]
+    panel = atm.pivot_table(index="trade_date", columns="product", values="iv")
+    return panel.sort_index()
+
+
+def extract_skew_from_cache(greeks_df: pd.DataFrame) -> pd.DataFrame:
+    """从greeks cache提取每日Skew面板 (date × product).
+
+    Skew = IV(25-delta put) - IV(25-delta call)
+    """
+    df = greeks_df[greeks_df["valid"]].copy()
+    df["abs_delta"] = df["delta"].abs()
+
+    # 25-delta put: delta < 0 且 |delta| ≈ 0.25
+    puts = df[(df["option_type"] == "P") & (df["abs_delta"].between(0.15, 0.35))]
+    # 25-delta call: delta > 0 且 |delta| ≈ 0.25
+    calls = df[(df["option_type"] == "C") & (df["abs_delta"].between(0.15, 0.35))]
+
+    # 每天每品种选最接近0.25 delta的
+    if puts.empty or calls.empty:
+        return pd.DataFrame()
+
+    puts["rank"] = puts.groupby(["trade_date", "product"])["abs_delta"].transform(
+        lambda x: (x - 0.25).abs()
+    )
+    best_puts = puts.loc[puts.groupby(["trade_date", "product"])["rank"].idxmin()]
+    put_iv = best_puts.pivot_table(index="trade_date", columns="product", values="iv")
+
+    calls["rank"] = calls.groupby(["trade_date", "product"])["abs_delta"].transform(
+        lambda x: (x - 0.25).abs()
+    )
+    best_calls = calls.loc[calls.groupby(["trade_date", "product"])["rank"].idxmin()]
+    call_iv = best_calls.pivot_table(index="trade_date", columns="product", values="iv")
+
+    skew = put_iv - call_iv
+    return skew.sort_index()
+
+
 class SkewReversalFactor(Factor):
     """Skew反转因子.
 
@@ -22,8 +71,6 @@ class SkewReversalFactor(Factor):
     预测标的价格反转:
     - Skew极高 (put skew很陡): 市场过度恐惧 → 标的可能反弹 → 多头
     - Skew极低 (call skew很陡): 市场过度贪婪 → 标的可能回落 → 空头
-
-    数据来源: io_iv_skew_daily.parquet (IO期权) 或 greeks_cache
 
     参数:
         window: z-score计算窗口
@@ -40,40 +87,24 @@ class SkewReversalFactor(Factor):
         """计算skew反转信号.
 
         Args:
-            skew_df: DataFrame with columns [iv_skew, iv_atm], index=DatetimeIndex
-                     或 None (使用kwargs中的数据)
+            skew_df: DataFrame (date × product), 值为skew (put_iv - call_iv)
 
         Returns:
             DataFrame (date × product), 信号: +1 标的将涨, -1 标的将跌
         """
-        if skew_df is None:
-            # 尝试从kwargs获取
-            skew_df = kwargs.get("skew_data")
-            if skew_df is None:
-                return pd.DataFrame()
-
         if skew_df is None or skew_df.empty:
             return pd.DataFrame()
 
-        # 确保iv_skew列存在
-        if "iv_skew" not in skew_df.columns:
-            return pd.DataFrame()
-
-        skew = skew_df["iv_skew"].copy()
-        skew.index = pd.to_datetime(skew.index)
-
         # z-score
-        mean = skew.rolling(self.window, min_periods=20).mean()
-        std = skew.rolling(self.window, min_periods=20).std()
-        z = (skew - mean) / std.replace(0, np.nan)
+        mean = skew_df.rolling(self.window, min_periods=20).mean()
+        std = skew_df.rolling(self.window, min_periods=20).std()
+        z = (skew_df - mean) / std.replace(0, np.nan)
 
         # 信号: skew极高 → 市场恐惧 → 标的反弹 → +1
-        sig = pd.Series(0.0, index=z.index)
+        sig = pd.DataFrame(0.0, index=z.index, columns=z.columns)
         sig[z > self.z_threshold] = 1.0    # skew极陡 → 恐惧过度 → 多
         sig[z < -self.z_threshold] = -1.0  # skew极平 → 贪婪过度 → 空
-
-        # IO只有一个品种, 返回单列DataFrame
-        return sig.to_frame("IO")
+        return sig
 
 
 class IVRegimeFactor(Factor):
@@ -83,9 +114,7 @@ class IVRegimeFactor(Factor):
     - IV从极低位快速上升 → 波动率扩张 → 标的可能有趋势 → 跟随趋势
     - IV从极高位快速下降 → 波动率收缩 → 标的可能横盘 → 减仓
 
-    与现有IVTiming策略的区别:
-    - IVTiming: IV低→买跨式 (期权策略)
-    - IVRegime: IV变化→调整期货仓位 (CTA增强)
+    返回: 仓位乘数 (0.5-1.5), 1.0=不变
 
     参数:
         iv_lookback: IV百分位回看窗口
@@ -98,16 +127,15 @@ class IVRegimeFactor(Factor):
         self.iv_lookback = iv_lookback
         self.iv_momentum_window = iv_momentum_window
 
-    def compute(self, prices: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
+    def compute(self, iv_panel: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
         """计算IV regime信号.
 
-        需要ATM IV数据 (从greeks_cache或iv_panel获取).
-        如果没有IV数据, 返回空DataFrame.
+        Args:
+            iv_panel: DataFrame (date × product), ATM IV值
 
         Returns:
             DataFrame (date × product), 值为仓位乘数 (0.5-1.5)
         """
-        iv_panel = kwargs.get("iv_panel")
         if iv_panel is None or iv_panel.empty:
             return pd.DataFrame()
 
@@ -119,7 +147,7 @@ class IVRegimeFactor(Factor):
         # IV动量
         iv_mom = iv_panel.pct_change(self.iv_momentum_window)
 
-        # 信号: IV低+上升 → 加仓 (乘数>1), IV高+下降 → 减仓 (乘数<1)
+        # 信号: IV低+上升 → 加仓, IV高+下降 → 减仓
         signal = pd.DataFrame(1.0, index=iv_panel.index, columns=iv_panel.columns)
 
         # IV低 (百分位<30%) 且上升 → 加仓
@@ -135,3 +163,42 @@ class IVRegimeFactor(Factor):
         signal[extreme_high] = 0.5
 
         return signal
+
+
+class IVZScoreFactor(Factor):
+    """IV Z-Score因子.
+
+    IV z-score极端时预测均值回归:
+    - z > 2: IV极高 → 波动率溢价大 → 做空波动率 (卖跨式方向)
+    - z < -2: IV极低 → 波动率被低估 → 做多波动率 (买跨式方向)
+
+    对期货的影响:
+    - IV极高时: 标的可能有大幅波动, 谨慎/减仓
+    - IV极低时: 标的可能启动趋势, 跟随
+
+    参数:
+        window: z-score计算窗口
+    """
+
+    name = "iv_zscore"
+
+    def __init__(self, window: int = 60):
+        self.window = window
+
+    def compute(self, iv_panel: pd.DataFrame = None, **kwargs) -> pd.DataFrame:
+        """计算IV z-score信号.
+
+        Returns:
+            DataFrame (date × product), 信号: +1/-1/0
+        """
+        if iv_panel is None or iv_panel.empty:
+            return pd.DataFrame()
+
+        mean = iv_panel.rolling(self.window, min_periods=20).mean()
+        std = iv_panel.rolling(self.window, min_periods=20).std()
+        z = (iv_panel - mean) / std.replace(0, np.nan)
+
+        sig = pd.DataFrame(0.0, index=z.index, columns=z.columns)
+        sig[z > 2.0] = -1.0   # IV极高 → 减仓/做空波动率
+        sig[z < -2.0] = 1.0    # IV极低 → 跟随趋势
+        return sig
