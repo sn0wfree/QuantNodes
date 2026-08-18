@@ -1067,6 +1067,36 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             max_lots = (max_notional / notional_per_lot).fillna(0)
             target = target.clip(lower=-max_lots, upper=max_lots).round()
             lots[product] = target
+
+        # Cluster级别敞口上限: 同cluster品种合计 ≤ equity × max_leverage × 0.5
+        lots = self._cluster_limit(lots, cfg)
+        return lots
+
+    def _cluster_limit(self, lots: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
+        """Cluster级别敞口上限, 防止同板块高乘数品种合计敞口过大."""
+        clusters = {
+            'precious': ['AG', 'AU'],
+            'black': ['RB', 'HC', 'I', 'J', 'JM'],
+            'chemical': ['TA', 'RU', 'PP', 'MA', 'EG', 'PF'],
+        }
+        equity = cfg.initial_cash
+        max_cluster_notional = equity * 1.0
+
+        for cluster_name, products in clusters.items():
+            avail = [p for p in products if p in lots.columns and p in self._price_panel.columns]
+            if len(avail) < 2:
+                continue
+            notional = pd.DataFrame(0.0, index=lots.index, columns=lots.columns)
+            for p in avail:
+                spec = self._registry.get_or_default(p)
+                price = self._price_panel[p]
+                notional[p] = lots[p].abs() * price * spec.contract_multiplier
+            cluster_total = notional[avail].sum(axis=1)
+            exceed = cluster_total > max_cluster_notional
+            if exceed.any():
+                scale = (max_cluster_notional / cluster_total).clip(upper=1.0)
+                for p in avail:
+                    lots.loc[exceed, p] = (lots.loc[exceed, p] * scale[exceed]).round()
         return lots
 
     def load_panel(self) -> pd.DataFrame:
