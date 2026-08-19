@@ -198,6 +198,10 @@ from .mean_reversion import (
     HalfLifeFactor,
     SqueezeFactor,
 )
+from .turn_point import (
+    TurnPointBreakoutFactor,
+    FastTurnPointFactor,
+)
 
 __all__ = [
     # base
@@ -356,4 +360,7 @@ __all__ = [
     # mean reversion
     "HalfLifeFactor",
     "SqueezeFactor",
+    # turn point
+    "TurnPointBreakoutFactor",
+    "FastTurnPointFactor",
 ]

@@ -97,6 +97,7 @@ from ..factors.volatility import vol_target_positions
 from ..factors.term_structure import TermSlopeFactor, BasisConvergenceFactor, CalendarSpreadMeanReversion
 from ..factors.basis_momentum import BasisLevelFactor
 from ..factors.macro_link import DXYLinkFactor, MacroStateFactor, VIXLinkFactor
+from ..factors.turn_point import TurnPointBreakoutFactor, FastTurnPointFactor
 from ..factors.industrial_chain import (
     ChainMarginFactor, LeadLagFactor, MarginMomentumFactor, PriceRatioFactor,
 )
@@ -733,6 +734,53 @@ class VolRiskFilter:
         return coef
 
 
+class MarketRegimeFilter:
+    """市场状态过滤层: 识别震荡市并降低仓位.
+
+    检测方法:
+    1. 价格效率比 (Efficiency Ratio): 价格移动距离 / 总波动
+       - ER高 → 趋势市 (价格单向移动)
+       - ER低 → 震荡市 (价格来回波动)
+    2. 价格位置: 价格在布林带中轨附近 → 震荡市
+
+    输出: 仓位系数 (T,N) ∈ [0,1]
+    - 趋势市: 1.0 (满仓)
+    - 震荡市: 0.3-0.5 (降仓)
+    """
+
+    def __init__(
+        self,
+        er_window: int = 10,
+        er_threshold: float = 0.4,
+        chop_coef: float = 0.4,
+    ):
+        self.er_window = er_window
+        self.er_threshold = er_threshold
+        self.chop_coef = chop_coef
+
+    def coefficients(self, price_panel: pd.DataFrame) -> pd.DataFrame:
+        """返回 (T,N) 仓位系数矩阵."""
+        coef = pd.DataFrame(1.0, index=price_panel.index, columns=price_panel.columns)
+
+        for product in price_panel.columns:
+            close = price_panel[product].dropna()
+            if len(close) < self.er_window * 2:
+                continue
+
+            # 计算效率比 (Efficiency Ratio)
+            # ER = |价格变化| / 总波动
+            price_change = close.diff(self.er_window).abs()
+            total_vol = close.diff().abs().rolling(self.er_window).sum()
+            er = price_change / total_vol.replace(0, np.nan)
+
+            # ER < threshold → 震荡市 → 降仓
+            for idx in er.index:
+                if pd.notna(er.loc[idx]) and er.loc[idx] < self.er_threshold:
+                    coef.loc[idx, product] = self.chop_coef
+
+        return coef
+
+
 # ── 四个方向子策略 ─────────────────────────────────────────────────────────
 
 class TrendMomentumModuleStrategy(_ModuleStrategy):
@@ -759,6 +807,8 @@ class TrendMomentumModuleStrategy(_ModuleStrategy):
         ("new_high_low", NewHighLowFactor, "panel"),
         ("momentum_xs", MomentumXSFactor, "panel"),
         ("atr_breakout", ATRBreakoutFactor, "ohlc"),
+        ("turn_point_breakout", TurnPointBreakoutFactor, "ohlc"),
+        ("fast_turn_point", FastTurnPointFactor, "ohlc"),
         ("overnight_ret", OvernightReturnFactor, "ohlc"),
         ("intraday_ret", IntradayReturnFactor, "ohlc"),
         ("overnight_intraday_div", OvernightIntradayDivergenceFactor, "ohlc"),
@@ -947,6 +997,10 @@ class ComboConfig(ModuleConfig):
     tail_risk_corr_window: int = 60   # 相关性计算窗口
     tail_risk_corr_threshold: float = 0.30  # 高相关阈值 (自适应: 品种少时自动提高)
     tail_risk_scale: float = 0.7      # 高相关时仓位乘数 (0.7=降仓30%)
+    # 市场状态过滤 (震荡市→降仓)
+    regime_filter_enabled: bool = False  # 市场状态过滤开关
+    regime_adx_threshold: float = 20.0  # ADX阈值: <此值=震荡市
+    regime_chop_coef: float = 0.4      # 震荡市仓位系数
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
@@ -1076,7 +1130,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         return weights.mul(scale, axis=0)
 
     def _signal_to_lots(self, signals: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
-        """组合层: vol_target × 波动率过滤 × 尾部风险过滤 → 手数."""
+        """组合层: vol_target × 波动率过滤 × 尾部风险过滤 × 市场状态过滤 → 手数."""
         weights = vol_target_positions(
             signals, self._price_panel, target_vol=cfg.target_vol,
             vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,
@@ -1085,6 +1139,13 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             weights = weights * self._filter.coefficients(self._price_panel)
         # 尾部风险保护: 高相关性时全局降仓
         weights = self._tail_risk_filter(weights)
+        # 市场状态过滤: 震荡市降仓
+        if hasattr(cfg, 'regime_filter_enabled') and cfg.regime_filter_enabled:
+            regime_filter = MarketRegimeFilter(
+                er_threshold=cfg.regime_adx_threshold,
+                chop_coef=cfg.regime_chop_coef,
+            )
+            weights = weights * regime_filter.coefficients(self._price_panel)
         return self._weights_to_lots(weights, cfg)
 
     def _weights_to_lots(self, weights: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:

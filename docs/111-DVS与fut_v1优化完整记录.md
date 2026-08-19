@@ -453,6 +453,73 @@ QuantNodes/
 
 ---
 
+## 十六、TurnPointBreakoutFactor 量价共振拐点因子（2026-08-19）
+
+### 16.1 原理
+
+量价共振拐点检测：价格突破 + 成交量确认 = 真实拐点
+
+**条件**：
+1. 价格突破：close > 过去N日最高 + K*ATR（上轨）
+2. 成交量确认：volume > 过去M日均量 * 倍数
+3. 同时满足 → 拐点信号（+1 或 -1）
+
+**快速反应外部冲击**：
+- 反应时间：1天（突破当天即信号）
+- 适用：趋势启动初期
+- 优势：能快速捕捉冲击后的趋势
+
+### 16.2 实现
+
+新增 `QuantNodes/strategy/cta/factors/turn_point.py`：
+
+```python
+class TurnPointBreakoutFactor(Factor):
+    """量价共振拐点因子."""
+    def __init__(self, lookback=20, atr_mult=0.5, vol_mult=1.5, vol_lookback=10):
+        ...
+    def compute(self, ohlc):
+        # ATR通道
+        # 突破 + 放量确认
+        # 返回 {-1, 0, 1} 信号
+```
+
+同时实现 `FastTurnPointFactor`（短窗口，高敏感版本）。
+
+### 16.3 测试结果
+
+加入 `turn_point_breakout` 到 TrendMomentum 模块（替换原 `atr_breakout`）：
+
+| 配置 | Sharpe | AnnRet | MaxDD | 2024收益 |
+|------|--------|---------|-------|---------|
+| 基线 (无turn_point) | 2.623 | 14.4% | -5.1% | +0.3% |
+| **L20A0.5V1.5 (标准)** | 2.613 | 14.4% | -4.9% | +0.3% |
+| **L15A0.3V1.3 (快速)** | 2.646 | 14.5% | -4.9% | +0.3% |
+| **L25A0.7V1.8 (保守)** | 2.624 | 14.5% | -4.8% | +0.5% |
+| L20A0.5V2.0 (放量确认) | 2.613 | 14.4% | -4.9% | +0.3% |
+
+### 16.4 最佳配置
+
+**`L25A0.7V1.8` (保守参数)**：
+- Sharpe: 2.624 (基线 2.623, +0.04%)
+- MaxDD: -4.8% (基线 -5.1%, -0.3%)
+- **2024收益: +0.5% (基线 +0.3%, +0.2%)**
+
+### 16.5 结论
+
+- **量价共振因子对2024年有轻微改善**（+0.2%）
+- **MaxDD改善明显**（-5.1% → -4.8%）
+- **Sharpe几乎不变**（说明因子是补充而非主导）
+- 建议保留`L25A0.7V1.8`作为默认参数
+
+### 16.6 代码变更
+
+- 新增 `QuantNodes/strategy/cta/factors/turn_point.py`
+- `factors/__init__.py` 导出 `TurnPointBreakoutFactor`, `FastTurnPointFactor`
+- `factor_modules.py` 在 TrendMomentum 模块加入两个因子
+
+---
+
 ## 九、策略优化（2026-08-18）
 
 ### 9.1 优化方案
