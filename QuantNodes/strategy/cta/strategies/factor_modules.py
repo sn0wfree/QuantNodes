@@ -133,6 +133,9 @@ class ModuleConfig:
     tvpr_min_history: int = 252     # 组内 TV-PR 最少历史天数
     execution_lag: int = 1          # 信号执行滞后 (天): 1 = T+1 生产口径
                                     # (T 收盘算信号, T+1 收盘成交); 0 = 回测口径
+    execution_price_type: str = "close"  # 执行价格: "close" | "open"
+                                          # close: T+1收盘成交 (默认)
+                                          # open: T+1开盘成交 (更真实)
     margin_call: bool = False       # True: 保证金不足拒绝开仓 (真实保证金率)
     continuous: bool = True         # 连续信号模式: 有 raw_value 的因子用
                                     # 连续值 + 滚动 z-score, 其余保持 -1/0/1
@@ -196,7 +199,6 @@ class _ModuleStrategy:
             except Exception as e:
                 print(f"  [{product}] load failed: {e}")
         panel = pd.DataFrame(closes).sort_index().dropna(how="all")
-        # 固定品种列 (新上市品种早期无数据 → NaN 列, 回测自动跳过)
         panel = panel.reindex(columns=self._products)
         self._price_panel = panel
         self._ohlc_map = ohlcs
@@ -608,6 +610,26 @@ class _ModuleStrategy:
 
         cols = [p for p in lots.columns if p in price_panel.columns]
         prices_map = {p: price_panel[p].tolist() for p in cols}
+
+        # 执行价格: 使用实际合约价格
+        exec_prices_map = None
+        if hasattr(self, '_exec_price_panel') and self._exec_price_panel is not None:
+            exec_prices_map = {}
+            for p in cols:
+                if p in self._exec_price_panel.columns:
+                    exec_prices_map[p] = self._exec_price_panel[p].fillna(method='ffill').tolist()
+                elif p in self._ohlc_map and cfg.execution_price_type == "open":
+                    ohlc = self._ohlc_map[p]
+                    ohlc_aligned = ohlc.reindex(price_panel.index)
+                    exec_prices_map[p] = ohlc_aligned['open'].fillna(method='ffill').tolist()
+        elif cfg.execution_price_type == "open":
+            exec_prices_map = {}
+            for p in cols:
+                if p in self._ohlc_map:
+                    ohlc = self._ohlc_map[p]
+                    ohlc_aligned = ohlc.reindex(price_panel.index)
+                    exec_prices_map[p] = ohlc_aligned['open'].fillna(method='ffill').tolist()
+
         dates_list = list(price_panel.index)
         products_map = {p: p for p in prices_map}
         risk = PositionLimitRisk(products=products_map, registry=self._registry)
@@ -625,6 +647,7 @@ class _ModuleStrategy:
             ),
             registry=self._registry,
             risk=risk,
+            exec_prices=exec_prices_map,
         )
 
     def run(self) -> CtaBacktestResult:

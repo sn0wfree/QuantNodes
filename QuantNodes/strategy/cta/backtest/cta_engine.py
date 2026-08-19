@@ -69,6 +69,7 @@ def run_cta_backtest(
     risk: CtaRisk | None = None,
     option_contracts: dict[str, object] | None = None,
     option_settle: dict[str, dict[str, float]] | None = None,
+    exec_prices: dict[str, list[float]] | None = None,
 ) -> CtaBacktestResult:
     """运行 CTA 回测.
 
@@ -82,6 +83,8 @@ def run_cta_backtest(
         risk: 风控 (可选, 拦截目标持仓)
         option_contracts: {option_symbol: CtaContract} 期权合约 (place_order 传 contract)
         option_settle: {option_symbol: {date: 结算价}} 到期结算价 (内在价值)
+        exec_prices: {symbol: 执行价格序列} (可选, 默认None用prices)
+            提供时用于place_order, mark_to_market仍用prices
     """
     config = config or CtaBacktestConfig()
     registry = registry or CtaContractRegistry()
@@ -102,6 +105,11 @@ def run_cta_backtest(
 
     for i, date in enumerate(dates):
         mark_prices = {s: p[i] for s, p in prices.items() if p[i] == p[i]}
+        # 执行价格: 有exec_prices用exec_prices, 否则用mark_prices
+        if exec_prices is not None:
+            exec_mark = {s: p[i] for s, p in exec_prices.items() if p[i] == p[i]}
+        else:
+            exec_mark = mark_prices
         date_str = str(date.date())
 
         # 1. 信号 → 目标持仓
@@ -113,7 +121,7 @@ def run_cta_backtest(
 
         # 3. 执行调仓 (逐 symbol)
         for symbol, target_qty in targets.items():
-            price = mark_prices.get(symbol)
+            price = exec_mark.get(symbol)
             if price is None or price <= 0:
                 continue
             contract = None
@@ -133,7 +141,7 @@ def run_cta_backtest(
             }
             broker._expire_options(date_str, settle_prices)
 
-        # 4. 日终结算
+        # 4. 日终结算 (mark-to-market 始终用 prices)
         broker.mark_to_market(mark_prices, date_str)
         equity_hist.append(broker.equity())
         cash_hist.append(broker.cash)
