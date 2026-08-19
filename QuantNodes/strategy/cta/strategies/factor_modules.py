@@ -98,6 +98,7 @@ from ..factors.term_structure import TermSlopeFactor, BasisConvergenceFactor, Ca
 from ..factors.basis_momentum import BasisLevelFactor
 from ..factors.macro_link import DXYLinkFactor, MacroStateFactor, VIXLinkFactor
 from ..factors.turn_point import TurnPointBreakoutFactor, FastTurnPointFactor
+from ..factors.short_term_reversal import ShortTermReversalTrendFactor
 from ..factors.industrial_chain import (
     ChainMarginFactor, LeadLagFactor, MarginMomentumFactor, PriceRatioFactor,
 )
@@ -809,6 +810,7 @@ class TrendMomentumModuleStrategy(_ModuleStrategy):
         ("atr_breakout", ATRBreakoutFactor, "ohlc"),
         ("turn_point_breakout", TurnPointBreakoutFactor, "ohlc"),
         ("fast_turn_point", FastTurnPointFactor, "ohlc"),
+        ("short_term_reversal_trend", ShortTermReversalTrendFactor, "panel"),
         ("overnight_ret", OvernightReturnFactor, "ohlc"),
         ("intraday_ret", IntradayReturnFactor, "ohlc"),
         ("overnight_intraday_div", OvernightIntradayDivergenceFactor, "ohlc"),

@@ -198,6 +198,7 @@ from .mean_reversion import (
     HalfLifeFactor,
     SqueezeFactor,
 )
+from .short_term_reversal import ShortTermReversalTrendFactor
 from .turn_point import (
     TurnPointBreakoutFactor,
     FastTurnPointFactor,
@@ -363,4 +364,6 @@ __all__ = [
     # turn point
     "TurnPointBreakoutFactor",
     "FastTurnPointFactor",
+    # short term reversal
+    "ShortTermReversalTrendFactor",
 ]
