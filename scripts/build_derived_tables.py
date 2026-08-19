@@ -115,7 +115,7 @@ def get_products(con) -> list[str]:
 
 
 def build_continuous_main(con, product: str) -> int:
-    """生成单产品的主力连续面板."""
+    """生成单产品的主力连续面板 (原始拼接, 无换月平滑)."""
     table_name = f"continuous_main_{product.lower()}_daily"
 
     con.execute(f"DROP TABLE IF EXISTS {table_name}")
@@ -141,6 +141,98 @@ def build_continuous_main(con, product: str) -> int:
     return con.execute(f"SELECT count() FROM {table_name}").fetchone()[0]
 
 
+def build_smoothed_continuous(con, product: str) -> int:
+    """生成单产品的平滑连续面板 (比例平滑, 消除换月跳价).
+
+    算法: ratio adjustment (back-adjustment)
+    - 换月日: ratio = new_open / prev_close
+    - 历史价格: 乘以累积调整因子
+    - 保持收益率连续, 消除价格跳变
+    """
+    table_name = f"smoothed_{product.lower()}_daily"
+
+    # 获取原始连续合约和换月映射
+    raw_table = f"continuous_main_{product.lower()}_daily"
+
+    # 检查原始表是否存在
+    exists = con.execute(
+        f"SELECT count(*) FROM information_schema.tables "
+        f"WHERE table_name = '{raw_table}'"
+    ).fetchone()[0]
+    if not exists:
+        LOG.warning(f"  {product}: {raw_table} not found, skipping smoothed")
+        return 0
+
+    con.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+    # 使用窗口函数计算换月调整因子
+    con.execute(f"""
+        CREATE TABLE {table_name} AS
+        WITH raw AS (
+            SELECT trade_date, open, high, low, close, volume, open_interest,
+                   LAG(close) OVER (ORDER BY trade_date) as prev_close,
+                   LAG(symbol) OVER (ORDER BY trade_date) as prev_symbol
+            FROM (
+                SELECT f.trade_date, f.open, f.high, f.low, f.close,
+                       f.volume, f.open_interest, m.symbol
+                FROM v_all_futures f
+                JOIN main_contract_mapping m
+                    ON f.product = m.product
+                   AND f.trade_date = m.trade_date
+                   AND f.symbol = m.symbol
+                WHERE f.product = '{product}'
+            ) t
+        ),
+        -- 检测换月日: symbol变化
+        rolls AS (
+            SELECT trade_date,
+                   CASE WHEN prev_symbol IS NOT NULL AND symbol != prev_symbol
+                        THEN 1 ELSE 0 END as is_roll
+            FROM (
+                SELECT trade_date, symbol,
+                       LAG(symbol) OVER (ORDER BY trade_date) as prev_symbol
+                FROM (
+                    SELECT f.trade_date, m.symbol
+                    FROM v_all_futures f
+                    JOIN main_contract_mapping m
+                        ON f.product = m.product
+                       AND f.trade_date = m.trade_date
+                       AND f.symbol = m.symbol
+                    WHERE f.product = '{product}'
+                ) t
+            ) t2
+        ),
+        -- 计算调整因子: 换月日的调整比率 (back-adjustment)
+        -- ratio = new_open / prev_close
+        factors AS (
+            SELECT r.trade_date,
+                   CASE WHEN r.is_roll = 1 AND raw.prev_close > 0
+                        THEN raw.open / raw.prev_close
+                        ELSE 1.0 END as roll_factor
+            FROM rolls r
+            JOIN raw ON r.trade_date = raw.trade_date
+        ),
+        -- 累积调整因子 (从最早日期开始累积)
+        cum_factors AS (
+            SELECT trade_date,
+                   EXP(SUM(LN(roll_factor)) OVER (ORDER BY trade_date)) as cum_factor
+            FROM factors
+        )
+        SELECT raw.trade_date,
+               raw.open * cf.cum_factor as open,
+               raw.high * cf.cum_factor as high,
+               raw.low * cf.cum_factor as low,
+               raw.close * cf.cum_factor as close,
+               raw.volume,
+               raw.open_interest
+        FROM raw
+        JOIN cum_factors cf ON raw.trade_date = cf.trade_date
+        ORDER BY raw.trade_date
+    """)
+
+    return con.execute(f"SELECT count() FROM {table_name}").fetchone()[0]
+
+
 def build_all_continuous_main(con) -> int:
     """生成全部主力连续面板."""
     products = get_products(con)
@@ -160,6 +252,28 @@ def build_all_continuous_main(con) -> int:
 
     pbar.close()
     LOG.info(f"  continuous_main: {total:,} total rows across {len(products)} products")
+    return total
+
+
+def build_all_smoothed_continuous(con) -> int:
+    """生成全部平滑连续面板 (比例平滑, 消除换月跳价)."""
+    products = get_products(con)
+    LOG.info(f"Building smoothed continuous for {len(products)} products...")
+
+    total = 0
+    pbar = tqdm(products, desc="Smoothed", unit="product", ncols=100)
+    for product in pbar:
+        pbar.set_postfix_str(product, refresh=False)
+        try:
+            cnt = build_smoothed_continuous(con, product)
+            total += cnt
+            pbar.set_postfix_str(f"{product} ✓ {cnt:,}", refresh=False)
+        except Exception as e:
+            LOG.error(f"Failed {product}: {e}")
+            pbar.set_postfix_str(f"{product} ✗", refresh=False)
+
+    pbar.close()
+    LOG.info(f"  smoothed continuous: {total:,} total rows across {len(products)} products")
     return total
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -187,6 +301,9 @@ def run(only: str | None = None) -> None:
         if only is None or only == "continuous":
             build_all_continuous_main(con)
 
+        if only is None or only == "smoothed":
+            build_all_smoothed_continuous(con)
+
         elapsed = time.time() - t0
         LOG.info(f"Done in {elapsed:.1f}s ({elapsed/60:.1f}min)")
 
@@ -199,7 +316,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="DuckDB 派生表生成",
     )
     p.add_argument(
-        "--only", choices=["calendar", "mapping", "continuous"],
+        "--only", choices=["calendar", "mapping", "continuous", "smoothed"],
         help="仅生成指定表 (默认全部)",
     )
     p.add_argument(

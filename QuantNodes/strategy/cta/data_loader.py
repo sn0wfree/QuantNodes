@@ -392,7 +392,7 @@ class CtaDataLoader:
         start: str | None = None,
         end: str | None = None,
     ) -> pd.DataFrame:
-        """读主力连续面板 (单产品, 按主力映射拼接).
+        """读主力连续面板 (单产品, 按主力映射拼接, 无换月平滑).
 
         Args:
             product: 产品代码 'IF' / 'AU' / 'RB'
@@ -418,6 +418,101 @@ class CtaDataLoader:
             return con.execute(
                 f"SELECT * FROM {table_name}{where} ORDER BY trade_date"
             ).df()
+        finally:
+            con.close()
+
+    def load_smoothed_continuous(
+        self,
+        product: str,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> pd.DataFrame:
+        """读平滑连续面板 (比例平滑, 消除换月跳价, 用于信号计算).
+
+        Args:
+            product: 产品代码 'IF' / 'AU' / 'RB'
+            start / end: 'YYYY-MM-DD', 可选
+
+        Returns:
+            pd.DataFrame, 列: trade_date, open, high, low, close, volume, open_interest
+        """
+        table_name = f"smoothed_{product.lower()}_daily"
+        where = self._date_filter(start, end)
+        con = self._connect()
+        try:
+            exists = con.execute(
+                f"SELECT count(*) FROM information_schema.tables "
+                f"WHERE table_name = '{table_name}'"
+            ).fetchone()[0]
+            if not exists:
+                # 回退到原始连续合约
+                return self.load_continuous_main(product, start, end)
+            return con.execute(
+                f"SELECT * FROM {table_name}{where} ORDER BY trade_date"
+            ).df()
+        finally:
+            con.close()
+
+    def load_main_contract_price(
+        self,
+        product: str,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> pd.DataFrame:
+        """读主力合约实际价格 (用于执行和结算).
+
+        从 main_contract_mapping 获取每日主力合约 symbol,
+        然后从实际合约 OHLC 中提取价格.
+
+        Args:
+            product: 产品代码 'IF' / 'AU' / 'RB'
+            start / end: 'YYYY-MM-DD', 可选
+
+        Returns:
+            pd.DataFrame, 列: trade_date, open, high, low, close
+        """
+        where = self._date_filter(start, end)
+        con = self._connect()
+        try:
+            # 获取主力合约映射
+            mapping = con.execute(f"""
+                SELECT trade_date, symbol
+                FROM main_contract_mapping
+                WHERE product = '{product}' {where.replace('WHERE', 'AND')}
+                ORDER BY trade_date
+            """).df()
+
+            if mapping.empty:
+                return pd.DataFrame(columns=['trade_date', 'open', 'high', 'low', 'close'])
+
+            # 尝试不同交易所前缀
+            table_name = None
+            for exchange in ['shfe', 'dce', 'czce', 'ine', 'cffex', 'gfex']:
+                candidate = f"{exchange}_{product.lower()}_futures_daily"
+                exists = con.execute(
+                    f"SELECT count(*) FROM information_schema.tables "
+                    f"WHERE table_name = '{candidate}'"
+                ).fetchone()[0]
+                if exists:
+                    table_name = candidate
+                    break
+
+            if not exists:
+                return pd.DataFrame(columns=['trade_date', 'open', 'high', 'low', 'close'])
+
+            # 获取实际合约OHLC
+            futures = con.execute(f"""
+                SELECT trade_date, symbol, open, high, low, close
+                FROM {table_name}
+                WHERE product = '{product}' {where.replace('WHERE', 'AND')}
+            """).df()
+
+            # 合并映射和实际价格
+            result = mapping.merge(futures, on=['trade_date', 'symbol'], how='left')
+            result = result[['trade_date', 'open', 'high', 'low', 'close']]
+            result = result.sort_values('trade_date')
+
+            return result
         finally:
             con.close()
 
