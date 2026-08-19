@@ -801,3 +801,105 @@ GV裸卖OTM put策略在当前参数下**不可行**：
 - MaxDD仅-3.7%，Calmar 4.12
 - 年化交易成本1.85%（可接受）
 - 代码配置：`min_position_change=0.30`, `position_ema_alpha=0.15`
+
+---
+
+## 十五、连续合约换月问题与逐步换月方案（2026-08-19）
+
+### 15.1 问题发现
+
+连续合约（continuous_main）存在**换月跳价**问题：
+
+| 品种 | 换月次数 | 平均跳幅 | 最大跳幅 | >3%次数 |
+|------|---------|---------|---------|---------|
+| RB | 25 | 3.17% | 8.64% | 12 |
+| I | 25 | 6.69% | 13.89% | 18 |
+| M | 25 | 4.84% | 14.46% | 14 |
+| RU | 25 | 4.38% | 21.21% | 9 |
+
+**影响**：
+- 换月日仅占17%交易日，但贡献大量方差
+- 对HV估计影响1-12%
+- 策略收益可能包含换月跳价的虚假alpha
+
+### 15.2 方案C失败原因
+
+尝试使用back-adjusted连续合约做信号计算 + actual contract prices做仓位计算：
+
+| 用途 | 方案C (错误) | 正确方案 |
+|------|-------------|---------|
+| 信号计算 | ✅ back-adjusted | ✅ back-adjusted |
+| **仓位计算** | ⚠️ **actual prices** | ✅ **back-adjusted** |
+| 执行价格 | ✅ actual | ✅ actual |
+
+**失败原因**：back-adjusted价格水平与actual价格差异45-71%，导致仓位计算错误（MaxDD从-3.7%恶化到-23.1%）。
+
+### 15.3 正确方案：逐步换月 + back-adjusted
+
+| 用途 | 数据 | 说明 |
+|------|------|------|
+| 信号计算 | back-adjusted连续合约 | 收益率连续，无跳价 |
+| 波动率计算 | back-adjusted连续合约 | HV准确 |
+| **仓位计算** | **back-adjusted连续合约** | **权重正确** |
+| 执行价格 | 实际合约价格 | 真实执行 |
+| 换月成本 | 显式计算 | 价差 + 滑点 |
+
+**关键区别**：信号、波动率、仓位**都用back-adjusted**，只有执行用actual。
+
+### 15.4 逐步换月（Early Gradual Rollover）
+
+**原理**：在OI交叉前就开始逐步换月，避免价格跳变。
+
+```
+换月窗口（5天）:
+T-2: 100% 旧 + 0% 新
+T-1: 80% 旧 + 20% 新
+T:   60% 旧 + 40% 新
+T+1: 40% 旧 + 60% 新
+T+2: 20% 旧 + 80% 新
+T+3: 0% 旧 + 100% 新
+```
+
+**混合价格**：
+```
+blended_close[t] = w_old[t] * old_close[t] + w_new[t] * new_close[t]
+```
+
+### 15.5 实现架构
+
+```
+Layer 1: OI交叉检测
+    v_all_futures → oi_crossover_daily表
+    检测条件: next_oi / main_oi > 0.8
+
+Layer 2: 逐步混合构建
+    交叉检测 + 新旧合约价格 → gradual_{product}_daily表
+    混合算法: 线性插值 + back-adjustment
+
+Layer 3: 回测集成
+    信号/波动率/仓位 → gradual连续合约
+    执行 → 实际合约价格
+    换月成本 → 显式记录
+```
+
+### 15.6 关键参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| crossover_threshold | 0.8 | OI比率阈值，触发换月窗口 |
+| roll_window | 5 | 换月过渡天数 |
+
+### 15.7 预期效果
+
+- 消除换月跳价对信号的影响
+- 仓位计算与信号一致（都用back-adjusted）
+- 执行价格真实（用actual）
+- 回测结果更可靠
+
+### 15.8 待实施
+
+- [ ] 构建oi_crossover_daily表
+- [ ] 实现build_gradual_rollover函数
+- [ ] 新增load_gradual_continuous方法
+- [ ] 修改factor_modules.py使用gradual连续合约
+- [ ] 测试验证
