@@ -453,6 +453,38 @@ class CtaDataLoader:
         finally:
             con.close()
 
+    def load_gradual_continuous(
+        self,
+        product: str,
+        start: str | None = None,
+        end: str | None = None,
+    ) -> pd.DataFrame:
+        """读逐步换月连续面板 (back-adjusted + 逐步混合, 用于信号/仓位计算).
+
+        Args:
+            product: 产品代码 'IF' / 'AU' / 'RB'
+            start / end: 'YYYY-MM-DD', 可选
+
+        Returns:
+            pd.DataFrame, 列: trade_date, open, high, low, close
+        """
+        table_name = f"gradual_{product.lower()}_daily"
+        where = self._date_filter(start, end)
+        con = self._connect()
+        try:
+            exists = con.execute(
+                f"SELECT count(*) FROM information_schema.tables "
+                f"WHERE table_name = '{table_name}'"
+            ).fetchone()[0]
+            if not exists:
+                # 回退到平滑连续合约
+                return self.load_smoothed_continuous(product, start, end)
+            return con.execute(
+                f"SELECT * FROM {table_name}{where} ORDER BY trade_date"
+            ).df()
+        finally:
+            con.close()
+
     def load_main_contract_price(
         self,
         product: str,

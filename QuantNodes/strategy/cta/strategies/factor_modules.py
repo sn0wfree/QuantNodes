@@ -181,11 +181,19 @@ class _ModuleStrategy:
     # ── 数据 ────────────────────────────────────────────────────────────
 
     def load_panel(self) -> pd.DataFrame:
-        """加载全部产品主力连续 → close/volume/OI 面板 + OHLC 映射."""
+        """加载全部产品主力连续 → close/volume/OI 面板 + OHLC 映射.
+
+        使用逐步换月连续合约 (back-adjusted + gradual rollover):
+        - 信号计算: 逐步换月连续合约 (消除换月跳价)
+        - 波动率计算: 逐步换月连续合约 (HV准确)
+        - 仓位计算: 逐步换月连续合约 (权重正确)
+        - 执行价格: 实际合约价格 (在run_with_lots中处理)
+        """
         closes, ohlcs, vols, ois = {}, {}, {}, {}
         for product in self._products:
             try:
-                df = self._dl.load_continuous_main(
+                # 使用逐步换月连续合约 (back-adjusted)
+                df = self._dl.load_gradual_continuous(
                     product, start=self._start, end=self._end,
                 )
                 if df is None or df.empty:
@@ -194,8 +202,15 @@ class _ModuleStrategy:
                 df = df.set_index("trade_date").sort_index()
                 closes[product] = df["close"]
                 ohlcs[product] = df[["open", "high", "low", "close"]]
-                vols[product] = df["volume"]
-                ois[product] = df["open_interest"]
+                # 从原始连续合约加载volume和OI
+                raw_df = self._dl.load_continuous_main(
+                    product, start=self._start, end=self._end,
+                )
+                if raw_df is not None and not raw_df.empty:
+                    raw_df["trade_date"] = pd.to_datetime(raw_df["trade_date"])
+                    raw_df = raw_df.set_index("trade_date").sort_index()
+                    vols[product] = raw_df["volume"]
+                    ois[product] = raw_df["open_interest"]
             except Exception as e:
                 print(f"  [{product}] load failed: {e}")
         panel = pd.DataFrame(closes).sort_index().dropna(how="all")
