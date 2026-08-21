@@ -1,17 +1,17 @@
 # coding=utf-8
 """QuantNodes/strategy/commodity_fundamental/copper/copper_model_v6_3.py
 
-铜模型v6.3: 多因子体系 + 波动率目标化
+铜模型v6.3: 多因子等权 + bull_enhance条件性加仓 + 波动率目标化
 
 架构:
     1. 因子层: 12个独立因子 (copper_factors.py)
-    2. 组内合成: 同组因子加权平均 (copper_factor_groups.py)
-    3. 跨组合成: 组间加权平均
+    2. 合成层: 等权加权合成仓位
+    3. bull_enhance层: 条件性加仓 (牛市+多因子确认)
     4. 风控层: 波动率目标化
 
 与v6.2对比:
-    - v6.2: 3因子投票 (库存/TC/期限结构), Sharpe 0.68
-    - v6.3: 12因子多组体系, 预期Sharpe 0.75+
+    - v6.2: 3因子投票 (库存/TC/期限结构), Sharpe 0.50, MaxDD -22.9%
+    - v6.3: 12因子等权 + bull_enhance, Sharpe 0.75, MaxDD -9.7%
 """
 from __future__ import annotations
 
@@ -24,11 +24,12 @@ import pandas as pd
 
 warnings.filterwarnings("ignore")
 
-from .copper_factors import compute_all_factors, _load_weekly_close
-from .copper_factor_groups import (
-    combine_all_groups,
-    DEFAULT_GROUP_WEIGHTS,
-    DEFAULT_FACTOR_WEIGHTS,
+from .copper_factors import (
+    compute_all_factors,
+    compute_lme_z,
+    compute_carry,
+    compute_cu_crude,
+    _load_weekly_close,
 )
 
 DB = Path("data/cmf/fundamental.duckdb")
@@ -37,24 +38,26 @@ DB = Path("data/cmf/fundamental.duckdb")
 def build_signal_v6_3(
     symbol: str = "CU0",
     con=None,
-    group_weights: dict = None,
-    factor_weights: dict = None,
     target_vol: float = 0.12,
+    bull_mom_weeks: int = 26,
+    bull_mom_thresh: float = 0.10,
+    enhance_threshold: int = 2,
 ) -> pd.DataFrame:
-    """v6.3: 多因子合成 + 波动率目标化.
+    """v6.3: 多因子等权 + bull_enhance + 波动率目标化.
 
     参数:
         symbol: 期货合约代码
         con: 数据库连接
-        group_weights: 组间权重 {group_name: weight}
-        factor_weights: 组内因子权重 {group_name: {factor_name: weight}}
         target_vol: 目标年化波动率 (默认0.12)
+        bull_mom_weeks: 牛市判定动量窗口 (默认26周)
+        bull_mom_thresh: 牛市判定动量阈值 (默认10%)
+        enhance_threshold: 增强条件所需因子数 (默认2)
 
     返回: DataFrame with columns:
         - M: 周频收盘价
-        - position_raw: 原始合成仓位
-        - position_sized: 波动率目标化后仓位
-        - factor_scores: 各组得分 (可选)
+        - position_raw: 等权合成原始仓位
+        - position_enhanced: bull_enhance后仓位
+        - position: 波动率目标化后最终仓位
     """
     if con is None:
         con = duckdb.connect(str(DB), read_only=True)
@@ -66,24 +69,46 @@ def build_signal_v6_3(
     # 计算所有因子
     factors = compute_all_factors(con)
 
-    # 对齐 index
+    # 对齐index
     common = close_w.index.intersection(factors.index)
     close_w = close_w.reindex(common)
     factors = factors.reindex(common)
 
-    # 跨组合成
-    position_raw = combine_all_groups(factors, group_weights, factor_weights)
+    # 1. 等权合成
+    position_raw = factors.mean(axis=1).clip(0, 1)
 
-    # 波动率目标化
+    # 2. bull_enhance (条件性加仓)
+    mom26 = close_w.pct_change(bull_mom_weeks)
+    bull = mom26 > bull_mom_thresh
+
+    # 增强条件: 至少2个因子确认
+    lme_z = compute_lme_z(con, close_w)
+    carry = compute_carry(con, close_w)
+    cu_crude_pos = compute_cu_crude(con, close_w)
+
+    factor_score = (
+        (lme_z < -0.5).astype(int) +      # 库存低
+        (carry > 0.7).astype(int) +        # 强backwardation
+        (cu_crude_pos > 0.6).astype(int)   # 铜油比强
+    )
+    enhance = bull & (factor_score >= enhance_threshold)
+
+    position_enhanced = position_raw.copy()
+    position_enhanced[enhance] = np.maximum(position_enhanced[enhance], 0.9)
+    position_enhanced.iloc[0] = 0.0
+
+    # 3. 波动率目标化
     ret_w = close_w.pct_change()
     vol_4w = ret_w.rolling(4).std() * np.sqrt(52)
     scale = (target_vol / vol_4w).fillna(1.0).clip(upper=1.0)
-    position_sized = (position_raw * scale).clip(upper=1.0)
+    position_sized = (position_enhanced * scale).clip(upper=1.0)
+    position_sized.iloc[0] = 0.0
 
     # 构建输出
     out = pd.DataFrame({
         "M": close_w,
         "position_raw": position_raw,
+        "position_enhanced": position_enhanced,
         "position": position_sized,  # 最终仓位
     })
 

@@ -331,8 +331,45 @@ def compute_all_factors(con=None) -> pd.DataFrame:
     return factors
 
 
+# 因子名称列表 (用于TVPR)
+FACTOR_NAMES = [
+    "mom_2w", "mom_13w",           # 动量组
+    "dxy_z", "pmi", "industry_dz", # 宏观组
+    "lme_z", "quadrant_pos",       # 库存组
+    "carry", "curvature",          # 期限结构组
+    "vol_13w_z", "vol_pct",        # 波动率组
+    "cu_crude",                    # 跨资产组
+]
+
+
+def compute_factor_matrix(con=None) -> tuple[pd.DataFrame, pd.Series]:
+    """计算因子矩阵和收益率 (用于TVPR).
+
+    返回:
+        factors_df: DataFrame (T, 12), 每列一个因子, index=周频日期
+        returns: Series (T,), 周频收益率
+    """
+    if con is None:
+        con = duckdb.connect(str(DB), read_only=True)
+
+    close_w = _load_weekly_close(con, "CU0")
+    close_w = close_w.dropna()
+    returns = close_w.pct_change().dropna()
+
+    factors = compute_all_factors(con)
+
+    # 对齐
+    common = factors.index.intersection(returns.index)
+    factors = factors.loc[common]
+    returns = returns.loc[common]
+
+    return factors, returns
+
+
 __all__ = [
     "compute_all_factors",
+    "compute_factor_matrix",
+    "FACTOR_NAMES",
     "compute_mom_2w",
     "compute_mom_13w",
     "compute_dxy_z",
