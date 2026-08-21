@@ -1,0 +1,20 @@
+factor,status,n,start,end,err
+铜.SHFE库存,FAIL: TypeError,0,,,futures_inventory_em() got an unexpected keyword argument 'exchange'
+铜.SHFE库存_v2,FAIL: TypeError,0,,,futures_inventory_99() got an unexpected keyword argument 'exchange'
+铜.LME库存,empty,0,,,
+铜.COMEX库存,empty,0,,,
+铜.洋山溢价,empty,0,,,
+原油.EIA美国商业库存_周,empty,0,,,
+原油.EIA_总入口,FAIL: AttributeError,0,,,module 'akshare' has no attribute 'energy_oil_eia'
+原油.炼厂开工率,empty,0,,,
+原油.钻机数,empty,0,,,
+原油.INE-SC主力合约,OK,2039,2018-03-26,2026-08-19,
+豆粕.国内库存,FAIL: TypeError,0,,,futures_inventory_em() got an unexpected keyword argument 'exchange'
+豆粕.压榨利润_华东,empty,0,,,
+豆粕.压榨利润_dce_m,empty,0,,,
+豆粕.生猪养殖利润_自繁,empty,0,,,
+豆粕.生猪养殖利润_总,empty,0,,,
+宏观.DXY美元指数,FAIL: AttributeError,0,,,module 'akshare' has no attribute 'fx_spot_us_dxy'
+宏观.美国10Y TIPS_实际利率,FAIL: AttributeError,0,,,module 'akshare' has no attribute 'macro_usa_tips'
+宏观.美国CPI,OK,669,1970-01-01,2025-09-11,
+宏观.OVX_原油波动率,non-df (list),0,,,

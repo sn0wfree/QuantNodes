@@ -1,0 +1,52 @@
+prefix,name,status,sig
+futures_inventory,futures_inventory_99,exists,(symbol: str = '豆一') -> pandas.core.frame.DataFrame
+futures_inventory,futures_inventory_em,exists,(symbol: str = 'a') -> pandas.core.frame.DataFrame
+futures_comex,futures_comex_inventory,exists,(symbol: str = '黄金') -> pandas.core.frame.DataFrame
+futures_foreign,futures_foreign_commodity_realtime,exists,"(symbol: Union[str, List[str]]) -> pandas.core.frame.DataFrame"
+futures_foreign,futures_foreign_commodity_subscribe_exchange_symbol,exists,() -> list
+futures_foreign,futures_foreign_detail,exists,(symbol: str = 'ZSD') -> pandas.core.frame.DataFrame
+futures_foreign,futures_foreign_hist,exists,(symbol: str = 'ZSD') -> pandas.core.frame.DataFrame
+futures_spot,futures_spot_price,exists,"(date: str = '20240430', vars_list: list = ['IF', 'IC', 'IM', 'IH', 'T', 'TF', '"
+futures_spot,futures_spot_price_daily,exists,"(start_day: str = '20210201', end_day: str = '20210208', vars_list: list = ['IF'"
+futures_spot,futures_spot_price_previous,exists,(date: str = '20240430') -> pandas.core.frame.DataFrame
+futures_spot,futures_spot_stock,exists,(symbol: str = '能源') -> pandas.core.frame.DataFrame
+futures_spot,futures_spot_sys,exists,"(symbol: str = '铜', indicator: str = '市场价格') -> pandas.core.frame.DataFrame"
+energy_,energy_carbon_bj,exists,() -> pandas.core.frame.DataFrame
+energy_,energy_carbon_domestic,exists,(symbol: str = '湖北') -> pandas.core.frame.DataFrame
+energy_,energy_carbon_eu,exists,() -> pandas.core.frame.DataFrame
+energy_,energy_carbon_gz,exists,() -> pandas.core.frame.DataFrame
+energy_,energy_carbon_hb,exists,() -> pandas.core.frame.DataFrame
+energy_,energy_carbon_sz,exists,() -> pandas.core.frame.DataFrame
+energy_,energy_oil_detail,exists,(date: str = '20220517') -> pandas.core.frame.DataFrame
+energy_,energy_oil_hist,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_adp_employment,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_api_crude_stock,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_building_permits,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_business_inventories,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_cb_consumer_confidence,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_cftc_c_holding,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_cftc_merchant_currency_holding,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_cftc_merchant_goods_holding,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_cftc_nc_holding,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_cme_merchant_goods_holding,exists,()
+macro_usa,macro_usa_core_cpi_monthly,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_core_pce_price,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_core_ppi,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_cpi_monthly,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_cpi_yoy,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_crude_inner,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_current_account,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_durable_goods_orders,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_eia_crude_rate,exists,() -> pandas.core.frame.DataFrame
+macro_usa,macro_usa_exist_home_sales,exists,() -> pandas.core.frame.DataFrame
+fx_,fx_c_swap_cm,exists,()
+fx_,fx_pair_quote,exists,() -> pandas.core.frame.DataFrame
+fx_,fx_quote_baidu,exists,(symbol: str = '人民币') -> pandas.core.frame.DataFrame
+fx_,fx_spot_quote,exists,() -> pandas.core.frame.DataFrame
+fx_,fx_swap_quote,exists,() -> pandas.core.frame.DataFrame
+futures_dce_,futures_dce_position_rank,exists,"(date: str = '20160919', vars_list=['IF', 'IC', 'IM', 'IH', 'T', 'TF', 'TS', 'TL"
+futures_dce_,futures_dce_position_rank_other,exists,(date: str = '20160104')
+futures_shfe_,futures_shfe_warehouse_receipt,exists,(date: str = '20200702') -> dict
+futures_main_,futures_main_sina,exists,"(symbol: str = 'V0', start_date: str = '19900101', end_date: str = '22220101') -"
+futures_global_,futures_global_hist_em,exists,(symbol: str = 'HG00Y') -> pandas.core.frame.DataFrame
+futures_global_,futures_global_spot_em,exists,() -> pandas.core.frame.DataFrame

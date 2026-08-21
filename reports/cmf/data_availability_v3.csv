@@ -1,0 +1,19 @@
+factor,status,args,n,start,end,label,err
+futures_inventory_em,OK,{'symbol': 'cu'},72,2026-05-11,2026-08-19,铜.SHFE库存(cu),
+futures_inventory_em,FAIL:ValueError,{'symbol': 'CU'},0,,,铜.SHFE库存(CU),"请输入正确的 symbol, 可选项为: {'聚丙烯': 'PP', '中证500': 'IC', '沪铜': 'CU', '塑料': 'L', '30年期国债期货': 'TL', '国际铜': 'b"
+futures_inventory_99,FAIL:JSONDecodeError,{'symbol': 'cu'},0,,,铜.DCE库存(cu),Expecting value: line 1 column 1 (char 0)
+futures_inventory_99,FAIL:ValueError,{'symbol': 'CU'},0,,,铜.DCE库存(CU),未找到品种 CU 对应的编号
+futures_comex_inventory,FAIL:KeyError,{'symbol': '铜'},0,,,铜.COMEX库存,'铜'
+futures_global_spot_em,OK,{},620,,,全球商品实时价,
+futures_spot_sys,FAIL:AttributeError,{'symbol': '铜'},0,,,铜.现货,'NoneType' object has no attribute 'find_all'
+futures_main_sina,OK,{'symbol': 'SC0'},2039,2018-03-26,2026-08-19,原油.SC主力,
+futures_main_sina,FAIL:ValueError,{'symbol': 'SC'},0,,,原油.SC主连,Expected object or value
+energy_oil_hist,OK,{},327,2000-06-06,2026-08-15,原油.EIA日度,
+energy_oil_detail,FAIL:TypeError,{'date': '20240101'},0,,,原油.EIA明细,'NoneType' object is not subscriptable
+futures_inventory_em,OK,{'symbol': 'm'},72,2026-05-11,2026-08-19,豆粕.DCE库存(m),
+futures_inventory_em,FAIL:ValueError,{'symbol': 'M'},0,,,豆粕.DCE库存(M),"请输入正确的 symbol, 可选项为: {'聚丙烯': 'PP', '中证500': 'IC', '沪铜': 'CU', '塑料': 'L', '30年期国债期货': 'TL', '国际铜': 'b"
+futures_inventory_99,FAIL:JSONDecodeError,{'symbol': 'm'},0,,,豆粕.99库存(m),Expecting value: line 1 column 1 (char 0)
+futures_main_sina,OK,{'symbol': 'M0'},5264,2005-01-04,2026-08-19,豆粕.M主力,
+macro_usa_adp_employment,OK,{},293,2001-06-01,2025-09-04,宏观.ADP就业,
+fx_spot_quote,OK,{},25,,,宏观.FX现汇,
+fx_c_swap_cm,FAIL:AttributeError,{},0,,,宏观.FX掉期,module 'ssl' has no attribute 'OP_LEGACY_SERVER_CONNECT'
