@@ -378,10 +378,15 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 - state_mom_curv2: 年化5.4%, Sharpe 0.87, MaxDD **-8.5%** — 曲率增强 (优化后)
 - state_mom_inv: 年化3.7%, Sharpe 0.62, MaxDD -10.7% — 库存增强, 风控优先
 
-**carry参数优化** (2026-08-24):
+**carry参数优化** (2026-08-24, 网格搜索125种组合):
 - 原参数: z_window=52, mom_window=13, min_duration=4
 - 优化后: z_window=26, mom_window=4, min_duration=6
 - 提升: Sharpe 0.59→0.87 (+0.28), MaxDD -10.5%→-8.5% (+2.0%)
+
+**carry无前视回测** (expanding window, 无前视偏差):
+- 有前视 (固定参数): 年化5.8%, Sharpe 0.95, MaxDD -8.0%
+- 无前视 (expanding window): 年化6.8%, Sharpe **1.02**, MaxDD **-6.2%**
+- 无前视更优: expanding window自然适应市场变化
 
 **推荐组合** (2026-08-24):
 - v6.2=50%+carry=50%: 年化6.0%, Sharpe 0.87, MaxDD -8.7%
@@ -393,9 +398,12 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 |---|---|
 | `copper/copper_model_v6.py` | v6主模型 + apply_bull_enhance(含波动率目标化) |
 | `copper/copper_carry.py` | carry独立子策略 (state_mom/curv2/inv变体) |
+| `copper/copper_carry_model.py` | CarryModel类 (推荐使用, 含无前视回测) |
 | `scripts/cmf/10_copper_evaluation.py` | 全景评估 (含v6.1/v6.2) |
 | `scripts/cmf/12_copper_alpha_probe.py` | 因子探针v1 (B1-B4) |
 | `scripts/cmf/13_copper_alpha_probe_v2.py` | 因子探针v2 (跨品种/库存/技术/波动率) |
+| `scripts/cmf/14_carry_param_optimization.py` | carry参数网格搜索 |
+| `scripts/cmf/15_carry_rolling_backtest.py` | carry无前视回测 |
 | `research/commodity_carry_strategy_research.md` | 业界carry策略调研 |
 
 ## 十、下一步方向 (2026-08-21)
