@@ -262,18 +262,13 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 
 | 策略 | 年化% | 波动% | Sharpe | MaxDD% | 胜率% | 均仓% | 年换手 | 定位 |
 |---|---|---|---|---|---|---|---|---|
-| v5 | 5.2 | 9.7 | 0.53 | -19.6 | 53.5 | 58 | 9.1 | 归档 |
-| v6 | 7.3 | 10.4 | 0.70 | -18.6 | 53.7 | 64 | 5.1 | 基线 |
-| **v6.1** | **7.5** | **11.0** | **0.67** | **-19.4** | **53.7** | **68** | **4.8** | **进攻型** |
-| **v6.2 (修复后)** | **5.0** | **9.8** | **0.51** | **-25.5** | **51.2** | **56** | **6.4** | **风险最优** |
-| v4 | 8.0 | 11.1 | 0.71 | -20.4 | 52.3 | 64 | 1.9 | v6组件 |
-| carry(state_mom) | 4.7 | 7.8 | 0.62 | -12.7 | 53.5 | 25 | 3.7 | 避险型 |
-| carry(state_mom_curv2) | 5.4 | 6.1 | 0.87 | -8.5 | 60.5 | 29 | 3.7 | 风控增强 |
-| carry(state_mom_inv) | 3.7 | 7.2 | 0.62 | -10.7 | 53.5 | 25 | 3.7 | 库存增强 |
-| carry (无前视) | 6.8 | 6.5 | 1.02 | -6.2 | 60.5 | 29 | 3.7 | 避险型 |
-| **v6.2+carry 50/50** | **6.3** | **6.7** | **0.93** | **-8.7** | **57.0** | **43** | **5.0** | **推荐组合** |
-| pipeline_v3 | 6.4 | 11.0 | 0.60 | -18.3 | 53.0 | 57 | 9.7 | 管道 |
-| buyhold | 8.1 | 16.0 | 0.50 | -29.0 | 53.7 | 100 | 0.0 | 基准 |
+| **v6.2** | **5.0** | **9.8** | **0.54** | **-25.5** | **51.2** | **56** | **6.4** | **主策略** |
+| carry(state_mom_curv2) | 5.4 | 6.1 | 0.87 | -8.5 | 60.5 | 29 | 3.7 | 避险型 |
+| carry(无前视) | 6.8 | 6.5 | 1.02 | -6.2 | 60.5 | 29 | 3.7 | 避险型 |
+| 库存动量v2 | 9.6 | 12.0 | 0.80 | -20.2 | — | — | — | 进攻型 |
+| **库存动量v2+ATR** | **11.0** | **11.5** | **0.96** | **-14.0** | — | — | — | **进攻型** |
+| **v6.2=50%+carry=30%+inv_atr=20%** | **8.4** | **8.0** | **1.05** | **-10.7** | — | — | — | **推荐组合** |
+| buyhold | 9.4 | 16.0 | 0.25 | -28.7 | — | 100 | 0.0 | 基准 |
 
 ### 9.2 分年收益%
 
@@ -389,9 +384,22 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 - 无前视 (expanding window): 年化6.8%, Sharpe **1.02**, MaxDD **-6.2%**
 - 无前视更优: expanding window自然适应市场变化
 
-**推荐组合** (2026-08-24, 无前视):
-- v6.2=50%+carry=50%: 年化6.3%, Sharpe 0.93, MaxDD -8.7%
-- IS优化参数: threshold=3, bull_mom_weeks=13
+**推荐组合** (2026-08-24, 最终配置):
+- v6.2=50%+carry=30%+库存动量v2(ATR)=20%: 年化8.4%, Sharpe **1.05**, MaxDD -10.7%
+- v6.2=60%+carry=20%+库存动量v2(ATR)=20%: 年化8.7%, Sharpe 1.03, MaxDD -11.2%
+
+**三子策略配置**:
+
+| 子策略 | 权重 | 年化 | Sharpe | MaxDD | 作用 |
+|---|---|---|---|---|---|
+| v6.2 | 50% | 8.7% | 0.94 | -13.0% | 主策略 |
+| carry | 30% | 5.4% | 0.84 | -8.5% | 避险 |
+| 库存动量v2+ATR | 20% | 11.0% | 0.96 | -14.0% | 进攻 |
+
+**子策略参数**:
+- v6.2: threshold=3, bull_mom_weeks=13, target_vol=0.12
+- carry: z_window=26, mom_window=4, min_duration=6, variant=state_mom_curv2
+- 库存动量v2: change_window=4, confirm_threshold=2, stop_mult=2.0, stop_window=20
 
 ### 9.8 前视偏差与过拟合审计 (2026-08-24)
 
@@ -418,13 +426,17 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 | `copper/copper_v6_model.py` | V6Model类 (推荐使用, 支持IS/OOS分离优化) |
 | `copper/copper_carry.py` | carry独立子策略 (state_mom/curv2/inv变体) |
 | `copper/copper_carry_model.py` | CarryModel类 (推荐使用, 含无前视回测) |
+| `copper/copper_inventory_momentum.py` | 库存动量v2 (三因子确认+ATR止损) |
+| `copper/copper_daily_stop.py` | 日度ATR追踪止损机制 |
 | `copper/copper_model_v6_3.py` | v6.3多因子体系 (实验) |
-| `scripts/cmf/10_copper_evaluation.py` | 全景评估 (含v6.1/v6.2) |
+| `copper/copper_regime_detector.py` | 市场状态识别 (ADX<20震荡市) |
 | `scripts/cmf/14_carry_param_optimization.py` | carry参数网格搜索 |
 | `scripts/cmf/15_carry_rolling_backtest.py` | carry无前视回测 |
 | `scripts/cmf/16_v6_3_comprehensive_test.py` | v6.3综合测试 |
 | `scripts/cmf/17_v6_3_rolling_backtest.py` | v6.3无前视回测 |
+| `scripts/cmf/18_auto_weight_allocation.py` | 自动权重配置测试 |
 | `research/commodity_carry_strategy_research.md` | 业界carry策略调研 |
+| `research/copper/cta_mean_reversion_analysis.md` | CTA振荡器Alpha分析 |
 
 ## 十、下一步方向 (2026-08-24)
 
