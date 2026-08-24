@@ -134,9 +134,9 @@ def compute_carry_signal(
 def build_signal_carry(
     con=None,
     variant: str = "state_mom_curv2",
-    z_window: int = 52,
-    min_duration: int = 4,
-    mom_window: int = 13,
+    z_window: int = 26,
+    min_duration: int = 6,
+    mom_window: int = 4,
 ) -> pd.DataFrame:
     """构建carry子策略仓位.
 
