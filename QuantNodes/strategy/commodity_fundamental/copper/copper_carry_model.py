@@ -190,6 +190,75 @@ class CarryModel:
         """
         return backtest_carry(signal, cost_bps=self.config.cost_bps)
 
+    def backtest_no_lookback(self, con=None, start: str = "2018-01-01") -> dict:
+        """无前视回测 (expanding window).
+
+        对于每个时间点，只用之前的数据计算信号，无前视偏差。
+        这是更真实的回测方式。
+
+        参数:
+            con: 数据库连接
+            start: 回测起始日期
+
+        返回: 回测结果字典
+        """
+        if con is None:
+            con = duckdb.connect(str(DB), read_only=True)
+
+        cfg = self.config
+        ts = load_term_structure(con)
+        close_near = ts["close_near"]
+        close_w = close_near.resample("W-FRI").last()
+        ret_w = close_w.pct_change()
+
+        min_history = 104
+        positions = []
+
+        for i in range(min_history, len(close_w)):
+            current_date = close_w.index[i]
+            ts_train = ts[ts.index <= current_date]
+
+            if len(ts_train) < 52:
+                positions.append(0.5)
+                continue
+
+            # 计算carry信号 (只用历史数据)
+            sig = compute_carry_signal(ts_train, z_window=cfg.z_window, min_duration=cfg.min_duration)
+            mom = close_near.pct_change(cfg.mom_window).reindex(sig.index).fillna(0)
+            curvature_zscore = sig.get("curvature_zscore", pd.Series(0, index=sig.index))
+
+            # 构建仓位
+            back = sig["carry_state"] == 1.0
+            mom_up = mom > 0
+            curv = curvature_zscore.clip(-1, 1)
+
+            base = pd.Series(0.0, index=sig.index)
+            base[back & mom_up] = 1.0
+            base[back & ~mom_up] = 0.5
+            adj = 1.0 + curv * 0.3
+            pos = (base * adj).clip(0, 1)
+
+            positions.append(pos.iloc[-1])
+
+        # 构建结果
+        pos_series = pd.Series(positions, index=close_w.index[min_history:])
+
+        # 回测
+        strat = pos_series.shift(1) * ret_w.reindex(pos_series.index) - pos_series.diff().abs() * cfg.cost_bps / 10000
+        strat = strat.dropna()
+        m = (strat.index >= start) & (strat.index <= "2025-12-31")
+        strat = strat[m]
+
+        nav = (1 + strat).cumprod()
+        ann = nav.iloc[-1] ** (52 / len(strat)) - 1 if len(strat) > 0 else 0
+        vol = strat.std() * np.sqrt(52)
+        sharpe = ann / vol if vol > 0 else 0
+        max_dd = (nav / nav.cummax() - 1).min()
+
+        return {"n_weeks": len(strat), "ann_ret": ann, "ann_vol": vol,
+                "sharpe": sharpe, "max_dd": max_dd,
+                "win_rate": (strat > 0).mean(), "nav": nav}
+
     def optimize(self, con=None,
                  z_window_range: list = None,
                  mom_window_range: list = None,
