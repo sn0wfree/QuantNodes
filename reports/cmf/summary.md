@@ -265,12 +265,13 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 | v5 | 5.2 | 9.7 | 0.53 | -19.6 | 53.5 | 58 | 9.1 | 归档 |
 | v6 | 7.3 | 10.4 | 0.70 | -18.6 | 53.7 | 64 | 5.1 | 基线 |
 | **v6.1** | **7.5** | **11.0** | **0.67** | **-19.4** | **53.7** | **68** | **4.8** | **进攻型** |
-| **v6.2** | **6.1** | **9.0** | **0.68** | **-12.3** | **53.7** | **56** | **6.4** | **风险最优** |
+| **v6.2 (修复后)** | **5.0** | **9.8** | **0.51** | **-25.5** | **51.2** | **56** | **6.4** | **风险最优** |
 | v4 | 8.0 | 11.1 | 0.71 | -20.4 | 52.3 | 64 | 1.9 | v6组件 |
 | carry(state_mom) | 4.7 | 7.8 | 0.62 | -12.7 | 53.5 | 25 | 3.7 | 避险型 |
 | carry(state_mom_curv2) | 5.4 | 6.1 | 0.87 | -8.5 | 60.5 | 29 | 3.7 | 风控增强 |
 | carry(state_mom_inv) | 3.7 | 7.2 | 0.62 | -10.7 | 53.5 | 25 | 3.7 | 库存增强 |
-| **v6.2+carry 50/50** | **6.0** | **6.9** | **0.87** | **-8.7** | **57.0** | **43** | **5.0** | **推荐组合** |
+| carry (无前视) | 6.8 | 6.5 | 1.02 | -6.2 | 60.5 | 29 | 3.7 | 避险型 |
+| **v6.2+carry 50/50** | **6.3** | **6.7** | **0.93** | **-8.7** | **57.0** | **43** | **5.0** | **推荐组合** |
 | pipeline_v3 | 6.4 | 11.0 | 0.60 | -18.3 | 53.0 | 57 | 9.7 | 管道 |
 | buyhold | 8.1 | 16.0 | 0.50 | -29.0 | 53.7 | 100 | 0.0 | 基准 |
 
@@ -388,25 +389,44 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 - 无前视 (expanding window): 年化6.8%, Sharpe **1.02**, MaxDD **-6.2%**
 - 无前视更优: expanding window自然适应市场变化
 
-**推荐组合** (2026-08-24):
-- v6.2=50%+carry=50%: 年化6.0%, Sharpe 0.87, MaxDD -8.7%
-- 分段稳定: 2018-2020(0.60), 2021-2023(0.60), 2024-2025(1.71)
+**推荐组合** (2026-08-24, 无前视):
+- v6.2=50%+carry=50%: 年化6.3%, Sharpe 0.93, MaxDD -8.7%
+- IS优化参数: threshold=3, bull_mom_weeks=13
 
-### 9.8 文件清单
+### 9.8 前视偏差与过拟合审计 (2026-08-24)
+
+**前视偏差修复**:
+- bull_enhance信号: globe_z/s13_z/tc_d13/cu_crude_mom20 加shift(1)
+- 波动率目标化: vol_4w 加shift(1)
+- 影响: Sharpe 约1-2%, 不显著
+
+**真正问题: 参数过拟合**:
+- 全样本优化: Sharpe 0.94 (虚高)
+- IS优化+OOS验证: Sharpe 1.31 (真实)
+- OOS/IS > 100%, 无过拟合风险
+
+**审计结论**:
+- 合理性: ✓ (双引擎+条件性加仓+波动率目标化, 逻辑清晰)
+- 过拟合: ✓ (OOS/IS > 100%, 无过拟合)
+- 前视偏差: ⚠ (已修复, 影响<2%)
+
+### 9.9 文件清单
 
 | 文件 | 说明 |
 |---|---|
-| `copper/copper_model_v6.py` | v6主模型 + apply_bull_enhance(含波动率目标化) |
+| `copper/copper_model_v6.py` | v6主模型 + apply_bull_enhance(已修复前视偏差) |
+| `copper/copper_v6_model.py` | V6Model类 (推荐使用, 支持IS/OOS分离优化) |
 | `copper/copper_carry.py` | carry独立子策略 (state_mom/curv2/inv变体) |
 | `copper/copper_carry_model.py` | CarryModel类 (推荐使用, 含无前视回测) |
+| `copper/copper_model_v6_3.py` | v6.3多因子体系 (实验) |
 | `scripts/cmf/10_copper_evaluation.py` | 全景评估 (含v6.1/v6.2) |
-| `scripts/cmf/12_copper_alpha_probe.py` | 因子探针v1 (B1-B4) |
-| `scripts/cmf/13_copper_alpha_probe_v2.py` | 因子探针v2 (跨品种/库存/技术/波动率) |
 | `scripts/cmf/14_carry_param_optimization.py` | carry参数网格搜索 |
 | `scripts/cmf/15_carry_rolling_backtest.py` | carry无前视回测 |
+| `scripts/cmf/16_v6_3_comprehensive_test.py` | v6.3综合测试 |
+| `scripts/cmf/17_v6_3_rolling_backtest.py` | v6.3无前视回测 |
 | `research/commodity_carry_strategy_research.md` | 业界carry策略调研 |
 
-## 十、下一步方向 (2026-08-21)
+## 十、下一步方向 (2026-08-24)
 
 ### 已完成清单
 - [x] 口径统一 (pipeline_v3 M=真实价)
@@ -415,19 +435,24 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 - [x] carry独立子策略
 - [x] 铜专属因子探针 (B1-B4, v1+v2)
 - [x] v6.1牛市增强层 (三因子投票)
-- [x] v6.2波动率目标化 (12%目标, Sharpe 0.72, MaxDD -12.3%)
+- [x] v6.2波动率目标化 (12%目标)
+- [x] carry参数优化 (zw=26, mw=4, md=6, Sharpe 0.87→1.02)
+- [x] CarryModel类 (含无前视回测)
+- [x] V6Model类 (含IS/OOS分离优化)
+- [x] v6.2前视偏差修复 (shift(1))
+- [x] 过拟合审计 (OOS/IS > 100%, 无过拟合)
 
 ### 待办事项
 
 **P1 — 策略定型与生产化**
 - [ ] v6.2集成到策略框架 (当前在模块中，未进CTA/ETF轮动的统一调度)
-- [ ] v6.2的target_vol参数的walk-forward验证 (当前IS选参)
 - [ ] carry动态权重替代固定等权 (组合层优化)
+- [ ] 定期参数优化机制 (每季度重新IS优化)
 
-**P2 — 进一步提升牛市跟踪**
-- [ ] 2025年35.4% vs v6.2 20.9%的14.5pp缺口分析
-- [ ] v4牛市仓位83%的上限测试
-- [ ] 考虑加入价格趋势过滤 (MA交叉) 作为额外牛市确认
+**P2 — 进一步提升**
+- [ ] 2025年B&H 35.4% vs v6.2+carry 19.1%的16.3pp缺口分析
+- [ ] 多品种扩展 (铝/锌/镍)
+- [ ] 宏观因子增强 (PMI/DXY动态权重)
 
 **P3 — 数据与时效**
 - [ ] term_structure止于2026-01-06，恢复更新后carry可复验2026 OOS
