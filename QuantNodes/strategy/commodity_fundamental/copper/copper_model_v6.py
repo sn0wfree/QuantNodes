@@ -200,7 +200,7 @@ def apply_bull_enhance(signal: pd.DataFrame, con,
     shfe = _load_tfapi(con, "SHFE库存小计").resample("W-FRI").last()
     globe = (lme + cmx.reindex(lme.index).fillna(0)
              + shfe.reindex(lme.index).fillna(0))
-    globe_z = _rolling_z(globe).reindex(close_w.index).ffill()
+    globe_z = _rolling_z(globe).reindex(close_w.index).ffill().shift(1)  # 无前视
 
     # 因子2: spread_1_3 back
     ts = con.execute(
@@ -210,11 +210,11 @@ def apply_bull_enhance(signal: pd.DataFrame, con,
     ts["trade_date"] = pd.to_datetime(ts["trade_date"])
     ts = ts.set_index("trade_date").resample("W-FRI").last()
     s13 = ts["spread_1_3"] / ts["close_near2"]
-    s13_z = _rolling_z(s13).reindex(close_w.index).ffill()
+    s13_z = _rolling_z(s13).reindex(close_w.index).ffill().shift(1)  # 无前视
 
     # 因子3: TC粗炼费 Δ13w < 0 (矿紧)
     tc = _load_tfapi(con, "现货:中国铜冶炼厂:粗炼费(TC)").resample("W-FRI").last()
-    tc_d13 = tc.diff(13).reindex(close_w.index).ffill()
+    tc_d13 = tc.diff(13).reindex(close_w.index).ffill().shift(1)  # 无前视
 
     # 因子4: 铜油比动量 > 0 (铜相对原油走强=经济向好)
     crude = con.execute(
@@ -223,7 +223,7 @@ def apply_bull_enhance(signal: pd.DataFrame, con,
     crude["trade_date"] = pd.to_datetime(crude["trade_date"])
     crude = crude.set_index("trade_date")["close"].resample("W-FRI").last()
     cu_crude_ratio = (close_w / crude.reindex(close_w.index).ffill())
-    cu_crude_mom20 = cu_crude_ratio.pct_change(20).reindex(close_w.index).ffill()
+    cu_crude_mom20 = cu_crude_ratio.pct_change(20).reindex(close_w.index).ffill().shift(1)  # 无前视
 
     # 投票 (方向已调整: 库存低=-z, back=-z, TC降=Δ<0, 铜油比升=mom>0 → 均为因子值<0时看多)
     bull_score = (
@@ -244,7 +244,7 @@ def apply_bull_enhance(signal: pd.DataFrame, con,
 
     # 波动率目标化 (13_copper_alpha_probe_v2 发现: 目标12%→Sharpe 0.72, MaxDD -12.3%)
     ret_w = close_w.pct_change()
-    vol_4w = ret_w.rolling(4).std() * np.sqrt(52)
+    vol_4w = ret_w.rolling(4).std().shift(1) * np.sqrt(52)  # 无前视
     scale = (target_vol / vol_4w).fillna(1.0)
 
     # 无杠杆版: scale clip=1.0, 仓位 clip=1.0
