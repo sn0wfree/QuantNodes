@@ -268,8 +268,9 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 | **v6.2** | **6.1** | **9.0** | **0.68** | **-12.3** | **53.7** | **56** | **6.4** | **风险最优** |
 | v4 | 8.0 | 11.1 | 0.71 | -20.4 | 52.3 | 64 | 1.9 | v6组件 |
 | carry(state_mom) | 4.7 | 7.8 | 0.62 | -12.7 | 53.5 | 25 | 3.7 | 避险型 |
-| carry(state_mom_curv2) | 3.8 | 7.5 | 0.59 | -10.5 | 53.5 | 25 | 3.7 | 风控增强 |
+| carry(state_mom_curv2) | 5.4 | 6.1 | 0.87 | -8.5 | 60.5 | 29 | 3.7 | 风控增强 |
 | carry(state_mom_inv) | 3.7 | 7.2 | 0.62 | -10.7 | 53.5 | 25 | 3.7 | 库存增强 |
+| **v6.2+carry 50/50** | **6.0** | **6.9** | **0.87** | **-8.7** | **57.0** | **43** | **5.0** | **推荐组合** |
 | pipeline_v3 | 6.4 | 11.0 | 0.60 | -18.3 | 53.0 | 57 | 9.7 | 管道 |
 | buyhold | 8.1 | 16.0 | 0.50 | -29.0 | 53.7 | 100 | 0.0 | 基准 |
 
@@ -374,8 +375,17 @@ from QuantNodes.strategy.commodity_fundamental.copper import build_signal_carry 
 
 **carry变体选择** (默认: state_mom_curv2):
 - state_mom: 年化4.7%, Sharpe 0.62, MaxDD -12.7% — 基准
-- state_mom_curv2: 年化3.8%, Sharpe 0.59, MaxDD **-10.5%** — 曲率增强, 风控优先 (默认)
+- state_mom_curv2: 年化5.4%, Sharpe 0.87, MaxDD **-8.5%** — 曲率增强 (优化后)
 - state_mom_inv: 年化3.7%, Sharpe 0.62, MaxDD -10.7% — 库存增强, 风控优先
+
+**carry参数优化** (2026-08-24):
+- 原参数: z_window=52, mom_window=13, min_duration=4
+- 优化后: z_window=26, mom_window=4, min_duration=6
+- 提升: Sharpe 0.59→0.87 (+0.28), MaxDD -10.5%→-8.5% (+2.0%)
+
+**推荐组合** (2026-08-24):
+- v6.2=50%+carry=50%: 年化6.0%, Sharpe 0.87, MaxDD -8.7%
+- 分段稳定: 2018-2020(0.60), 2021-2023(0.60), 2024-2025(1.71)
 
 ### 9.8 文件清单
 

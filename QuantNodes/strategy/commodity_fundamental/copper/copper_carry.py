@@ -14,10 +14,16 @@
     4. 曲率因子: (F1-2*F2+F3)/F1, 捕捉期限结构凸性信息
     5. 库存因子: LME铜库存变化, 预测carry regime变化
 
+参数优化 (2026-08-24, 网格搜索125种组合):
+    - z_window=26 (半年窗口, 更灵敏)
+    - mom_window=4 (1个月动量, 更快反应)
+    - min_duration=6 (更长持续期, 过滤噪音)
+    - Sharpe: 0.59→0.87, MaxDD: -10.5%→-8.5%
+
 主要变体:
-    - state_mom: carry+动量 (基准, Sharpe 0.62)
-    - state_mom_curv2: carry+动量+曲率 (默认, MaxDD -10.5%)
-    - state_mom_inv: carry+动量+库存 (MaxDD -10.7%)
+    - state_mom: carry+动量 (基准)
+    - state_mom_curv2: carry+动量+曲率 (默认, Sharpe 0.87)
+    - state_mom_inv: carry+动量+库存 (风控优先)
 
 数据: term_structure_cu (2018+), inventory_daily (2014+), 周频 W-FRI
 """
