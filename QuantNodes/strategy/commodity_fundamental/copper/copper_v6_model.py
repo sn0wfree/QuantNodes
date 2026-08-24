@@ -129,15 +129,43 @@ class V6Model:
 
         return signal
 
-    def backtest(self, signal: pd.DataFrame) -> dict:
+    def backtest(self, signal: pd.DataFrame, is_end: str = None) -> dict:
         """回测.
 
         参数:
             signal: build_signal输出
+            is_end: IS结束日期 (如"2022-12-31"), None=全样本
 
         返回: 回测结果字典
         """
-        return backtest_v6(signal, cost_bps=self.config.cost_bps)
+        close = signal["M"]
+        common = signal.index.intersection(close.index)
+        pos = signal.loc[common, "position"].fillna(0)
+        ret = close.pct_change().reindex(common)
+
+        strat_ret = pos.shift(1) * ret
+        cost = pos.diff().abs() * self.config.cost_bps / 10000
+        strat_ret = (strat_ret - cost).dropna()
+
+        if is_end:
+            strat_ret = strat_ret[strat_ret.index <= is_end]
+
+        if len(strat_ret) == 0:
+            return {"n_weeks": 0, "total_ret": 0, "ann_ret": 0, "ann_vol": 0,
+                    "sharpe": 0, "max_dd": 0, "calmar": 0, "win_rate": 0,
+                    "nav": pd.Series(dtype=float)}
+
+        nav = (1 + strat_ret).cumprod()
+        total_ret = nav.iloc[-1] / nav.iloc[0] - 1
+        n_years = len(strat_ret) / 52
+        ann_ret = (1 + total_ret) ** (1 / n_years) - 1 if n_years > 0 else 0
+        ann_vol = strat_ret.std() * np.sqrt(52)
+        max_dd = (nav / nav.cummax() - 1).min()
+
+        return {"n_weeks": len(strat_ret), "total_ret": total_ret, "ann_ret": ann_ret,
+                "ann_vol": ann_vol, "sharpe": ann_ret / ann_vol if ann_vol > 0 else 0,
+                "max_dd": max_dd, "calmar": ann_ret / abs(max_dd) if max_dd != 0 else 0,
+                "win_rate": (strat_ret > 0).mean(), "nav": nav}
 
     def optimize(self, con=None,
                  version_range: list = None,
@@ -145,7 +173,8 @@ class V6Model:
                  bull_mom_weeks_range: list = None,
                  bull_mom_thresh_range: list = None,
                  target_vol_range: list = None,
-                 metric: str = "sharpe") -> dict:
+                 metric: str = "sharpe",
+                 is_end: str = None) -> dict:
         """参数优化 (网格搜索).
 
         参数:
@@ -156,6 +185,7 @@ class V6Model:
             bull_mom_thresh_range: bull_mom_thresh搜索范围
             target_vol_range: target_vol搜索范围
             metric: 优化目标 (sharpe/ann_ret/max_dd)
+            is_end: IS结束日期 (如"2022-12-31"), None=全样本
 
         返回: 最优参数字典
         """
@@ -191,7 +221,7 @@ class V6Model:
                                 )
                                 model = V6Model(cfg)
                                 signal = model.build_signal(con)
-                                r = model.backtest(signal)
+                                r = model.backtest(signal, is_end=is_end)
 
                                 results.append({
                                     "version": version,
