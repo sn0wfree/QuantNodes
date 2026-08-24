@@ -143,6 +143,9 @@ class ModuleConfig:
                                     # 连续值 + 滚动 z-score, 其余保持 -1/0/1
     cont_z_window: int = 252        # 连续信号 z-score 窗口
     cont_z_clip: float = 3.0        # 连续信号 z-score 截断
+    position_ema_alpha: float = 0.0 # 持仓EMA平滑 (推荐0.15), 0=关闭
+    min_position_change: float = 0.30  # 仓位变化 < 此比例不调仓 (降换手), 0=关闭
+    slippage_bps: float = 0.0       # 滑点 (基点), 0=无滑点
 
 
 class _ModuleStrategy:
