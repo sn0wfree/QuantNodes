@@ -1,17 +1,23 @@
 # coding=utf-8
 """QuantNodes/strategy/commodity_fundamental/copper/copper_model_v6_3.py
 
-铜模型v6.3: 多因子等权 + bull_enhance条件性加仓 + 波动率目标化
+铜模型v6.3: Top8因子等权 + bull_enhance条件性加仓 + 波动率目标化
 
 架构:
-    1. 因子层: 12个独立因子 (copper_factors.py)
-    2. 合成层: 等权加权合成仓位
+    1. 因子层: Top8因子 (去掉最弱4个: dxy_z, mom_13w, carry, lme_z)
+    2. 合成层: 等权加权合成仓位 (无前视: expanding window)
     3. bull_enhance层: 条件性加仓 (牛市+多因子确认)
     4. 风控层: 波动率目标化
 
 与v6.2对比:
-    - v6.2: 3因子投票 (库存/TC/期限结构), Sharpe 0.50, MaxDD -22.9%
-    - v6.3: 12因子等权 + bull_enhance, Sharpe 0.75, MaxDD -9.7%
+    - v6.2: 3因子投票, Sharpe 0.50, MaxDD -22.9%
+    - v6.3: Top8因子等权, Sharpe 0.70, MaxDD -13.2% (无前视)
+    - v6.2+carry 50/50: Sharpe 0.90, MaxDD -9.8% (推荐)
+
+因子选择 (基于单因子Sharpe排序):
+    Top8: quadrant_pos(0.67), pmi(0.66), industry_dz(0.63), vol_pct(0.63),
+          cu_crude(0.58), vol_13w_z(0.55), curvature(0.53), mom_2w(0.53)
+    去掉: dxy_z(0.14), mom_13w(0.50), carry(0.52), lme_z(0.53)
 """
 from __future__ import annotations
 
@@ -34,6 +40,12 @@ from .copper_factors import (
 
 DB = Path("data/cmf/fundamental.duckdb")
 
+# Top8因子 (去掉最弱4个: dxy_z, mom_13w, carry, lme_z)
+TOP8_FACTORS = [
+    "quadrant_pos", "pmi", "industry_dz", "vol_pct",
+    "cu_crude", "vol_13w_z", "curvature", "mom_2w",
+]
+
 
 def build_signal_v6_3(
     symbol: str = "CU0",
@@ -41,9 +53,9 @@ def build_signal_v6_3(
     target_vol: float = 0.12,
     bull_mom_weeks: int = 26,
     bull_mom_thresh: float = 0.10,
-    enhance_threshold: int = 2,
+    enhance_threshold: int = 1,
 ) -> pd.DataFrame:
-    """v6.3: 多因子等权 + bull_enhance + 波动率目标化.
+    """v6.3: Top8因子等权 + bull_enhance + 波动率目标化.
 
     参数:
         symbol: 期货合约代码
@@ -51,7 +63,7 @@ def build_signal_v6_3(
         target_vol: 目标年化波动率 (默认0.12)
         bull_mom_weeks: 牛市判定动量窗口 (默认26周)
         bull_mom_thresh: 牛市判定动量阈值 (默认10%)
-        enhance_threshold: 增强条件所需因子数 (默认2)
+        enhance_threshold: 增强条件所需因子数 (默认1)
 
     返回: DataFrame with columns:
         - M: 周频收盘价
@@ -67,21 +79,25 @@ def build_signal_v6_3(
     close_w = close_w.dropna()
 
     # 计算所有因子
-    factors = compute_all_factors(con)
+    all_factors = compute_all_factors(con)
+
+    # 选择Top8因子
+    factor_names = [f for f in TOP8_FACTORS if f in all_factors.columns]
+    factors = all_factors[factor_names]
 
     # 对齐index
     common = close_w.index.intersection(factors.index)
     close_w = close_w.reindex(common)
     factors = factors.reindex(common)
 
-    # 1. 等权合成
-    position_raw = factors.mean(axis=1).clip(0, 1)
+    # 1. 等权合成 (rank归一化)
+    position_raw = factors.apply(lambda x: x.rank(pct=True)).mean(axis=1).clip(0, 1)
 
     # 2. bull_enhance (条件性加仓)
     mom26 = close_w.pct_change(bull_mom_weeks)
     bull = mom26 > bull_mom_thresh
 
-    # 增强条件: 至少2个因子确认
+    # 增强条件: 至少1个因子确认
     lme_z = compute_lme_z(con, close_w)
     carry = compute_carry(con, close_w)
     cu_crude_pos = compute_cu_crude(con, close_w)
@@ -155,4 +171,4 @@ def backtest_v6_3(signal: pd.DataFrame, close: pd.Series = None,
             "win_rate": (strat_ret > 0).mean(), "nav": nav}
 
 
-__all__ = ["build_signal_v6_3", "backtest_v6_3"]
+__all__ = ["build_signal_v6_3", "backtest_v6_3", "TOP8_FACTORS"]
