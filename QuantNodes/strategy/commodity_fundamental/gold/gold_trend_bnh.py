@@ -467,7 +467,9 @@ __all__ = [
     "compute_hysteresis_trend_d",
     "compute_macro_regime_signal",
     "compute_risk_overlay",
+    "compute_adaptive_ensemble",
     "_rolling_drawdown",
+    "_rolling_calmar",
 ]
 
 
@@ -755,3 +757,134 @@ def compute_risk_overlay(
     final_pos.iloc[:warmup_days] = pos.iloc[:warmup_days]
 
     return final_pos.clip(0, 1.2)
+
+
+# =====================================================================
+# 自适应集成信号 (Adaptive Ensemble) — 多信号加权 + 滚动权重
+#
+# 设计动机:
+#   单信号策略都有短板 (macro OOS回撤大, real_rate IS年化低).
+#   多信号集成 (ensemble) 可能平滑风险.
+#
+# 两种加权模式:
+#   "fixed"   : 固定权重 (macro/real_rate/momentum)
+#   "adaptive": 滚动Calmar动态权重 — 近N月表现好的信号获更高权重
+#
+# 输出: 加权组合仓位, 已对齐到日度, 已应用compute_risk_overlay
+# =====================================================================
+
+
+def _rolling_calmar(close, position, window=126):
+    """基于仓位的滚动Calmar (年化收益/|MaxDD|)."""
+    sr = (position.shift(1) * close.pct_change()).dropna()
+    if len(sr) < window:
+        return pd.Series(0, index=close.index)
+    nav = (1 + sr).cumprod()
+    rolling_max = nav.rolling(window, min_periods=window // 2).max()
+    dd = nav / rolling_max - 1
+    rolling_dd_min = dd.rolling(window, min_periods=window // 2).min()
+    mean_ret = sr.rolling(window, min_periods=window // 2).mean() * 252
+    cal = mean_ret / rolling_dd_min.abs().replace(0, np.nan)
+    return cal.fillna(0)
+
+
+def compute_adaptive_ensemble(
+    close: pd.Series = None,
+    vix: pd.Series = None,
+    gvz: pd.Series = None,
+    tips: pd.Series = None,
+    macro_weight: float = 0.40,
+    real_rate_weight: float = 0.30,
+    momentum_weight: float = 0.30,
+    weight_method: str = "fixed",
+    adaptive_lookback: int = 126,
+    adaptive_temp: float = 1.0,
+    use_risk_overlay: bool = True,
+    hard_cap: float = -0.15,
+    soft_cap: float = -0.12,
+    daily_cap: float = -0.03,
+    vol_cap: float = 0.20,
+    cooldown_days: int = 5,
+    vol_window: int = 20,
+) -> pd.DataFrame:
+    """多信号自适应集成 + 风控覆盖.
+
+    集成信号:
+      1. macro_regime (gold_trend_bnh.compute_macro_regime_signal)
+      2. real_rate (gold_real_rate.compute_real_rate_signal tips_ma)
+      3. momentum (gold_momentum.compute_momentum_signal long_only)
+
+    加权方式:
+      "fixed"    : 固定权重 (macro/real_rate/momentum)
+      "adaptive" : 滚动Calmar动态权重 (近N月表现好者权重高)
+                    weight_i = exp(rolling_calmar_i * adaptive_temp)
+                    normalized by sum
+
+    风控: 集成信号 → compute_risk_overlay
+
+    返回: DataFrame [close, position]
+    """
+    # 延迟导入避免循环
+    from QuantNodes.strategy.commodity_fundamental.gold.gold_real_rate import (
+        compute_real_rate_signal,
+    )
+    from QuantNodes.strategy.commodity_fundamental.gold.gold_momentum import (
+        compute_momentum_signal,
+    )
+
+    if close is None:
+        close = load_gold_price_d()
+
+    if vix is None:
+        vix = _load_indicator_d("vix", "gold_fred").reindex(close.index).ffill()
+    if gvz is None:
+        gvz = _load_indicator_d("gvz", "gold_fred").reindex(close.index).ffill()
+    if tips is None:
+        tips = _load_indicator_d("tips10y", "fred_dfii10").reindex(close.index).ffill()
+
+    # 获取3个信号 (weekly → daily resample)
+    macro_df = compute_macro_regime_signal()
+    macro_pos = macro_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+
+    rr_df = compute_real_rate_signal(variant="tips_ma")
+    rr_pos = rr_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+
+    mom_df = compute_momentum_signal(variant="long_only")
+    mom_pos = mom_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+
+    signals = {"macro": macro_pos, "real_rate": rr_pos, "momentum": mom_pos}
+    weights = {"macro": macro_weight, "real_rate": real_rate_weight,
+               "momentum": momentum_weight}
+
+    if weight_method == "fixed":
+        # 固定加权
+        combined = sum(weights[name] * pos for name, pos in signals.items())
+    elif weight_method == "adaptive":
+        # 滚动Calmar自适应加权
+        cal = {name: _rolling_calmar(close, pos, adaptive_lookback)
+               for name, pos in signals.items()}
+        cal_df = pd.DataFrame(cal)
+        # softmax权重: exp(calmar * temp)
+        w_raw = np.exp(cal_df * adaptive_temp)
+        # 初始化(第一个lookback期)用等权
+        w_raw.iloc[:adaptive_lookback] = 1.0
+        w_sum = w_raw.sum(axis=1).replace(0, np.nan)
+        w_norm = w_raw.div(w_sum, axis=0).fillna(1 / 3)
+
+        combined = pd.Series(0.0, index=close.index)
+        for name in signals:
+            combined = combined.add(w_norm[name] * signals[name], fill_value=0)
+    else:
+        raise ValueError(f"Unknown weight_method: {weight_method}")
+
+    combined = combined.clip(0, 1.2)
+
+    # 应用风控覆盖
+    if use_risk_overlay:
+        combined = compute_risk_overlay(
+            close=close, position=combined, vix=vix, gvz=gvz,
+            hard_cap=hard_cap, soft_cap=soft_cap, daily_cap=daily_cap,
+            vol_cap=vol_cap, cooldown_days=cooldown_days, vol_window=vol_window,
+        )
+
+    return pd.DataFrame({"close": close, "position": combined})
