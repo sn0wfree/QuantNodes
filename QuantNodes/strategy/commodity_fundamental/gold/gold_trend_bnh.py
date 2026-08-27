@@ -466,6 +466,8 @@ __all__ = [
     "get_weekly_returns",
     "compute_hysteresis_trend_d",
     "compute_macro_regime_signal",
+    "compute_risk_overlay",
+    "_rolling_drawdown",
 ]
 
 
@@ -606,3 +608,150 @@ def compute_macro_regime_signal(
     position = (base * f_gvz * f_rate).clip(0, 1.2)
 
     return pd.DataFrame({"close": close, "position": position})
+
+
+# =====================================================================
+# 风控覆盖层 (Risk Overlay) - 三级风控 + 智能再入场
+#
+# 设计动机 (docs/gold/risk_overlay_design.md):
+#   现状所有候选策略 OOS MaxDD 在 -30% 级别, 远超 -15% 硬约束.
+#   单纯组合信号层/子策略无法解决根本问题, 必须加独立主动风控层.
+#
+# 三级架构:
+#   Level 1: 波动率压制 (continuous)
+#   Level 2: 软减仓 (discrete, 50%仓位)
+#   Level 3: 硬止损 + 智能再入场 (VIX低 + GVZ低确认)
+#
+# 双窗口验证 (预期): MaxDD 从 -30% 压到 <-15%, G 改善, 年化损失 20-40%
+# =====================================================================
+
+
+def _rolling_drawdown(
+    close: pd.Series,
+    position: pd.Series,
+    window: int = 252,
+    min_periods: int = 60,
+) -> pd.Series:
+    """基于仓位的滚动MaxDD (向前看window内最大回撤)."""
+    nav = (1 + (position.shift(1).fillna(0) * close.pct_change()).fillna(0)).cumprod()
+    nav.iloc[:min_periods] = 1.0
+    rolling_max = nav.rolling(window, min_periods=min_periods).max()
+    return nav / rolling_max - 1
+
+
+def compute_risk_overlay(
+    close: pd.Series,
+    position: pd.Series,
+    vix: pd.Series = None,
+    gvz: pd.Series = None,
+    hard_cap: float = -0.15,
+    soft_cap: float = -0.12,
+    daily_cap: float = -0.03,
+    vol_cap: float = 0.20,
+    cooldown_days: int = 5,
+    vol_window: int = 20,
+    reentry_vix_pct: float = 0.6,
+    reentry_gvz_z: float = 1.0,
+    gvz_z_window: int = 90,
+    warmup_days: int = 60,
+) -> pd.Series:
+    """三级风控覆盖层.
+
+    Level 1 - 波动率压制 (continuous):
+        realized_vol > vol_cap 时, 仓位×(vol_cap/realized_vol)
+
+    Level 2 - 软减仓 (discrete):
+        rolling_dd < soft_cap 时, 仓位×0.5
+
+    Level 3 - 硬止损 + 智能再入场:
+        触发条件: rolling_dd < hard_cap OR daily_ret < daily_cap
+        触发动作: 立即清仓, 启动冷却期, 冷却期内强制position=0
+        再入场: 冷却期结束后需 vix百分位 < reentry_vix_pct
+                AND gvz_zscore < reentry_gvz_z 才允许恢复
+
+    参数:
+        close: 收盘价
+        position: 原始仓位信号 (0~1.2)
+        vix: VIX序列 (用于再入场确认, 可选)
+        gvz: GVZ序列 (用于再入场确认, 可选)
+        hard_cap: MaxDD硬阈值 (默认-0.15)
+        soft_cap: MaxDD软阈值 (默认-0.12)
+        daily_cap: 单日DD阈值 (默认-0.03)
+        vol_cap: 年化波动率上限 (默认0.20)
+        cooldown_days: 触发后冷却天数 (默认5)
+        vol_window: 波动率计算窗口 (默认20)
+        reentry_vix_pct: 再入场所需VIX百分位阈值 (默认0.6)
+        reentry_gvz_z: 再入场所需GVZ-z阈值 (默认1.0)
+        gvz_z_window: GVZ zscore窗口 (默认90)
+        warmup_days: 前N天不应用风控 (用于指标warmup)
+
+    返回: 调整后仓位序列 (与position同index, 值域0~1.2)
+    """
+    pos = position.reindex(close.index).fillna(method="ffill").fillna(0).copy()
+
+    if vix is not None:
+        vix = vix.reindex(close.index).ffill()
+    if gvz is not None:
+        gvz = gvz.reindex(close.index).ffill()
+
+    # 计算基础指标
+    daily_ret = close.pct_change()
+    rolling_dd = _rolling_drawdown(close, pos, window=252)
+
+    # Level 1: 波动率压制
+    realized_vol = daily_ret.rolling(vol_window, min_periods=5).std() * np.sqrt(252)
+    vol_mask = (realized_vol > vol_cap) & (realized_vol.notna())
+    vol_scale = (vol_cap / realized_vol).clip(upper=1.0)
+    pos = pos.where(~vol_mask, pos * vol_scale)
+
+    # Level 2: 软减仓
+    soft_mask = rolling_dd < soft_cap
+    pos = pos.where(~soft_mask, pos * 0.5)
+
+    # Level 3: 硬止损 (清零)
+    # daily_ret < 0 时表示下跌; |daily_ret| > |daily_cap| 时触发硬止损
+    hard_mask = (rolling_dd < hard_cap) | (daily_ret < daily_cap)
+    hard_mask = hard_mask.fillna(False)
+    pos = pos.where(~hard_mask, 0.0)
+
+    # 智能再入场: 检测硬触发, 启动冷却期, 结束后需VIX+GVZ双确认
+    final_pos = pos.copy()
+    cooldown_until = pd.Series(pd.NaT, index=close.index)
+
+    if cooldown_days > 0:
+        trigger = hard_mask & (~hard_mask.shift(1).fillna(False))
+        for i in range(len(close)):
+            if trigger.iloc[i]:
+                end_i = min(i + cooldown_days, len(close) - 1)
+                cooldown_until.iloc[i:end_i + 1] = close.index[end_i]
+
+    if vix is not None and gvz is not None:
+        gvz_mean = gvz.rolling(gvz_z_window, min_periods=20).mean()
+        gvz_std = gvz.rolling(gvz_z_window, min_periods=20).std().replace(0, np.nan)
+        gvz_z = (gvz - gvz_mean) / gvz_std
+        vix_pct = vix.rolling(252, min_periods=60).rank(pct=True)
+
+        for i in range(len(close)):
+            if pd.notna(cooldown_until.iloc[i]) and close.index[i] <= cooldown_until.iloc[i]:
+                # 冷却期内
+                if close.index[i] == cooldown_until.iloc[i]:
+                    # 冷却期最后一天: 检查再入场条件
+                    v_pct = vix_pct.iloc[i]
+                    g_z = gvz_z.iloc[i]
+                    if pd.notna(v_pct) and pd.notna(g_z):
+                        if v_pct < reentry_vix_pct and g_z < reentry_gvz_z:
+                            pass  # 允许恢复
+                        else:
+                            # 不满足, 延长冷却期
+                            new_end = min(i + cooldown_days, len(close) - 1)
+                            cooldown_until.iloc[i:new_end + 1] = close.index[new_end]
+                            final_pos.iloc[i] = 0.0
+                else:
+                    final_pos.iloc[i] = 0.0
+
+    final_pos = final_pos.where(final_pos.notna(), pos)
+
+    # warmup期: 不应用风控
+    final_pos.iloc[:warmup_days] = pos.iloc[:warmup_days]
+
+    return final_pos.clip(0, 1.2)

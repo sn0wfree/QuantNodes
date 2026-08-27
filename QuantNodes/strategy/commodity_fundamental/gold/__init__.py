@@ -61,6 +61,7 @@ from .gold_trend_bnh import (
     get_weekly_returns as get_trend_bnh_weekly_returns,
     compute_hysteresis_trend_d,
     compute_macro_regime_signal,
+    compute_risk_overlay,
 )
 from .gold_multi_factor import (
     compute_multi_factor_signal,
@@ -95,6 +96,7 @@ __all__ = [
     "backtest_trend_bnh",
     "compute_hysteresis_trend_d",
     "compute_macro_regime_signal",
+    "compute_risk_overlay",
     "compute_multi_factor_signal",
     "backtest_multi_factor",
     "compute_combined_signal",
