@@ -6,6 +6,7 @@ from matplotlib import font_manager as fm
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.patches import Rectangle
+from io import StringIO
 import pandas as pd
 import numpy as np
 
@@ -29,6 +30,20 @@ with open("reports/gold/overview_data.pkl", "rb") as f:
 
 OUT_DIR = "reports/gold/assets"
 os.makedirs(OUT_DIR, exist_ok=True)
+
+
+def save_svg_inline(fig):
+    """savefig 到 StringIO, 返回去除XML声明的svg字符串 (适合inline嵌入HTML)."""
+    buf = StringIO()
+    fig.savefig(buf, format='svg', bbox_inches='tight', facecolor='white')
+    svg = buf.getvalue()
+    # 去掉xml声明和DOCTYPE
+    svg = svg.replace('<?xml version="1.0" encoding="utf-8" standalone="no"?>\n', '')
+    svg = svg.replace('<?xml version="1.0" encoding="utf-8"?>\n', '')
+    svg = svg.replace('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"\n'
+                     '  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n', '')
+    plt.close(fig)
+    return svg
 
 
 def shade_periods(ax, x_min_dt, x_max_dt):
@@ -109,10 +124,7 @@ def plot_full_nav():
                       edgecolor='#FFB74D', alpha=0.95))
 
     plt.tight_layout()
-    out = os.path.join(OUT_DIR, "full_nav.png")
-    fig.savefig(out, dpi=150, bbox_inches='tight', facecolor='white')
-    plt.close(fig)
-    return out
+    return save_svg_inline(fig)
 
 
 # ============================================================
@@ -151,10 +163,7 @@ def plot_wf():
                       edgecolor='#90CAF9', alpha=0.95))
 
     plt.tight_layout()
-    out = os.path.join(OUT_DIR, "wf.png")
-    fig.savefig(out, dpi=150, bbox_inches='tight', facecolor='white')
-    plt.close(fig)
-    return out
+    return save_svg_inline(fig)
 
 
 # ============================================================
@@ -192,10 +201,7 @@ def plot_oos():
     ax2.xaxis.set_major_formatter(mdates.DateFormatter('%y-%m'))
 
     plt.tight_layout()
-    out = os.path.join(OUT_DIR, "oos2026.png")
-    fig.savefig(out, dpi=150, bbox_inches='tight', facecolor='white')
-    plt.close(fig)
-    return out
+    return save_svg_inline(fig)
 
 
 # ============================================================
@@ -250,20 +256,17 @@ def plot_scenarios():
                  fontsize=13, fontweight='bold', y=1.0,
                  fontproperties=CJK_FP if CJK_FP else None)
     plt.tight_layout()
-    out = os.path.join(OUT_DIR, "scenarios.png")
-    fig.savefig(out, dpi=150, bbox_inches='tight', facecolor='white')
-    plt.close(fig)
-    return out
+    return save_svg_inline(fig)
 
 
 def main():
-    out1 = plot_full_nav()
-    out2 = plot_wf()
-    out3 = plot_oos()
-    out4 = plot_scenarios()
-    print("已生成: ")
-    for p in [out1, out2, out3, out4]:
-        print("  - {} ({:.0f}KB)".format(p, os.path.getsize(p) / 1024))
+    svg1 = plot_full_nav()
+    svg2 = plot_wf()
+    svg3 = plot_oos()
+    svg4 = plot_scenarios()
+    print("已生成SVG: ")
+    for label, s in [("full_nav", svg1), ("wf", svg2), ("oos", svg3), ("scenarios", svg4)]:
+        print("  - {}: {:.0f}KB ({} chars)".format(label, len(s)/1024, len(s)))
 
 
 if __name__ == "__main__":

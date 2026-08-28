@@ -1,9 +1,9 @@
-"""生成黄金策略HTML综合报告 (使用matplotlib生成的高质量PNG嵌入)."""
+"""生成黄金策略HTML综合报告 (matplotlib SVG inline嵌入, 单一HTML文件)."""
 import sys, os
 import pandas as pd
-import subprocess
 
 sys.path.insert(0, '/home/ll/Public/QuantNodes')
+sys.path.insert(0, '/home/ll/Public/QuantNodes/scripts/cmf')
 
 
 def pct(v, digits=1, sign=False):
@@ -12,7 +12,7 @@ def pct(v, digits=1, sign=False):
     return ("+%.*f%%" if sign else "%.*f%%") % (digits, v*100)
 
 
-HTML = r"""<!DOCTYPE html>
+HTML_HEAD = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -59,9 +59,9 @@ HTML = r"""<!DOCTYPE html>
   .section-a { display: grid; grid-template-columns: 1fr 360px; gap: 24px; align-items: start; }
   .section-b { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   .section-cd { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .chart-img {
-    width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border);
-    display: block;
+  .chart-svg {
+    width: 100%; height: auto; border-radius: 6px;
+    border: 1px solid var(--border); display: block; background: white;
   }
   .metric-card {
     background: linear-gradient(135deg, #F8FAFE, #FFFFFF);
@@ -89,13 +89,6 @@ HTML = r"""<!DOCTYPE html>
   table.yearly td.divider { background: white; width: 8px; }
   .pn-pos { color: var(--success); font-weight: 600; }
   .pn-neg { color: var(--danger); font-weight: 600; }
-  .crash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .crash-card { background: #FAFAFA; border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
-  .crash-card h4 { font-size: 12px; color: var(--danger); font-weight: 600; margin-bottom: 4px; }
-  .crash-card .period { font-size: 11px; color: var(--gray-light); margin-bottom: 6px; }
-  .crash-stat { font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.7; }
-  .crash-stat .p { color: var(--success); font-weight: 600; }
-  .crash-stat .n { color: var(--danger); font-weight: 600; }
   .chart-title {
     font-size: 14px; color: var(--primary); font-weight: 600; margin-bottom: 8px;
   }
@@ -127,7 +120,7 @@ HTML = r"""<!DOCTYPE html>
   </p>
   <div class="section-a">
     <div>
-      <img src="assets/full_nav.png" alt="全周期净值曲线" class="chart-img"/>
+__SVG_FULL_NAV__
     </div>
     <div class="metric-card">
       <h3>业绩指标对比 (CAGR / Sharpe / MaxDD / Calmar / 总收益)</h3>
@@ -157,12 +150,12 @@ HTML = r"""<!DOCTYPE html>
     <div>
       <div class="chart-title">B1. Walk-Forward 滚动验证 (15折测试段拼接)</div>
       <p class="chart-meta">CAGR=+7.07% / 区间累计=+208% / MaxDD=-14.15%</p>
-      <img src="assets/wf.png" alt="WF拼接净值" class="chart-img"/>
+__SVG_WF__
     </div>
     <div>
       <div class="chart-title">B2. 2026 纯样本外验证</div>
       <p class="chart-meta">YTD区间收益=+9.13% / 策略平稳运行 / 3月崩盘时几乎空仓保护</p>
-      <img src="assets/oos2026.png" alt="2026 OOS" class="chart-img"/>
+__SVG_OOS__
     </div>
   </div>
 </div>
@@ -188,8 +181,8 @@ __TABLE_ROWS__
     </div>
     <div>
       <div class="chart-card-title">D. 黄金大跌场景下的仓位管理</div>
-      <img src="assets/scenarios.png" alt="大跌场景2x2" class="chart-img"/>
-      <p class="footnote">数据: 每个场景窗口(前后各~40日)展示金价走势与策略仓位,
+__SVG_SCENARIOS__
+      <p class="footnote">数据: 每个场景窗口展示金价走势与策略仓位,
         仓位阶梯线清晰展示"大级别止损, 小级别波动容忍"</p>
     </div>
   </div>
@@ -229,15 +222,29 @@ def build_yearly_rows(ydf):
 
 def main():
     import pickle
+    from gen_html_assets import plot_full_nav, plot_wf, plot_oos, plot_scenarios
+
     with open("reports/gold/overview_data.pkl", "rb") as f:
         D = pickle.load(f)
 
     table_rows = build_yearly_rows(D["yearly"])
-    out = HTML.replace("__TABLE_ROWS__", table_rows)
+    svg_full = plot_full_nav()
+    svg_wf = plot_wf()
+    svg_oos = plot_oos()
+    svg_scenarios = plot_scenarios()
+
+    out = (HTML_HEAD
+           .replace("__SVG_FULL_NAV__", '<div class="chart-svg">' + svg_full + '</div>')
+           .replace("__SVG_WF__", '<div class="chart-svg">' + svg_wf + '</div>')
+           .replace("__SVG_OOS__", '<div class="chart-svg">' + svg_oos + '</div>')
+           .replace("__SVG_SCENARIOS__", '<div class="chart-svg">' + svg_scenarios + '</div>')
+           .replace("__TABLE_ROWS__", table_rows))
 
     with open("reports/gold/report.html", "w") as f:
         f.write(out)
-    print("HTML报告已生成: reports/gold/report.html ({} 字符)".format(len(out)))
+
+    # 删除PNG（不再使用）
+    print("HTML报告已生成: reports/gold/report.html ({:.0f} KB)".format(len(out) / 1024))
 
 
 if __name__ == "__main__":
