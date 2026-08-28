@@ -127,82 +127,170 @@ def compute_inventory_momentum(
     })
 
 
-def compute_inventory_momentum_v2(
+def compute_inventory_momentum_v4(
     con=None,
-    change_window: int = 4,
-    z_threshold: float = 0.3,
-    confirm_threshold: int = 2,
+    level_threshold: float = 0.25,
+    change_threshold: float = -0.05,
+    change_window: int = 13,
+    z_window: int = 156,
+    use_decay: bool = True,
+    decay_halflife: int = 8,
+    use_cancelled: bool = True,
 ) -> pd.DataFrame:
-    """计算库存动量信号v2 - 三因子确认.
+    """计算库存动量信号v4 - 业界优化版.
 
-    三因子:
-        1. 铜库存变化: 4周变化率 < 0 = 利好
-        2. 铜注册仓单变化: 4周变化率 < 0 = 利好
-        3. 铝库存变化: 4周变化率 < 0 = 利好 (跨品种确认)
-
-    信号逻辑:
-        三个因子投票, 至少confirm_threshold个确认 → 做多
+    优化点:
+        1. 156周z-score窗口 (业界推荐, 减少频繁切换)
+        2. 注销仓单信号 (领先指标)
+        3. 库存信号衰减 (减少噪音)
+        4. 多信号组合 (库存+注册仓单+注销仓单)
 
     参数:
         con: 数据库连接
+        level_threshold: 库存水平分位数阈值
+        change_threshold: 库存变化率阈值
         change_window: 库存变化窗口 (周)
-        z_threshold: z-score阈值 (未使用, 保留兼容)
-        confirm_threshold: 确认因子数 (默认2)
+        z_window: z-score窗口 (156周=3年)
+        use_decay: 是否使用信号衰减
+        decay_halflife: 衰减半衰期 (周)
+        use_cancelled: 是否使用注销仓单
 
     返回: DataFrame with columns:
         - inv_cu: 铜库存
-        - inv_cu_change: 铜库存变化率
-        - inv_warrant_change: 注册仓单变化率
-        - inv_al_change: 铝库存变化率
-        - confirm_count: 确认因子数
+        - inv_level_pct: 库存水平分位数
+        - inv_change: 库存变化率
         - position: 仓位 [0, 1]
     """
     if con is None:
         con = duckdb.connect(str(DB), read_only=True)
 
-    # 加载库存数据
+    # 加载数据
     df_inv = pd.read_sql(
         "SELECT trade_date, value_col, value FROM inventory_daily "
-        "WHERE value_col IN ('铜-库存', '铜-注册仓单', '铝-库存') "
+        "WHERE value_col IN ('铜-库存', '铜-注册仓单') "
         "ORDER BY trade_date",
         con,
     )
     df_inv["trade_date"] = pd.to_datetime(df_inv["trade_date"])
 
-    # 转为周频
+    # 总库存
     inv_cu = df_inv[df_inv["value_col"] == "铜-库存"].set_index("trade_date")["value"]
     inv_cu_w = inv_cu.resample("W-FRI").last()
 
-    inv_warrant = df_inv[df_inv["value_col"] == "铜-注册仓单"].set_index("trade_date")["value"]
-    inv_warrant_w = inv_warrant.resample("W-FRI").last()
+    # 注册仓单
+    reg_warrant = df_inv[df_inv["value_col"] == "铜-注册仓单"].set_index("trade_date")["value"]
+    reg_warrant_w = reg_warrant.resample("W-FRI").last()
 
-    inv_al = df_inv[df_inv["value_col"] == "铝-库存"].set_index("trade_date")["value"]
-    inv_al_w = inv_al.resample("W-FRI").last()
+    # 注销仓单 = 总库存 - 注册仓单
+    cancelled_warrant = inv_cu - reg_warrant
+    cancelled_warrant_w = cancelled_warrant.resample("W-FRI").last()
 
-    # 计算变化率
-    inv_cu_change = inv_cu_w.pct_change(change_window)
-    inv_warrant_change = inv_warrant_w.pct_change(change_window)
-    inv_al_change = inv_al_w.pct_change(change_window)
+    # 信号1: 库存水平分位数 (3年滚动)
+    inv_level_pct = inv_cu_w.rolling(z_window).rank(pct=True)
 
-    # 三因子投票
-    confirm_count = (
-        (inv_cu_change < 0).astype(int) +
-        (inv_warrant_change < 0).astype(int) +
-        (inv_al_change < 0).astype(int)
-    )
+    # 信号2: 库存变化率
+    inv_change = inv_cu_w.pct_change(change_window)
 
-    # 生成仓位
-    position = (confirm_count >= confirm_threshold).astype(float)
+    # 信号3: 注册仓单变化率
+    reg_change = reg_warrant_w.pct_change(change_window)
+
+    # 信号4: 注销仓单变化率 (领先指标)
+    cancelled_change = cancelled_warrant_w.pct_change(change_window)
+
+    # 信号5: 库存z-score (156周)
+    inv_z = (inv_cu_w - inv_cu_w.rolling(z_window).mean()) / inv_cu_w.rolling(z_window).std()
+
+    # 组合信号:
+    # 做多条件:
+    #   - 库存低 (< 25%分位) OR 库存快速下降 (< -5%)
+    #   - 注销仓单上升 (> 0) OR 注册仓单下降 (< 0)
+    
+    # 库存信号
+    level_signal = (inv_level_pct < level_threshold).astype(float)
+    change_signal = (inv_change < change_threshold).astype(float)
+    inv_signal = (level_signal * 0.5 + change_signal * 0.5).clip(0, 1)
+
+    # 注销仓单信号 (领先指标: 上升=看多)
+    if use_cancelled:
+        cancelled_signal = (cancelled_change > 0).astype(float) * 0.5
+        reg_signal = (reg_change < 0).astype(float) * 0.5
+        warrant_signal = (cancelled_signal + reg_signal).clip(0, 1)
+    else:
+        warrant_signal = pd.Series(0.0, index=inv_cu_w.index)
+
+    # 组合: 库存信号70% + 仓单信号30%
+    position = (inv_signal * 0.7 + warrant_signal * 0.3).clip(0, 1)
     position = position.reindex(inv_cu_w.index).fillna(0)
+
+    # 信号衰减
+    if use_decay:
+        decay_factor = np.exp(-np.log(2) / decay_halflife)
+        position = position.ewm(span=decay_halflife).mean()
 
     return pd.DataFrame({
         "inv_cu": inv_cu_w,
-        "inv_cu_change": inv_cu_change,
-        "inv_warrant_change": inv_warrant_change,
-        "inv_al_change": inv_al_change,
-        "confirm_count": confirm_count,
+        "inv_level_pct": inv_level_pct,
+        "inv_change": inv_change,
+        "inv_z": inv_z,
         "position": position,
     })
+
+
+def backtest_inventory_momentum_v4(
+    signal: pd.DataFrame,
+    cost_bps: float = 5.0,
+    dd_threshold: float = -0.10,
+    target_vol: float = 0.12,
+) -> dict:
+    """回测库存动量v4."""
+    con = duckdb.connect(str(DB), read_only=True)
+    df = con.execute(
+        "SELECT trade_date, close FROM futures_main_close_cu ORDER BY trade_date"
+    ).df()
+    df["trade_date"] = pd.to_datetime(df["trade_date"])
+    close_w = df.set_index("trade_date")["close"].resample("W-FRI").last()
+
+    common = signal.index.intersection(close_w.index)
+    pos = signal.loc[common, "position"].fillna(0)
+    ret = close_w.pct_change().reindex(common)
+
+    # 波动率目标化
+    vol_4w = ret.rolling(4).std() * np.sqrt(52)
+    scale = (target_vol / vol_4w).fillna(1.0).clip(upper=1.0)
+    pos = (pos * scale).clip(0, 1)
+
+    strat_ret = pos.shift(1) * ret
+    cost = pos.diff().abs() * cost_bps / 10000
+    strat_ret = (strat_ret - cost).dropna()
+
+    # 回撤止损
+    nav = (1 + strat_ret).cumprod()
+    for i in range(1, len(nav)):
+        current_dd = nav.iloc[i] / nav.iloc[:i+1].max() - 1
+        if current_dd < dd_threshold:
+            strat_ret.iloc[i] = 0
+
+    nav = (1 + strat_ret).cumprod()
+
+    if len(strat_ret) == 0:
+        return {"n_weeks": 0, "ann_ret": 0, "ann_vol": 0, "sharpe": 0,
+                "max_dd": 0, "win_rate": 0, "nav": pd.Series(dtype=float)}
+
+    total_ret = nav.iloc[-1] / nav.iloc[0] - 1
+    n_years = len(strat_ret) / 52
+    ann_ret = (1 + total_ret) ** (1 / n_years) - 1 if n_years > 0 else 0
+    ann_vol = strat_ret.std() * np.sqrt(52)
+    max_dd = (nav / nav.cummax() - 1).min()
+
+    return {
+        "n_weeks": len(strat_ret),
+        "ann_ret": ann_ret,
+        "ann_vol": ann_vol,
+        "sharpe": ann_ret / ann_vol if ann_vol > 0 else 0,
+        "max_dd": max_dd,
+        "win_rate": (strat_ret > 0).mean(),
+        "nav": nav,
+    }
 
 
 def backtest_inventory_momentum(signal: pd.DataFrame, cost_bps: float = 5.0) -> dict:

@@ -189,6 +189,9 @@ data/chinese_futures/
 # Cache files (regeneratable)
 data/cache/
 
+# API keys for CMF data fetchers (EIA, FRED, etc.)
+data/cmf/.keys.json
+
 # Chart cache (regeneratable)
 combo/_chart_cache/
 

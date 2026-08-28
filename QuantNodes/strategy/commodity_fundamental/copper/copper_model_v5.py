@@ -149,26 +149,58 @@ def build_signal_v5(symbol: str = "CU0", con=None, use_econ: bool = True) -> pd.
     pmi_ma20 = pmi.rolling(20).mean()
     pmi_trend = (pmi > pmi_ma20).astype(float)  # PMI扩张=1 (看多铜)
 
-    # ── 对齐 ─────────────────────────────────────────────────────────────────
-    common_idx = mu_market.index.intersection(dxy.dropna().index).intersection(
-        tips.dropna().index
-    ).intersection(lme.dropna().index).intersection(rig.dropna().index).intersection(
-        pmi.dropna().index
-    ).intersection(mom_2w.dropna().index).intersection(momentum_13w.dropna().index)
+    # ── 对齐 (处理缺失数据) ─────────────────────────────────────────────────
+    # 构建基础索引 (必须有的数据)
+    base_idx = mu_market.index.intersection(lme.dropna().index).intersection(
+        mom_2w.dropna().index
+    ).intersection(momentum_13w.dropna().index)
+
+    # 可选数据: DXY, TIPS, PMI, RIG
+    if len(dxy.dropna()) > 0:
+        base_idx = base_idx.intersection(dxy.dropna().index)
+    if len(tips.dropna()) > 0:
+        base_idx = base_idx.intersection(tips.dropna().index)
+    if len(pmi.dropna()) > 0:
+        base_idx = base_idx.intersection(pmi.dropna().index)
+    # RIG不再要求必须
+
+    common_idx = base_idx
+
+    if len(common_idx) < 52:
+        # 数据不足, 返回空信号
+        return pd.DataFrame({
+            "M": close_w,
+            "p_phy": pd.Series(np.nan, index=close_w.index),
+            "gap": pd.Series(np.nan, index=close_w.index),
+            "vol_pct": vol_pct.reindex(close_w.index),
+            "mom_2w": mom_2w.reindex(close_w.index),
+            "d_inv": pd.Series(np.nan, index=close_w.index),
+            "d_price": pd.Series(np.nan, index=close_w.index),
+            "quadrant_pos": pd.Series(np.nan, index=close_w.index),
+            "industry_dz": pd.Series(np.nan, index=close_w.index),
+            "position": pd.Series(np.nan, index=close_w.index),
+        })
 
     # ── §2.2 符号约束Lasso ──────────────────────────────────────────────────
     # 宏观趋势因子: DXY趋势(IC=-0.12) + PMI趋势(IC=0.13)
-    X = pd.DataFrame({
-        "dxy_neg": -rolling_zscore(dxy, 104).reindex(common_idx),
-        "tips_neg": -rolling_zscore(tips, 104).reindex(common_idx),
+    X_factors = {
         "lme_neg": -rolling_zscore(lme, 52).reindex(common_idx),
-        "rig_neg": -rolling_zscore(rig, 52).reindex(common_idx),
-        "pmi": rolling_zscore(pmi, 52).reindex(common_idx),
         "mom_2w": rolling_zscore(mom_2w, 52).reindex(common_idx),
         "momentum_13w": rolling_zscore(momentum_13w, 52).reindex(common_idx),
-        "dxy_trend": dxy_trend.reindex(common_idx),  # 宏观趋势
-        "pmi_trend": pmi_trend.reindex(common_idx),  # 宏观趋势
-    }).dropna(how="any")
+    }
+
+    # 可选因子 (不添加RIG，用PMI替代)
+    if len(dxy.dropna()) > 0:
+        X_factors["dxy_neg"] = -rolling_zscore(dxy, 104).reindex(common_idx)
+    if len(tips.dropna()) > 0:
+        X_factors["tips_neg"] = -rolling_zscore(tips, 104).reindex(common_idx)
+    if len(pmi.dropna()) > 0:
+        X_factors["pmi"] = rolling_zscore(pmi, 52).reindex(common_idx)
+        X_factors["pmi_trend"] = pmi_trend.reindex(common_idx)
+    if len(dxy.dropna()) > 0:
+        X_factors["dxy_trend"] = dxy_trend.reindex(common_idx)
+
+    X = pd.DataFrame(X_factors).dropna(how="any")
 
     y = pd.Series(np.log(mu_market).diff().reindex(X.index)).dropna()
     common3 = X.index.intersection(y.index)
@@ -188,7 +220,13 @@ def build_signal_v5(symbol: str = "CU0", con=None, use_econ: bool = True) -> pd.
         inv_dir=-1,
     )
 
-    industry_dz = industry_momentum(rig.reindex(common3).ffill(), z_window=52, delta_window=4)
+    # 用PMI替代RIG作为行业景气度代理
+    if len(pmi.dropna()) > 0:
+        industry_dz = industry_momentum(pmi.reindex(common3).ffill(), z_window=52, delta_window=4)
+    elif len(rig.dropna()) > 0:
+        industry_dz = industry_momentum(rig.reindex(common3).ffill(), z_window=52, delta_window=4)
+    else:
+        industry_dz = pd.Series(0, index=common3)  # 无数据时默认为0
 
     # ── §3.2 估值层 ──────────────────────────────────────────────────────
     base_pos = apply_valuation_layer(
@@ -202,8 +240,8 @@ def build_signal_v5(symbol: str = "CU0", con=None, use_econ: bool = True) -> pd.
     # ── 波动率状态 + 宏观趋势 + 经济状态调整仓位 ──────────────────────────
     vol_aligned = vol_pct.reindex(common3).fillna(0.5)
     mom_aligned = mom_2w.reindex(common3).fillna(0)
-    dxy_trend_aligned = dxy_trend.reindex(common3).fillna(0)
-    pmi_trend_aligned = pmi_trend.reindex(common3).fillna(0)
+    dxy_trend_aligned = dxy_trend.reindex(common3).fillna(0) if len(dxy.dropna()) > 0 else pd.Series(0, index=common3)
+    pmi_trend_aligned = pmi_trend.reindex(common3).fillna(0) if len(pmi.dropna()) > 0 else pd.Series(0, index=common3)
 
     # 经济状态信号 (从FRED获取, 使用4周最小持续时间约束; use_econ=False时跳过)
     econ_score_aligned = pd.Series(0.0, index=common3)
@@ -237,7 +275,8 @@ def build_signal_v5(symbol: str = "CU0", con=None, use_econ: bool = True) -> pd.
         final_pos[econ_score_aligned < -0.5] = final_pos[econ_score_aligned < -0.5] - 0.2
     final_pos = final_pos.clip(lower=0.0, upper=1.0)
 
-    final_pos.iloc[0] = 0.0
+    if len(final_pos) > 0:
+        final_pos.iloc[0] = 0.0
 
     # ── 生成完整信号 ──────────────────────────────────────────────────────────
     full_signal = pd.DataFrame({

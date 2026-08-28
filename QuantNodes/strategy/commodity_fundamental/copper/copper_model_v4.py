@@ -47,28 +47,49 @@ def build_signal_v4(symbol: str = "CU0", con=None) -> pd.DataFrame:
     vol_13w = ret_w.rolling(13).std() * np.sqrt(52)
     vol_13w_z = rolling_zscore(vol_13w, 104)
 
-    # 2. DXY信号
+    # 2. DXY信号 (可能为空)
     dxy = _dxy(con).resample("W-FRI").last()
-    dxy_z = rolling_zscore(dxy, 104)
+    if len(dxy) > 0:
+        dxy_z = rolling_zscore(dxy, 104)
+    else:
+        dxy_z = pd.Series(dtype=float)
 
     # 3. 库存信号
     lme = _tfapi(con, "LME库存总计_铜").resample("W-FRI").last()
     lme_z = rolling_zscore(lme, 156)
 
     # 4. 对齐 (只用DXY可用的时间段)
-    common = close_w.index.intersection(vol_13w_z.dropna().index).intersection(
-        dxy_z.dropna().index
-    ).intersection(lme_z.dropna().index)
+    if len(dxy_z) > 0:
+        common = close_w.index.intersection(vol_13w_z.dropna().index).intersection(
+            dxy_z.dropna().index
+        ).intersection(lme_z.dropna().index)
+    else:
+        # DXY不可用时, 只用VIX和库存
+        common = close_w.index.intersection(vol_13w_z.dropna().index).intersection(
+            lme_z.dropna().index
+        )
+
+    if len(common) == 0:
+        # 没有可用数据, 返回空信号
+        return pd.DataFrame({
+            "M": close_w,
+            "vol_z": vol_13w_z.reindex(close_w.index),
+            "dxy_z": pd.Series(np.nan, index=close_w.index),
+            "lme_z": lme_z.reindex(close_w.index),
+            "vix_bull": vol_13w_z.reindex(close_w.index).gt(0).astype(float),
+            "dxy_bull": pd.Series(np.nan, index=close_w.index),
+            "position": np.nan,
+        })
 
     vol_z = vol_13w_z.reindex(common)
-    dxy_z_val = dxy_z.reindex(common)
+    dxy_z_val = dxy_z.reindex(common) if len(dxy_z) > 0 else pd.Series(0, index=common)
     lme_z_val = lme_z.reindex(common)
     ret = close_w.pct_change().reindex(common)
 
     # 5. 仓位映射 (VIX + DXY)
     pos = pd.Series(0.5, index=common)
     vix_bull = vol_z > 0
-    dxy_bull = dxy_z_val < 0
+    dxy_bull = dxy_z_val < 0 if len(dxy_z) > 0 else pd.Series(True, index=common)
 
     pos[vix_bull & dxy_bull] = 1.0    # VIX多+DXY多: 满仓
     pos[vix_bull & ~dxy_bull] = 0.7   # VIX多+DXY空: 重仓
@@ -80,16 +101,17 @@ def build_signal_v4(symbol: str = "CU0", con=None) -> pd.DataFrame:
     pos[lme_z_val > 0] = pos[lme_z_val > 0].clip(lower=0.0)
 
     # 7. 修复: 第一个周期仓位设为0
-    pos.iloc[0] = 0.0
+    if len(pos) > 0:
+        pos.iloc[0] = 0.0
 
     # 8. 生成完整信号 (DXY不可用时用NaN)
     full_signal = pd.DataFrame({
         "M": close_w,
         "vol_z": vol_13w_z.reindex(close_w.index),
-        "dxy_z": dxy_z.reindex(close_w.index),
+        "dxy_z": dxy_z.reindex(close_w.index) if len(dxy_z) > 0 else pd.Series(np.nan, index=close_w.index),
         "lme_z": lme_z.reindex(close_w.index),
         "vix_bull": vol_13w_z.reindex(close_w.index).gt(0).astype(float),
-        "dxy_bull": dxy_z.reindex(close_w.index).lt(0).astype(float),
+        "dxy_bull": dxy_z.reindex(close_w.index).lt(0).astype(float) if len(dxy_z) > 0 else pd.Series(np.nan, index=close_w.index),
         "position": np.nan,
     })
     full_signal.loc[common, "position"] = pos
