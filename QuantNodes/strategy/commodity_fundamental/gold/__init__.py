@@ -71,9 +71,11 @@ from .gold_trend_bnh import (
     compute_hysteresis_trend_d,
     compute_macro_regime_signal,
     compute_risk_overlay,
+    load_gold_price_d_with_open,
+)
+from .gold_ensemble import (
     compute_adaptive_ensemble,
     compute_layered_ensemble_signal,
-    load_gold_price_d_with_open,
 )
 from .gold_multi_factor import (
     compute_multi_factor_signal,

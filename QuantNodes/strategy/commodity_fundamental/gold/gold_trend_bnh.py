@@ -469,8 +469,9 @@ def get_weekly_returns(
 
 
 __all__ = [
-    "load_gold_price_w",
     "load_gold_price_d",
+    "load_gold_price_w",
+    "load_gold_price_d_with_open",
     "compute_risk_gate_d",
     "compute_trend_bnh_signal",
     "backtest_trend_bnh",
@@ -478,9 +479,6 @@ __all__ = [
     "compute_hysteresis_trend_d",
     "compute_macro_regime_signal",
     "compute_risk_overlay",
-    "compute_adaptive_ensemble",
-    "_rolling_drawdown",
-    "_rolling_calmar",
 ]
 
 
