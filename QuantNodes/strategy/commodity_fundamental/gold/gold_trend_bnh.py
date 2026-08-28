@@ -54,6 +54,17 @@ def load_gold_price_d() -> pd.Series:
     return df.set_index("trade_date")["close"]
 
 
+def load_gold_price_d_with_open() -> pd.DataFrame:
+    """加载黄金日度开盘价和收盘价."""
+    con = duckdb.connect(str(DB), read_only=True)
+    df = con.execute(
+        "SELECT trade_date, open, close FROM futures_main_close_au ORDER BY trade_date"
+    ).df()
+    con.close()
+    df["trade_date"] = pd.to_datetime(df["trade_date"])
+    return df.set_index("trade_date")[["open", "close"]]
+
+
 def load_gold_price_w() -> pd.Series:
     """加载黄金周度收盘价 (W-FRI)."""
     return load_gold_price_d().resample("W-FRI").last().dropna()
@@ -922,6 +933,11 @@ def compute_layered_ensemble_signal(
       - MaxDD持平 (-12.94% vs -12.97%)
       - 2026年优势明显 (+1.31pp)
 
+    回测方式:
+      - 信号在收盘计算, 次日(或夜盘)开盘价成交
+      - 收益计算: open-to-open (pos[t] * (open[t+1]-open[t])/open[t])
+      - 最大程度捕捉隔夜跳空收益
+
     参数:
         close: 收盘价 (可选, 默认自动加载)
         vix/gvz/tips: 指标 (可选, 默认自动加载)
@@ -929,7 +945,7 @@ def compute_layered_ensemble_signal(
         hard_cap/soft_cap/daily_cap/vol_cap/cooldown_days: 风控参数
         breakout_weight: 突破信号权重 (默认0.0, 向后兼容)
 
-    返回: DataFrame [close, position]
+    返回: DataFrame [close, open, position]
     """
     from QuantNodes.strategy.commodity_fundamental.gold.gold_real_rate import (
         compute_real_rate_signal,
@@ -942,7 +958,11 @@ def compute_layered_ensemble_signal(
     )
 
     if close is None:
-        close = load_gold_price_d()
+        price_df = load_gold_price_d_with_open()
+        close = price_df["close"]
+        open_price = price_df["open"]
+    else:
+        open_price = close  # fallback
     if vix is None:
         vix = _load_indicator_d("vix", "gold_fred").reindex(close.index).ffill()
     if gvz is None:
@@ -1000,4 +1020,4 @@ def compute_layered_ensemble_signal(
             if abs(position.iloc[i] - position.iloc[i-1]) < deadband:
                 position.iloc[i] = position.iloc[i-1]
 
-    return pd.DataFrame({"close": close, "position": position})
+    return pd.DataFrame({"close": close, "open": open_price, "position": position})
