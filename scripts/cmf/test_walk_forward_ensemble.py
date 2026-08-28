@@ -3,7 +3,7 @@
 滚动窗口:
 - 训练窗口: 4年
 - 测试窗口: 2年
-- 滚动前进: 每次移动1年
+- 滚动步长: 1年
 
 评估:
 - 每个测试窗口的年化收益/MaxDD/Calmar
@@ -65,7 +65,6 @@ def evaluate(pos, close, s, e):
 
 def walk_forward_test(pos, close, train_years=4, test_years=2):
     """滚动Walk-Forward测试."""
-    # 确定滚动窗口
     start_year = close.index[0].year
     end_year = close.index[-1].year
     
@@ -85,7 +84,6 @@ def walk_forward_test(pos, close, train_years=4, test_years=2):
         })
         current_year += 1
     
-    # 评估每个fold
     results = []
     for fold in folds:
         train_metrics = evaluate(pos, close, *fold["train"])
@@ -95,6 +93,8 @@ def walk_forward_test(pos, close, train_years=4, test_years=2):
             "fold": fold["fold"],
             "train_period": f"{fold['train'][0][:4]}-{fold['train'][1][:4]}",
             "test_period": f"{fold['test'][0][:4]}-{fold['test'][1][:4]}",
+            "test_start": fold["test"][0],
+            "test_end": fold["test"][1],
             "train_ann": train_metrics["ann_ret"],
             "train_dd": train_metrics["max_dd"],
             "test_ann": test_metrics["ann_ret"],
@@ -109,32 +109,29 @@ def walk_forward_test(pos, close, train_years=4, test_years=2):
 def main():
     close = load_close()
     
-    # 获取策略信号
     sig = compute_layered_ensemble_signal()
     pos = sig["position"]
     
-    # Buy&Hold基准
     bh_pos = pd.Series(1.0, index=close.index)
     
-    print("=" * 120)
+    print("=" * 130)
     print("分层集成策略 滚动Walk-Forward测试")
-    print("=" * 120)
+    print("=" * 130)
     print(f"训练窗口: 4年, 测试窗口: 2年, 滚动步长: 1年")
     print(f"数据范围: {close.index[0].date()} ~ {close.index[-1].date()}")
     print()
     
-    # 执行walk-forward测试
     ensemble_results = walk_forward_test(pos, close)
     bh_results = walk_forward_test(bh_pos, close)
     
-    # 输出逐折结果
-    print("=" * 120)
+    # 逐折结果
+    print("=" * 130)
     print("逐折Walk-Forward结果")
-    print("=" * 120)
+    print("=" * 130)
     print(f"{'折':<4} {'训练期':<12} {'测试期':<12} | "
           f"{'策略年化':>10} {'策略DD':>10} {'策略Sharpe':>10} {'策略Calmar':>10} | "
           f"{'B&H年化':>10} {'B&H DD':>10} {'B&H Calmar':>10}")
-    print("-" * 120)
+    print("-" * 130)
     
     for i, (er, bhr) in enumerate(zip(ensemble_results, bh_results)):
         print(f"{er['fold']:<4} {er['train_period']:<12} {er['test_period']:<12} | "
@@ -142,17 +139,15 @@ def main():
               f"{bhr['test_ann']*100:>9.2f}% {bhr['test_dd']*100:>9.2f}% {bhr['test_calmar']:>10.2f}")
     
     # 汇总统计
-    print("\n" + "=" * 120)
+    print("\n" + "=" * 130)
     print("Walk-Forward汇总统计")
-    print("=" * 120)
+    print("=" * 130)
     
-    # 策略统计
     ens_ann = [r["test_ann"] for r in ensemble_results]
     ens_dd = [r["test_dd"] for r in ensemble_results]
     ens_sharpe = [r["test_sharpe"] for r in ensemble_results]
     ens_calmar = [r["test_calmar"] for r in ensemble_results]
     
-    # B&H统计
     bh_ann = [r["test_ann"] for r in bh_results]
     bh_dd = [r["test_dd"] for r in bh_results]
     bh_calmar = [r["test_calmar"] for r in bh_results]
@@ -160,24 +155,26 @@ def main():
     print(f"\n{'指标':<20} {'分层集成':>15} {'Buy&Hold':>15} {'差异':>15}")
     print("-" * 80)
     print(f"{'平均年化收益':<20} {np.mean(ens_ann)*100:>14.2f}% {np.mean(bh_ann)*100:>14.2f}% {(np.mean(ens_ann)-np.mean(bh_ann))*100:>+14.2f}pp")
-    print(f"{'年化收益标准差':<20} {np.std(ens_ann)*100:>14.2f}% {np.std(bh_ann)*100:>14.2f}% {(np.std(ens_ann)-np.std(bh_ann))*100:>+14.2f}pp")
     print(f"{'平均MaxDD':<20} {np.mean(ens_dd)*100:>14.2f}% {np.mean(bh_dd)*100:>14.2f}% {(np.mean(ens_dd)-np.mean(bh_dd))*100:>+14.2f}pp")
     print(f"{'最差MaxDD':<20} {np.min(ens_dd)*100:>14.2f}% {np.min(bh_dd)*100:>14.2f}% {(np.min(ens_dd)-np.min(bh_dd))*100:>+14.2f}pp")
-    print(f"{'平均Sharpe':<20} {np.mean(ens_sharpe):>15.2f} {0:>15} {np.mean(ens_sharpe):>+15.2f}")
     print(f"{'平均Calmar':<20} {np.mean(ens_calmar):>15.2f} {np.mean(bh_calmar):>15.2f} {np.mean(ens_calmar)-np.mean(bh_calmar):>+15.2f}")
     print(f"{'正收益期数':<20} {sum(1 for x in ens_ann if x > 0):>15} {sum(1 for x in bh_ann if x > 0):>15} {sum(1 for x in ens_ann if x > 0)-sum(1 for x in bh_ann if x > 0):>+15}")
     print(f"{'总测试期数':<20} {len(ensemble_results):>15} {len(bh_results):>15} {0:>15}")
     
-    # 拼接测试期表现
-    print("\n" + "=" * 120)
-    print("拼接测试期累计表现 (所有Walk-Forward测试窗口)")
-    print("=" * 120)
+    # 累计年化收益 (CAGR)
+    print("\n" + "=" * 130)
+    print("累计年化收益 (CAGR)")
+    print("=" * 130)
     
-    # 拼接所有测试期的收益
+    # 拼接所有测试期收益
     all_test_returns = []
-    for r in ensemble_results:
-        test_start = f"{r['test_period'][:4]}-01-01"
-        test_end = f"{r['test_period'][5:]}-12-31"
+    bh_all_returns = []
+    
+    for er, bhr in zip(ensemble_results, bh_results):
+        test_start = er["test_start"]
+        test_end = er["test_end"]
+        
+        # 策略
         sub = pos[(pos.index >= test_start) & (pos.index <= test_end)]
         c = close.reindex(sub.index)
         ret = c.pct_change()
@@ -185,11 +182,20 @@ def main():
         cost = sub.fillna(0).diff().abs() * COST_BPS / 10000
         sr = (sr - cost).dropna()
         all_test_returns.append(sr)
+        
+        # Buy&Hold
+        sub_bh = bh_pos[(bh_pos.index >= test_start) & (bh_pos.index <= test_end)]
+        sr_bh = (sub_bh.shift(1) * c.pct_change()).dropna()
+        bh_all_returns.append(sr_bh)
     
     # 合并所有测试期收益
     combined_returns = pd.concat(all_test_returns)
     combined_returns = combined_returns[~combined_returns.index.duplicated(keep='first')]
     combined_returns = combined_returns.sort_index()
+    
+    combined_bh_returns = pd.concat(bh_all_returns)
+    combined_bh_returns = combined_bh_returns[~combined_bh_returns.index.duplicated(keep='first')]
+    combined_bh_returns = combined_bh_returns.sort_index()
     
     # 计算累计表现
     nav = (1 + combined_returns).cumprod()
@@ -201,14 +207,25 @@ def main():
     sharpe = ann_ret / vol if vol > 0 else 0
     calmar = ann_ret / abs(dd) if dd != 0 else 0
     
-    print(f"\n{'指标':<20} {'分层集成':>15}")
-    print("-" * 40)
-    print(f"{'累计年化收益':<20} {ann_ret*100:>14.2f}%")
-    print(f"{'累计Sharpe':<20} {sharpe:>15.2f}")
-    print(f"{'累计MaxDD':<20} {dd*100:>14.2f}%")
-    print(f"{'累计Calmar':<20} {calmar:>15.2f}")
-    print(f"{'累计换手率':<20} {combined_returns.abs().sum()/2/n_y:>14.1f}x")
-    print(f"{'测试期覆盖':<20} {combined_returns.index[0].date()} ~ {combined_returns.index[-1].date()}")
+    # Buy&Hold累计表现
+    nav_bh = (1 + combined_bh_returns).cumprod()
+    total_ret_bh = nav_bh.iloc[-1] / nav_bh.iloc[0] - 1
+    n_y_bh = len(combined_bh_returns) / 252
+    ann_ret_bh = (1 + total_ret_bh) ** (1 / n_y_bh) - 1
+    vol_bh = combined_bh_returns.std() * np.sqrt(252)
+    dd_bh = (nav_bh / nav_bh.cummax() - 1).min()
+    sharpe_bh = ann_ret_bh / vol_bh if vol_bh > 0 else 0
+    calmar_bh = ann_ret_bh / abs(dd_bh) if dd_bh != 0 else 0
+    
+    print(f"\n{'指标':<25} {'分层集成':>15} {'Buy&Hold':>15} {'差异':>15}")
+    print("-" * 80)
+    print(f"{'累计年化收益 (CAGR)':<25} {ann_ret*100:>14.2f}% {ann_ret_bh*100:>14.2f}% {(ann_ret-ann_ret_bh)*100:>+14.2f}pp")
+    print(f"{'累计Sharpe':<25} {sharpe:>15.2f} {sharpe_bh:>15.2f} {sharpe-sharpe_bh:>+15.2f}")
+    print(f"{'累计MaxDD':<25} {dd*100:>14.2f}% {dd_bh*100:>14.2f}% {(dd-dd_bh)*100:>+14.2f}pp")
+    print(f"{'累计Calmar':<25} {calmar:>15.2f} {calmar_bh:>15.2f} {calmar-calmar_bh:>+15.2f}")
+    print(f"{'累计换手率':<25} {combined_returns.abs().sum()/2/n_y:>14.1f}x {combined_bh_returns.abs().sum()/2/n_y_bh:>14.1f}x")
+    print(f"{'测试期覆盖':<25} {combined_returns.index[0].date()} ~ {combined_returns.index[-1].date()}")
+    print(f"{'总天数':<25} {len(combined_returns):>15} {len(combined_bh_returns):>15}")
     
     # 保存结果
     md = ["# 分层集成策略 滚动Walk-Forward测试\n\n",
@@ -237,14 +254,13 @@ def main():
     md.append(f"| 平均Calmar | {np.mean(ens_calmar):.2f} | {np.mean(bh_calmar):.2f} | {np.mean(ens_calmar)-np.mean(bh_calmar):+.2f} |\n")
     md.append(f"| 正收益期数 | {sum(1 for x in ens_ann if x > 0)} | {sum(1 for x in bh_ann if x > 0)} | {sum(1 for x in ens_ann if x > 0)-sum(1 for x in bh_ann if x > 0):+} |\n")
     
-    md.append("\n## 拼接测试期累计表现\n\n")
-    md.append("| 指标 | 分层集成 |\n")
-    md.append("|---|---|\n")
-    md.append(f"| 累计年化收益 | {ann_ret*100:.2f}% |\n")
-    md.append(f"| 累计Sharpe | {sharpe:.2f} |\n")
-    md.append(f"| 累计MaxDD | {dd*100:.2f}% |\n")
-    md.append(f"| 累计Calmar | {calmar:.2f} |\n")
-    md.append(f"| 累计换手率 | {combined_returns.abs().sum()/2/n_y:.1f}x |\n")
+    md.append("\n## 累计年化收益 (CAGR)\n\n")
+    md.append("| 指标 | 分层集成 | Buy&Hold | 差异 |\n")
+    md.append("|---|---|---|---|\n")
+    md.append(f"| 累计年化收益 (CAGR) | {ann_ret*100:.2f}% | {ann_ret_bh*100:.2f}% | {(ann_ret-ann_ret_bh)*100:+.2f}pp |\n")
+    md.append(f"| 累计Sharpe | {sharpe:.2f} | {sharpe_bh:.2f} | {sharpe-sharpe_bh:+.2f} |\n")
+    md.append(f"| 累计MaxDD | {dd*100:.2f}% | {dd_bh*100:.2f}% | {(dd-dd_bh)*100:+.2f}pp |\n")
+    md.append(f"| 累计Calmar | {calmar:.2f} | {calmar_bh:.2f} | {calmar-calmar_bh:+.2f} |\n")
     md.append(f"| 测试期覆盖 | {combined_returns.index[0].date()} ~ {combined_returns.index[-1].date()} |\n")
     
     md_path = Path("docs/gold/walk_forward_ensemble_results.md")
