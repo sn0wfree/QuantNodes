@@ -1,4 +1,4 @@
-"""scripts/cmf/plot_gold_nav.py — 生成黄金策略净值曲线 (Δtips新策略 vs 基线 vs B&H).
+"""scripts/cmf/plot_gold_nav.py — 黄金策略净值曲线对比.
 
 输出:
 - reports/gold/gold_nav_curve.png
@@ -20,9 +20,7 @@ sys.path.insert(0, '/home/ll/Public/QuantNodes')
 sys.path.insert(0, '/home/ll/Public/QuantNodes/scripts/cmf')
 
 from option_utils import calc_metrics
-from QuantNodes.strategy.commodity_fundamental.gold import (
-    compute_layered_ensemble_signal, compute_risk_overlay,
-)
+from QuantNodes.strategy.commodity_fundamental.gold import compute_risk_overlay
 from QuantNodes.strategy.commodity_fundamental.gold.gold_trend_bnh import (
     _load_indicator_d, compute_macro_regime_signal,
 )
@@ -50,8 +48,7 @@ def compute_nav(pos, close, start="2010-01-01", end="2026-08-25"):
     sr = (sub.fillna(0).shift(1) * ret).dropna()
     cost = sub.fillna(0).diff().abs() * 5 / 10000
     sr = (sr - cost).dropna()
-    nav = (1 + sr).cumprod()
-    return nav
+    return (1 + sr).cumprod()
 
 
 def get_metrics(nav):
@@ -70,13 +67,12 @@ def main():
     vix = _load_indicator_d("vix", "gold_fred").reindex(close.index).ffill()
     gvz = _load_indicator_d("gvz", "gold_fred").reindex(close.index).ffill()
 
-    # ===== 新策略: Δtips二值 + 分层集成 =====
-    # Δtips二值信号
+    # ===== Δtips信号 =====
     d = tips.diff(10)
     rank = d.rolling(504, min_periods=126).rank(pct=True)
     delta_bin = (rank <= 0.5).astype(float).fillna(0)
 
-    # 四路信号 + 风控
+    # ===== 四路信号+风控 =====
     macro_raw = compute_macro_regime_signal()["position"].reindex(close.index).fillna(method="ffill").fillna(0)
     rr_raw = compute_real_rate_signal(variant="tips_ma")["position"].reindex(close.index).fillna(method="ffill").fillna(0)
     mom_raw = compute_momentum_signal(variant="long_only")["position"].reindex(close.index).fillna(method="ffill").fillna(0)
@@ -91,84 +87,104 @@ def main():
     mom_ov = ov(mom_raw)
     bo_ov = ov(bo_raw)
 
-    # 新策略: 0.2125×macro + 0.2125×rr + 0.2125×mom + 0.2125×bo + 0.15×Δtips
+    # ===== 策略构建 =====
+    # 1. 基线Δtips (L=1.0)
     w4 = 0.85 / 4
-    pos_new = (w4*macro_ov + w4*rr_ov + w4*mom_ov + w4*bo_ov + 0.15*delta_bin).clip(0, 1.2)
+    pos_base = (w4*macro_ov + w4*rr_ov + w4*mom_ov + w4*bo_ov + 0.15*delta_bin).clip(0, 1.2)
 
-    # ===== 基线: 分层集成 bw=0.2 =====
-    sig_base = compute_layered_ensemble_signal(breakout_weight=0.2)
-    pos_base = sig_base["position"]
+    # 2. L=1.5 CPPI
+    pos_15 = compute_risk_overlay(
+        close=close, position=(pos_base * 1.5).clip(0, 1.8), vix=vix, gvz=gvz,
+        hard_cap=-0.15, soft_cap=-0.12, daily_cap=-0.03, vol_cap=0.20, cooldown_days=5)
 
-    # ===== Buy&Hold =====
+    # 3. L=2.0 CPPI
+    pos_20 = compute_risk_overlay(
+        close=close, position=(pos_base * 2.0).clip(0, 2.4), vix=vix, gvz=gvz,
+        hard_cap=-0.15, soft_cap=-0.12, daily_cap=-0.03, vol_cap=0.20, cooldown_days=5)
+
+    # 4. Buy&Hold
     bh_pos = pd.Series(1.0, index=close.index)
 
-    # 计算净值
-    nav_new = compute_nav(pos_new, close)
+    # ===== 计算净值 =====
     nav_base = compute_nav(pos_base, close)
+    nav_15 = compute_nav(pos_15, close)
+    nav_20 = compute_nav(pos_20, close)
     nav_bh = compute_nav(bh_pos, close)
 
-    # 计算指标
-    m_new = get_metrics(nav_new)
+    # ===== 指标输出 =====
     m_base = get_metrics(nav_base)
+    m_15 = get_metrics(nav_15)
+    m_20 = get_metrics(nav_20)
     m_bh = get_metrics(nav_bh)
 
-    # 输出指标
-    print("=" * 90)
-    print("黄金策略净值曲线对比 (Δtips新策略 vs 基线 vs Buy&Hold)")
-    print("=" * 90)
-    print(f'{"指标":<20} {"新策略(Δtips)":>18} {"基线(bw=0.2)":>18} {"Buy&Hold":>18}')
-    print("-" * 80)
-    print(f'{"年化收益":<20} {m_new[0]*100:>17.2f}% {m_base[0]*100:>17.2f}% {m_bh[0]*100:>17.2f}%')
-    print(f'{"Sharpe":<20} {m_new[1]:>18.2f} {m_base[1]:>18.2f} {m_bh[1]:>18.2f}')
-    print(f'{"MaxDD":<20} {m_new[2]*100:>17.2f}% {m_base[2]*100:>17.2f}% {m_bh[2]*100:>17.2f}%')
-    print(f'{"Calmar":<20} {m_new[3]:>18.2f} {m_base[3]:>18.2f} {m_bh[3]:>18.2f}')
-    print(f'{"总收益":<20} {(nav_new.iloc[-1]-1)*100:>17.2f}% {(nav_base.iloc[-1]-1)*100:>17.2f}% {(nav_bh.iloc[-1]-1)*100:>17.2f}%')
+    print("=" * 95)
+    print("黄金策略净值曲线对比 (L=1.5 CPPI vs L=2.0 CPPI vs 基线 vs Buy&Hold)")
+    print("=" * 95)
+    print(f'{"指标":<20} {"L=1.5 CPPI":>15} {"L=2.0 CPPI":>15} {"基线(L=1)":>15} {"Buy&Hold":>15}')
+    print("-" * 85)
+    for name, fmt in [("年化收益", True), ("Sharpe", False), ("MaxDD", True), ("Calmar", False), ("总收益", True)]:
+        vals = [m_15, m_20, m_base, m_bh]
+        idx = {"年化收益": 0, "Sharpe": 1, "MaxDD": 2, "Calmar": 3, "总收益": -1}[name]
+        if name == "总收益":
+            v = [(nav_15.iloc[-1]-1)*100, (nav_20.iloc[-1]-1)*100, (nav_base.iloc[-1]-1)*100, (nav_bh.iloc[-1]-1)*100]
+            print(f'{name:<20} {v[0]:>14.2f}% {v[1]:>14.2f}% {v[2]:>14.2f}% {v[3]:>14.2f}%')
+        elif fmt:
+            v = [x[idx]*100 for x in vals]
+            print(f'{name:<20} {v[0]:>14.2f}% {v[1]:>14.2f}% {v[2]:>14.2f}% {v[3]:>14.2f}%')
+        else:
+            v = [x[idx] for x in vals]
+            print(f'{name:<20} {v[0]:>15.2f} {v[1]:>15.2f} {v[2]:>15.2f} {v[3]:>15.2f}')
 
-    # 绘图
-    fig, axes = plt.subplots(3, 1, figsize=(16, 12), gridspec_kw={'height_ratios': [3, 1, 1]})
+    # ===== 绘图 =====
+    fig, axes = plt.subplots(4, 1, figsize=(16, 14), gridspec_kw={'height_ratios': [3, 1, 1, 1]})
 
     # 图1: 净值曲线
     ax1 = axes[0]
-    ax1.plot(nav_new.index, nav_new.values, label='新策略 (Δtips w=10)', linewidth=2, color='#2196F3')
-    ax1.plot(nav_base.index, nav_base.values, label='基线 (bw=0.2)', linewidth=2, color='#4CAF50', linestyle='--')
-    ax1.plot(nav_bh.index, nav_bh.values, label='Buy & Hold', linewidth=2, color='#FF9800', alpha=0.7)
+    ax1.plot(nav_15.index, nav_15.values, label='L=1.5 CPPI', linewidth=2.5, color='#2196F3')
+    ax1.plot(nav_20.index, nav_20.values, label='L=2.0 CPPI', linewidth=2, color='#9C27B0', linestyle='--')
+    ax1.plot(nav_base.index, nav_base.values, label='基线(L=1)', linewidth=2, color='#4CAF50', linestyle='-.')
+    ax1.plot(nav_bh.index, nav_bh.values, label='Buy&Hold', linewidth=2, color='#FF9800', alpha=0.7)
     ax1.set_ylabel('累计净值')
-    ax1.set_title('黄金策略净值曲线对比 (Δtips新策略 vs 基线 vs B&H)', fontsize=14, fontweight='bold')
+    ax1.set_title('黄金策略净值曲线对比 (L=1.5 CPPI vs L=2.0 CPPI vs 基线 vs B&H)', fontsize=14, fontweight='bold')
     ax1.legend(loc='upper left')
     ax1.grid(True, alpha=0.3)
     ax1.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
 
-    # 标注关键点
-    ax1.axvline(x=pd.Timestamp('2013-04-15'), color='red', linestyle=':', alpha=0.5, label='2013 taper')
-    ax1.axvline(x=pd.Timestamp('2020-03-16'), color='red', linestyle=':', alpha=0.5, label='COVID')
-    ax1.axvline(x=pd.Timestamp('2026-01-01'), color='purple', linestyle=':', alpha=0.5, label='2026')
-
-    # 图2: 回撤曲线
+    # 图2: 回撤
     ax2 = axes[1]
-    dd_new = nav_new / nav_new.cummax() - 1
+    dd_15 = nav_15 / nav_15.cummax() - 1
+    dd_20 = nav_20 / nav_20.cummax() - 1
     dd_base = nav_base / nav_base.cummax() - 1
     dd_bh = nav_bh / nav_bh.cummax() - 1
-    ax2.fill_between(dd_new.index, dd_new.values * 100, 0, alpha=0.3, color='#2196F3', label='新策略')
-    ax2.fill_between(dd_base.index, dd_base.values * 100, 0, alpha=0.3, color='#4CAF50', label='基线')
-    ax2.fill_between(dd_bh.index, dd_bh.values * 100, 0, alpha=0.2, color='#FF9800', label='B&H')
+    ax2.fill_between(dd_15.index, dd_15.values*100, 0, alpha=0.4, color='#2196F3', label='L=1.5 CPPI')
+    ax2.fill_between(dd_20.index, dd_20.values*100, 0, alpha=0.3, color='#9C27B0', label='L=2.0 CPPI')
+    ax2.fill_between(dd_bh.index, dd_bh.values*100, 0, alpha=0.2, color='#FF9800', label='B&H')
     ax2.set_ylabel('回撤 (%)')
-    ax2.set_title('回撤曲线', fontsize=12)
     ax2.legend(loc='lower left')
     ax2.grid(True, alpha=0.3)
     ax2.axhline(y=0, color='gray', linestyle='-', alpha=0.5)
-    ax2.axhline(y=-15, color='red', linestyle='--', alpha=0.5, label='DD -15%')
+    ax2.axhline(y=-15, color='red', linestyle='--', alpha=0.5)
 
     # 图3: 仓位
     ax3 = axes[2]
-    pos_sub = pos_new[(pos_new.index >= nav_new.index[0]) & (pos_new.index <= nav_new.index[-1])]
-    ax3.step(pos_sub.index, pos_sub.values, where='post', linewidth=1.5, color='#9C27B0', label='新策略')
+    ax3.step(pos_15.index, pos_15.values, where='post', linewidth=1.5, color='#2196F3', label='L=1.5 CPPI')
+    ax3.step(pos_20.index, pos_20.values, where='post', linewidth=1, color='#9C27B0', label='L=2.0 CPPI', alpha=0.7)
     ax3.set_ylabel('仓位')
-    ax3.set_title('策略仓位', fontsize=12)
+    ax3.legend(loc='upper right')
     ax3.grid(True, alpha=0.3)
-    ax3.axhline(y=0.5, color='gray', linestyle='--', alpha=0.5)
     ax3.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+    ax3.axhline(y=1.5, color='red', linestyle=':', alpha=0.5)
 
-    # 格式化x轴
+    # 图4: 相对净值 (vs B&H)
+    ax4 = axes[3]
+    ax4.plot(nav_15.index, (nav_15/nav_bh).values, label='L=1.5 CPPI / B&H', linewidth=1.5, color='#2196F3')
+    ax4.plot(nav_20.index, (nav_20/nav_bh).values, label='L=2.0 CPPI / B&H', linewidth=1.5, color='#9C27B0', linestyle='--')
+    ax4.set_ylabel('相对净值 (vs B&H)')
+    ax4.set_xlabel('日期')
+    ax4.legend(loc='upper left')
+    ax4.grid(True, alpha=0.3)
+    ax4.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+
     for ax in axes:
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         ax.xaxis.set_major_locator(mdates.YearLocator())
@@ -176,7 +192,6 @@ def main():
 
     plt.tight_layout()
 
-    # 保存
     output_dir = Path("reports/gold")
     output_dir.mkdir(parents=True, exist_ok=True)
     png_path = output_dir / "gold_nav_curve.png"
@@ -185,15 +200,16 @@ def main():
     plt.savefig(png_path, dpi=150, bbox_inches='tight')
     print(f"\n净值曲线图已保存: {png_path}")
 
-    # 保存CSV
     nav_df = pd.DataFrame({
-        'strategy_nav_dtips': nav_new,
-        'strategy_nav_base': nav_base,
-        'bh_nav': nav_bh,
-        'position_dtips': pos_new.reindex(nav_new.index).fillna(method='ffill').fillna(0),
-        'position_base': pos_base.reindex(nav_new.index).fillna(method='ffill').fillna(0),
-        'drawdown_dtips': dd_new,
-        'drawdown_base': dd_base,
+        'nav_L1.5_CPPI': nav_15,
+        'nav_L2.0_CPPI': nav_20,
+        'nav_baseline_L1': nav_base,
+        'nav_BuyHold': nav_bh,
+        'position_L1.5': pos_15.reindex(nav_15.index).fillna(method='ffill').fillna(0),
+        'position_L2.0': pos_20.reindex(nav_20.index).fillna(method='ffill').fillna(0),
+        'position_baseline': pos_base.reindex(nav_base.index).fillna(method='ffill').fillna(0),
+        'drawdown_L1.5': dd_15,
+        'drawdown_L2.0': dd_20,
     })
     nav_df.to_csv(csv_path)
     print(f"净值数据已保存: {csv_path}")
