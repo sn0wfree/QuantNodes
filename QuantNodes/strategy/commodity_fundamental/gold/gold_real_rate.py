@@ -66,7 +66,7 @@ def compute_real_rate_signal(
         signal = (tips < tips_level_thresh).astype(float)
     elif variant == "rir_negative":
         signal = (rir < 0).astype(float)
-    elif "variant" == "combined":
+    elif variant == "combined":
         s1 = (tips < tips_ma).astype(float)
         s2 = (tips < tips_level_thresh).astype(float)
         s3 = (rir < 0).astype(float)

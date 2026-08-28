@@ -72,8 +72,16 @@ def backtest_weekly(
     """
     close = signal["close"]
     pos = signal["position"]
-    ret = close.pct_change()
 
+    if len(close) == 0:
+        return {
+            "n_weeks": 0, "ann_ret": 0, "ann_vol": 0,
+            "sharpe": 0, "max_dd": 0, "win_rate": 0,
+            "win_rate_active": 0, "avg_pos": 0, "pct_active": 0,
+            "nav": pd.Series(dtype=float),
+        }
+
+    ret = close.pct_change()
     strat_ret = pos.shift(1) * ret
     cost = pos.diff().abs() * cost_bps / 10000
     strat_ret = (strat_ret - cost).dropna()
