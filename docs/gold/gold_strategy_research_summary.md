@@ -2,7 +2,7 @@
 
 > 创建日期: 2026-08-27
 > 研究周期: 完整一轮(从期权保护→VIX自适应→ATR止损→多信号集成)
-> 最终策略: `compute_layered_ensemble_signal()` (分层集成)
+> 最终策略: `compute_layered_ensemble_signal()` (分层集成 + 第4路breakout)
 
 ---
 
