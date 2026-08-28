@@ -1,8 +1,9 @@
 # 黄金策略最终方案文档
 
 > 最后更新: 2026-08-28
-> 最终策略: `compute_layered_ensemble_signal` + CPPI杠杆 (L=1.5)
+> 最终策略: `compute_layered_ensemble_signal` + CPPI杠杆 (L=1.5) + 死带平滑
 > 核心收益: Walk-Forward CAGR 9.59%, MaxDD -11.48%, Sharpe 1.01, Calmar 0.84
+> 换手优化: 死带th=0.05, 变化次数-47%, 换手-5.5%, 收益损失<0.05pp
 
 ---
 
@@ -29,6 +30,9 @@
 集成: base = 0.2125×(macro+rr+mom+bo) + 0.15×Δtips
 
 杠杆: L=1.5, clip上限1.8
+
+死带平滑: th=0.05 (忽略<5%的仓位变化, 降低换手47%)
+  - 保留清仓/开仓信号, 仅忽略小幅调仓
 
 风控: CPPI三层重铺
   Level 1: 波动率压制 (vol_cap=0.20)

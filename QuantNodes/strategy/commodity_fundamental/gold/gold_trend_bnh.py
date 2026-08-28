@@ -903,6 +903,7 @@ def compute_layered_ensemble_signal(
     cooldown_days: int = 5,
     vol_window: int = 20,
     breakout_weight: float = 0.2,
+    deadband: float = 0.05,
 ) -> pd.DataFrame:
     """分层集成信号 (Layered Ensemble) — 各信号独立风控后再加权.
 
@@ -992,5 +993,11 @@ def compute_layered_ensemble_signal(
                     + breakout_weight * bo_ov).clip(0, 1.2)
     else:
         position = ((macro_ov + rr_ov + mom_ov) / 3).clip(0, 1.2)
+
+    # 死带平滑: 忽略<threshold的仓位变化 (降低换手, 保留清仓/开仓信号)
+    if deadband > 0:
+        for i in range(1, len(position)):
+            if abs(position.iloc[i] - position.iloc[i-1]) < deadband:
+                position.iloc[i] = position.iloc[i-1]
 
     return pd.DataFrame({"close": close, "position": position})
