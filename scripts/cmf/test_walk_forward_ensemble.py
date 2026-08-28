@@ -71,11 +71,15 @@ def walk_forward_test(pos, close, train_years=4, test_years=2):
     folds = []
     current_year = start_year + train_years
     
-    while current_year + test_years <= end_year:
+    while current_year <= end_year:
         train_start = f"{current_year - train_years}-01-01"
         train_end = f"{current_year - 1}-12-31"
         test_start = f"{current_year}-01-01"
-        test_end = f"{current_year + test_years - 1}-12-31"
+        # 最后一折到数据末尾
+        if current_year == end_year:
+            test_end = close.index[-1].strftime("%Y-%m-%d")
+        else:
+            test_end = f"{current_year}-12-31"
         
         folds.append({
             "train": (train_start, train_end),
@@ -115,9 +119,9 @@ def main():
     bh_pos = pd.Series(1.0, index=close.index)
     
     print("=" * 130)
-    print("分层集成策略 滚动Walk-Forward测试")
+    print("分层集成策略 滚动Walk-Forward测试 (每年滚动)")
     print("=" * 130)
-    print(f"训练窗口: 4年, 测试窗口: 2年, 滚动步长: 1年")
+    print(f"训练窗口: 4年, 测试窗口: 1年, 滚动步长: 1年")
     print(f"数据范围: {close.index[0].date()} ~ {close.index[-1].date()}")
     print()
     
