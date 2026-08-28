@@ -585,12 +585,19 @@ def compute_macro_regime_signal(
     rate_ceil: float = 1.3,
     breakout_weight: float = 0.3,
     breakout_gate_pct: float = 0.7,
+    vix: pd.Series = None,
+    gvz: pd.Series = None,
+    tips: pd.Series = None,
 ) -> pd.DataFrame:
     """宏观机制黄金策略: 滞回带趋势 × GVZ自适应 × 实际利率门控.
 
     组合结构 (各层独立可关):
         base  = hysteresis_trend × vix_momentum + breakout_weight × breakout × vix_gate
         final = base × gvz_zscore_adapt × rate_gate
+
+    数据延迟:
+        vix/gvz/tips 传入时直接使用 (调用方负责shift处理, 统一入口)
+        未传入时内部加载原始数据 (向后兼容, 独立调用场景)
 
     返回: DataFrame [close, position]
     """
@@ -601,9 +608,19 @@ def compute_macro_regime_signal(
 
     close = load_gold_price_d()
 
-    vix = _load_indicator_d("vix", "gold_fred").reindex(close.index).ffill()
-    gvz = _load_indicator_d("gvz", "gold_fred").reindex(close.index).ffill()
-    tips = _load_indicator_d("tips10y", "fred_dfii10").reindex(close.index).ffill()
+    # 数据统一入口: 传入优先, 未传入时自加载 (向后兼容)
+    if vix is None:
+        vix = _load_indicator_d("vix", "gold_fred").reindex(close.index).ffill()
+    else:
+        vix = vix.reindex(close.index).ffill()
+    if gvz is None:
+        gvz = _load_indicator_d("gvz", "gold_fred").reindex(close.index).ffill()
+    else:
+        gvz = gvz.reindex(close.index).ffill()
+    if tips is None:
+        tips = _load_indicator_d("tips10y", "fred_dfii10").reindex(close.index).ffill()
+    else:
+        tips = tips.reindex(close.index).ffill()
 
     trend = compute_hysteresis_trend_d(ts_out=ts_out, reentry_ratio=reentry_ratio)
     trend = trend.reindex(close.index).fillna(0)
@@ -963,16 +980,21 @@ def compute_layered_ensemble_signal(
         open_price = price_df["open"]
     else:
         open_price = close  # fallback
+    # 因子shift2 (更保守): VIX/GVZ/TIPS → T-2数据可用
+    # shift2比shift1更保守: 给数据更多缓冲期, 但反应更慢
     if vix is None:
-        vix = _load_indicator_d("vix", "gold_fred").reindex(close.index).ffill()
+        vix = _load_indicator_d("vix", "gold_fred").reindex(close.index).ffill().shift(2)
     if gvz is None:
-        gvz = _load_indicator_d("gvz", "gold_fred").reindex(close.index).ffill()
+        gvz = _load_indicator_d("gvz", "gold_fred").reindex(close.index).ffill().shift(2)
+    # TIPS从FRED取, 也shift2 (TIPS延迟1个交易日 + 额外1个交易日的缓冲)
+    if tips is None:
+        tips = _load_indicator_d("tips10y", "fred_dfii10").reindex(close.index).ffill().shift(2)
 
-    # 获取4个信号 (weekly → daily)
-    macro_df = compute_macro_regime_signal()
+    # 获取4个信号 (weekly → daily), 统一入口: 全部传入shift后数据
+    macro_df = compute_macro_regime_signal(vix=vix, gvz=gvz, tips=tips)
     macro_pos = macro_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
 
-    rr_df = compute_real_rate_signal(variant="tips_ma")
+    rr_df = compute_real_rate_signal(variant="tips_ma", tips_daily=tips)
     rr_pos = rr_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
 
     mom_df = compute_momentum_signal(variant="long_only")
@@ -1004,7 +1026,8 @@ def compute_layered_ensemble_signal(
             vol_cap=vol_cap, cooldown_days=cooldown_days, vol_window=vol_window,
         ) if breakout_weight > 0 else None
     else:
-        macro_ov, rr_ov, mom_ov, bo_ov = macro_pos, rr_pos, mom_pos, bo_pos if breakout_weight > 0 else None
+        bo_ov = bo_pos if breakout_weight > 0 else None
+        macro_ov, rr_ov, mom_ov = macro_pos, rr_pos, mom_pos
 
     # 加权平均 (三路均分(1-breakout_weight), 第4路固定breakout_weight)
     if breakout_weight > 0 and bo_ov is not None:
@@ -1021,3 +1044,4 @@ def compute_layered_ensemble_signal(
                 position.iloc[i] = position.iloc[i-1]
 
     return pd.DataFrame({"close": close, "open": open_price, "position": position})
+

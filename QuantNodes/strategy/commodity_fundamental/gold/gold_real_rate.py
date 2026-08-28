@@ -62,6 +62,7 @@ def compute_real_rate_signal(
     use_level_filter: bool = False,
     tips_level_thresh: float = 0.5,
     variant: str = "tips_ma",
+    tips_daily: pd.Series = None,
 ) -> pd.DataFrame:
     """计算实际利率策略信号.
 
@@ -75,6 +76,9 @@ def compute_real_rate_signal(
             - "tips_level": TIPS < 阈值 → 做多
             - "rir_negative": RIR < 0 → 做多
             - "combined": 多数投票
+        tips_daily: 日频tips10y序列 (可选, 统一入口).
+            传入时resample到周频使用 (调用方负责shift, 保证无前视)
+            未传入时自加载原始月频tips (向后兼容)
 
     返回: DataFrame with columns:
         - close: 金价
@@ -85,7 +89,12 @@ def compute_real_rate_signal(
         - position: 仓位 (0/1)
     """
     close = load_gold_price_w()
-    tips = load_indicator_w("tips")
+
+    # 数据统一入口: 传入的日频tips10y优先 (调用方已shift, 无前视)
+    if tips_daily is not None:
+        tips = tips_daily.reindex(close.index).ffill().resample("W-FRI").last().ffill()
+    else:
+        tips = load_indicator_w("tips")
     rir = load_indicator_w("rir")
 
     common = close.index.intersection(tips.index)
