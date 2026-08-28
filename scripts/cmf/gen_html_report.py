@@ -240,13 +240,22 @@ def main():
 
     table_rows = build_yearly_rows(D["yearly"])
 
+    svg_full = plot_full_nav()
+    svg_wf = plot_wf()
+    svg_oos = plot_oos()
+    svg_scenarios = plot_scenarios()
+
     # 替换占位符
     out = HTML_HEAD.replace("__METRICS_ROWS__", metrics_html)
     out = out.replace("__TABLE_ROWS__", table_rows)
+    out = out.replace("__SVG_FULL_NAV__", '<div class="chart-svg">' + svg_full + '</div>')
+    out = out.replace("__SVG_WF__", '<div class="chart-svg">' + svg_wf + '</div>')
+    out = out.replace("__SVG_OOS__", '<div class="chart-svg">' + svg_oos + '</div>')
+    out = out.replace("__SVG_SCENARIOS__", '<div class="chart-svg">' + svg_scenarios + '</div>')
 
     with open("reports/gold/report.html", "w") as f:
         f.write(out)
-    print("HTML报告已生成: reports/gold/report.html ({} 字符)".format(len(out)))
+    print("HTML报告已生成: reports/gold/report.html ({:.0f} KB)".format(len(out) / 1024))
 
 
 if __name__ == "__main__":
