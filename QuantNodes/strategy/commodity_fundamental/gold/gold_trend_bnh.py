@@ -715,7 +715,7 @@ def compute_risk_overlay(
 
     返回: 调整后仓位序列 (与position同index, 值域0~1.2)
     """
-    pos = position.reindex(close.index).fillna(method="ffill").fillna(0).copy()
+    pos = position.reindex(close.index).ffill().fillna(0).copy()
 
     if vix is not None:
         vix = vix.reindex(close.index).ffill()
@@ -870,13 +870,13 @@ def compute_adaptive_ensemble(
 
     # 获取3个信号 (weekly → daily resample)
     macro_df = compute_macro_regime_signal()
-    macro_pos = macro_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+    macro_pos = macro_df["position"].reindex(close.index).ffill().fillna(0)
 
     rr_df = compute_real_rate_signal(variant="tips_ma")
-    rr_pos = rr_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+    rr_pos = rr_df["position"].reindex(close.index).ffill().fillna(0)
 
     mom_df = compute_momentum_signal(variant="long_only")
-    mom_pos = mom_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+    mom_pos = mom_df["position"].reindex(close.index).ffill().fillna(0)
 
     signals = {"macro": macro_pos, "real_rate": rr_pos, "momentum": mom_pos}
     weights = {"macro": macro_weight, "real_rate": real_rate_weight,
@@ -990,13 +990,13 @@ def compute_layered_ensemble_signal(
 
     # 获取4个信号 (weekly → daily), 统一入口: 全部传入shift后数据
     macro_df = compute_macro_regime_signal(vix=vix, gvz=gvz, tips=tips)
-    macro_pos = macro_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+    macro_pos = macro_df["position"].reindex(close.index).ffill().fillna(0)
 
     rr_df = compute_real_rate_signal(variant="tips_ma", tips_daily=tips)
-    rr_pos = rr_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+    rr_pos = rr_df["position"].reindex(close.index).ffill().fillna(0)
 
     mom_df = compute_momentum_signal(variant="long_only")
-    mom_pos = mom_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+    mom_pos = mom_df["position"].reindex(close.index).ffill().fillna(0)
 
     bo_df = compute_breakout_signal()
     bo_pos = bo_df["position"].reindex(close.index).fillna(0)
