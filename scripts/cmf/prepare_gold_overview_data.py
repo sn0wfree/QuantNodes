@@ -30,7 +30,8 @@ def main():
     # ===== 1. 加载价格与信号 =====
     print("[1/6] 加载价格与生产信号 (shift2)...")
     con = duckdb.connect("data/cmf/fundamental.duckdb", read_only=True)
-    df = con.execute("SELECT trade_date, open, close FROM futures_main_close_au ORDER BY trade_date").df()
+    # 使用渐进式换月调整后的价格 (4天线性插值)
+    df = con.execute("SELECT trade_date, open, close FROM futures_main_close_au_adj ORDER BY trade_date").df()
     con.close()
     df["trade_date"] = pd.to_datetime(df["trade_date"])
     df = df.drop_duplicates("trade_date", keep="last").set_index("trade_date")

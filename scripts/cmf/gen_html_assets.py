@@ -506,8 +506,23 @@ def plot_scenarios():
         "2026 崩盘": "历史高点急跌约30%",
     }
 
-    for i, (name, sd) in enumerate(D["scenarios"].items()):
+    # 过滤掉数据为空的场景
+    valid_scenarios = []
+    for name, sd in D["scenarios"].items():
+        c = sd["close"]
+        if len(c) < 2:
+            continue
+        valid_scenarios.append((name, sd))
+
+    # 如果场景不足4个，用空图填充
+    while len(valid_scenarios) < 4:
+        valid_scenarios.append((None, None))
+
+    for i, (name, sd) in enumerate(valid_scenarios[:4]):
         ax = axes[i]
+        if name is None or sd is None:
+            ax.set_visible(False)
+            continue
         c = sd["close"]
         p = sd["pos"]
 
