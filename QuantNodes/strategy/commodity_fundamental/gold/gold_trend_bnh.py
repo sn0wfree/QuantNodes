@@ -902,7 +902,7 @@ def compute_layered_ensemble_signal(
     vol_cap: float = 0.15,
     cooldown_days: int = 5,
     vol_window: int = 20,
-    breakout_weight: float = 0.0,
+    breakout_weight: float = 0.2,
 ) -> pd.DataFrame:
     """分层集成信号 (Layered Ensemble) — 各信号独立风控后再加权.
 
