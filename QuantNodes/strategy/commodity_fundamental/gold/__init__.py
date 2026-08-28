@@ -17,17 +17,24 @@
     gold_multi_factor    多因子等权组合 (6因子)
     gold_combined        因子择时组合 (v2)
 
-主策略: gold_trend_bnh (进攻) + gold_all_factor (防御)
-2018-2025: 趋势B&H+VIX动量 16.59%, Sharpe1.37 MaxDD-14.83%
+公共模块:
+    gold_utils           数据加载/回测/收益计算公共函数
 """
 from __future__ import annotations
 
-from .gold_real_rate import (
+from .gold_utils import (
+    DB_PATH,
+    load_gold_price_d,
     load_gold_price_w,
+    load_indicator_d,
     load_indicator_w,
+    backtest_weekly,
+    get_weekly_returns,
+)
+from .gold_real_rate import (
     compute_real_rate_signal,
     backtest_real_rate,
-    get_weekly_returns,
+    get_weekly_returns as get_real_rate_weekly_returns,
 )
 from .gold_usd import (
     load_dxy_w,
@@ -51,6 +58,8 @@ from .gold_momentum import (
     get_weekly_returns as get_momentum_weekly_returns,
 )
 from .gold_position_flow import (
+    load_cb_w,
+    load_etf_w,
     compute_position_flow_signal,
     backtest_position_flow,
     get_weekly_returns as get_position_flow_weekly_returns,
@@ -83,6 +92,15 @@ from .gold_all_factor import (
 )
 
 __all__ = [
+    # 公共函数
+    "DB_PATH",
+    "load_gold_price_d",
+    "load_gold_price_w",
+    "load_indicator_d",
+    "load_indicator_w",
+    "backtest_weekly",
+    "get_weekly_returns",
+    # 单因子策略
     "compute_real_rate_signal",
     "backtest_real_rate",
     "compute_usd_signal",
@@ -95,6 +113,7 @@ __all__ = [
     "backtest_momentum",
     "compute_position_flow_signal",
     "backtest_position_flow",
+    # 主策略
     "compute_trend_bnh_signal",
     "backtest_trend_bnh",
     "compute_hysteresis_trend_d",
@@ -103,6 +122,7 @@ __all__ = [
     "compute_adaptive_ensemble",
     "compute_layered_ensemble_signal",
     "load_gold_price_d_with_open",
+    # 组合策略
     "compute_multi_factor_signal",
     "backtest_multi_factor",
     "compute_combined_signal",
@@ -110,7 +130,8 @@ __all__ = [
     "compute_composite_score",
     "compute_all_factor_signal",
     "backtest_all_factor",
-    "load_gold_price_w",
-    "load_indicator_w",
+    # 特殊加载函数
     "load_dxy_w",
+    "load_cb_w",
+    "load_etf_w",
 ]

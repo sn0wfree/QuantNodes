@@ -1,44 +1,22 @@
 # coding=utf-8
-"""QuantNodes/strategy/commodity_fundamental/gold/gold_multi_factor.py
-
-黄金多因子等权组合策略 (扩展版)
+"""gold_multi_factor.py — 黄金多因子等权组合策略 (扩展版).
 
 核心逻辑:
     6个单因子信号加权, 含3个进攻型因子 + 3个防御型因子
 
 因子:
-    进攻型 (capture bull market):
-        - 突破 (breakout): 20日高点+3%追踪止损
-        - 动量 (momentum): 52周动量>0
-        - 央行购金 (cb_flow): 央行储备持续增持
-    防御型 (defensive):
-        - 实际利率 (real_rate): TIPS MA信号
-        - 避险情绪 (risk): VIX+GPRD联合
-        - 美元趋势 (usd): DXY动量信号
+    进攻型: 突破 / 动量 / 央行购金
+    防御型: 实际利率 / 避险情绪 / 美元趋势
 """
 from __future__ import annotations
 
-import warnings
-from pathlib import Path
-
-import duckdb
-import numpy as np
 import pandas as pd
 
-warnings.filterwarnings("ignore")
-
-DB = Path("data/cmf/fundamental.duckdb")
-
-
-def load_gold_price_w() -> pd.Series:
-    """加载黄金周度收盘价 (W-FRI)."""
-    con = duckdb.connect(str(DB), read_only=True)
-    df = con.execute(
-        "SELECT trade_date, close FROM futures_main_close_au ORDER BY trade_date"
-    ).df()
-    con.close()
-    df["trade_date"] = pd.to_datetime(df["trade_date"])
-    return df.set_index("trade_date")["close"].resample("W-FRI").last().dropna()
+from .gold_utils import (
+    load_gold_price_w,
+    backtest_weekly,
+    get_weekly_returns as _get_weekly_returns,
+)
 
 
 def _resample_daily_pos_to_weekly(pos_daily: pd.Series) -> pd.Series:
@@ -55,7 +33,7 @@ def compute_multi_factor_signal(
     position_flow_weight: float = 0.15,
     trend_filter_window: int = 0,
 ) -> pd.DataFrame:
-    """计算多因子等权组合信号 (扩展版).
+    """计算多因子等权组合信号.
 
     参数:
         real_rate_weight: 实际利率权重
@@ -64,12 +42,10 @@ def compute_multi_factor_signal(
         breakout_weight: 突破权重
         momentum_weight: 动量权重
         position_flow_weight: 仓位流权重
-        trend_filter_window: 趋势过滤窗口 (0=不过滤, N=价格>N周MA才持仓)
+        trend_filter_window: 趋势过滤窗口 (0=不过滤)
 
     返回: DataFrame with columns:
-        - close: 金价
-        - 各因子仓位
-        - position: 综合仓位
+        - close, 各因子仓位, position
     """
     from .gold_real_rate import compute_real_rate_signal
     from .gold_usd import compute_usd_signal
@@ -105,12 +81,8 @@ def compute_multi_factor_signal(
     out["position_flow_pos"] = pf_pos.reindex(common).fillna(0)
 
     weights = [
-        real_rate_weight,
-        usd_weight,
-        risk_weight,
-        breakout_weight,
-        momentum_weight,
-        position_flow_weight,
+        real_rate_weight, usd_weight, risk_weight,
+        breakout_weight, momentum_weight, position_flow_weight,
     ]
     total_w = sum(weights)
     if total_w == 0:
@@ -139,62 +111,15 @@ def compute_multi_factor_signal(
     return out
 
 
-def backtest_multi_factor(
-    signal: pd.DataFrame,
-    cost_bps: float = 5.0,
-) -> dict:
+def backtest_multi_factor(signal: pd.DataFrame, cost_bps: float = 5.0) -> dict:
     """回测多因子组合策略."""
-    close = signal["close"]
-    pos = signal["position"]
-    ret = close.pct_change()
-
-    strat_ret = pos.shift(1) * ret
-    cost = pos.diff().abs() * cost_bps / 10000
-    strat_ret = (strat_ret - cost).dropna()
-    nav = (1 + strat_ret).cumprod()
-
-    if len(strat_ret) == 0:
-        return {
-            "n_weeks": 0, "ann_ret": 0, "ann_vol": 0,
-            "sharpe": 0, "max_dd": 0, "win_rate": 0,
-            "avg_pos": 0, "pct_active": 0, "nav": pd.Series(dtype=float),
-        }
-
-    total_ret = nav.iloc[-1] / nav.iloc[0] - 1
-    n_years = len(strat_ret) / 52
-    ann_ret = (1 + total_ret) ** (1 / n_years) - 1
-    ann_vol = strat_ret.std() * np.sqrt(52)
-    max_dd = (nav / nav.cummax() - 1).min()
-    active = strat_ret[pos.shift(1).reindex(strat_ret.index).fillna(0) > 0]
-
-    return {
-        "n_weeks": len(strat_ret),
-        "ann_ret": ann_ret,
-        "ann_vol": ann_vol,
-        "sharpe": ann_ret / ann_vol if ann_vol > 0 else 0,
-        "max_dd": max_dd,
-        "win_rate": (strat_ret > 0).mean(),
-        "win_rate_active": (active > 0).mean() if len(active) > 0 else 0,
-        "avg_pos": pos.mean(),
-        "pct_active": (pos > 0).mean(),
-        "nav": nav,
-    }
+    return backtest_weekly(signal, cost_bps)
 
 
-def get_weekly_returns(
-    start="2018-01-01",
-    end="2025-12-31",
-    **kwargs,
-):
+def get_weekly_returns(start="2018-01-01", end="2025-12-31", **kwargs):
     """获取周频收益用于组合优化."""
     signal = compute_multi_factor_signal(**kwargs)
-    close = signal["close"]
-    pos = signal["position"]
-    ret = close.pct_change()
-    strat_ret = pos.shift(1) * ret
-    weekly_ret = strat_ret.resample("W-FRI").sum()
-    weekly_ret = weekly_ret[(weekly_ret.index >= start) & (weekly_ret.index <= end)]
-    return weekly_ret
+    return _get_weekly_returns(signal, start, end)
 
 
 __all__ = [
