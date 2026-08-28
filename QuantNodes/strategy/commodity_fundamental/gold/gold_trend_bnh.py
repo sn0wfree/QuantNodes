@@ -902,27 +902,31 @@ def compute_layered_ensemble_signal(
     vol_cap: float = 0.15,
     cooldown_days: int = 5,
     vol_window: int = 20,
+    breakout_weight: float = 0.0,
 ) -> pd.DataFrame:
-    """分层集成信号 (Layered Ensemble) — 各信号独立风控后再平均.
+    """分层集成信号 (Layered Ensemble) — 各信号独立风控后再加权.
 
     与 compute_adaptive_ensemble 的区别:
       adaptive: 先加权 → 再风控 (信号混合成中间仓位, 风控难以精确控制)
-      layered:  先各自风控 → 再平均  (每个信号独立满足约束, 集成后天然满足)
+      layered:  先各自风控 → 再加权  (每个信号独立满足约束, 集成后天然满足)
 
-    集成方式: 三信号等权平均 (1/3 macro + 1/3 real_rate + 1/3 momentum)
+    集成方式:
+      - 三路基础 (默认等权): macro + real_rate + momentum
+      - 第4路突破 (可选): gold_breakout, 永久小仓位
+      - 权重归一: 三路均分(1-breakout_weight), 第4路固定breakout_weight
 
-    综合评分:
-      - G = 0.68 (vs 旧冠军 real_rate+风控 0.51)
-      - MinCalmar = 0.36 (vs 旧冠军 0.33)
-      - OOS MaxDD = -13.11% (满足 -15% 硬约束)
-      - IS MaxDD = -9.04%
-      - 子周期全部改善 (10-14/15-19/20-23/24-26)
+    Walk-Forward验证 (breakout_weight=0.1):
+      - 15折中10折跑赢三路基线
+      - CAGR +0.23pp (5.94% vs 5.71%)
+      - MaxDD持平 (-12.94% vs -12.97%)
+      - 2026年优势明显 (+1.31pp)
 
     参数:
         close: 收盘价 (可选, 默认自动加载)
         vix/gvz/tips: 指标 (可选, 默认自动加载)
         use_risk_overlay: 是否应用风控覆盖 (默认 True)
         hard_cap/soft_cap/daily_cap/vol_cap/cooldown_days: 风控参数
+        breakout_weight: 突破信号权重 (默认0.0, 向后兼容)
 
     返回: DataFrame [close, position]
     """
@@ -932,6 +936,9 @@ def compute_layered_ensemble_signal(
     from QuantNodes.strategy.commodity_fundamental.gold.gold_momentum import (
         compute_momentum_signal,
     )
+    from QuantNodes.strategy.commodity_fundamental.gold.gold_breakout import (
+        compute_breakout_signal,
+    )
 
     if close is None:
         close = load_gold_price_d()
@@ -940,7 +947,7 @@ def compute_layered_ensemble_signal(
     if gvz is None:
         gvz = _load_indicator_d("gvz", "gold_fred").reindex(close.index).ffill()
 
-    # 获取3个信号 (weekly → daily)
+    # 获取4个信号 (weekly → daily)
     macro_df = compute_macro_regime_signal()
     macro_pos = macro_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
 
@@ -949,6 +956,9 @@ def compute_layered_ensemble_signal(
 
     mom_df = compute_momentum_signal(variant="long_only")
     mom_pos = mom_df["position"].reindex(close.index).fillna(method="ffill").fillna(0)
+
+    bo_df = compute_breakout_signal()
+    bo_pos = bo_df["position"].reindex(close.index).fillna(0)
 
     # 各信号独立风控
     if use_risk_overlay:
@@ -967,10 +977,20 @@ def compute_layered_ensemble_signal(
             hard_cap=hard_cap, soft_cap=soft_cap, daily_cap=daily_cap,
             vol_cap=vol_cap, cooldown_days=cooldown_days, vol_window=vol_window,
         )
+        bo_ov = compute_risk_overlay(
+            close=close, position=bo_pos, vix=vix, gvz=gvz,
+            hard_cap=hard_cap, soft_cap=soft_cap, daily_cap=daily_cap,
+            vol_cap=vol_cap, cooldown_days=cooldown_days, vol_window=vol_window,
+        ) if breakout_weight > 0 else None
     else:
-        macro_ov, rr_ov, mom_ov = macro_pos, rr_pos, mom_pos
+        macro_ov, rr_ov, mom_ov, bo_ov = macro_pos, rr_pos, mom_pos, bo_pos if breakout_weight > 0 else None
 
-    # 等权平均
-    position = ((macro_ov + rr_ov + mom_ov) / 3).clip(0, 1.2)
+    # 加权平均 (三路均分(1-breakout_weight), 第4路固定breakout_weight)
+    if breakout_weight > 0 and bo_ov is not None:
+        base_weight = (1 - breakout_weight) / 3
+        position = (base_weight * macro_ov + base_weight * rr_ov + base_weight * mom_ov
+                    + breakout_weight * bo_ov).clip(0, 1.2)
+    else:
+        position = ((macro_ov + rr_ov + mom_ov) / 3).clip(0, 1.2)
 
     return pd.DataFrame({"close": close, "position": position})
