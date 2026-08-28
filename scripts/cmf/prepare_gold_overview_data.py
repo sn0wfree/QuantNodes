@@ -118,7 +118,7 @@ def main():
     nav26 = (1 + sr26).cumprod()
 
     # ===== 5. 逐年指标表 =====
-    print("[5/6] 逐年指标表...")
+    print("[5/6] 逐年指标表 (区间收益, 非年化)...")
     yearly_rows = []
     for year in range(2010, 2027):
         row = {"year": year}
@@ -127,29 +127,28 @@ def main():
             c = close.reindex(sub.index)
             o = open_price.reindex(sub.index)
             if len(sub) < 20:
-                row[f"{name}_ret"] = np.nan
-                row[f"{name}_vol"] = np.nan
-                row[f"{name}_mdd"] = np.nan
-                row[f"{name}_sharpe"] = np.nan
-                row[f"{name}_calmar"] = np.nan
+                for k in ['ret', 'vol', 'mdd', 'sharpe', 'calmar']:
+                    row[f"{name}_{k}"] = np.nan
                 continue
             ret_fwd = o.pct_change().shift(-1)
             sr = (sub.shift(1) * ret_fwd).dropna()
             cost = sub.diff().abs() * COST_BPS / 10000
             sr = (sr - cost).dropna()
             if len(sr) < 10:
-                row[f"{name}_ret"] = np.nan
+                for k in ['ret', 'vol', 'mdd', 'sharpe', 'calmar']:
+                    row[f"{name}_{k}"] = np.nan
                 continue
             nav = (1 + sr).cumprod()
-            n_y = len(sr) / 252
-            ret = (nav.iloc[-1]) ** (1 / n_y) - 1
+            ret = nav.iloc[-1] - 1  # 区间收益 (非年化)
             vol = sr.std() * np.sqrt(252)
             dd = (nav / nav.cummax() - 1).min()
+            n_y = len(sr) / 252
+            ann = (nav.iloc[-1]) ** (1 / n_y) - 1
             row[f"{name}_ret"] = ret
             row[f"{name}_vol"] = vol
             row[f"{name}_mdd"] = dd
-            row[f"{name}_sharpe"] = ret / vol if vol > 0 else 0
-            row[f"{name}_calmar"] = ret / abs(dd) if dd != 0 else 0
+            row[f"{name}_sharpe"] = ann / vol if vol > 0 else 0
+            row[f"{name}_calmar"] = ann / abs(dd) if dd != 0 else 0
         yearly_rows.append(row)
     yearly_df = pd.DataFrame(yearly_rows).set_index("year")
 
