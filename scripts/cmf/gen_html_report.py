@@ -125,17 +125,7 @@ __SVG_FULL_NAV__
     <div class="metric-card">
       <h3>业绩指标对比 (CAGR / Sharpe / MaxDD / Calmar / 总收益)</h3>
       <table class="metric-table">
-        <tr><th>指标</th><th>L=1.5 CPPI</th><th>L=1 基线</th><th>B&H</th></tr>
-        <tr class="highlight"><td>年化收益</td>
-            <td class="p">+9.98%</td><td class="p">+7.34%</td><td class="p">+8.99%</td></tr>
-        <tr><td>Sharpe</td>
-            <td>0.93</td><td>0.92</td><td>0.57</td></tr>
-        <tr><td>MaxDD</td>
-            <td class="n">-28.53%</td><td class="n">-21.45%</td><td class="n">-44.52%</td></tr>
-        <tr><td>Calmar</td>
-            <td>0.35</td><td>0.34</td><td>0.20</td></tr>
-        <tr class="highlight"><td>总收益</td>
-            <td class="p">+5456%</td><td class="p">+2009%</td><td class="p">+300%</td></tr>
+        __METRICS_ROWS__
       </table>
       <p class="footnote">口径: 无前视 Open-to-Open + shift2统一入口 + 5bps成本</p>
       <p class="footnote" style="margin-top:6px"><b>区间语义</b>: 2010-2019 用于样本内参数确定与早期验证;
@@ -227,24 +217,36 @@ def main():
     with open("reports/gold/overview_data.pkl", "rb") as f:
         D = pickle.load(f)
 
-    table_rows = build_yearly_rows(D["yearly"])
-    svg_full = plot_full_nav()
-    svg_wf = plot_wf()
-    svg_oos = plot_oos()
-    svg_scenarios = plot_scenarios()
+    m15 = D["metrics_15"]
+    mb = D["metrics_base"]
+    mbh = D["metrics_bh"]
 
-    out = (HTML_HEAD
-           .replace("__SVG_FULL_NAV__", '<div class="chart-svg">' + svg_full + '</div>')
-           .replace("__SVG_WF__", '<div class="chart-svg">' + svg_wf + '</div>')
-           .replace("__SVG_OOS__", '<div class="chart-svg">' + svg_oos + '</div>')
-           .replace("__SVG_SCENARIOS__", '<div class="chart-svg">' + svg_scenarios + '</div>')
-           .replace("__TABLE_ROWS__", table_rows))
+    def fmt_pct(v): return f"{v*100:.2f}"
+    def fmt_f(v, d=2): return f"{v:.{d}f}"
+
+    metrics_html = f"""        <tr><th>指标</th><th>L=1.5 CPPI</th><th>L=1 基线</th><th>B&H</th></tr>
+        <tr class="highlight"><td>年化收益</td>
+            <td class="p">+{fmt_pct(m15['cagr'])}%</td><td class="p">+{fmt_pct(mb['cagr'])}%</td><td class="p">+{fmt_pct(mbh['cagr'])}%</td></tr>
+        <tr><td>Sharpe</td>
+            <td>{fmt_f(m15['sharpe'])}</td><td>{fmt_f(mb['sharpe'])}</td><td>{fmt_f(mbh['sharpe'])}</td></tr>
+        <tr><td>MaxDD</td>
+            <td class="n">{fmt_pct(m15['mdd'])}%</td><td class="n">{fmt_pct(mb['mdd'])}%</td><td class="n">{fmt_pct(mbh['mdd'])}%</td></tr>
+        <tr><td>Calmar</td>
+            <td>{fmt_f(m15['calmar'])}</td><td>{fmt_f(mb['calmar'])}</td><td>{fmt_f(mbh['calmar'])}</td></tr>
+        <tr><td>Vol</td>
+            <td>{fmt_pct(m15['vol'])}%</td><td>{fmt_pct(mb['vol'])}%</td><td>{fmt_pct(mbh['vol'])}%</td></tr>
+        <tr class="highlight"><td>总收益</td>
+            <td class="p">+{fmt_pct(m15['total'])}%</td><td class="p">+{fmt_pct(mb['total'])}%</td><td class="p">+{fmt_pct(mbh['total'])}%</td></tr>"""
+
+    table_rows = build_yearly_rows(D["yearly"])
+
+    # 替换占位符
+    out = HTML_HEAD.replace("__METRICS_ROWS__", metrics_html)
+    out = out.replace("__TABLE_ROWS__", table_rows)
 
     with open("reports/gold/report.html", "w") as f:
         f.write(out)
-
-    # 删除PNG（不再使用）
-    print("HTML报告已生成: reports/gold/report.html ({:.0f} KB)".format(len(out) / 1024))
+    print("HTML报告已生成: reports/gold/report.html ({} 字符)".format(len(out)))
 
 
 if __name__ == "__main__":
