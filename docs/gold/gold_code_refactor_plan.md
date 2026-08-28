@@ -93,8 +93,8 @@ Phase 5 (清理)
 
 ## 状态
 
-- [ ] Phase 1: 提取公共模块 gold_utils.py
-- [ ] Phase 2: 拆分 gold_trend_bnh.py
-- [ ] Phase 3: 添加单元测试
-- [ ] Phase 4: 合并重复测试脚本
-- [ ] Phase 5: 清理
+- [x] Phase 1: 提取公共模块 gold_utils.py
+- [x] Phase 2: 拆分 gold_trend_bnh.py (1047行 → ~800行)
+- [x] Phase 3: 添加单元测试 (96个用例全部通过)
+- [x] Phase 4: 合并重复测试脚本 (删除v2~v4, v5归档)
+- [x] Phase 5: 清理 (fillna弃用修复)
