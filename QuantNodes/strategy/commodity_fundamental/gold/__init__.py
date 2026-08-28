@@ -63,6 +63,7 @@ from .gold_trend_bnh import (
     compute_macro_regime_signal,
     compute_risk_overlay,
     compute_adaptive_ensemble,
+    compute_layered_ensemble_signal,
 )
 from .gold_multi_factor import (
     compute_multi_factor_signal,
@@ -99,6 +100,7 @@ __all__ = [
     "compute_macro_regime_signal",
     "compute_risk_overlay",
     "compute_adaptive_ensemble",
+    "compute_layered_ensemble_signal",
     "compute_multi_factor_signal",
     "backtest_multi_factor",
     "compute_combined_signal",
