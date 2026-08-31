@@ -70,17 +70,18 @@ def compute_composite_score() -> pd.DataFrame:
     """
     close = _load_gold_price_w()
 
-    tips = _load_indicator("tips", "gold_fred")
-    us10y = _load_indicator("us_10y", "gold_macro")
-    vix = _load_indicator("vix", "gold_fred")
-    gprd = _load_indicator("gprd", "gold_risk")
-    epu = _load_indicator("epu", "gold_fred")
-    inv = _load_indicator("comex_inv", "gold_position")
-    cftc = _load_indicator("cftc_net", "gold_position")
-    etf = _load_indicator("etf_tonnes", "gold_position")
-    cb = _load_indicator("cb_reserves", "gold_position")
-    dxy = _load_indicator("dxy", "gold_macro")
-    fed = _load_indicator("fed_rate", "gold_macro")
+    # shift(1) 修正前视效应: 所有指标延迟1周使用 (周频信号 + 数据发布延迟)
+    tips = _load_indicator("tips", "gold_fred").shift(1)
+    us10y = _load_indicator("us_10y", "gold_macro").shift(1)
+    vix = _load_indicator("vix", "gold_fred").shift(1)
+    gprd = _load_indicator("gprd", "gold_risk").shift(1)
+    epu = _load_indicator("epu", "gold_fred").shift(1)
+    inv = _load_indicator("comex_inv", "gold_position").shift(1)
+    cftc = _load_indicator("cftc_net", "gold_position").shift(1)
+    etf = _load_indicator("etf_tonnes", "gold_position").shift(1)
+    cb = _load_indicator("cb_reserves", "gold_position").shift(1)
+    dxy = _load_indicator("dxy", "gold_macro").shift(1)
+    fed = _load_indicator("fed_rate", "gold_macro").shift(1)
 
     idx = close.index
 
