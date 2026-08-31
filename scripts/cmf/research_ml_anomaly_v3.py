@@ -105,6 +105,7 @@ def train_models(df, current_date=None, enforce_pit=True):
     PIT (Point-in-Time) 强制:
     - 训练窗口只包含 <= current_date 的数据
     - 不使用 future data (避免 look-ahead bias)
+    - 默认用PIT全量 (截止到当前的所有历史), 而非固定窗口
     - enforce_pit=True 时额外验证每个特征
 
     Args:
@@ -114,16 +115,13 @@ def train_models(df, current_date=None, enforce_pit=True):
     """
     t0 = time.time()
     if current_date is not None:
-        # L1: 用最近2年数据 (且不晚于 current_date)
-        cutoff = current_date - pd.Timedelta(days=504)
-        # PIT关键: 严格只取 <= current_date 的数据
-        train_df = df[(df.index >= cutoff) & (df.index <= current_date)]
+        # PIT全量: 用截止到 current_date 的所有历史数据
+        train_df = df[df.index <= current_date]
     else:
         train_df = df
     X = train_df[FEATURES].dropna()
 
     if enforce_pit and len(X) < 100:
-        # PIT警告: 样本量不足
         print(f"  [PIT警告] current_date={current_date} 时训练样本仅{len(X)}条 (<100)")
 
     scaler = StandardScaler()
