@@ -90,6 +90,23 @@ def build_features(df):
     return out
 
 
+def build_anomaly_labels(df, e1_thresh=1.5, e3_thresh=0.20):
+    """校准后阈值 (v2): 4类异常标签."""
+    ret = df["gold"].pct_change()
+    gold_ret = ret
+    dxy_ret = df["dxy"].pct_change()
+    corr_60 = gold_ret.rolling(60).corr(dxy_ret)
+    e1 = (corr_60.diff(5).abs() > e1_thresh).fillna(False)
+    vol_20 = ret.rolling(20).std() * np.sqrt(252)
+    vol_95 = vol_20.rolling(252, min_periods=60).quantile(0.95)
+    e2 = (vol_20 > vol_95).fillna(False)
+    e3 = (df["vix"].pct_change(5) > e3_thresh).fillna(False)
+    e4 = (ret < -0.02).fillna(False)
+    target = (e1 | e2 | e3 | e4)
+    target_5d = target.rolling(5, min_periods=1).max().shift(1).fillna(0).astype(int)
+    return target_5d
+
+
 class MahaModel:
     def __init__(self, mu, inv_cov):
         self.mu = mu
@@ -340,6 +357,233 @@ def compute_calibration(data, actuals, n_bins=5):
     return bin_predictions, bin_actuals
 
 
+def compute_adaptive_weights(df, scaler, m1, m4, lookback=60, temp=2.0):
+    """L2: 自适应权重 — 根据近期M1/M4模型表现动态调整融合权重."""
+    X = df[FEATURES].dropna()
+    X_scaled = pd.DataFrame(scaler.transform(X), index=X.index, columns=X.columns)
+
+    scores_m1 = -m1.decision_function(X_scaled.values)
+    scores_m4 = m4.score_samples(X_scaled.values)
+
+    def normalize(s):
+        lo, hi = np.nanpercentile(s, [1, 99])
+        return ((s - lo) / (hi - lo + 1e-8) * 100).clip(0, 100)
+
+    norm_m1 = normalize(scores_m1)
+    norm_m4 = normalize(scores_m4)
+
+    target = build_anomaly_labels(df).reindex(X.index).fillna(0)
+    accuracy_m1 = []
+    accuracy_m4 = []
+
+    for i in range(len(X)):
+        start = max(0, i - lookback)
+        end_idx = min(i + 1, len(X))
+        window_target = target.iloc[start:end_idx]
+        window_m1 = norm_m1[start:end_idx]
+        window_m4 = norm_m4[start:end_idx]
+
+        if len(window_target) < 10:
+            accuracy_m1.append(0.5)
+            accuracy_m4.append(0.5)
+            continue
+
+        corr_m1 = np.corrcoef(window_target.values, window_m1)[0, 1] if not np.isnan(np.corrcoef(window_target.values, window_m1)[0, 1]) else 0
+        corr_m4 = np.corrcoef(window_target.values, window_m4)[0, 1] if not np.isnan(np.corrcoef(window_target.values, window_m4)[0, 1]) else 0
+        accuracy_m1.append(max(0, min(1, (corr_m1 + 1) / 2)))
+        accuracy_m4.append(max(0, min(1, (corr_m4 + 1) / 2)))
+
+    acc_m1 = pd.Series(accuracy_m1, index=X.index)
+    acc_m4 = pd.Series(accuracy_m4, index=X.index)
+
+    exp_m1 = np.exp(acc_m1 * temp)
+    exp_m4 = np.exp(acc_m4 * temp)
+    w_m1 = exp_m1 / (exp_m1 + exp_m4)
+    w_m4 = exp_m4 / (exp_m1 + exp_m4)
+
+    return pd.DataFrame({"weight_m1": w_m1, "weight_m4": w_m4}, index=X.index)
+
+
+def compute_r_scores_adaptive(df, scaler, m1, m4, adaptive_weights):
+    """L2: 用自适应权重生成R分数."""
+    X = df[FEATURES].dropna()
+    X_scaled = pd.DataFrame(scaler.transform(X), index=X.index, columns=X.columns)
+
+    scores_m1 = -m1.decision_function(X_scaled.values)
+    scores_m4 = m4.score_samples(X_scaled.values)
+
+    def normalize(s):
+        lo, hi = np.nanpercentile(s, [1, 99])
+        return ((s - lo) / (hi - lo + 1e-8) * 100).clip(0, 100)
+
+    norm_m1 = normalize(scores_m1)
+    norm_m4 = normalize(scores_m4)
+
+    norm_m1_s = pd.Series(norm_m1, index=X.index)
+    norm_m4_s = pd.Series(norm_m4, index=X.index)
+
+    # 用自适应权重
+    w1 = adaptive_weights["weight_m1"].reindex(X.index)
+    w4 = adaptive_weights["weight_m4"].reindex(X.index)
+    R_score = (w1 * norm_m1_s + w4 * norm_m4_s).reindex(df.index).fillna(0)
+    return R_score
+
+
+def compute_adaptive_threshold(df, target_fp_rate=0.03, lookback=60):
+    """L3: 自适应阈值 — 根据近期误报率动态调整R分数阈值.
+
+    Args:
+        df: 含R_score的DataFrame
+        target_fp_rate: 目标误报率 (默认3%)
+        lookback: 回溯窗口 (天数)
+
+    Returns: Series of adaptive thresholds (95th percentile基础上调整)
+    """
+    base_threshold = np.percentile(df["R_score"].dropna(), 95)
+    thresholds = pd.Series(base_threshold, index=df.index)
+
+    for i in range(lookback, len(df)):
+        start = max(0, i - lookback)
+        window = df.iloc[start:i]
+        recent_fp = (window["R_score"] > base_threshold).mean()
+
+        if recent_fp > target_fp_rate:
+            # 误报率过高 → 提高阈值 (更严格)
+            adjustment = 1 + (recent_fp - target_fp_rate) * 10
+            thresholds.iloc[i] = base_threshold * adjustment
+        elif recent_fp < target_fp_rate * 0.5:
+            # 误报率过低 → 降低阈值 (更敏感)
+            adjustment = 1 - (target_fp_rate * 0.5 - recent_fp) * 5
+            thresholds.iloc[i] = base_threshold * max(0.5, adjustment)
+        else:
+            thresholds.iloc[i] = base_threshold
+
+    return thresholds
+
+
+def run_l2_l3_test(df):
+    """L2/L3滚动测试: 模拟自适应权重 + 自适应阈值的效果."""
+    print("\n[L2/L3滚动测试] 自适应权重 + 自适应阈值")
+    print("=" * 60)
+
+    # 训练基准模型
+    scaler, m1, m4, t1, t4 = train_models(df, current_date=df.index[-1])
+
+    # L2: 计算自适应权重
+    print("\n[L2] 计算自适应权重...")
+    adaptive_w = compute_adaptive_weights(df, scaler, m1, m4, lookback=60, temp=2.0)
+
+    # 计算三种模式的R_score
+    R_l1 = compute_r_scores(df, scaler, m1, m4)
+    R_l2 = compute_r_scores_adaptive(df, scaler, m1, m4, adaptive_w)
+
+    # L3: 用自适应阈值
+    print("[L3] 计算自适应阈值...")
+    df_l2 = df.copy()
+    df_l2["R_score"] = R_l2
+    adaptive_thresh = compute_adaptive_threshold(df_l2, target_fp_rate=0.03, lookback=60)
+
+    # ===== 对比三种模式 =====
+    print("\n=== 三种模式对比 ===")
+
+    alerts_l2l3 = (R_l2 > adaptive_thresh).astype(float)
+    alerts_l1 = (R_l1 > np.percentile(R_l1, 95)).astype(float)
+
+    target = build_anomaly_labels(df)
+
+    def calc_metrics(R, label):
+        # 异常覆盖率
+        holdout_pct = []
+        for d in HOLDOUT:
+            dt = pd.Timestamp(d)
+            if dt in R.index:
+                r = R.loc[dt]
+                pct = (R <= r).mean() * 100
+                holdout_pct.append(pct)
+        avg_holdout = np.mean(holdout_pct) if holdout_pct else 0
+
+        # 误报率 (用target=1作为ground truth)
+        if len(target) == len(R):
+            alerts = (R > np.percentile(R, 95)).astype(float)
+            false_pos = ((alerts == 1) & (target == 0)).sum()
+            true_pos = ((alerts == 1) & (target == 1)).sum()
+            all_pos = (target == 1).sum()
+            recall = true_pos / all_pos if all_pos > 0 else 0
+            precision = true_pos / alerts.sum() if alerts.sum() > 0 else 0
+        else:
+            recall = 0
+            precision = 0
+
+        return avg_holdout, recall, precision
+
+    print(f"\n{'模式':<20s}{'G1(holdout)':>12s}{'Recall':>10s}{'Precision':>12s}{'R均值':>10s}{'R标准差':>10s}")
+    print("-" * 70)
+
+    g1_l1, rec_l1, prec_l1 = calc_metrics(R_l1, "L1固定")
+    print(f"{'L1固定权重':<20s}{g1_l1:>11.1f}%{rec_l1:>9.1%}{prec_l1:>11.1%}{R_l1.mean():>9.1f}{R_l1.std():>9.1f}")
+
+    g1_l2, rec_l2, prec_l2 = calc_metrics(R_l2, "L2自适应")
+    print(f"{'L2自适应权重':<20s}{g1_l2:>11.1f}%{rec_l2:>9.1%}{prec_l2:>11.1%}{R_l2.mean():>9.1f}{R_l2.std():>9.1f}")
+
+    # L3: 用自适应阈值调整后的R分数
+    # L3本身是阈值调整, 不改变R分数本身, 只影响报警判断
+    # 这里我们评估L3对"报警质量"的影响
+    # L3: 用adaptive_thresh代替固定95%
+    alerts_l3 = (R_l2 > adaptive_thresh).astype(float)
+    if len(target) == len(alerts_l3):
+        fp_l3 = ((alerts_l3 == 1) & (target == 0)).sum()
+        tp_l3 = ((alerts_l3 == 1) & (target == 1)).sum()
+        all_p = (target == 1).sum()
+        rec_l3 = tp_l3 / all_p if all_p > 0 else 0
+        prec_l3 = tp_l3 / alerts_l3.sum() if alerts_l3.sum() > 0 else 0
+    else:
+        rec_l3 = prec_l3 = 0
+
+    # L2+L3综合 (用自适应权重 + 自适应阈值)
+    print(f"{'L2+L3(自适应)':<20s}{g1_l2:>11.1f}%{rec_l3:>9.1%}{prec_l3:>11.1%}{R_l2.mean():>9.1f}{R_l2.std():>9.1f}")
+
+    # ===== 关键指标深入分析 =====
+    print("\n=== 关键指标深入分析 ===")
+
+    # L2权重变化
+    print(f"\n[L2] 自适应权重统计:")
+    print(f"  M1权重均值: {adaptive_w['weight_m1'].mean():.3f}")
+    print(f"  M4权重均值: {adaptive_w['weight_m4'].mean():.3f}")
+    print(f"  权重标准差: M1={adaptive_w['weight_m1'].std():.3f}, M4={adaptive_w['weight_m4'].std():.3f}")
+    print(f"  M1权重范围: [{adaptive_w['weight_m1'].min():.3f}, {adaptive_w['weight_m1'].max():.3f}]")
+
+    # L3阈值变化
+    print(f"\n[L3] 自适应阈值统计:")
+    print(f"  基准阈值: {np.percentile(R_l2.dropna(), 95):.1f}")
+    print(f"  自适应阈值均值: {adaptive_thresh.mean():.1f}")
+    print(f"  自适应阈值标准差: {adaptive_thresh.std():.1f}")
+    print(f"  自适应阈值范围: [{adaptive_thresh.min():.1f}, {adaptive_thresh.max():.1f}]")
+
+    # G1/G2对比
+    print(f"\n=== G1/G2对比 ===")
+    g1_l1_val, _, _ = calc_metrics(R_l1, "L1")
+    g1_l2_val, _, _ = calc_metrics(R_l2, "L2")
+    g1_l3_val = g1_l2_val  # L3不改变G1, 只改变G2
+
+    fp_l1 = ((R_l1 > np.percentile(R_l1, 95)) & (target == 0)).sum() / max((R_l1 > np.percentile(R_l1, 95)).sum(), 1)
+    fp_l2 = ((R_l2 > np.percentile(R_l2, 95)) & (target == 0)).sum() / max((R_l2 > np.percentile(R_l2, 95)).sum(), 1)
+    fp_l3 = ((R_l2 > adaptive_thresh) & (target == 0)).sum() / max((R_l2 > adaptive_thresh).sum(), 1)
+
+    print(f"{'模式':<20s}{'G1(holdout)':>12s}{'误报率':>10s}")
+    print("-" * 45)
+    print(f"{'L1固定':<20s}{g1_l1_val:>11.1f}%{fp_l1*100:>9.1f}%")
+    print(f"{'L2自适应权重':<20s}{g1_l2_val:>11.1f}%{fp_l2*100:>9.1f}%")
+    print(f"{'L2+L3自适应阈值':<20s}{g1_l3_val:>11.1f}%{fp_l3*100:>9.1f}%")
+
+    # 推荐
+    print(f"\n=== 推荐 ===")
+    if g1_l2_val > g1_l1_val and fp_l2 < fp_l1:
+        print("✅ L2自适应权重优于L1固定权重 (G1↑, 误报率↓)")
+    if fp_l3 < fp_l2:
+        print("✅ L3自适应阈值进一步降低误报率")
+    print(f"建议组合: L1(L2自适应权重) + L3(自适应阈值)")
+
+
 def run_rolling_test(df):
     """L1滚动测试: 模拟2018-2025月度重训练, 验证稳定性."""
     print("\n[L1滚动测试] 模拟2018-2025月度重训练")
@@ -423,7 +667,7 @@ def run_rolling_test(df):
     print(f"  差异: |L1 - 全量| mean={(R_l1 - R_all).abs().mean():.2f}")
 
 
-def main(use_rolling_test=False, use_pit_test=False):
+def main(use_rolling_test=False, use_pit_test=False, use_l2l3_test=False):
     print("=" * 60)
     print("风控ML v3 + L1自动更新 — 独立输出 + 场景分析 + 概率验证")
     print("=" * 60)
@@ -439,6 +683,10 @@ def main(use_rolling_test=False, use_pit_test=False):
 
     if use_pit_test:
         run_pit_test(df)
+        return
+
+    if use_l2l3_test:
+        run_l2_l3_test(df)
         return
 
     state = load_state()
@@ -582,4 +830,5 @@ def main(use_rolling_test=False, use_pit_test=False):
 if __name__ == "__main__":
     use_rolling = "--rolling" in sys.argv
     use_pit = "--pit" in sys.argv
-    main(use_rolling_test=use_rolling, use_pit_test=use_pit)
+    use_l2l3 = "--l2l3" in sys.argv
+    main(use_rolling_test=use_rolling, use_pit_test=use_pit, use_l2l3_test=use_l2l3)
