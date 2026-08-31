@@ -230,4 +230,5 @@ if anomaly_score > 0.95:  # 异常分数>95%分位
 
 ```
 d6aa6d6d docs(gold): 风控ML异常检测研究计划 (方案B)
+f216177c research+docs(gold): 风控ML异常检测研究 — 3/4门槛通过, 方向已验证
 ```
