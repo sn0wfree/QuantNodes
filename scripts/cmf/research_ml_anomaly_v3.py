@@ -10,7 +10,8 @@
 L1自动更新:
 - 每月1号自动重训练M1_IF + M4_Maha
 - 每天用最新模型计算R_score
-- 状态保存在/var/tmp下, 跨进程持久化
+- 状态保存在/tmp/opencode下, 跨进程持久化
+- 支持滚动测试 (--rolling): 模拟2018-2025月度重训练
 """
 from __future__ import annotations
 
@@ -20,7 +21,6 @@ import json
 import warnings
 import time
 from pathlib import Path
-from datetime import datetime
 
 warnings.filterwarnings("ignore")
 
@@ -33,7 +33,7 @@ from sklearn.preprocessing import StandardScaler
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 DB_PATH = "data/cmf/fundamental.duckdb"
-STATE_DIR = "/tmp/opencode"  # L1自动更新状态保存目录
+STATE_DIR = "/tmp/opencode"
 os.makedirs(STATE_DIR, exist_ok=True)
 STATE_FILE = f"{STATE_DIR}/ml_anomaly_v3_state.json"
 
@@ -56,7 +56,6 @@ FEATURES = ["F10_dxy_z", "vix_pct", "gvz_z", "realized_vol_20d",
 
 
 def load_data():
-    """从DuckDB加载金价+4个指标数据."""
     con = duckdb.connect(DB_PATH, read_only=True)
     dfs = {}
     for c, (s, v) in [("gold", ("gold_macro", "gold_spot")), ("vix", ("gold_fred", "vix")),
@@ -91,25 +90,7 @@ def build_features(df):
     return out
 
 
-def build_anomaly_labels(df, e1_thresh=1.5, e3_thresh=0.20):
-    """校准后阈值 (v2): 4类异常标签."""
-    ret = df["gold"].pct_change()
-    gold_ret = ret
-    dxy_ret = df["dxy"].pct_change()
-    corr_60 = gold_ret.rolling(60).corr(dxy_ret)
-    e1 = (corr_60.diff(5).abs() > e1_thresh).fillna(False)
-    vol_20 = ret.rolling(20).std() * np.sqrt(252)
-    vol_95 = vol_20.rolling(252, min_periods=60).quantile(0.95)
-    e2 = (vol_20 > vol_95).fillna(False)
-    e3 = (df["vix"].pct_change(5) > e3_thresh).fillna(False)
-    e4 = (ret < -0.02).fillna(False)
-    target = (e1 | e2 | e3 | e4)
-    target_5d = target.rolling(5, min_periods=1).max().shift(1).fillna(0).astype(int)
-    return target_5d
-
-
 class MahaModel:
-    """M4 Mahalanobis距离模型 (无需训练, 直接计算)."""
     def __init__(self, mu, inv_cov):
         self.mu = mu
         self.inv_cov = inv_cov
@@ -119,14 +100,9 @@ class MahaModel:
 
 
 def train_models(df, current_date=None):
-    """训练M1_IF + M4_Maha模型, 返回(scaler, m1, m4, 训练时间).
-
-    L1自动更新: 可指定current_date触发月度重训练.
-    默认使用全部数据训练, 可限制为最近2年.
-    """
+    """训练M1_IF + M4_Maha, current_date不为None时用最近2年数据 (L1)."""
     t0 = time.time()
     if current_date is not None:
-        # L1: 用最近2年数据 (约504交易日)
         cutoff = current_date - pd.Timedelta(days=504)
         train_df = df[df.index >= cutoff]
     else:
@@ -150,7 +126,6 @@ def train_models(df, current_date=None):
 
 
 def load_state():
-    """加载L1状态 (上次训练时间)."""
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r") as f:
@@ -161,22 +136,16 @@ def load_state():
 
 
 def save_state(last_trained):
-    """保存L1状态."""
     state = {"last_trained": last_trained.isoformat() if hasattr(last_trained, "isoformat") else str(last_trained)}
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
 
 
 def should_retrain(current_date, state):
-    """L1: 判断是否需要月度重训练.
-
-    规则: 距离上次训练已跨月 (1号触发), 或没有训练历史.
-    """
     if state is None or "last_trained" not in state:
-        return True  # 首次训练
+        return True
     try:
         last = pd.Timestamp(state["last_trained"])
-        # 跨月触发 (1号), 或从未训练
         if current_date.month != last.month or current_date.year != last.year:
             return True
     except Exception:
@@ -185,7 +154,6 @@ def should_retrain(current_date, state):
 
 
 def compute_r_scores(df, scaler, m1, m4):
-    """用训练好的模型计算全数据R_score."""
     X = df[FEATURES].dropna()
     X_scaled = pd.DataFrame(scaler.transform(X), index=X.index, columns=X.columns)
     scores_m1 = -m1.decision_function(X_scaled.values)
@@ -204,7 +172,6 @@ def compute_r_scores(df, scaler, m1, m4):
 
 
 def compute_future_drawdown_distribution(df, current_r, current_idx):
-    """基于相似R值的历史时段, 统计未来5d最大回撤分布."""
     similar_mask = (df["R_score"] > current_r - 5.0) & (df["R_score"] < current_r + 5.0)
     similar_dates = df[similar_mask].index
     valid_dates = [d for d in similar_dates if d < df.index[-5]]
@@ -238,7 +205,6 @@ def brier_score(predictions, actuals):
 
 def compute_calibration(data, actuals, n_bins=5):
     bins = np.linspace(0, 1, n_bins + 1)
-    bin_centers = [(bins[i] + bins[i+1]) / 2 for i in range(n_bins)]
     bin_predictions, bin_actuals = [], []
     for i in range(n_bins):
         mask = (data >= bins[i]) & (data < bins[i+1])
@@ -248,7 +214,90 @@ def compute_calibration(data, actuals, n_bins=5):
     return bin_predictions, bin_actuals
 
 
-def main():
+def run_rolling_test(df):
+    """L1滚动测试: 模拟2018-2025月度重训练, 验证稳定性."""
+    print("\n[L1滚动测试] 模拟2018-2025月度重训练")
+    print("=" * 60)
+
+    monthly_r = {}
+    monthly_g1 = {}
+    monthly_g2 = {}
+
+    for year in range(2019, 2026):
+        for month in range(1, 13):
+            sim_date = pd.Timestamp(f"{year}-{month:02d}-01")
+            if sim_date not in df.index and sim_date > df.index[-1]:
+                continue
+            if sim_date < df.index[500]:
+                continue
+
+            scaler, m1, m4, t1, t4 = train_models(df, current_date=sim_date)
+            R_score = compute_r_scores(df, scaler, m1, m4)
+            df_local = df.copy()
+            df_local["R_score"] = R_score
+
+            month_data = R_score[f"{year}-{month:02d}":f"{year}-{month:02d}"]
+            if len(month_data) == 0:
+                continue
+            monthly_r[f"{year}-{month:02d}"] = {
+                "mean": month_data.mean(),
+                "max": month_data.max(),
+                "p_above_80": (month_data > 80).mean(),
+            }
+
+            holdout_pct = []
+            for d in HOLDOUT:
+                dt = pd.Timestamp(d)
+                if dt in df_local.index and dt <= sim_date:
+                    r = df_local.loc[dt, "R_score"]
+                    pct = (R_score.loc[:dt] <= r).mean() * 100
+                    holdout_pct.append(pct)
+            if holdout_pct:
+                monthly_g1[f"{year}-{month:02d}"] = np.mean(holdout_pct)
+
+            month_end = sim_date + pd.offsets.MonthEnd(1)
+            alert_rate = (R_score.loc[sim_date:month_end] >
+                          np.percentile(R_score, 95)).mean()
+            monthly_g2[f"{year}-{month:02d}"] = alert_rate
+
+    print("\n[R_score 月度统计]")
+    print(f"{'月份':<10s}{'mean':>8s}{'max':>8s}{'P(R>80)':>10s}")
+    print("-" * 40)
+    for month in sorted(monthly_r.keys()):
+        s = monthly_r[month]
+        print(f"{month:<10s}{s['mean']:>8.1f}{s['max']:>8.1f}{s['p_above_80']:>10.1%}")
+
+    print(f"\n[G1 holdout覆盖率 月度]")
+    if monthly_g1:
+        g1_vals = list(monthly_g1.values())
+        print(f"  月度数: {len(g1_vals)}")
+        print(f"  均值: {np.mean(g1_vals):.1f}%")
+        print(f"  标准差: {np.std(g1_vals):.1f}%")
+        print(f"  范围: [{min(g1_vals):.1f}%, {max(g1_vals):.1f}%]")
+        print(f"  >=85% 占比: {sum(1 for v in g1_vals if v >= 85) / len(g1_vals):.1%}")
+
+    print(f"\n[G2 误报率 月度]")
+    if monthly_g2:
+        g2_vals = list(monthly_g2.values())
+        print(f"  月度数: {len(g2_vals)}")
+        print(f"  均值: {np.mean(g2_vals):.1%}")
+        print(f"  标准差: {np.std(g2_vals):.1%}")
+        print(f"  范围: [{min(g2_vals):.1%}, {max(g2_vals):.1%}]")
+        print(f"  <5% 占比: {sum(1 for v in g2_vals if v < 0.05) / len(g2_vals):.1%}")
+
+    print("\n[L1 vs 全量训练对比]")
+    scaler_l1, m1_l1, m4_l1, _, _ = train_models(df, current_date=df.index[-1])
+    R_l1 = compute_r_scores(df, scaler_l1, m1_l1, m4_l1)
+    scaler_all, m1_all, m4_all, _, _ = train_models(df, current_date=None)
+    R_all = compute_r_scores(df, scaler_all, m1_all, m4_all)
+    corr = R_l1.corr(R_all)
+    print(f"  R_score相关性: {corr:.4f}")
+    print(f"  L1 R_score: mean={R_l1.mean():.1f}, std={R_l1.std():.1f}")
+    print(f"  全量 R_score: mean={R_all.mean():.1f}, std={R_all.std():.1f}")
+    print(f"  差异: |L1 - 全量| mean={(R_l1 - R_all).abs().mean():.2f}")
+
+
+def main(use_rolling_test=False):
     print("=" * 60)
     print("风控ML v3 + L1自动更新 — 独立输出 + 场景分析 + 概率验证")
     print("=" * 60)
@@ -258,7 +307,10 @@ def main():
     print(f"区间: {df.index[0].date()} ~ {df.index[-1].date()}, {len(df)}天")
     print(f"当前日期: {current_date.date()}")
 
-    # ===== L1: 检查是否需要月度重训练 =====
+    if use_rolling_test:
+        run_rolling_test(df)
+        return
+
     state = load_state()
     last_trained_str = state.get("last_trained", "从未") if state else "从未"
     if should_retrain(current_date, state):
@@ -269,10 +321,8 @@ def main():
     else:
         print(f"\n[L1自动更新] 本月已训练, 跳过 (上次训练: {state.get('last_trained', 'N/A')})")
         scaler, m1, m4, t1, t4 = train_models(df, current_date=current_date)
-        print(f"[L1] 重新训练 (同周期): M1_IF: {t1:.3f}s, M4_Maha: {t4:.3f}s")
+        print(f"[L1] 重新训练 (同周期): M1_IF: {t1:.3f}s, M4_Maha: {t4:.3f}s)")
 
-    # ===== Step 1: 生成R分数 =====
-    print("\nStep 1: 生成融合R分数 (L1最新模型)")
     R_score = compute_r_scores(df, scaler, m1, m4)
     df["R_score"] = R_score
 
@@ -283,7 +333,6 @@ def main():
     print(f"R_score: mean={R_score.mean():.1f}, max={R_score.max():.1f}, P(R>80)={(R_score>80).mean():.1%}")
     print(f"当前R_score: {R_score.iloc[-1]:.1f} ({df.index[-1].date()})")
 
-    # ===== Step 2: 未来场景分析 (概率) =====
     print("\nStep 2: 未来5d场景概率")
     current_r = R_score.iloc[-1]
     drawdowns, n_similar = compute_future_drawdown_distribution(df, current_r, len(df)-1)
@@ -305,7 +354,6 @@ def main():
     else:
         print(f"相似历史时段不足 ({n_similar}个), 无法计算概率")
 
-    # ===== Step 3: 概率验证 =====
     print("\nStep 3: 概率验证")
     test_predictions = []
     test_actuals = []
@@ -337,7 +385,6 @@ def main():
             for p, a in zip(bin_preds, bin_actuals):
                 print(f"  预测{p*100:.0f}% → 实际{a*100:.1f}% {'✅' if abs(p-a)<0.05 else '⚠️'}")
 
-    # ===== Step 4: G1/G2/G4 评估 =====
     print("\nStep 4: Go/No-Go 门槛 (ML独立输出)")
 
     holdout_pct = []
@@ -364,7 +411,6 @@ def main():
     g4 = "✅" if t1 + t4 < 1.0 else "❌"
     print(f"G4 (<1秒): {t1+t4:.3f}s {g4}")
 
-    # ===== Step 5: 报告模板 =====
     print("\n" + "=" * 60)
     print("ML异常检测报告 (模板)")
     print("=" * 60)
@@ -404,4 +450,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    use_rolling = "--rolling" in sys.argv
+    main(use_rolling_test=use_rolling)
