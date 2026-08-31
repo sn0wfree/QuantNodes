@@ -260,16 +260,59 @@ R_adaptive = R_zscore * sign(regime - threshold)
 
 | 文件 | 类型 |
 |---|---|
-| `scripts/cmf/fetch_fred_oil.py` | 数据脚本 (新增) |
-| `scripts/cmf/research_gold_oil_ratio.py` | 研究脚本 (新增, 只读) |
+| `scripts/cmf/fetch_fred_oil.py` | 数据脚本 (新增, Phase 1) |
+| `scripts/cmf/research_gold_oil_ratio.py` | 研究脚本 (Phase 1) |
+| `scripts/cmf/research_gold_oil_ratio_v2.py` | 研究脚本 (Phase 2, regime-adaptive) |
 | `fundamentals_daily` wti/brent字段 | DuckDB (新增数据) |
-| 本文档 | 研究报告 |
+| 本文档 | 研究报告 (含Phase 1+2) |
 
 ---
 
-## 十、Git提交历史
+## 十、最终综合结论 (Phase 1 + Phase 2)
+
+### 10.1 两阶段总览
+
+| 阶段 | 检验内容 | 结果 |
+|------|---------|------|
+| **Phase 1** | USD口径长历史 (4736天, 2008-2026) | G1✅ G2✅ G3❌ → 部分失败 |
+| **Phase 2** | 4种regime × sign翻转 | 0/4通过双门槛 → 全失败 |
+
+### 10.2 核心发现与不发现
+
+| 发现 | 结论 |
+|------|------|
+| 金油比值有真实的风险预测力 | ✅ 偏IC_20d_vol=+0.110, IC(原始)=+0.166 |
+| 预测力独立于VIX | ✅ 偏IC仍有+0.110 |
+| 跨子周期稳健 | ⚠️ 2008-2013反向, 非过拟合而是结构性变化 |
+| 单一regime翻转可解决问题 | ❌ 4/4regime全失败 |
+| 适合入生产风控 | ❌ 不建议 |
+
+### 10.3 根本原因
+
+金油比值与黄金未来波动的关系是**渐进式连续变化** (2008金融危机模式 → 2014过渡期 → 2019后QE稳定期)，不是单一变量regime可分割的二元切换。
+
+### 10.4 对生产的启示
+
+- ✅ **VIX/GVZ仍是最佳风险指标** — 本研究反证其稳健性
+- ✅ 金油比**预警信号真实存在** (近端1-20日), 但regime-dependent
+- ⚠️ 若未来需此类因子, 需自适应窗口或非参数方法
+- ✅ 现有risk_overlay无需引入新因子
+
+### 10.5 研究价值
+
+本次研究 (含2次负结果) 的核心价值:
+- 防止未来重复踩坑 (单一regime翻转不够)
+- 证实现有风控体系稳健
+- 提供USD口径长历史数据 (WTI 1986, Brent 1987) 供未来复用
+
+---
+
+## 十一、Git提交历史 (全部)
 
 ```
 464d243a docs(gold): 金油比值风险因子研究计划 (预注册)
 956768d8 feat(gold): FRED原油数据拉取(WTI 1986起/Brent 1987起)
+519ae04c docs+research(gold): 金油比值研究完成 — G3失败归档负结果 (Phase 1)
+3484db2f docs(gold): 金油比值二期研究计划 — Regime-adaptive设计
+725a3832 research+docs(gold): 金油比值二期研究 — Regime-adaptive负结果归档 (Phase 2)
 ```
