@@ -1,8 +1,122 @@
 # 黄金策略最终方案文档
 
-> 最后更新: 2026-08-28 (v2 重大修正)
+> 最后更新: 2026-08-31 (v3 数据修复 + 有效性评估)
 > 最终策略: `compute_layered_ensemble_signal` (统一入口真实shift2 + 无前视Open-to-Open)
-> 真实业绩: 全周期年化 9.98% (L=1.5 CPPI) / 7.34% (基线), B&H 8.99%
+> 全周期真实业绩: CAGR 6.35% / Sharpe 0.886 / MaxDD -17.33% (O2O+5bps, 2010-2026)
+
+---
+
+## 🆕 v3 更新 (2026-08-31)
+
+### 3.1 数据修复与刷新
+
+| 问题 | 修复 | 结果 |
+|---|---|---|
+| VIX/GVZ被管道覆盖截断 (仅169行) | 修复上游SQLite采集 + 重跑1e迁移 | 恢复至9261行 (1990-2026) |
+| etf_tonnes停更 (iFind token过期) | akshare macro_cons_gold替代 (corr=1.000验证) | 2861行, 2004起, 至08-28 |
+| gprd停更 | 官方渠道 --download-gprd | 至07-31 |
+| dxy停更 | akshare_boc源延长 (corr=0.993) | 至08-25 |
+
+**数据刷新脚本**: `scripts/cmf/refresh_gold_data.py` (幂等, 可重复执行)
+
+### 3.2 渐进式换月 (新增数据管道)
+
+- `fetch_gold_contracts.py` → `detect_gold_main.py` → `build_gold_smooth.py`
+- 4天线性插值换月, 消除AU0换月跳空 (3-8% → 平滑过渡)
+- 详见 `docs/gold/gold_rollover_plan.md`
+
+### 3.3 代码重构 (5 Phase完成)
+
+- `gold_utils.py`: 公共函数模块 (消除6份重复代码)
+- `gold_ensemble.py`: 集成策略拆分 (gold_trend_bnh从1047行减负)
+- **96个单元测试全部通过, 0警告** (tests/test_gold_*.py)
+
+### 3.4 有效性评估 (统计检验通过 ✅)
+
+| 检验 | 结果 | 判定 |
+|---|---|---|
+| Bootstrap Sharpe (1000次) | 95% CI [0.433, 1.366], P(<0)=**0%** | ✅ 显著为正 |
+| Monte Carlo 择时 (200次随机) | Sharpe 0.886 超过 **100%** 随机排列 | ✅ 择时真实 |
+| 参数敏感性 | hard_cap/vol_cap/bw/deadband全扰动Sharpe 0.82~0.91 | ✅ 无悬崖 |
+| 成本敏感性 | 50bps下Sharpe仍+0.34 | ✅ 稳健 |
+| 滚动5年Sharpe | 仅0.2%窗口为负 | ✅ 长期稳定 |
+| 前视偏差 | shift2 + O2O对齐, 无已知前视 | ✅ 干净 |
+
+### 3.5 胜率结构 (口径澄清)
+
+| 周期 | 全样本胜率 | 有效持仓胜率 |
+|---|---|---|
+| 日 | 36.9% | **52.7%** |
+| 周 | 38.0% | **51.1%** |
+| 年 | 63.2% (12/19) | — |
+
+- 全样本被空仓期稀释 (空仓日25.9%, 风控主动离场, 收益=0)
+- 盈亏比 1.52 (盈利周+0.87% / 亏损周-0.57%), 期望+0.119%/周
+- **盈利公式** = 52.7%胜率 × 1.52盈亏比 × 66%持仓时间 + 34%空仓避险
+
+### 3.6 风控层贡献分解
+
+| | CAGR | Sharpe | MaxDD | 均仓 |
+|---|---|---|---|---|
+| 无风控 | 7.45% | 0.675 | -34.55% | 66.6% |
+| **有风控** | 6.35% | **0.886** | **-17.33%** | 38.6% |
+
+> 用1.1pp年化换Sharpe+31%和回撤减半 — 策略本质是**金价beta+回撤管理**的配置型工具, 不是独立alpha来源。
+
+### 3.7 逐年表现 vs B&H (O2O+5bps)
+
+| 年份 | 策略 | 策略MaxDD | B&H | B&H MaxDD | 均仓 |
+|---|---|---|---|---|---|
+| 2010 | +21.17% | -3.88% | +26.62% | -8.31% | 46% |
+| 2011 | +18.98% | -3.65% | +3.94% | -20.05% | 52% |
+| 2012 | -4.90% | -6.71% | +4.13% | -13.93% | 21% |
+| 2013 | +0.10% | -0.27% | -30.24% | -30.90% | 1% |
+| 2014 | -4.27% | -7.13% | -1.22% | -16.88% | 37% |
+| 2015 | -2.02% | -2.01% | -6.83% | -16.80% | 5% |
+| 2016 | +4.65% | -7.57% | +19.67% | -11.26% | 59% |
+| 2017 | -1.67% | -7.23% | +3.76% | -6.57% | 67% |
+| 2018 | +2.28% | -3.29% | +3.15% | -6.61% | 55% |
+| 2019 | +12.66% | -6.39% | +21.46% | -9.51% | 73% |
+| 2020 | +5.05% | -5.83% | +14.70% | -17.43% | 17% |
+| 2021 | -3.82% | -4.10% | -6.59% | -11.49% | 20% |
+| 2022 | +5.09% | -4.27% | +10.99% | -11.23% | 39% |
+| 2023 | +12.24% | -3.35% | +17.99% | -4.58% | 78% |
+| 2024 | +19.09% | -4.04% | +29.62% | -7.13% | 49% |
+| 2025 | +39.05% | -4.72% | +59.56% | -11.02% | 60% |
+| **2026** | **+11.26%** | **-2.77%** | **+0.69%** | **-30.37%** | **6%** |
+| **全周期** | **+6.35%** | **-17.33%** | **+8.67%** | **-44.81%** | 39% |
+
+- 2026年OOS: 策略+11.26% vs B&H+0.69%, MaxDD -2.77% vs -30.37% (风控躲过3月崩盘)
+- 熊市保护显著 (2013/2021/2026), 牛市跟涨略弱 (2024/2025)
+
+### 3.8 最新信号 (2026-08-28)
+
+| 信号 | 仓位 |
+|---|---|
+| **Layered Ensemble (生产)** | **23.62%** |
+| 宏观机制 | 34.90% |
+| 动量 / 突破 / 美元趋势 | 100% |
+| 实际利率 / 避险情绪 / 仓位流 | 0% |
+
+### 3.9 ⚠️ 全因子信号过拟合警告
+
+`gold_all_factor` (5层11指标) Walk-Forward验证:
+- IS(2018-2025) Sharpe=4.13 → OOS(2026) Sharpe=**-0.32** (衰减108%)
+- 2025年Sharpe=19.38为极端过拟合信号
+- 已加shift(1)修正前视, 但IS/OOS表现不变 — **过拟合根因是参数过多, 非前视**
+- **结论: 全因子仅作辅助参考, 不可作为主信号; 生产信号(Layered)无此问题**
+
+### 3.10 生产信号数据依赖 (仅5字段)
+
+| 表 | 字段 | 状态 |
+|---|---|---|
+| futures_main_close_au | open, close | ✅ 至08-28 |
+| fundamentals_daily (gold_fred) | vix | ✅ 至08-27 |
+| fundamentals_daily (gold_fred) | gvz | ✅ 至08-27 |
+| fundamentals_daily (fred_dfii10) | tips10y | ✅ 至08-21 |
+| fundamentals_daily (gold_fred) | rir (辅助) | ✅ 至08-01 |
+
+> etf/gprd/dxy/cftc等数据**不在生产信号依赖链上**, 更新它们不影响生产仓位。
 
 ---
 
@@ -266,19 +380,39 @@ CPPI杠杆
 
 ```
 QuantNodes/strategy/commodity_fundamental/gold/
+├── gold_utils.py                           # 公共函数 (数据加载/回测/周收益)
 ├── gold_trend_bnh.py
-│   ├── compute_macro_regime_signal()      # 宏观机制策略
-│   ├── compute_hysteresis_trend_d()       # 滞回带趋势
-│   ├── compute_risk_overlay()             # 三级风控覆盖层
-│   ├── compute_adaptive_ensemble()        # 自适应集成(备选)
-│   ├── compute_layered_ensemble_signal()  # 分层集成(主用)
-│   ├── _zscore_scale()                    # GVZ zscore缩放
-│   ├── _rate_gate()                       # Δtips利率门控
-│   └── _rolling_drawdown()               # 滚动回撤计算
+│   ├── compute_macro_regime_signal()       # 宏观机制策略
+│   ├── compute_hysteresis_trend_d()        # 滞回带趋势
+│   ├── compute_risk_overlay()              # 三级风控覆盖层
+│   ├── compute_trend_bnh_signal()          # 基础趋势B&H
+│   ├── _zscore_scale()                     # GVZ zscore缩放
+│   ├── _rate_gate()                        # Δtips利率门控
+│   └── _rolling_drawdown()                 # 滚动回撤计算
+├── gold_ensemble.py
+│   ├── compute_layered_ensemble_signal()   # 分层集成 (生产入口)
+│   └── compute_adaptive_ensemble()         # 自适应集成(备选)
 ├── gold_real_rate.py
 ├── gold_momentum.py
 ├── gold_breakout.py
 └── __init__.py
+
+tests/
+├── test_gold_rollover.py    # 换月 (16用例)
+├── test_gold_utils.py       # 公共函数 (11用例)
+├── test_gold_signals.py     # 6单因子 (40用例)
+├── test_gold_trend_bnh.py   # 趋势+风控 (18用例)
+└── test_gold_ensemble.py    # 集成 (7用例)
+# 合计96个用例全部通过
+
+scripts/cmf/ (数据管道)
+├── 1e_fetch_gold.py          # SQLite→DuckDB迁移
+├── refresh_gold_data.py      # etf/gprd/dxy幂等刷新
+├── fetch_gold_contracts.py   # 全合约数据 (换月用)
+├── detect_gold_main.py       # 主力识别+换月检测
+├── build_gold_smooth.py      # 渐进式换月价格
+├── prepare_gold_overview_data.py  # 报告数据缓存
+└── gen_html_report.py        # HTML报告生成
 ```
 
 ---
@@ -320,24 +454,30 @@ pos_15 = compute_risk_overlay(
 | `docs/gold/adaptive_ensemble_results.md` | 自适应集成评估 |
 | `docs/gold/ensemble_v2_results.md` | 分层集成评估 |
 | `docs/gold/walk_forward_ensemble_results.md` | Walk-Forward验证 |
+| `docs/gold/gold_rollover_plan.md` | 渐进式换月方案 |
+| `docs/gold/gold_code_refactor_plan.md` | 代码整理计划 (已完成) |
+| `reports/gold/report.html` | HTML业绩报告 (SVG自包含) |
 | `reports/gold/gold_nav_curve.png` | 净值曲线 |
 | `reports/gold/gold_nav_curve.csv` | 净值数据 |
 
 ---
 
-## 十、Git提交历史
+## 十、Git提交历史 (近期)
 
 ```
-b7df0b3 docs(gold): 补充黄金策略历史文档
-90157a6 feat(gold): Δtips新策略净值曲线对比
-8c48ff9 docs(gold): 更新研究总结 - Δtips突破
-5b1555a feat(gold): Δtips二值信号突破 - Walk-Forward验证
-0b88b47 feat(gold): 默认bw=0.2 + 净值曲线对比
-d187b9b feat(gold): 分层集成加入第4路breakout信号
-94718ab docs(gold): 黄金策略研究总结文档
-3baf005 feat(gold): 分层集成生产函数
-e548774 feat(gold): 集成策略Round2 - 分层叠加翻案成功
-88cd48e feat(gold): 风控覆盖层 (Risk Overlay) 三级架构
-9052172 feat(gold): 8子策略单独诊断
-5751d8c feat(gold): 宏观机制策略 + 滞回带 + VIX自适应 + ATR调研
+bfc84fbd fix(gold): 全因子信号加shift=1周修正前视效应
+b1c96d78 feat(gold): 刷新缺失数据 — etf/gprd/dxy 全部更新至最新
+798be316 feat(gold): 更新CTA策略数据 + 生成最新信号
+67727551 chore(gold): 重新生成业绩报告 — 验证整理后代码正确性
+4cfdbe3d docs(gold): 代码整理计划状态更新 — 全部完成
+55b72deb refactor(gold): Phase 5 — 修复fillna弃用警告
+2a282db5 refactor(gold): Phase 4 — 合并重复测试脚本
+c90b56dc refactor(gold): Phase 3 — 添加单元测试 (96个用例全部通过)
+67529369 refactor(gold): Phase 2 — 拆分集成策略到 gold_ensemble.py
+9d5dcff5 refactor(gold): Phase 1 — 提取公共模块 gold_utils.py
+3a7ec09d docs(gold): 代码整理计划文档
+0cc6a00f refactor(gold): 重构build_gold_smooth.py + 添加单元测试
+941513c6 feat(gold): 使用渐进式换月价格重新回测
+670ce606 feat(gold): 渐进式换月数据管道 — Step 1-3完成
+b759ce01 docs(gold): 渐进式换月方案文档
 ```
