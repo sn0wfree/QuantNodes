@@ -24,6 +24,7 @@ from QuantNodes.strategy.commodity_fundamental.gold.gold_trend_bnh import _load_
 
 CACHE = "reports/gold/overview_data.pkl"
 COST_BPS = 5.0
+TODAY = pd.Timestamp.today().normalize()
 
 
 def main():
@@ -57,7 +58,7 @@ def main():
     # ===== 2. 净值计算 (无前视O2O) =====
     print("[2/6] 计算无前视O2O净值...")
 
-    def nav_o2o(pos, s="2010-01-01", e="2026-08-27"):
+    def nav_o2o(pos, s="2010-01-01", e=TODAY):
         sub = pos[(pos.index >= s) & (pos.index <= e)]
         o = open_price.reindex(sub.index)
         ret_fwd = o.pct_change().shift(-1)
@@ -109,9 +110,9 @@ def main():
 
     # ===== 4. 2026纯OOS =====
     print("[4/6] 2026纯OOS数据...")
-    m26 = pos_15["2026-01-01":"2026-08-27"]
-    o26 = open_price["2026-01-01":"2026-08-27"]
-    c26 = close["2026-01-01":"2026-08-27"]
+    m26 = pos_15["2026-01-01":TODAY]
+    o26 = open_price["2026-01-01":TODAY]
+    c26 = close["2026-01-01":TODAY]
     ret_fwd = o26.pct_change().shift(-1)
     sr26 = (m26.shift(1) * ret_fwd).dropna()
     cost26 = m26.diff().abs() * COST_BPS / 10000
@@ -121,7 +122,7 @@ def main():
     # ===== 5. 逐年指标表 =====
     print("[5/6] 逐年指标表 (区间收益, 非年化)...")
     yearly_rows = []
-    for year in range(2010, 2027):
+    for year in range(2010, close.index[-1].year + 1):
         row = {"year": year}
         for name, pos in [("L15", pos_15), ("BH", bh_pos)]:
             sub = pos[pos.index.year == year]
