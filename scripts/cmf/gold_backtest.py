@@ -27,19 +27,17 @@ sys.path.insert(0, "/home/ll/Public/QuantNodes")
 sys.path.insert(0, "/home/ll/Public/QuantNodes/scripts/cmf")
 
 import argparse
-import math
 
-import duckdb
 import numpy as np
 import pandas as pd
 
 sys.path.insert(0, "/home/ll/Public/QuantNodes/QuantNodes")
 from QuantNodes.strategy.commodity_fundamental.gold import (
-    compute_layered_ensemble_signal,
-    compute_risk_overlay,
-)
-from QuantNodes.strategy.commodity_fundamental.gold.gold_trend_bnh import (
-    _load_indicator_d,
+    PRODUCTION_PARAMS,
+    build_chain as _pkg_build_chain,
+    build_production_position,
+    load_au_adj_ohlcv,
+    load_vix_gvz as _pkg_load_vix_gvz,
 )
 
 DB_PATH = "data/cmf/fundamental.duckdb"
@@ -58,47 +56,18 @@ DEFAULTS = dict(
 )
 
 # 全执行栈参数 B3 (锚点: CAGR 18.47% / Sharpe 1.56 / MaxDD -16.84% @ 2018-2026)
-# 结构: 链(-5/-5/-20) → 核心裁剪1.25 → +周网格库存(3档×0.083, sp=2%) → 总封顶1.5
-#       → 日平滑cap0.20 → 应急(单日<-5%压向0)
-DEFAULTS_STACK = dict(
-    # 链层 (被测参数, 非生产现状)
-    L=1.5,
-    first_cap=-0.05,
-    second_cap=-0.05,
-    second_hard=-0.20,
-    second_soft=-0.12,
-    vol_cap=0.20,
-    cooldown_days=5,
-    deadband=0.05,
-    # 预算制网格层
-    core_cap=1.25,
-    grid_sp=0.02,
-    grid_step=0.0833,
-    grid_tiers=3,
-    budget=1.5,
-    # 日平滑层
-    smooth_cap=0.20,
-    emergency=-0.05,
-)
+# 与包内 PRODUCTION_PARAMS 保持一致 (gold_production.py 为唯一权威实现)
+DEFAULTS_STACK = dict(PRODUCTION_PARAMS)
 
 
 def load_au_ohlcv() -> tuple[pd.Series, pd.Series]:
-    """加载调整后AU期货 (close, open), 数据从2018-06-20起."""
-    con = duckdb.connect(DB_PATH, read_only=True)
-    df = con.execute(
-        "SELECT trade_date, open, close FROM futures_main_close_au_adj ORDER BY trade_date"
-    ).df()
-    con.close()
-    df["trade_date"] = pd.to_datetime(df["trade_date"])
-    df = df.drop_duplicates("trade_date", keep="last").set_index("trade_date")
-    return df["close"], df["open"]
+    """加载调整后AU期货 (close, open), 数据从2018-06-20起 — 委托包内实现."""
+    return load_au_adj_ohlcv()
 
 
 def load_vix_gvz(close_index: pd.DatetimeIndex) -> tuple[pd.Series, pd.Series]:
-    """vix/gvz, 生产口径: reindex + ffill + shift(2)."""
-    vix = _load_indicator_d("vix", "gold_fred").reindex(close_index).ffill().shift(2)
-    gvz = _load_indicator_d("gvz", "gold_fred").reindex(close_index).ffill().shift(2)
-    return vix, gvz
+    """vix/gvz, 生产口径 — 委托包内实现."""
+    return _pkg_load_vix_gvz(close_index)
 
 
 def build_chain(
@@ -111,98 +80,12 @@ def build_chain(
     cooldown_days: int = 5,
     deadband: float = 0.05,
 ) -> pd.Series:
-    """生产链: 一层风控信号 → ×L杠杆 → 二层overlay → 死带平滑."""
-    close, _ = load_au_ohlcv()
-    vix, gvz = load_vix_gvz(close.index)
-
-    sig = compute_layered_ensemble_signal(use_risk_overlay=True, daily_cap=first_cap)
-    pos_base = sig["position"]
-    pos_lev = (pos_base * L).clip(0, L * 1.2)
-
-    pos = compute_risk_overlay(
-        close=close, position=pos_lev, vix=vix, gvz=gvz,
-        hard_cap=second_hard, soft_cap=second_soft, daily_cap=second_cap,
-        vol_cap=vol_cap, cooldown_days=cooldown_days,
+    """链 — 委托包内实现. 缺省 = 生产现状(-2/-3/-15) [注意: 包内缺省为B3链]."""
+    return _pkg_build_chain(
+        L=L, first_cap=first_cap, second_cap=second_cap,
+        second_hard=second_hard, second_soft=second_soft,
+        vol_cap=vol_cap, cooldown_days=cooldown_days, deadband=deadband,
     )
-    for i in range(1, len(pos)):
-        if abs(pos.iloc[i] - pos.iloc[i - 1]) < deadband:
-            pos.iloc[i] = pos.iloc[i - 1]
-    return pos
-
-
-def weekly_grid_inventory(
-    close: pd.Series,
-    target_index: pd.DatetimeIndex,
-    spacing_pct: float = 0.02,
-    step: float = 0.0833,
-    max_grids: int = 3,
-) -> pd.Series:
-    """周频网格库存 (预算制): 价格在锚点下方每跌1档, 库存+step, 回到锚点上方归零.
-
-    周五收盘按档位计库存, 下周执行 (reindex ffill + shift(1) 避免当日决策当日用).
-    锚点漂移超过 (max_grids+1) 档时重置 (库存清零, 防止趋势中无界累积).
-
-    Args:
-        close: 日频收盘价
-        target_index: 输出的日频index (与目标仓位对齐)
-        spacing_pct: 网格间距 (价格百分比)
-        step: 每档库存 (占NAV比例)
-        max_grids: 最大档数 (库存上限 = max_grids * step)
-
-    Returns:
-        日频库存序列 (与target_index对齐, 已含执行时滞)
-    """
-    w_close = close.resample("W-FRI").last().dropna()
-    anchor = None
-    inventories = []
-    for dt, px in w_close.items():
-        if anchor is None or np.isnan(px):
-            anchor = px
-            inventories.append(0.0)
-            continue
-        spacing = px * spacing_pct
-        n_below = math.floor((anchor - px) / spacing)
-        inv = float(np.clip(n_below * step, 0, max_grids * step))
-        if abs(px - anchor) > (max_grids + 1) * spacing:
-            anchor = px
-            inv = 0.0
-        inventories.append(inv)
-    inv_w = pd.Series(inventories, index=w_close.index)
-    return inv_w.reindex(target_index, method="ffill").shift(1).fillna(0.0)
-
-
-def smooth_execution(
-    pos_target: pd.Series,
-    close: pd.Series,
-    cap: float = 0.20,
-    emergency: float = -0.05,
-) -> pd.Series:
-    """日平滑执行: 仓位向目标限速收敛; 单日暴跌触发应急立即压向0.
-
-    Args:
-        pos_target: 目标仓位 (含网格库存)
-        close: 日频收盘价 (计算应急触发的当日收益)
-        cap: 每日最大调仓幅度
-        emergency: 单日跌幅应急阈值 (None=关闭)
-
-    Returns:
-        实际执行仓位序列
-    """
-    ret = close.pct_change()
-    out = pos_target.copy()
-    prev = pos_target.iloc[0]
-    for i in range(len(pos_target)):
-        tgt = pos_target.iloc[i]
-        gap = tgt - prev
-        if abs(gap) <= cap:
-            new = tgt
-        else:
-            new = prev + cap if gap > 0 else prev - cap
-        if emergency is not None and ret.iloc[i] < emergency:
-            new = min(new, 0.0)
-        out.iloc[i] = new
-        prev = new
-    return out
 
 
 def build_full_stack(
@@ -222,24 +105,15 @@ def build_full_stack(
     smooth_cap: float = 0.20,
     emergency: float = -0.05,
 ) -> pd.Series:
-    """全执行栈 (预算制, B3参数): 链 → 核心裁剪 → +周网格库存 → 总封顶 → 日平滑 → 应急.
-
-    杠杆预算分配: 总敞口硬封顶 budget (默认1.5),
-    核心信号最多用 core_cap (默认1.25), 网格库存吃闲置预算 (≤0.25).
-    """
-    close, _ = load_au_ohlcv()
-    chain = build_chain(
+    """全执行栈 — 委托包内 build_production_position (B3, 缺省一致)."""
+    return build_production_position(dict(
         L=L, first_cap=first_cap, second_cap=second_cap,
         second_hard=second_hard, second_soft=second_soft,
         vol_cap=vol_cap, cooldown_days=cooldown_days, deadband=deadband,
-    )
-    core = chain.clip(0, core_cap)
-    grid = weekly_grid_inventory(
-        close, chain.index,
-        spacing_pct=grid_sp, step=grid_step, max_grids=grid_tiers,
-    )
-    pos = (core + grid).clip(0, budget)
-    return smooth_execution(pos, close, cap=smooth_cap, emergency=emergency)
+        core_cap=core_cap, grid_sp=grid_sp, grid_step=grid_step,
+        grid_tiers=grid_tiers, budget=budget,
+        smooth_cap=smooth_cap, emergency=emergency,
+    ))
 
 
 def o2o_returns(

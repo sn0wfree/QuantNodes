@@ -92,6 +92,17 @@ from .gold_all_factor import (
     backtest_all_factor,
     get_weekly_returns as get_all_factor_weekly_returns,
 )
+from .gold_production import (
+    PRODUCTION_PARAMS,
+    load_au_adj_ohlcv,
+    load_vix_gvz,
+    build_chain,
+    weekly_grid_inventory,
+    smooth_execution,
+    build_production_position,
+    o2o_returns,
+    position_state,
+)
 
 __all__ = [
     # 公共函数
@@ -136,4 +147,14 @@ __all__ = [
     "load_dxy_w",
     "load_cb_w",
     "load_etf_w",
+    # 生产策略 (B3全执行栈)
+    "PRODUCTION_PARAMS",
+    "load_au_adj_ohlcv",
+    "load_vix_gvz",
+    "build_chain",
+    "weekly_grid_inventory",
+    "smooth_execution",
+    "build_production_position",
+    "o2o_returns",
+    "position_state",
 ]
