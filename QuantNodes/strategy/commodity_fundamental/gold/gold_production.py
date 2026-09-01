@@ -183,28 +183,28 @@ def o2o_returns(
     return (sr - cost).dropna()
 
 
-def position_state(pos: pd.Series, close: pd.Series, params: dict | None = None) -> dict:
-    """最新仓位状态解读 (镜像二层风控分层, 用于跟踪报告).
+def position_state_series(
+    pos: pd.Series, close: pd.Series, params: dict | None = None
+) -> pd.Series:
+    """逐日风控状态 (镜像二层风控分层, 用于跟踪报告).
 
-    Returns:
-        dict: date/position/pos_change/daily_ret/state
-        state ∈ {硬止损, 冷却期, 软减仓, 波动压缩, 正常}
+    优先级: 硬止损 > 冷却期 > 软减仓 > 波动压缩 > 正常
+    注意: 仅覆盖二层+应急状态, 一层内部状态不在此标注.
     """
     p = dict(PRODUCTION_PARAMS)
     if params:
         p.update(params)
 
     daily_ret = close.pct_change()
-    pos_reindexed = pos.reindex(close.index).ffill().fillna(0)
-    d = close.index[-1]
+    pos_r = pos.reindex(close.index).ffill().fillna(0)
 
-    # 镜像 compute_risk_overlay 的分层判定 (仅用于状态标注)
+    # 入场价追踪的滚动回撤 (镜像 compute_risk_overlay 语义)
     n = len(close)
     entry = None
     rolling_dd = pd.Series(np.nan, index=close.index)
     cur = 1.0
     for i in range(n):
-        if pos_reindexed.iloc[i] > 0 and (entry is None or pos_reindexed.iloc[i - 1] <= 0):
+        if pos_r.iloc[i] > 0 and (entry is None or pos_r.iloc[i - 1] <= 0):
             entry = close.iloc[i]
             cur = 1.0
         if entry is not None:
@@ -212,39 +212,38 @@ def position_state(pos: pd.Series, close: pd.Series, params: dict | None = None)
         rolling_dd.iloc[i] = cur - 1
 
     realized_vol = daily_ret.rolling(20, min_periods=5).std() * np.sqrt(252)
-    vol_mask = bool(realized_vol.loc[d] > p["vol_cap"])
-    soft_mask = bool(rolling_dd.loc[d] < p["second_soft"])
-    hard_mask = bool(rolling_dd.loc[d] < p["second_hard"] or daily_ret.loc[d] < p["second_cap"])
+    vol_mask = (realized_vol > p["vol_cap"]).fillna(False)
+    soft_mask = (rolling_dd < p["second_soft"]).fillna(False)
+    hard_mask = ((rolling_dd < p["second_hard"]) |
+                 (daily_ret < p["second_cap"])).fillna(False)
+    cooldown = hard_mask.rolling(p["cooldown_days"] + 1, min_periods=1).max().fillna(0)
 
-    # 冷却期: 近 cooldown_days 日内出现过硬触发
-    recent_hard = hard_mask
-    for k in range(1, p["cooldown_days"] + 1):
-        if i := d - k:
-            prev_d = d - k
-            if prev_d in daily_ret.index and prev_d in rolling_dd.index:
-                recent_hard = recent_hard or (
-                    rolling_dd.loc[prev_d] < p["second_hard"]
-                    or daily_ret.loc[prev_d] < p["second_cap"]
-                )
+    states = np.select(
+        [hard_mask, cooldown.astype(bool), soft_mask, vol_mask],
+        ["硬止损", "冷却期", "软减仓", "波动压缩"],
+        default="正常",
+    )
+    return pd.Series(states, index=close.index)
 
-    if hard_mask:
-        state = "硬止损"
-    elif recent_hard:
-        state = "冷却期"
-    elif soft_mask:
-        state = "软减仓"
-    elif vol_mask:
-        state = "波动压缩"
-    else:
-        state = "正常"
 
-    pos_today = float(pos_reindexed.loc[d])
+def position_state(pos: pd.Series, close: pd.Series, params: dict | None = None) -> dict:
+    """最新仓位状态解读 (基于 position_state_series, 用于跟踪报告).
+
+    Returns:
+        dict: date/position/pos_change/daily_ret/state
+    """
+    states = position_state_series(pos, close, params)
+    d = close.index[-1]
+    pos_r = pos.reindex(close.index).ffill().fillna(0)
+    daily_ret = close.pct_change()
+
+    pos_today = float(pos_r.loc[d])
     prev_d = close.index[-2] if len(close) > 1 else d
-    pos_prev = float(pos_reindexed.loc[prev_d]) if prev_d in pos_reindexed.index else 0.0
+    pos_prev = float(pos_r.loc[prev_d]) if prev_d in pos_r.index else 0.0
     return {
         "date": d,
         "position": pos_today,
         "pos_change": pos_today - pos_prev,
         "daily_ret": float(daily_ret.loc[d]),
-        "state": state,
+        "state": str(states.loc[d]),
     }

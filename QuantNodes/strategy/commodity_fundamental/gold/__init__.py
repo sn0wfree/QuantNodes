@@ -102,6 +102,7 @@ from .gold_production import (
     build_production_position,
     o2o_returns,
     position_state,
+    position_state_series,
 )
 
 __all__ = [
@@ -157,4 +158,5 @@ __all__ = [
     "build_production_position",
     "o2o_returns",
     "position_state",
+    "position_state_series",
 ]
