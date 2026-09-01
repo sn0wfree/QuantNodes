@@ -28,6 +28,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -117,22 +118,22 @@ class MahaModel:
 
 
 def train_models(df, current_date=None, enforce_pit=True):
-    """训练M1_IF + M4_Maha.
+    """训练3个模型: IF + LOF + ZScore (方案3).
 
     PIT (Point-in-Time) 强制:
     - 训练窗口只包含 <= current_date 的数据
     - 不使用 future data (避免 look-ahead bias)
     - 默认用PIT全量 (截止到当前的所有历史), 而非固定窗口
-    - enforce_pit=True 时额外验证每个特征
 
     Args:
         df: 完整数据 (含所有历史)
         current_date: 模拟的"当前时间", None=用全部数据
         enforce_pit: 是否强制 PIT 检查
+
+    Returns: (scaler, m_if, m_lof, m_zscore, t_if, t_lof, t_zscore)
     """
     t0 = time.time()
     if current_date is not None:
-        # PIT全量: 用截止到 current_date 的所有历史数据
         train_df = df[df.index <= current_date]
     else:
         train_df = df
@@ -144,18 +145,30 @@ def train_models(df, current_date=None, enforce_pit=True):
     scaler = StandardScaler()
     X_scaled = pd.DataFrame(scaler.fit_transform(X), index=X.index, columns=X.columns)
 
-    m1 = IsolationForest(n_estimators=100, contamination=0.1, random_state=42)
-    m1.fit(X_scaled.values)
-    t1 = time.time() - t0
+    # M1: IsolationForest (全局分布异常)
+    m_if = IsolationForest(n_estimators=100, contamination=0.1, random_state=42)
+    m_if.fit(X_scaled.values)
+    t_if = time.time() - t0
 
+    # M2: LocalOutlierFactor (局部密度异常)
+    t0 = time.time()
+    m_lof = LocalOutlierFactor(n_neighbors=20, contamination=0.1, novelty=True)
+    m_lof.fit(X_scaled.values)
+    t_lof = time.time() - t0
+
+    # M3: ZScore (简单统计极端值)
     t0 = time.time()
     mu = X_scaled.mean(axis=0).values
-    cov = np.cov(X_scaled.values.T) + np.eye(X_scaled.shape[1]) * 1e-6
-    inv_cov = np.linalg.pinv(cov)
-    m4 = MahaModel(mu, inv_cov)
-    t4 = time.time() - t0
+    std = X_scaled.std(axis=0).values + 1e-8
+    m_zscore = type('ZScore', (), {
+        'mu': mu,
+        'std': std,
+        'score_samples': lambda self, X: np.linalg.norm((X - self.mu) / self.std, axis=1),
+        'fit': lambda self, X: self
+    })()
+    t_zscore = time.time() - t0
 
-    return scaler, m1, m4, t1, t4
+    return scaler, m_if, m_lof, m_zscore, t_if, t_lof, t_zscore
 
 
 def verify_pit_features(df, current_date):
@@ -226,7 +239,7 @@ def run_pit_test(df):
     test_dates = ["2022-06-01", "2023-06-01", "2024-06-01"]
     for td in test_dates:
         if pd.Timestamp(td) in df.index:
-            scaler, m1, m4, _, _ = train_models(df, current_date=pd.Timestamp(td), enforce_pit=True)
+            scaler, m_if, m_lof, m_zscore, _, _, _ = train_models(df, current_date=pd.Timestamp(td), enforce_pit=True)
             cutoff = pd.Timestamp(td) - pd.Timedelta(days=504)
             train_idx = df[(df.index >= cutoff) & (df.index <= pd.Timestamp(td))].index
             future_data = df[(df.index > pd.Timestamp(td)) & (df.index <= pd.Timestamp(td) + pd.Timedelta(days=30))]
@@ -235,10 +248,10 @@ def run_pit_test(df):
 
     # 3. L1 vs 全量训练 对比 (PIT 偏差度量)
     print("\n[3] L1 vs 全量训练 R_score差异 (PIT偏差度量)")
-    scaler_l1, m1_l1, m4_l1, _, _ = train_models(df, current_date=df.index[-1], enforce_pit=True)
-    R_l1 = compute_r_scores(df, scaler_l1, m1_l1, m4_l1)
-    scaler_all, m1_all, m4_all, _, _ = train_models(df, current_date=None)
-    R_all = compute_r_scores(df, scaler_all, m1_all, m4_all)
+    scaler_l1, m_if_l1, m_lof_l1, m_z_l1, _, _, _ = train_models(df, current_date=df.index[-1], enforce_pit=True)
+    R_l1 = compute_r_scores(df, scaler_l1, m_if_l1, m_lof_l1, m_z_l1)
+    scaler_all, m_if_all, m_lof_all, m_z_all, _, _, _ = train_models(df, current_date=None)
+    R_all = compute_r_scores(df, scaler_all, m_if_all, m_lof_all, m_z_all)
     corr = R_l1.corr(R_all)
     abs_diff = (R_l1 - R_all).abs().mean()
     print(f"  L1 (2年窗口) vs 全量 (7年窗口) R_score相关性: {corr:.4f}")
@@ -296,21 +309,32 @@ def should_retrain(current_date, state):
     return False
 
 
-def compute_r_scores(df, scaler, m1, m4):
+def compute_r_scores(df, scaler, m_if, m_lof, m_zscore):
+    """计算融合R分数: IF + LOF + ZScore (方案3).
+    
+    权重: IF=0.4, LOF=0.35, ZScore=0.25 (基于模型差异性分配)
+    """
     X = df[FEATURES].dropna()
     X_scaled = pd.DataFrame(scaler.transform(X), index=X.index, columns=X.columns)
-    scores_m1 = -m1.decision_function(X_scaled.values)
-    scores_m4 = m4.score_samples(X_scaled.values)
+    
+    # M1_if: 负的decision_function (越负越异常)
+    scores_if = -m_if.decision_function(X_scaled.values)
+    # M2_lof: 负的decision_function (越负越异常, novel模式)
+    scores_lof = -m_lof.decision_function(X_scaled.values)
+    # M3_zscore: 分数越大越异常
+    scores_zscore = m_zscore.score_samples(X_scaled.values)
 
     def normalize(s):
         lo, hi = np.nanpercentile(s, [1, 99])
         return ((s - lo) / (hi - lo + 1e-8) * 100).clip(0, 100)
 
-    norm_m1 = normalize(scores_m1)
-    norm_m4 = normalize(scores_m4)
-    norm_m1_s = pd.Series(norm_m1, index=X.index)
-    norm_m4_s = pd.Series(norm_m4, index=X.index)
-    R_score = (0.5 * norm_m1_s + 0.5 * norm_m4_s).reindex(df.index).fillna(0)
+    norm_if = normalize(scores_if)
+    norm_lof = normalize(scores_lof)
+    norm_zscore = normalize(scores_zscore)
+
+    # 加权融合 (IF=0.4, LOF=0.35, ZScore=0.25)
+    R_score = (0.4 * norm_if + 0.35 * norm_lof + 0.25 * norm_zscore)
+    R_score = pd.Series(R_score, index=X.index).reindex(df.index).fillna(0)
     return R_score
 
 
@@ -357,75 +381,94 @@ def compute_calibration(data, actuals, n_bins=5):
     return bin_predictions, bin_actuals
 
 
-def compute_adaptive_weights(df, scaler, m1, m4, lookback=60, temp=2.0):
-    """L2: 自适应权重 — 根据近期M1/M4模型表现动态调整融合权重."""
+def compute_adaptive_weights(df, scaler, m_if, m_lof, m_zscore, lookback=60, temp=2.0):
+    """L2: 自适应权重 — 根据近期3个模型表现动态调整融合权重."""
     X = df[FEATURES].dropna()
     X_scaled = pd.DataFrame(scaler.transform(X), index=X.index, columns=X.columns)
 
-    scores_m1 = -m1.decision_function(X_scaled.values)
-    scores_m4 = m4.score_samples(X_scaled.values)
+    # 计算3个模型的异常分数
+    scores_if = -m_if.decision_function(X_scaled.values)
+    scores_lof = -m_lof.decision_function(X_scaled.values)
+    scores_zscore = m_zscore.score_samples(X_scaled.values)
 
     def normalize(s):
         lo, hi = np.nanpercentile(s, [1, 99])
         return ((s - lo) / (hi - lo + 1e-8) * 100).clip(0, 100)
 
-    norm_m1 = normalize(scores_m1)
-    norm_m4 = normalize(scores_m4)
+    norm_if = normalize(scores_if)
+    norm_lof = normalize(scores_lof)
+    norm_zscore = normalize(scores_zscore)
 
     target = build_anomaly_labels(df).reindex(X.index).fillna(0)
-    accuracy_m1 = []
-    accuracy_m4 = []
+    acc_if = []
+    acc_lof = []
+    acc_zscore = []
 
     for i in range(len(X)):
         start = max(0, i - lookback)
         end_idx = min(i + 1, len(X))
         window_target = target.iloc[start:end_idx]
-        window_m1 = norm_m1[start:end_idx]
-        window_m4 = norm_m4[start:end_idx]
+        window_if = norm_if[start:end_idx]
+        window_lof = norm_lof[start:end_idx]
+        window_z = norm_zscore[start:end_idx]
 
         if len(window_target) < 10:
-            accuracy_m1.append(0.5)
-            accuracy_m4.append(0.5)
+            acc_if.append(0.33)
+            acc_lof.append(0.33)
+            acc_zscore.append(0.33)
             continue
 
-        corr_m1 = np.corrcoef(window_target.values, window_m1)[0, 1] if not np.isnan(np.corrcoef(window_target.values, window_m1)[0, 1]) else 0
-        corr_m4 = np.corrcoef(window_target.values, window_m4)[0, 1] if not np.isnan(np.corrcoef(window_target.values, window_m4)[0, 1]) else 0
-        accuracy_m1.append(max(0, min(1, (corr_m1 + 1) / 2)))
-        accuracy_m4.append(max(0, min(1, (corr_m4 + 1) / 2)))
+        c_if = np.corrcoef(window_target.values, window_if)[0, 1]
+        c_lof = np.corrcoef(window_target.values, window_lof)[0, 1]
+        c_z = np.corrcoef(window_target.values, window_z)[0, 1]
+        c_if = c_if if not np.isnan(c_if) else 0
+        c_lof = c_lof if not np.isnan(c_lof) else 0
+        c_z = c_z if not np.isnan(c_z) else 0
+        acc_if.append(max(0, min(1, (c_if + 1) / 2)))
+        acc_lof.append(max(0, min(1, (c_lof + 1) / 2)))
+        acc_zscore.append(max(0, min(1, (c_z + 1) / 2)))
 
-    acc_m1 = pd.Series(accuracy_m1, index=X.index)
-    acc_m4 = pd.Series(accuracy_m4, index=X.index)
+    acc_if_s = pd.Series(acc_if, index=X.index)
+    acc_lof_s = pd.Series(acc_lof, index=X.index)
+    acc_z_s = pd.Series(acc_zscore, index=X.index)
 
-    exp_m1 = np.exp(acc_m1 * temp)
-    exp_m4 = np.exp(acc_m4 * temp)
-    w_m1 = exp_m1 / (exp_m1 + exp_m4)
-    w_m4 = exp_m4 / (exp_m1 + exp_m4)
+    exp_if = np.exp(acc_if_s * temp)
+    exp_lof = np.exp(acc_lof_s * temp)
+    exp_z = np.exp(acc_z_s * temp)
+    exp_sum = exp_if + exp_lof + exp_z
+    w_if = exp_if / exp_sum
+    w_lof = exp_lof / exp_sum
+    w_z = exp_z / exp_sum
 
-    return pd.DataFrame({"weight_m1": w_m1, "weight_m4": w_m4}, index=X.index)
+    return pd.DataFrame({"weight_if": w_if, "weight_lof": w_lof, "weight_zscore": w_z}, index=X.index)
 
 
-def compute_r_scores_adaptive(df, scaler, m1, m4, adaptive_weights):
-    """L2: 用自适应权重生成R分数."""
+def compute_r_scores_adaptive(df, scaler, m_if, m_lof, m_zscore, adaptive_weights):
+    """L2: 用自适应权重生成R分数 (3模型)."""
     X = df[FEATURES].dropna()
     X_scaled = pd.DataFrame(scaler.transform(X), index=X.index, columns=X.columns)
 
-    scores_m1 = -m1.decision_function(X_scaled.values)
-    scores_m4 = m4.score_samples(X_scaled.values)
+    scores_if = -m_if.decision_function(X_scaled.values)
+    scores_lof = -m_lof.decision_function(X_scaled.values)
+    scores_zscore = m_zscore.score_samples(X_scaled.values)
 
     def normalize(s):
         lo, hi = np.nanpercentile(s, [1, 99])
         return ((s - lo) / (hi - lo + 1e-8) * 100).clip(0, 100)
 
-    norm_m1 = normalize(scores_m1)
-    norm_m4 = normalize(scores_m4)
+    norm_if = normalize(scores_if)
+    norm_lof = normalize(scores_lof)
+    norm_z = normalize(scores_zscore)
 
-    norm_m1_s = pd.Series(norm_m1, index=X.index)
-    norm_m4_s = pd.Series(norm_m4, index=X.index)
+    norm_if_s = pd.Series(norm_if, index=X.index)
+    norm_lof_s = pd.Series(norm_lof, index=X.index)
+    norm_z_s = pd.Series(norm_z, index=X.index)
 
-    # 用自适应权重
-    w1 = adaptive_weights["weight_m1"].reindex(X.index)
-    w4 = adaptive_weights["weight_m4"].reindex(X.index)
-    R_score = (w1 * norm_m1_s + w4 * norm_m4_s).reindex(df.index).fillna(0)
+    w_if = adaptive_weights["weight_if"].reindex(X.index)
+    w_lof = adaptive_weights["weight_lof"].reindex(X.index)
+    w_z = adaptive_weights["weight_zscore"].reindex(X.index)
+
+    R_score = (w_if * norm_if_s + w_lof * norm_lof_s + w_z * norm_z_s).reindex(df.index).fillna(0)
     return R_score
 
 
@@ -462,20 +505,22 @@ def compute_adaptive_threshold(df, target_fp_rate=0.03, lookback=60):
 
 
 def run_l2_l3_test(df):
-    """L2/L3滚动测试: 模拟自适应权重 + 自适应阈值的效果."""
-    print("\n[L2/L3滚动测试] 自适应权重 + 自适应阈值")
+    """L2/L3滚动测试: 模拟自适应权重 + 自适应阈值的效果 (方案3: IF+LOF+ZScore)."""
+    print("\n[L2/L3滚动测试] 自适应权重 + 自适应阈值 (方案3: IF+LOF+ZScore)")
     print("=" * 60)
 
-    # 训练基准模型
-    scaler, m1, m4, t1, t4 = train_models(df, current_date=df.index[-1])
+    # 训练3个模型
+    scaler, m_if, m_lof, m_zscore, t_if, t_lof, t_zscore = train_models(df, current_date=df.index[-1])
+    total_time = t_if + t_lof + t_zscore
+    print(f"模型训练: IF={t_if:.3f}s, LOF={t_lof:.3f}s, ZScore={t_zscore:.3f}s, 合计={total_time:.3f}s")
 
     # L2: 计算自适应权重
     print("\n[L2] 计算自适应权重...")
-    adaptive_w = compute_adaptive_weights(df, scaler, m1, m4, lookback=60, temp=2.0)
+    adaptive_w = compute_adaptive_weights(df, scaler, m_if, m_lof, m_zscore, lookback=60, temp=2.0)
 
     # 计算三种模式的R_score
-    R_l1 = compute_r_scores(df, scaler, m1, m4)
-    R_l2 = compute_r_scores_adaptive(df, scaler, m1, m4, adaptive_w)
+    R_l1 = compute_r_scores(df, scaler, m_if, m_lof, m_zscore)
+    R_l2 = compute_r_scores_adaptive(df, scaler, m_if, m_lof, m_zscore, adaptive_w)
 
     # L3: 用自适应阈值
     print("[L3] 计算自适应阈值...")
@@ -547,10 +592,11 @@ def run_l2_l3_test(df):
 
     # L2权重变化
     print(f"\n[L2] 自适应权重统计:")
-    print(f"  M1权重均值: {adaptive_w['weight_m1'].mean():.3f}")
-    print(f"  M4权重均值: {adaptive_w['weight_m4'].mean():.3f}")
-    print(f"  权重标准差: M1={adaptive_w['weight_m1'].std():.3f}, M4={adaptive_w['weight_m4'].std():.3f}")
-    print(f"  M1权重范围: [{adaptive_w['weight_m1'].min():.3f}, {adaptive_w['weight_m1'].max():.3f}]")
+    print(f"  IF权重均值: {adaptive_w['weight_if'].mean():.3f}")
+    print(f"  LOF权重均值: {adaptive_w['weight_lof'].mean():.3f}")
+    print(f"  ZScore权重均值: {adaptive_w['weight_zscore'].mean():.3f}")
+    print(f"  权重标准差: IF={adaptive_w['weight_if'].std():.3f}, LOF={adaptive_w['weight_lof'].std():.3f}, ZS={adaptive_w['weight_zscore'].std():.3f}")
+    print(f"  IF权重范围: [{adaptive_w['weight_if'].min():.3f}, {adaptive_w['weight_if'].max():.3f}]")
 
     # L3阈值变化
     print(f"\n[L3] 自适应阈值统计:")
@@ -601,8 +647,8 @@ def run_rolling_test(df):
             if sim_date < df.index[500]:
                 continue
 
-            scaler, m1, m4, t1, t4 = train_models(df, current_date=sim_date)
-            R_score = compute_r_scores(df, scaler, m1, m4)
+            scaler, m_if, m_lof, m_zscore, t_if, t_lof, t_zscore = train_models(df, current_date=sim_date)
+            R_score = compute_r_scores(df, scaler, m_if, m_lof, m_zscore)
             df_local = df.copy()
             df_local["R_score"] = R_score
 
@@ -656,10 +702,10 @@ def run_rolling_test(df):
         print(f"  <5% 占比: {sum(1 for v in g2_vals if v < 0.05) / len(g2_vals):.1%}")
 
     print("\n[L1 vs 全量训练对比]")
-    scaler_l1, m1_l1, m4_l1, _, _ = train_models(df, current_date=df.index[-1])
-    R_l1 = compute_r_scores(df, scaler_l1, m1_l1, m4_l1)
-    scaler_all, m1_all, m4_all, _, _ = train_models(df, current_date=None)
-    R_all = compute_r_scores(df, scaler_all, m1_all, m4_all)
+    scaler_l1, m_if_l1, m_lof_l1, m_z_l1, _, _, _ = train_models(df, current_date=df.index[-1])
+    R_l1 = compute_r_scores(df, scaler_l1, m_if_l1, m_lof_l1, m_z_l1)
+    scaler_all, m_if_all, m_lof_all, m_z_all, _, _, _ = train_models(df, current_date=None)
+    R_all = compute_r_scores(df, scaler_all, m_if_all, m_lof_all, m_z_all)
     corr = R_l1.corr(R_all)
     print(f"  R_score相关性: {corr:.4f}")
     print(f"  L1 R_score: mean={R_l1.mean():.1f}, std={R_l1.std():.1f}")
@@ -693,15 +739,15 @@ def main(use_rolling_test=False, use_pit_test=False, use_l2l3_test=False):
     last_trained_str = state.get("last_trained", "从未") if state else "从未"
     if should_retrain(current_date, state):
         print(f"\n[L1自动更新] 检测到需要重训练 (上次训练: {last_trained_str})")
-        scaler, m1, m4, t1, t4 = train_models(df, current_date=current_date)
+        scaler, m_if, m_lof, m_zscore, t_if, t_lof, t_zscore = train_models(df, current_date=current_date)
         save_state(current_date)
-        print(f"[L1] 已训练 (用最近2年数据, M1_IF: {t1:.3f}s, M4_Maha: {t4:.3f}s)")
+        print(f"[L1] 已训练 (IF={t_if:.3f}s, LOF={t_lof:.3f}s, ZScore={t_zscore:.3f}s)")
     else:
         print(f"\n[L1自动更新] 本月已训练, 跳过 (上次训练: {state.get('last_trained', 'N/A')})")
-        scaler, m1, m4, t1, t4 = train_models(df, current_date=current_date)
-        print(f"[L1] 重新训练 (同周期): M1_IF: {t1:.3f}s, M4_Maha: {t4:.3f}s)")
+        scaler, m_if, m_lof, m_zscore, t_if, t_lof, t_zscore = train_models(df, current_date=current_date)
+        print(f"[L1] 重新训练 (IF={t_if:.3f}s, LOF={t_lof:.3f}s, ZScore={t_zscore:.3f}s)")
 
-    R_score = compute_r_scores(df, scaler, m1, m4)
+    R_score = compute_r_scores(df, scaler, m_if, m_lof, m_zscore)
     df["R_score"] = R_score
 
     anomaly_periods = (R_score > 80).astype(int)
