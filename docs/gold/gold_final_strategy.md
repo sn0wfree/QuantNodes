@@ -1,6 +1,6 @@
 # 黄金策略最终方案文档
 
-> 最后更新: 2026-09-01 (v4 执行层: 预算制周网格 + 日平滑 + 应急)
+> 最后更新: 2026-09-01 (v4 执行层 + 完整链路 + 归因分析)
 > 最终策略: `compute_layered_ensemble_signal` (统一入口真实shift2 + 无前视Open-to-Open)
 > 全周期真实业绩: CAGR 6.35% / Sharpe 0.886 / MaxDD -17.33% (O2O+5bps, 2010-2026)
 
@@ -79,11 +79,57 @@ python3 scripts/cmf/gold_backtest.py                    # 生产现状链报告 
 python3 scripts/cmf/gold_backtest.py --stack            # B3全栈报告 (锚点18.47%/1.56/-16.84%)
 python3 scripts/cmf/gold_backtest.py --stack --compare  # 现状 vs 自定义栈 vs B3
 python3 scripts/cmf/gold_backtest.py --fc -0.05 --sc -0.05 --hard -0.20   # 自定义链
+python3 scripts/cmf/gold_track.py                       # 每日跟踪: 当日仓位/状态/动作
+python3 scripts/cmf/gold_track.py --year 2026           # 全年持仓CSV
+python3 scripts/cmf/gold_attribution.py                 # 归因: 链路+七级消融+子信号+调仓日志
+python3 scripts/cmf/gold_attribution.py --year 2026     # + trades_2026.csv
 ```
 
 核心函数: `build_chain` (链) / `weekly_grid_inventory` (周网格) /
 `smooth_execution` (日平滑+应急) / `build_full_stack` (全栈组装)。
 注意: 数据窗口为2018-06-20起 (`futures_main_close_au_adj`), 所有对比须同窗口。
+
+### 4.6 完整链路 (数据 → 仓位 → 收益)
+
+```
+数据层   DuckDB: futures_main_close_au_adj + vix/gvz(shift2) + tips10y
+信号层   4路加权: macro 0.2667 | real_rate 0.2667 | momentum 0.2667 | breakout 0.2
+一层风控 内置: daily-5% / hard-10% / soft-7% / vol 15%
+杠杆层   ×1.5 → clip 1.8
+二层风控 hard-20% / soft-12% / daily-5% / vol 20% / cooldown 5d
+死带     0.05
+核心裁剪 ≤1.25
+网格库存 +0~0.25 (sp=2%, 3档, 周频)
+总封顶   1.5
+日平滑   cap=0.20
+应急     单日<-5% 压0
+执行     O2O +5bps
+```
+
+唯一权威实现: `QuantNodes/strategy/commodity_fundamental/gold/gold_production.py`
+(`PRODUCTION_PARAMS` + `build_production_position()`), 回测/跟踪/归因均为其委托或消费方。
+
+### 4.7 归因分析 (2018-2026, 七级消融)
+
+| 级 | 变体 | CAGR | Sharpe | MaxDD | 边际ΔCAGR |
+|---|---|---|---|---|---|
+| L0 | 裸信号 | +14.29% | 1.27 | -16.51% | — |
+| L1 | +一层风控 | +13.15% | **1.51** | **-11.0%** | -1.1pp |
+| L2 | +杠杆×1.5 | +20.13% | 1.53 | -16.2% | **+6.9pp** |
+| L3 | +二层风控(链) | +17.73% | 1.52 | -17.3% | -2.4pp |
+| L4 | +核心裁剪+网格 | +18.30% | 1.55 | -17.2% | +0.6pp |
+| L5 | +日平滑 | +18.25% | 1.54 | -16.8% | -0.0pp |
+| L6 | +应急(生产B3) | **+18.47%** | **1.56** | -16.8% | +0.2pp |
+
+**归因结论** (B3 vs L0):
+- **杠杆层是最大收益来源** (+6.9pp), 一层风控是最大风控贡献 (Sharpe+0.24, MaxDD改善5.5pp)
+- 二层风控边际CAGR -2.4pp: 在一层已控回撤的基础上主要是"保险费", 但换 -5/-5/-20 参数后代价可控
+- 网格+平滑+应急合计 +0.8pp 且 Sharpe +0.05: 执行层为正贡献
+
+**子信号** (standalone, 生产价格口径): macro_regime 最优 (CAGR 16.6%/Sharpe 1.51/MaxDD -9.5%);
+real_rate 最弱 (9.8%); breakout 2026年贡献最佳 (+13.3%)。
+
+**2026调仓31次**: 网格12 / 链层12 / 平滑追赶5 / 应急2 (另有年初结转1次, tracker口径32)。
 
 ---
 
