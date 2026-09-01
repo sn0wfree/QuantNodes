@@ -5,20 +5,22 @@
 
 ---
 
-## 1. 快速开始 (3条命令)
+## 1. 快速开始
 
 ```bash
-# ① 今天仓位多少、要不要动
-python3 scripts/cmf/gold_track.py
+# 一键执行: 数据刷新 + 查询最新仓位
+python3 scripts/cmf/refresh_and_track.py
 
-# ② 策略回测业绩 (锚点互验: 应显示 18.47%/1.56/-16.84%)
-python3 scripts/cmf/gold_backtest.py --stack
-
-# ③ 各层贡献 + 每次调仓为什么
-python3 scripts/cmf/gold_attribution.py --year 2026
+# 仅查询仓位 (跳过数据刷新)
+python3 scripts/cmf/refresh_and_track.py --no-refresh
 ```
 
-前置: `data/cmf/fundamental.duckdb` 已刷新到最新交易日 (见§3)。
+其他工具:
+```bash
+python3 scripts/cmf/gold_backtest.py --stack      # 策略回测 (锚点: 18.47%/1.56/-16.84%)
+python3 scripts/cmf/gold_attribution.py --year 2026  # 各层贡献 + 调仓归因
+python3 scripts/cmf/gold_track.py --year 2026     # 历史持仓CSV
+```
 
 ---
 
@@ -26,10 +28,10 @@ python3 scripts/cmf/gold_attribution.py --year 2026
 
 ```
 15:00  沪金日盘收盘
-15:30  ① 刷新数据 (§3数据管道, 全部幂等可重跑)
-16:00  ② python3 scripts/cmf/gold_track.py
+15:30  python3 scripts/cmf/refresh_and_track.py
+       → 自动完成: AU期货增量拉取 → FRED刷新 → 重建主力合约 → 重建adj价格 → 输出仓位
        → 读"今日动作": 持仓不变 / 加仓X% / 减仓X%
-21:00  ③ 夜盘开盘按信号挂单成交 (限价或开盘瞬间市价)
+21:00  夜盘开盘按信号挂单成交 (限价或开盘瞬间市价)
        ⚠️ 必须当晚21:00执行, 拖到次日日盘在崩盘年代价~8pp (v4文档§9.3)
 ```
 
