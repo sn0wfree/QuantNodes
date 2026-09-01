@@ -8,6 +8,7 @@
     - commodity_momentum: 动量 + 波动率目标化
     - commodity_vol_target: 波动率目标化
     - commodity_timing: 因子开仓时机过滤
+    - commodity_risk_overlay: 通用三级风控覆盖层
     - weekly_backtest: 通用周频回测引擎
 
 使用示例:
@@ -27,6 +28,7 @@ from .commodity_breakout import compute_breakout_signal, backtest_breakout
 from .commodity_momentum import compute_momentum_signal
 from .commodity_vol_target import vol_target_positions, realized_volatility
 from .commodity_timing import momentum_or_vol_filter, momentum_filter
+from .commodity_risk_overlay import compute_risk_overlay, rolling_drawdown
 from .weekly_backtest import backtest_weekly, get_weekly_returns
 
 __all__ = [
@@ -37,6 +39,8 @@ __all__ = [
     "realized_volatility",
     "momentum_or_vol_filter",
     "momentum_filter",
+    "compute_risk_overlay",
+    "rolling_drawdown",
     "backtest_weekly",
     "get_weekly_returns",
 ]
