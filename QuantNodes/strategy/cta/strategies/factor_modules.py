@@ -1032,6 +1032,8 @@ class ComboConfig(ModuleConfig):
     regime_filter_enabled: bool = False  # 市场状态过滤开关
     regime_adx_threshold: float = 20.0  # ADX阈值: <此值=震荡市
     regime_chop_coef: float = 0.4      # 震荡市仓位系数
+    # 单品种名义敞口系数: 上限 = equity × max_leverage × 此系数 (默认0.25=旧行为)
+    max_product_notional_coef: float = 0.25
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
@@ -1165,23 +1167,34 @@ class FactorModuleComboStrategy(_ModuleStrategy):
 
         return weights.mul(scale, axis=0)
 
-    def _signal_to_lots(self, signals: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
-        """组合层: vol_target × 波动率过滤 × 尾部风险过滤 × 市场状态过滤 → 手数."""
-        weights = vol_target_positions(
-            signals, self._price_panel, target_vol=cfg.target_vol,
-            vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,
-        )
+    def _apply_weight_filters(self, weights: pd.DataFrame,
+                              cfg: ModuleConfig) -> pd.DataFrame:
+        """权重层过滤链: VolRiskFilter × 尾部风险 × 市场状态.
+
+        _signal_to_lots (无硬限路径) 与 run() (leverage_hard_cap>0 路径) 共用,
+        保证过滤器在任意执行路径下都生效.
+        """
+        out = weights
         if self._filter is not None:
-            weights = weights * self._filter.coefficients(self._price_panel)
+            out = out * self._filter.coefficients(self._price_panel)
         # 尾部风险保护: 高相关性时全局降仓
-        weights = self._tail_risk_filter(weights)
+        out = self._tail_risk_filter(out)
         # 市场状态过滤: 震荡市降仓
-        if hasattr(cfg, 'regime_filter_enabled') and cfg.regime_filter_enabled:
+        if getattr(cfg, "regime_filter_enabled", False):
             regime_filter = MarketRegimeFilter(
                 er_threshold=cfg.regime_adx_threshold,
                 chop_coef=cfg.regime_chop_coef,
             )
-            weights = weights * regime_filter.coefficients(self._price_panel)
+            out = out * regime_filter.coefficients(self._price_panel)
+        return out
+
+    def _signal_to_lots(self, signals: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
+        """组合层: vol_target × 权重过滤链 → 手数."""
+        weights = vol_target_positions(
+            signals, self._price_panel, target_vol=cfg.target_vol,
+            vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,
+        )
+        weights = self._apply_weight_filters(weights, cfg)
         return self._weights_to_lots(weights, cfg)
 
     def _weights_to_lots(self, weights: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
@@ -1197,8 +1210,10 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             with np.errstate(divide="ignore", invalid="ignore"):
                 target = weights[product] * capital_per_product / notional_per_lot
             target = target.replace([np.inf, -np.inf], np.nan).fillna(0).round()
-            # 单品种名义敞口上限: equity × max_leverage × 0.25
-            max_notional = equity * cfg.max_leverage * 0.25
+            # 单品种名义敞口上限: equity × max_leverage × coef
+            # (ModuleConfig无此字段时保持旧行为 coef=0.25)
+            coef = getattr(cfg, "max_product_notional_coef", 0.25)
+            max_notional = equity * cfg.max_leverage * coef
             max_lots = (max_notional / notional_per_lot).fillna(0)
             target = target.clip(lower=-max_lots, upper=max_lots).round()
             lots[product] = target
@@ -1407,8 +1422,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
                 sig, self._price_panel, target_vol=cfg.target_vol,
                 vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,
             )
-            if self._filter is not None:
-                weights = weights * self._filter.coefficients(self._price_panel)
+            weights = self._apply_weight_filters(weights, cfg)
             if dd_coef is not None:
                 weights = weights.mul(dd_coef, axis=0)
             # 多轮迭代: 权重层等比缩放 → 手数层 floor 缩放, 保证总杠杆 ≤ cap

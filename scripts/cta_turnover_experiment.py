@@ -48,6 +48,18 @@ EXPERIMENTS = {
     "combo(ema=0.15,mc=0.15)": {
         "position_ema_alpha": 0.15, "min_position_change": 0.15,
     },
+    "final(ema=0.15)": {"position_ema_alpha": 0.15},
+    "regime_on(ema=0.15)": {
+        "position_ema_alpha": 0.15, "regime_filter_enabled": True,
+    },
+    "cap5(ema=0.15)": {
+        # 5% equity上限 → coef = 0.05/max_leverage = 0.0167
+        "position_ema_alpha": 0.15, "max_product_notional_coef": 0.05 / 3.0,
+    },
+    "regime+cap5(ema=0.15)": {
+        "position_ema_alpha": 0.15, "regime_filter_enabled": True,
+        "max_product_notional_coef": 0.05 / 3.0,
+    },
 }
 
 

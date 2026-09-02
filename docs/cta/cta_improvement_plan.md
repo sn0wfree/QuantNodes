@@ -246,3 +246,50 @@ Sharpe=1.88 AnnRet=11.7% Vol=6.2% MaxDD=-6.8% Calmar=1.71 换手29x
 1. **启用regime_filter**（`regime_filter_enabled=True`, ADX<20震荡市降仓）→ 直接针对2024化工磨损
 2. **EC敞口上限**：单品种notional cap（如≤5% equity），降低事件依赖
 3. 2025低波动弱年：vol_target已有，属于市场环境，无需修
+
+---
+
+## regime_filter + 单品种cap实验（2026-09-02）
+
+### ⚠️ 执行路径bug发现与修复
+
+**发现**: `run()`在`leverage_hard_cap>0`时（定版=3.0）走独立权重路径，
+**完全绕过`_signal_to_lots`的过滤链——tail_risk_filter和regime_filter从未生效**。
+
+**修复**: 提取`_apply_weight_filters()`（VolRiskFilter×尾部风险×市场状态），两条执行路径共用。
+
+**修复本身的影响**（final配置）: Sharpe 1.884→1.893, MaxDD -6.8%→**-5.6%**
+（tail_risk_filter开始生效，小幅正贡献——真bug修复）
+
+### 实验结果（@10bp，修复后口径）
+
+| 配置 | Sharpe | AnnRet | Vol | MaxDD | 换手 | 均杠杆 | Calmar |
+|------|--------|--------|-----|-------|------|--------|--------|
+| final (ema=0.15) | 1.893 | 10.9% | 5.8% | -5.6% | 28x | 0.49 | **1.95** |
+| regime_on | 1.595 | 4.7% | 2.9% | -3.9% | 22x | 0.28 | 1.20 |
+| cap5 | 1.906 | 7.7% | 4.0% | -6.5% | 30x | 0.28 | 1.19 |
+| regime+cap5 | 1.530 | 3.5% | 2.3% | -4.6% | 24x | 0.19 | 0.75 |
+
+### 结论
+
+1. **regime_filter(chop_coef=0.4)过于激进，不建议启用**：
+   - 均杠杆0.49→0.28（砍43%仓位），好年份趋势仓位一起被砍
+   - 收益砍半（10.9%→4.7%），Sharpe -0.30, Calmar 1.95→1.20
+   - 2024化工磨损问题确实存在，但全局ADX过滤无法区分"该砍的震荡"和"该留的趋势"
+
+2. **cap5（单品种上限5% equity）Sharpe持平但无净增益**：
+   - Sharpe 1.89→1.91（+0.01），收益-3.2pp（EC敞口被压缩，资金重分配）
+   - 用途重定位：不是收益增强工具，是**集中度风控工具**
+   - 如果担心EC事件依赖（24% PnL占比），cap5有效；如果追求Sharpe，无必要
+
+3. **regime+cap5双重砍仓最差**（Sharpe 1.53）——不叠加
+
+### 最终定版配置（不变+bug修复）
+
+```
+position_ema_alpha=0.15, leverage_hard_cap=3.0, tvpr×inv_vol
+评估基准=10bp
+Sharpe=1.893 AnnRet=10.9% Vol=5.8% MaxDD=-5.6% Calmar=1.95 换手28x
+```
+
+regime_filter保持关闭；cap系数保持默认0.25。
