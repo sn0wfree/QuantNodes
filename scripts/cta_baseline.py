@@ -89,7 +89,7 @@ def run_sensitivity(slippages: list[float]) -> pd.DataFrame:
     """成本敏感性: 不同滑点下的指标衰减."""
     rows = []
     for slip in slippages:
-        tag = "pre" if slip is None else f"slip{slip:g}"
+        tag = "s0" if slip is None else f"slip{slip:g}"
         s = run_baseline(tag=tag, slippage=slip)
         rows.append({
             "slippage_bps": slip or 0.0,
