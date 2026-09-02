@@ -38,12 +38,11 @@ from .config import (
     FUTURES_PRODUCTS,
     OUTPUT_DIR,
     PANEL_OUTPUT,
+    PANEL_V2_OUTPUT,
     START_DATE,
 )
 
 warnings.filterwarnings("ignore")
-
-PANEL_V2_OUTPUT = OUTPUT_DIR / "panel_v2.parquet"
 
 
 # 列名加前缀避免冲突

@@ -25,7 +25,9 @@ ETF_OHLCV_ADJ_PATH: Path = Path(
 ).expanduser()
 
 OUTPUT_DIR: Path = Path("~/Public/QuantNodes/data/allweather").expanduser()
-PANEL_OUTPUT: Path = OUTPUT_DIR / "panel_v1.parquet"
+PANEL_OUTPUT: Path = OUTPUT_DIR / "panel_v1.parquet"        # 未 roll 调整 (对照)
+PANEL_V2_OUTPUT: Path = OUTPUT_DIR / "panel_v2.parquet"     # roll 调整 (主线)
+ABLATION_OUTPUT: Path = OUTPUT_DIR / "ablation_results.csv"
 
 
 # ── 资产池 (38) ──────────────────────────────────────────────────────
