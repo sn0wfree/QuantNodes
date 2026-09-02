@@ -87,16 +87,25 @@ def momentum_tilt(
     lookback: int = 60,
     floor: float = 0.25,
     power: float = 1.0,
+    risk_adj: bool = False,
 ) -> pd.DataFrame:
-    """动量正部倾斜: w_i ∝ max(mom_i, 0)^power, 归一化到均值 1.
+    """动量正部倾斜: w_i ∝ max(score_i, 0)^power, 归一化到均值 1.
+
+    score = 动量 (risk_adj=False) 或 动量/波动 (risk_adj=True, 风险调整动量,
+    偏好低波趋势资产 — 债券/黄金趋势期自动加权重).
 
     与 V1 (硬剔除) 的区别: 负动量资产保底 floor (不集中化), 正动量资产
-    按动量强度加权; 全负行 → 全 floor (等权退化为现金减仓).
+    按强度加权; 全负行 → 全 floor.
     """
     mom = prices.pct_change(lookback, fill_method=None)
-    pos = mom.clip(lower=0.0) ** power
-    listed = mom.notna()
-    pos = pos.fillna(0.0)
+    if risk_adj:
+        vol = prices.pct_change(fill_method=None).rolling(lookback,
+                                                          min_periods=lookback).std()
+        score = mom / vol.replace(0, np.nan) * np.sqrt(ETF_ANN)
+    else:
+        score = mom
+    listed = score.notna()
+    pos = score.clip(lower=0.0).fillna(0.0) ** power
 
     row_mean = pos.where(listed, 0.0).sum(axis=1) / listed.sum(axis=1).clip(lower=1)
     overlay = pos.div(row_mean.where(row_mean > 0), axis=0)
@@ -104,7 +113,7 @@ def momentum_tilt(
     overlay = overlay.where(listed, 0.0)
     overlay = overlay.fillna(floor).clip(lower=floor * 0.0)
     # 负动量资产给 floor (软保底而非剔除)
-    overlay = overlay.where(~(listed & (mom < 0)), floor)
+    overlay = overlay.where(~(listed & (score < 0)), floor)
     return overlay.clip(lower=0.0)
 
 

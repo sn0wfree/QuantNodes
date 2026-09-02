@@ -36,13 +36,17 @@ class AllWeatherConfig:
     window: int = 252              # 协方差估计窗口
     rebalance: str = "W-FRI"       # W-FRI / ME
     use_hrp: bool = True           # HRP vs 等权 (消融 3a/0)
+    weight_scheme: str = "equal"   # equal / inv_vol (等权变体)
     denoise: str | None = "mp"     # 'mp' / 'lw' / None (消融 1/2, §5.3)
     linkage: str = "single"        # single / average / ward
-    trend_mode: str = "v1"         # v1 / v4 / none (消融 3a/3b/3)
+    trend_mode: str = "v1"         # v1 / v3 / v4 / tilt / none (消融 3a/3b/3)
     trend_lookback: int = 60
     trend_coef: float = 0.0
+    trend_risk_adj: bool = False   # tilt: 风险调整动量 (mom/vol)
+    trend_floor: float = 0.25      # tilt: 负动量资产软保底
     target_vol: float = 0.10
     max_leverage: float = 3.0
+    max_weight: float = 1.0        # 结构权重上限 (1.0=不约束); 修复 HRP 低波资产集中
     use_vol_target: bool = True    # False → 杠杆恒 1 (无杠杆实验, gross ≤ 1)
     daily_vol_adjust: bool = True  # 混合频率: 期货 sleeve 日频微调
     futures_commission: float = 0.0001
@@ -86,10 +90,39 @@ def _equal_weights(cols_all: list[str], avail: list[str]) -> pd.Series:
     return w
 
 
+def _cap_weights(w: pd.Series, cap: float) -> pd.Series:
+    """迭代封顶再分配: 超限权重按比例回填给未超限资产 (HRP 集中度修复)."""
+    if cap >= 1.0 or w.abs().sum() == 0:
+        return w
+    w = w.copy()
+    for _ in range(50):
+        over = w > cap
+        if not over.any():
+            break
+        excess = float((w[over] - cap).sum())
+        w[over] = cap
+        under = ~over
+        base = float(w[under].sum())
+        if base > 0:
+            w[under] += excess * (w[under] / base)
+        else:
+            break
+    return w
+
+
 def _base_weights(returns_hist: pd.DataFrame, panel_cols: list[str],
                   cfg: AllWeatherConfig) -> pd.Series:
-    """HRP 或等权基础权重 (未乘趋势/杠杆)."""
+    """HRP / 等权 / inv-vol 基础权重 (未乘趋势/杠杆)."""
     avail = _available(returns_hist, cfg.window, cfg.min_obs_per_asset)
+    if cfg.weight_scheme == "inv_vol":
+        w = pd.Series(0.0, index=panel_cols)
+        if avail:
+            sub = returns_hist[avail].iloc[-cfg.window:]
+            vols = sub.std()
+            vols = vols.replace(0, np.nan).dropna()
+            inv = 1.0 / vols
+            w[inv.index] = inv / inv.sum()
+        return w
     if not cfg.use_hrp:
         return _equal_weights(panel_cols, avail)
     if len(avail) < 5:  # MIN_ASSETS_FOR_HRP
@@ -164,13 +197,20 @@ def run_backtest(panel: pd.DataFrame, config: AllWeatherConfig | None = None,
             rets_hist = returns.loc[:date]
             base = _base_weights(rets_hist, list(panel.columns), cfg)
 
-            # 趋势 overlay: 用截至 date 的价格 (v4 无 coef 参数)
+            # 趋势 overlay: 用截至 date 的价格 (按模式传参)
             ov_kwargs = {"lookback": cfg.trend_lookback}
             if cfg.trend_mode == "v1":
                 ov_kwargs["coef"] = cfg.trend_coef
+            elif cfg.trend_mode == "v3":
+                ov_kwargs["coef"] = cfg.trend_coef
+            elif cfg.trend_mode == "tilt":
+                ov_kwargs["risk_adj"] = cfg.trend_risk_adj
+                ov_kwargs["floor"] = cfg.trend_floor
             ov = combined(panel.loc[:date], mode=cfg.trend_mode,
                           **ov_kwargs).iloc[-1]
             base = base * ov
+            if cfg.max_weight < 1.0:
+                base = _cap_weights(base, cfg.max_weight)
 
             # ex-ante 波动 → 调仓杠杆 (cov 只含可用资产, base 对齐到同子集)
             cov = _window_cov(rets_hist, cfg)

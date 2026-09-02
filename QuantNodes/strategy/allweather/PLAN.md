@@ -212,18 +212,14 @@ CFM (Bouchaud) 论文明确警告: 期货市场板块内强相关 → 板块簇�
 5. **Gate: 全样本 1.340 ≥ 1.2 ✓; 压力段 -0.07 < 0 ✗** — 结论待 Phase 3 归因后定
 
 ### Phase 3: 验证 + 复盘 (1 天)
-- [ ] 成本敏感性 (1bp/5bp/10bp) + **换手×费率联动报告**
-- [ ] 调仓频率敏感性 (周/月)
-- [ ] 窗口敏感性 (W∈{126,252,504})
-- [ ] 趋势敏感性: V1 coef ∈ {0, 0.5} × 窗口 {60d, 126d, 210d (华鑫10月)} × **V4 连续变体**
-- [ ] linkage 对照 (single / average / Ward — 华鑫用 average)
-- [ ] 协方差对照: MP clipping vs LW 非线性收缩 (§5.3)
-- [ ] 诊断 D1: 换手率 (gate ≤200% 双边) + 聚类 Jaccard 持久度
-- [ ] 诊断 D2: 池敏感性 (剔 5 资产 × 20 重跑)
-- [ ] 诊断 D3: 资产类别 leave-one-class-out 归因 (**主审计项**)
-- [ ] 诊断 D4: roll jump 处理前后对照 (若 Phase 0 发现污染)
-- [ ] 复盘报告: `docs/allweather-replication-report.md`
-- [ ] 反哺宏观配置模型: 哪些组件进 Sleeve A
+- [x] 诊断 D1: 权重稳定性 — **发现 TS 结构权重 86% (杠杆债基金退化)**
+- [x] 诊断 D2: 池敏感性 — 1.369±0.174, 不依赖池 ✓
+- [x] 诊断 D3: 类别归因 — **债券集中度假说证实** (剔债券 Sharpe 1.01→0.75)
+- [x] 诊断 D4: roll 前后对照 — **未修复 0.798 vs 修复 1.340 (+0.54)**
+- [x] 无杠杆 10%+ 实验: 分配天花板 ~8.3%, **需 Sleeve B (Phase 5)**
+- [x] 新组件: max_weight 集中度约束 (cap0.40 → Sharpe 1.543, 压力段转正), V3/tilt, weight_scheme
+- [x] 复盘报告: `docs/allweather-replication-report.md`
+- [ ] 反哺宏观配置模型: 候选主线待用户定夺 (X2 vs X5 vs Sleeve B)
 
 ---
 
