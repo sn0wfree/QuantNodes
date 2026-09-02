@@ -87,18 +87,27 @@ class SlippageEngine:
     """滑点引擎: 预计算每日每品种的滑点参数 + 换月成本.
 
     在回测初始化时调用 load() 预计算, 回测中调用 compute() 快速查询.
+
+    换月模型两种:
+      - 'amortized': 换月日起 roll_days 天内每天均摊 (旧行为, 低估真实冲击)
+      - 'lump':      换月日当天一次性扣除 2 × lump_bps (近月平+远月开双倍, 更诚实)
     """
 
-    def __init__(self, model=None, roll_cost_bps: float = 0.0, roll_days: int = 5):
+    def __init__(self, model=None, roll_cost_bps: float = 0.0, roll_days: int = 5,
+                 roll_model: str = "amortized", roll_lump_bps: float = 20.0):
         """
         Args:
             model: 滑点模型 (FlatSlippage 或 SquareRootImpact)
-            roll_cost_bps: 换月额外成本 (基点), 0=不模拟换月
-            roll_days: 换月成本摊销天数
+            roll_cost_bps: 换月总成本 (基点), 0=不模拟换月
+            roll_days: 换月成本摊销天数 (仅 amortized 模式)
+            roll_model: 'amortized' 均摊 / 'lump' 一次性
+            roll_lump_bps: 一次性模式下换月日总冲击基点 (默认20bp, 对应双10bp双边)
         """
         self.model = model or SquareRootImpact()
         self.roll_cost_bps = roll_cost_bps
         self.roll_days = roll_days
+        self.roll_model = roll_model
+        self.roll_lump_bps = roll_lump_bps
         self._cache: Dict[str, pd.DataFrame] = {}
         self._roll_dates: Dict[str, List[pd.Timestamp]] = {}  # {product: [roll_dates]}
 
@@ -198,16 +207,22 @@ class SlippageEngine:
                     product=product,
                 )
 
-        # 换月成本: 在换月日起 roll_days 天内分摊
+        # 换月成本
         if self.roll_cost_bps > 0 and product in self._roll_dates:
             dt = pd.Timestamp(date) if not isinstance(date, pd.Timestamp) else date
             for roll_date in self._roll_dates[product]:
                 days_since = (dt - roll_date).days
-                if 0 <= days_since < self.roll_days:
-                    # 均匀分摊: 总成本 / roll_days
-                    roll_daily = abs(notional) * self.roll_cost_bps / 10000 / self.roll_days
-                    base += roll_daily
-                    break
+                if self.roll_model == "lump":
+                    # 一次性: 换月日当天扣除2倍总成本(近月平+远月开双倍)
+                    if days_since == 0:
+                        base += abs(notional) * 2 * self.roll_cost_bps / 10000
+                        break
+                else:
+                    # 均摊: 默认5天分摊
+                    if 0 <= days_since < self.roll_days:
+                        roll_daily = abs(notional) * self.roll_cost_bps / 10000 / self.roll_days
+                        base += roll_daily
+                        break
 
         return base
 

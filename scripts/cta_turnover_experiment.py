@@ -93,6 +93,18 @@ EXPERIMENTS = {
         "position_ema_alpha": 0.15, "target_vol": 1.50,
         "roll_cost_bps": 50.0,
     },
+    "final_lump10(tv=1.5,一次性换月10bp)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50,
+        "roll_cost_bps": 10.0, "roll_model": "lump",
+    },
+    "final_lump20(tv=1.5,一次性20bp)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50,
+        "roll_cost_bps": 20.0, "roll_model": "lump",
+    },
+    "final_lump30(tv=1.5,一次性30bp)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50,
+        "roll_cost_bps": 30.0, "roll_model": "lump",
+    },
 }
 
 

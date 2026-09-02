@@ -581,6 +581,7 @@ class _ModuleStrategy:
                 model=model,
                 roll_cost_bps=getattr(cfg, 'roll_cost_bps', 0.0),
                 roll_days=getattr(cfg, 'roll_days', 5),
+                roll_model=getattr(cfg, 'roll_model', 'amortized'),
             )
             # 构建含 volume 的 price panels
             price_panels = {}
@@ -1026,6 +1027,7 @@ class ComboConfig(ModuleConfig):
     slippage_bps: float | None = None  # L3滑点校准系数 (None=无滑点, 1.0=标准)
     roll_cost_bps: float = 0.0  # 换月额外成本 (基点), 0=不模拟换月
     roll_days: int = 5          # 换月成本摊销天数
+    roll_model: str = "amortized"  # 换月模型: 'amortized'均摊 / 'lump'一次性
     signal_ema_span: int = 0    # 信号EMA平滑跨度 (天), 0=关闭
     min_daily_volume: float = 1000.0  # 品种日均成交量阈值 (手), 低于此剔除
     position_ema_alpha: float = 0.0  # 持仓EMA平滑 (推荐0.15), 0=关闭
