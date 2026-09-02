@@ -60,13 +60,24 @@ EXPERIMENTS = {
         "position_ema_alpha": 0.15, "regime_filter_enabled": True,
         "max_product_notional_coef": 0.05 / 3.0,
     },
+    "lev_t40(tv=0.40)": {"position_ema_alpha": 0.15, "target_vol": 0.40},
+    "lev_t50(tv=0.50)": {"position_ema_alpha": 0.15, "target_vol": 0.50},
+    "lev_t55(tv=0.55)": {"position_ema_alpha": 0.15, "target_vol": 0.55},
+    "lev_t60(tv=0.60)": {"position_ema_alpha": 0.15, "target_vol": 0.60},
+    "lev_t100(tv=1.00)": {"position_ema_alpha": 0.15, "target_vol": 1.00},
+    "lev_t150(tv=1.50)": {"position_ema_alpha": 0.15, "target_vol": 1.50},
+    "lev_t200(tv=2.00)": {"position_ema_alpha": 0.15, "target_vol": 2.00},
+    "lev_t300(tv=3.00)": {"position_ema_alpha": 0.15, "target_vol": 3.00},
 }
 
 
-def run_one(name: str, overrides: dict, slippage: float | None) -> dict:
+def run_one(name: str, overrides: dict, slippage: float | None,
+            commission: float | None = None) -> dict:
     cfg_kw = dict(BASE_CFG)
     cfg_kw.update(overrides)
     cfg_kw["slippage_bps"] = slippage
+    if commission is not None:
+        cfg_kw["commission_rate"] = commission
     cfg = ComboConfig(**{f: cfg_kw.get(f) for f in
                          (f.name for f in fields(ComboConfig)) if f in cfg_kw})
     t0 = time.time()
@@ -108,6 +119,8 @@ def main():
     parser.add_argument("--slippages", nargs="*", type=float,
                         default=[None, 1.0],
                         help="滑点列表 (默认 无成本 + 1bp)")
+    parser.add_argument("--commission", type=float, default=None,
+                        help="手续费比例 (如0.001=10bp; 默认ComboConfig的1bp)")
     args = parser.parse_args()
 
     rows = []
@@ -115,7 +128,7 @@ def main():
         if name not in EXPERIMENTS:
             raise SystemExit(f"未知实验: {name}, 可选: {list(EXPERIMENTS)}")
         for slip in args.slippages:
-            row = run_one(name, EXPERIMENTS[name], slip)
+            row = run_one(name, EXPERIMENTS[name], slip, commission=args.commission)
             rows.append(row)
             print(f"[{name} slip={slip}] Sharpe={row['sharpe']:.3f} "
                   f"AnnRet={row['ann_ret']:.2%} MaxDD={row['max_dd']:.2%} "
