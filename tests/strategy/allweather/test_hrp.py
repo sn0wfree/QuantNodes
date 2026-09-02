@@ -71,7 +71,7 @@ class TestHrpFromReturns:
 
     def test_basic_shape_and_sum(self):
         rets = self._panel()
-        w = hrp_weights_from_returns(rets, window=252, denoise=False)
+        w = hrp_weights_from_returns(rets, window=252, denoise=None)
         assert list(w.index) == list(rets.columns)
         assert w.sum() == pytest.approx(1.0, abs=1e-10)
         assert (w >= 0).all()
@@ -80,7 +80,7 @@ class TestHrpFromReturns:
         rets = self._panel()
         rets["a6"] = np.nan  # 完全无数据
         rets.iloc[:300, 7] = np.nan  # a7 前 300 日无数据, 窗口 252 内有 100 日 < min_obs
-        w = hrp_weights_from_returns(rets, window=252, denoise=False,
+        w = hrp_weights_from_returns(rets, window=252, denoise=None,
                                      min_obs_per_asset=200)
         assert w["a6"] == 0.0
         assert w["a7"] == 0.0
@@ -104,8 +104,8 @@ class TestHrpFromReturns:
     def test_denoise_on_off_differ_or_equal(self):
         # denoise 开关可跑通; 对近 i.i.d. 数据结果差异应很小 (全噪声收缩近似等权化)
         rets = self._panel(600, 10, seed=3)
-        w0 = hrp_weights_from_returns(rets, window=504, denoise=False)
-        w1 = hrp_weights_from_returns(rets, window=504, denoise=True)
+        w0 = hrp_weights_from_returns(rets, window=504, denoise=None)
+        w1 = hrp_weights_from_returns(rets, window=504, denoise="mp")
         assert w0.sum() == pytest.approx(1.0, abs=1e-10)
         assert w1.sum() == pytest.approx(1.0, abs=1e-10)
         assert np.abs(w0 - w1).max() < 0.2  # 量级合理性

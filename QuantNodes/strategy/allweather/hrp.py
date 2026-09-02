@@ -119,7 +119,7 @@ def hrp_weights(cov: np.ndarray, linkage_method: str = "single") -> np.ndarray:
 def hrp_weights_from_returns(
     returns: pd.DataFrame,
     window: int = 252,
-    denoise: bool = True,
+    denoise: str | None = "mp",
     linkage_method: str = "single",
     min_obs_per_asset: int = 60,
 ) -> pd.Series:
@@ -128,7 +128,7 @@ def hrp_weights_from_returns(
     Args:
         returns: (T x N) 收益率面板, NaN = 未上市/无数据
         window: 协方差估计窗口
-        denoise: 是否先做 MP 去噪 (与 RMT 串联)
+        denoise: 去噪方法 'mp' (RMT 裁剪) / 'lw' (Ledoit-Wolf 收缩) / None (原始样本协方差)
         linkage_method: 聚类方法
         min_obs_per_asset: 资产纳入窗口所需的最少非空观测
 
@@ -150,10 +150,18 @@ def hrp_weights_from_returns(
         return eq
 
     sub = returns[avail].iloc[-window:].dropna(axis=0, how="any")
-    cov = sample_cov(sub, window=window)
+    # 防窗口坍缩: 迟上市资产会砍短 dropna 交集 → 从最晚首有效日起截取
+    firsts = [f for f in (sub[c].first_valid_index() for c in avail) if f is not None]
+    if firsts:
+        sub = sub.loc[max(firsts):]
     n_obs = len(sub)
-    if denoise:
-        cov = mp_denoise(cov, n_obs=n_obs)
+    if denoise == "lw":
+        from .cov_rmt import ledoit_wolf_shrink
+        cov = ledoit_wolf_shrink(sub, window=window)
+    else:
+        cov = sample_cov(sub, window=window)
+        if denoise == "mp":
+            cov = mp_denoise(cov, n_obs=n_obs)
 
     w = hrp_weights(cov, linkage_method=linkage_method)
     out = pd.Series(0.0, index=cols)

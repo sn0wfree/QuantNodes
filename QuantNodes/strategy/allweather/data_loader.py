@@ -253,15 +253,26 @@ def load_etf_panel(
             continue
         ret_oh = oh.pct_change()
 
-        # 合并收益: NAV 为主, 超涨跌停日换 OHLCV, 双坏用拆分比修正
-        ret = ret_nav.copy()
+        # 逐 ETF 选主源: 坏日 (|ret|>5%, ETF 不可能的高频大波动) 少者为主
+        # (512690 NAV 有份额折算污染 ~18 天>10.5% + 大量 5-9% 隐藏坏日;
+        #  OHLCV 只有拆分日毛刺 → 512690 选 OHLCV, 其余选 NAV)
+        bad_nav = int((ret_nav.abs() > 0.05).sum())
+        bad_oh = int((ret_oh.abs() > 0.05).sum())
+        if bad_oh < bad_nav:
+            primary, secondary = ret_oh, ret_nav
+            base_level = oh.iloc[0]
+        else:
+            primary, secondary = ret_nav, ret_oh
+            base_level = nav.iloc[0]
+
+        # 合并: 主源为主; 超涨跌停日 (>10.5%) 换副源; 双坏用拆分比修正
+        ret = primary.copy()
         bad = ret.abs() > 0.105
         for d in ret.index[bad.fillna(False)]:
-            r_oh = ret_oh.get(d)
-            if r_oh is not None and not pd.isna(r_oh) and abs(r_oh) <= 0.105:
-                ret.loc[d] = r_oh
+            r_sec = secondary.get(d)
+            if r_sec is not None and not pd.isna(r_sec) and abs(r_sec) <= 0.105:
+                ret.loc[d] = r_sec
                 continue
-            # 拆分比修正: prev/cur ≈ 整数或 x.5 → ret = cur*k/prev - 1
             pos = oh.index.get_indexer([d])[0]
             if pos > 0:
                 prev, cur = oh.iloc[pos - 1], oh.iloc[pos]
@@ -271,16 +282,17 @@ def load_etf_panel(
                     if k > 1.02 and abs(k - k_round) / k < 0.02:
                         ret.loc[d] = cur * k_round / prev - 1
 
-        # NAV 结束后用 OHLCV 收益延长 (2026-06-30 → 07-08)
-        tail_dates = oh.index[(oh.index > nav.index[-1]) & (oh.index <= pd.Timestamp(END_DATE))]
-        for d in tail_dates:
-            r_oh = ret_oh.get(d)
-            if r_oh is not None and not pd.isna(r_oh) and abs(r_oh) <= 0.105:
-                ret.loc[d] = r_oh
+        # 主源结束后用副源收益延长 (NAV 06-30 → OHLCV 07-08)
+        sec_by_idx = secondary.dropna()
+        tail = sec_by_idx[sec_by_idx.index > ret.index[-1]]
+        tail = tail[tail.index <= pd.Timestamp(END_DATE)]
+        for d, r_sec in tail.items():
+            if abs(r_sec) <= 0.105:
+                ret.loc[d] = r_sec
 
         ret = ret.loc[ret.first_valid_index():]
-        price = nav.iloc[0] * (1 + ret.fillna(0.0)).cumprod()
-        price.iloc[0] = nav.iloc[0]
+        price = base_level * (1 + ret.fillna(0.0)).cumprod()
+        price.iloc[0] = base_level
         frames[_ecol(c)] = price.rename(_ecol(c))
 
     if not frames:
