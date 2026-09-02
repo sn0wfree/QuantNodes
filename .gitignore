@@ -182,6 +182,7 @@ data/high_freq_macro/*.csv
 data/high_freq_macro/v7_6_pv_weekly/
 data/real/*.parquet
 data/*.xlsx
+data/allweather/
 
 # Chinese futures data (regeneratable from source)
 data/chinese_futures/
