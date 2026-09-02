@@ -85,6 +85,14 @@ EXPERIMENTS = {
         "position_ema_alpha": 0.15, "target_vol": 1.50,
         "roll_cost_bps": 10.0,
     },
+    "final_calibrated+roll20(tv=1.5)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50,
+        "roll_cost_bps": 20.0,
+    },
+    "final_calibrated+roll50(tv=1.5)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50,
+        "roll_cost_bps": 50.0,
+    },
 }
 
 
