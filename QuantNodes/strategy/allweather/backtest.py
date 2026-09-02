@@ -43,6 +43,7 @@ class AllWeatherConfig:
     trend_coef: float = 0.0
     target_vol: float = 0.10
     max_leverage: float = 3.0
+    use_vol_target: bool = True    # False → 杠杆恒 1 (无杠杆实验, gross ≤ 1)
     daily_vol_adjust: bool = True  # 混合频率: 期货 sleeve 日频微调
     futures_commission: float = 0.0001
     etf_commission: float = 0.0005
@@ -178,16 +179,19 @@ def run_backtest(panel: pd.DataFrame, config: AllWeatherConfig | None = None,
             var_ex = float(base_avail @ cov @ base_avail)
             # cov 为日频协方差 → 年化后再除目标波动 (否则杠杆虚大 √252 倍)
             sigma_ex = np.sqrt(max(var_ex, 0.0)) * np.sqrt(ANN)
-            leverage_rb = (cfg.target_vol / sigma_ex) if sigma_ex > 0 else 1.0
-            leverage_rb = float(np.clip(leverage_rb, 0.0, cfg.max_leverage))
+            if not cfg.use_vol_target:
+                leverage_rb = 1.0
+            else:
+                leverage_rb = (cfg.target_vol / sigma_ex) if sigma_ex > 0 else 1.0
+                leverage_rb = float(np.clip(leverage_rb, 0.0, cfg.max_leverage))
 
             base_rb = base
             lev_fut_cur = leverage_rb
             w_exec.loc[date] = base * leverage_rb
         else:
             row = base_rb * leverage_rb  # 默认持有
-            if (cfg.daily_vol_adjust and port_ret_hist
-                    and base_rb.abs().sum() > 0 and lev_fut_cur > 0):
+            if (cfg.use_vol_target and cfg.daily_vol_adjust
+                    and port_ret_hist and base_rb.abs().sum() > 0 and lev_fut_cur > 0):
                 hist = np.array(port_ret_hist[-DAILY_VOL_LOOKBACK:])
                 if len(hist) >= DAILY_VOL_LOOKBACK and hist.std() > 0:
                     sigma_d = hist.std() * np.sqrt(ANN)

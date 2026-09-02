@@ -4,7 +4,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from QuantNodes.strategy.allweather.trend_overlay import combined, v1_overlay, v4_overlay
+from QuantNodes.strategy.allweather.trend_overlay import (
+    combined, momentum_tilt, v1_overlay, v3_overlay, v4_overlay,
+)
 
 
 def _rising_prices(t: int = 200, n: int = 4) -> pd.DataFrame:
@@ -102,10 +104,64 @@ class TestCombined:
 
     def test_invalid_mode_raises(self):
         with pytest.raises(ValueError):
-            combined(_rising_prices(50, 2), mode="v3")
+            combined(_rising_prices(50, 2), mode="v9")
 
     def test_dispatch_v1(self):
         prices = _rising_prices(200, 3)
         assert combined(prices, mode="v1", lookback=60).equals(
             v1_overlay(prices, lookback=60)
         )
+
+
+class TestV3:
+    def test_portfolio_down_gives_coef(self):
+        prices = _falling_prices(200, 4)
+        ov = v3_overlay(prices, lookback=60, coef=0.0)
+        assert (ov.iloc[60:] == 0.0).all().all()
+
+    def test_portfolio_up_gives_one(self):
+        prices = _rising_prices(200, 4)
+        ov = v3_overlay(prices, lookback=60, coef=0.0)
+        assert (ov.iloc[60:] == 1.0).all().all()
+
+    def test_row_uniform(self):
+        # 组合级: 同一行所有资产系数相同
+        prices = _rising_prices(200, 4)
+        ov = v3_overlay(prices, lookback=60)
+        assert (ov.nunique(axis=1) == 1).all()
+
+    def test_no_lookahead(self):
+        prices = _rising_prices(300, 4)
+        full = v3_overlay(prices, lookback=60)
+        trunc = v3_overlay(prices.iloc[:201], lookback=60)
+        np.testing.assert_allclose(trunc.iloc[-1], full.iloc[200])
+
+
+class TestMomentumTilt:
+    def test_positive_mom_ranked(self):
+        r = np.random.default_rng(5)
+        t = 300
+        good = np.cumprod(1 + r.normal(0.002, 0.005, size=t))
+        bad = np.cumprod(1 + r.normal(0.0, 0.005, size=t))
+        prices = pd.DataFrame({"good": good, "bad": bad})
+        ov = momentum_tilt(prices, lookback=60)
+        assert ov["good"].iloc[-1] > ov["bad"].iloc[-1]
+
+    def test_negative_mom_gets_floor(self):
+        prices = _falling_prices(200, 3)
+        ov = momentum_tilt(prices, lookback=60, floor=0.25)
+        assert (ov.iloc[60:] == 0.25).all().all()
+
+    def test_unlisted_zero_no_nan(self):
+        prices = _rising_prices(200, 3)
+        prices["late"] = np.nan
+        ov = momentum_tilt(prices, lookback=60)
+        assert (ov["late"] == 0.0).all()
+        assert not ov.isna().any().any()
+
+    def test_dispatch(self):
+        prices = _rising_prices(200, 3)
+        assert combined(prices, mode="v3", lookback=60).equals(
+            v3_overlay(prices, lookback=60))
+        assert combined(prices, mode="tilt", lookback=60).equals(
+            momentum_tilt(prices, lookback=60))
