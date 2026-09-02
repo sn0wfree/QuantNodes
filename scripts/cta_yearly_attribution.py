@@ -34,9 +34,13 @@ FINAL_CFG = dict(
     slippage_bps=10.0,
 )
 
+# tv=1.5 定版 (2026-09-02, Sharpe 2.30/Calmar 3.29 @10bp)
+TV150_CFG = dict(FINAL_CFG, target_vol=1.50)
 
-def run_final() -> tuple[FactorModuleComboStrategy, object, pd.DatetimeIndex]:
-    cfg_kw = dict(FINAL_CFG)
+
+def run_final(cfg_dict: dict | None = None,
+              tag: str = "final") -> tuple[FactorModuleComboStrategy, object, pd.DatetimeIndex]:
+    cfg_kw = dict(cfg_dict or FINAL_CFG)
     cfg = ComboConfig(**{f.name: cfg_kw[f.name] for f in fields(ComboConfig)
                          if f.name in cfg_kw})
     s = FactorModuleComboStrategy(config=cfg)
@@ -92,11 +96,19 @@ def product_pnl(s: FactorModuleComboStrategy, pos: pd.DataFrame,
 
 
 def main():
-    s, r, dates = run_final()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tv150", action="store_true",
+                        help="用tv=1.5定版配置 (默认tv=0.30)")
+    args = parser.parse_args()
+
+    cfg = TV150_CFG if args.tv150 else FINAL_CFG
+    tag = "tv150" if args.tv150 else "final"
+    s, r, dates = run_final(cfg, tag)
     nav = pd.Series(r.nav.values, index=dates)
     pos = pd.DataFrame(r.positions, index=dates)
     m = r.metrics
-    print(f"定版配置 @10bp: Sharpe={m['Sharpe']:.3f} AnnRet={m['AnnRet']:.2%} "
+    print(f"[{tag}] @10bp: Sharpe={m['Sharpe']:.3f} AnnRet={m['AnnRet']:.2%} "
           f"MaxDD={m['MaxDD']:.2%} Calmar={m['Calmar']:.3f}")
 
     # 1. 年度表
@@ -104,7 +116,7 @@ def main():
     print("\n=== 年度指标 ===")
     print(yt.to_string(index=False,
                        float_format=lambda x: f"{x:.3f}"))
-    yt.to_csv(REPORT_DIR / "final_yearly.csv", index=False)
+    yt.to_csv(REPORT_DIR / f"{tag}_yearly.csv", index=False)
 
     # 2. 品种贡献
     pp = product_pnl(s, pos, dates)
@@ -114,10 +126,30 @@ def main():
     print(pp[cols].head(10).to_string(float_format=lambda x: f"{x:.4f}"))
     print("\n最佳10品种:")
     print(pp[cols].tail(10).to_string(float_format=lambda x: f"{x:.4f}"))
-    pp.to_csv(REPORT_DIR / "final_product_pnl.csv")
+    pp.to_csv(REPORT_DIR / f"{tag}_product_pnl.csv")
+
+    # 2b. 收益集中度: 品种/年度
+    total = pp["pnl_total"].sum()
+    pos_pnl = pp["pnl_total"][pp["pnl_total"] > 0].sort_values(ascending=False)
+    print(f"\n=== 收益集中度 (全期品种PnL合计={total:+.2f}) ===")
+    print(f"正贡献品种: {len(pos_pnl)}个, 合计{pos_pnl.sum():+.2f}; "
+          f"负贡献: {(pp['pnl_total'] <= 0).sum()}个, 合计{total - pos_pnl.sum():+.2f}")
+    cum = 0.0
+    for i, (p, v) in enumerate(pos_pnl.items(), 1):
+        cum += v
+        if cum / total >= 0.5 and i <= 15:
+            print(f"→ 前{i}个品种贡献全期净收益的{cum/total:.0%} (TOP{i}: {', '.join(pos_pnl.head(i).index)})")
+            break
+    # 年度贡献占比
+    ycols = [c for c in pp.columns if c.startswith("y")]
+    ysum = pp[ycols].sum()
+    print("\n年度净贡献 (全部品种合计):")
+    for c in ycols:
+        print(f"  {c}: {ysum[c]:+.2f} ({ysum[c]/ysum.sum():+.0%})")
 
     # 3. 最差年份品种分解
-    worst_year = int(yt.loc[yt["sharpe"].idxmin(), "year"])
+    yt_real = yt[yt["avg_n_pos"] > 0]
+    worst_year = int(yt_real.loc[yt_real["sharpe"].idxmin(), "year"])
     print(f"\n=== 最差年份 {worst_year} 品种分解 ===")
     ycol = f"y{worst_year}"
     print(pp.nsmallest(10, ycol)[[ycol, "pnl_total"]].to_string(
@@ -126,8 +158,8 @@ def main():
           f"负贡献品种数: {(pp[ycol] <= 0).sum()}")
 
     # 4. NAV曲线
-    pd.DataFrame({"nav": nav}).to_csv(REPORT_DIR / "final_nav.csv")
-    print(f"\n已保存: {REPORT_DIR}/final_{{yearly,product_pnl,nav}}.csv")
+    pd.DataFrame({"nav": nav}).to_csv(REPORT_DIR / f"{tag}_nav.csv")
+    print(f"\n已保存: {REPORT_DIR}/{tag}_{{yearly,product_pnl,nav}}.csv")
 
 
 if __name__ == "__main__":
