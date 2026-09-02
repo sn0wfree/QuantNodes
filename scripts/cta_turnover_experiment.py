@@ -68,6 +68,12 @@ EXPERIMENTS = {
     "lev_t150(tv=1.50)": {"position_ema_alpha": 0.15, "target_vol": 1.50},
     "lev_t200(tv=2.00)": {"position_ema_alpha": 0.15, "target_vol": 2.00},
     "lev_t300(tv=3.00)": {"position_ema_alpha": 0.15, "target_vol": 3.00},
+    "lev_k17(tv=1.5,k=1.7)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50, "equity_leverage_k": 1.7,
+    },
+    "lev_k20(tv=1.5,k=2.0)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50, "equity_leverage_k": 2.0,
+    },
 }
 
 

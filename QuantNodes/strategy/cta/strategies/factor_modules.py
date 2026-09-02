@@ -1034,6 +1034,8 @@ class ComboConfig(ModuleConfig):
     regime_chop_coef: float = 0.4      # 震荡市仓位系数
     # 单品种名义敞口系数: 上限 = equity × max_leverage × 此系数 (默认0.25=旧行为)
     max_product_notional_coef: float = 0.25
+    # 全局杠杆系数: 资金等分基数放大 (1.0=现状; 1.7≈杠杆0.53→0.90, 线性放大器)
+    equity_leverage_k: float = 1.0
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
@@ -1199,6 +1201,8 @@ class FactorModuleComboStrategy(_ModuleStrategy):
 
     def _weights_to_lots(self, weights: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
         equity = cfg.initial_cash
+        # 全局杠杆系数: 等分资金基数放大 (线性放大暴露, 不改Sharpe)
+        lev_k = getattr(cfg, "equity_leverage_k", 1.0)
         signal_on = (weights.abs() > 1e-9).astype(float)
         n_active = signal_on.sum(axis=1).clip(lower=1)
         lots = pd.DataFrame(0.0, index=weights.index, columns=weights.columns)
@@ -1206,7 +1210,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             price = self._price_panel[product]
             spec = self._registry.get_or_default(product)
             notional_per_lot = price * spec.contract_multiplier
-            capital_per_product = signal_on[product] * equity / n_active
+            capital_per_product = signal_on[product] * equity * lev_k / n_active
             with np.errstate(divide="ignore", invalid="ignore"):
                 target = weights[product] * capital_per_product / notional_per_lot
             target = target.replace([np.inf, -np.inf], np.nan).fillna(0).round()
@@ -1223,10 +1227,14 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         return lots
 
     def _cluster_limit(self, lots: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
-        """Cluster级别敞口上限, 防止同板块高乘数品种合计敞口过大."""
+        """Cluster级别敞口上限, 防止同板块高乘数品种合计敞口过大.
+
+        上限随 equity_leverage_k 等比放大, 保持线性放大语义.
+        """
         clusters = self.CLUSTERS
         equity = cfg.initial_cash
-        max_cluster_notional = equity * 1.0
+        lev_k = getattr(cfg, "equity_leverage_k", 1.0)
+        max_cluster_notional = equity * 1.0 * lev_k
 
         for cluster_name, products in clusters.items():
             avail = [p for p in products if p in lots.columns and p in self._price_panel.columns]
