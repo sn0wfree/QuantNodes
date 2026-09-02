@@ -39,8 +39,12 @@ BASE_CFG = dict(
 
 EXPERIMENTS = {
     "baseline(ema=0,mc=0.30)": {},
+    "ema_a10(ema=0.10)": {"position_ema_alpha": 0.10},
     "ema_only(ema=0.15)": {"position_ema_alpha": 0.15},
+    "ema_a20(ema=0.20)": {"position_ema_alpha": 0.20},
+    "ema_a30(ema=0.30)": {"position_ema_alpha": 0.30},
     "mc_only(mc=0.15)": {"min_position_change": 0.15},
+    "mc_high(mc=0.50)": {"min_position_change": 0.50},
     "combo(ema=0.15,mc=0.15)": {
         "position_ema_alpha": 0.15, "min_position_change": 0.15,
     },
