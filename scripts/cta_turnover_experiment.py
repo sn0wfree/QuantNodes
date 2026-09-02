@@ -77,6 +77,14 @@ EXPERIMENTS = {
     "final_calibrated(tv=1.5,按品种成本)": {
         "position_ema_alpha": 0.15, "target_vol": 1.50,
     },
+    "final_calibrated+roll5(tv=1.5)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50,
+        "roll_cost_bps": 5.0,
+    },
+    "final_calibrated+roll10(tv=1.5)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50,
+        "roll_cost_bps": 10.0,
+    },
 }
 
 
@@ -84,8 +92,8 @@ def run_one(name: str, overrides: dict, slippage: float | None,
             commission: float | None = None) -> dict:
     cfg_kw = dict(BASE_CFG)
     cfg_kw.update(overrides)
-    if "按品种成本" in name:
-        # 按品种校准成本: cost_model.json 的手续费+滑点表
+    if "按品种成本" in name or "+roll" in name:
+        # 按品种校准成本 + 可选换月成本
         import json
         table = json.loads((REPORT_DIR / "cost_model.json").read_text())
         cfg_kw["commission_rate"] = {
