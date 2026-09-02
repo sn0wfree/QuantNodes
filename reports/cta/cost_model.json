@@ -1,0 +1,262 @@
+{
+  "AU": {
+    "commission_bps": 0.022,
+    "slippage_bps": 0.25
+  },
+  "IM": {
+    "commission_bps": 0.023,
+    "slippage_bps": 0.32
+  },
+  "IC": {
+    "commission_bps": 0.023,
+    "slippage_bps": 0.36
+  },
+  "SN": {
+    "commission_bps": 0.05,
+    "slippage_bps": 0.4
+  },
+  "T": {
+    "commission_bps": 0.003,
+    "slippage_bps": 0.46
+  },
+  "TF": {
+    "commission_bps": 0.003,
+    "slippage_bps": 0.48
+  },
+  "IF": {
+    "commission_bps": 0.023,
+    "slippage_bps": 0.51
+  },
+  "IH": {
+    "commission_bps": 0.023,
+    "slippage_bps": 0.74
+  },
+  "TS": {
+    "commission_bps": 0.003,
+    "slippage_bps": 0.8
+  },
+  "NI": {
+    "commission_bps": 0.05,
+    "slippage_bps": 0.8
+  },
+  "EC": {
+    "commission_bps": 0.02,
+    "slippage_bps": 0.83
+  },
+  "OI": {
+    "commission_bps": 0.07,
+    "slippage_bps": 1.09
+  },
+  "EB": {
+    "commission_bps": 0.075,
+    "slippage_bps": 1.22
+  },
+  "AG": {
+    "commission_bps": 0.05,
+    "slippage_bps": 1.25
+  },
+  "CU": {
+    "commission_bps": 0.05,
+    "slippage_bps": 1.33
+  },
+  "L": {
+    "commission_bps": 0.1,
+    "slippage_bps": 1.28
+  },
+  "AP": {
+    "commission_bps": 0.06,
+    "slippage_bps": 1.32
+  },
+  "PP": {
+    "commission_bps": 0.1,
+    "slippage_bps": 1.33
+  },
+  "TL": {
+    "commission_bps": 0.003,
+    "slippage_bps": 1.69
+  },
+  "SR": {
+    "commission_bps": 0.05,
+    "slippage_bps": 1.69
+  },
+  "V": {
+    "commission_bps": 0.1,
+    "slippage_bps": 1.67
+  },
+  "ZN": {
+    "commission_bps": 0.05,
+    "slippage_bps": 2.17
+  },
+  "SC": {
+    "commission_bps": 0.4,
+    "slippage_bps": 1.82
+  },
+  "PG": {
+    "commission_bps": 0.1,
+    "slippage_bps": 2.13
+  },
+  "EG": {
+    "commission_bps": 0.1,
+    "slippage_bps": 2.17
+  },
+  "PK": {
+    "commission_bps": 0.09,
+    "slippage_bps": 2.35
+  },
+  "P": {
+    "commission_bps": 0.06,
+    "slippage_bps": 2.41
+  },
+  "AL": {
+    "commission_bps": 0.03,
+    "slippage_bps": 2.44
+  },
+  "LU": {
+    "commission_bps": 0.15,
+    "slippage_bps": 2.38
+  },
+  "A": {
+    "commission_bps": 0.05,
+    "slippage_bps": 2.5
+  },
+  "Y": {
+    "commission_bps": 0.05,
+    "slippage_bps": 2.53
+  },
+  "B": {
+    "commission_bps": 0.04,
+    "slippage_bps": 2.86
+  },
+  "J": {
+    "commission_bps": 0.12,
+    "slippage_bps": 2.78
+  },
+  "AO": {
+    "commission_bps": 0.1,
+    "slippage_bps": 2.86
+  },
+  "PF": {
+    "commission_bps": 0.1,
+    "slippage_bps": 2.86
+  },
+  "PB": {
+    "commission_bps": 0.05,
+    "slippage_bps": 2.94
+  },
+  "PX": {
+    "commission_bps": 0.1,
+    "slippage_bps": 2.9
+  },
+  "HC": {
+    "commission_bps": 0.1,
+    "slippage_bps": 2.94
+  },
+  "RB": {
+    "commission_bps": 0.1,
+    "slippage_bps": 3.03
+  },
+  "JD": {
+    "commission_bps": 0.15,
+    "slippage_bps": 3.03
+  },
+  "RU": {
+    "commission_bps": 0.02,
+    "slippage_bps": 3.45
+  },
+  "M": {
+    "commission_bps": 0.05,
+    "slippage_bps": 3.45
+  },
+  "CS": {
+    "commission_bps": 0.05,
+    "slippage_bps": 3.57
+  },
+  "SP": {
+    "commission_bps": 0.05,
+    "slippage_bps": 3.7
+  },
+  "CF": {
+    "commission_bps": 0.06,
+    "slippage_bps": 3.7
+  },
+  "LH": {
+    "commission_bps": 0.2,
+    "slippage_bps": 3.57
+  },
+  "SS": {
+    "commission_bps": 0.1,
+    "slippage_bps": 3.7
+  },
+  "SH": {
+    "commission_bps": 0.1,
+    "slippage_bps": 3.7
+  },
+  "JM": {
+    "commission_bps": 0.12,
+    "slippage_bps": 3.85
+  },
+  "MA": {
+    "commission_bps": 0.08,
+    "slippage_bps": 4.0
+  },
+  "NR": {
+    "commission_bps": 0.1,
+    "slippage_bps": 4.0
+  },
+  "RM": {
+    "commission_bps": 0.12,
+    "slippage_bps": 4.0
+  },
+  "TA": {
+    "commission_bps": 0.12,
+    "slippage_bps": 4.0
+  },
+  "CJ": {
+    "commission_bps": 0.05,
+    "slippage_bps": 4.17
+  },
+  "C": {
+    "commission_bps": 0.04,
+    "slippage_bps": 4.35
+  },
+  "BR": {
+    "commission_bps": 0.1,
+    "slippage_bps": 4.35
+  },
+  "SI": {
+    "commission_bps": 0.1,
+    "slippage_bps": 4.55
+  },
+  "BU": {
+    "commission_bps": 0.09,
+    "slippage_bps": 5.26
+  },
+  "UR": {
+    "commission_bps": 0.14,
+    "slippage_bps": 5.71
+  },
+  "SF": {
+    "commission_bps": 0.06,
+    "slippage_bps": 5.88
+  },
+  "LC": {
+    "commission_bps": 0.06,
+    "slippage_bps": 6.25
+  },
+  "I": {
+    "commission_bps": 0.1,
+    "slippage_bps": 6.25
+  },
+  "SA": {
+    "commission_bps": 0.15,
+    "slippage_bps": 6.67
+  },
+  "SM": {
+    "commission_bps": 0.06,
+    "slippage_bps": 7.41
+  },
+  "FG": {
+    "commission_bps": 0.1,
+    "slippage_bps": 8.33
+  }
+}

@@ -74,6 +74,9 @@ EXPERIMENTS = {
     "lev_k20(tv=1.5,k=2.0)": {
         "position_ema_alpha": 0.15, "target_vol": 1.50, "equity_leverage_k": 2.0,
     },
+    "final_calibrated(tv=1.5,按品种成本)": {
+        "position_ema_alpha": 0.15, "target_vol": 1.50,
+    },
 }
 
 
@@ -81,9 +84,20 @@ def run_one(name: str, overrides: dict, slippage: float | None,
             commission: float | None = None) -> dict:
     cfg_kw = dict(BASE_CFG)
     cfg_kw.update(overrides)
-    cfg_kw["slippage_bps"] = slippage
-    if commission is not None:
-        cfg_kw["commission_rate"] = commission
+    if "按品种成本" in name:
+        # 按品种校准成本: cost_model.json 的手续费+滑点表
+        import json
+        table = json.loads((REPORT_DIR / "cost_model.json").read_text())
+        cfg_kw["commission_rate"] = {
+            p: v["commission_bps"] / 10000 for p, v in table.items()
+        }
+        cfg_kw["slippage_bps"] = {
+            p: v["slippage_bps"] for p, v in table.items()
+        }
+    else:
+        cfg_kw["slippage_bps"] = slippage
+        if commission is not None:
+            cfg_kw["commission_rate"] = commission
     cfg = ComboConfig(**{f: cfg_kw.get(f) for f in
                          (f.name for f in fields(ComboConfig)) if f in cfg_kw})
     t0 = time.time()

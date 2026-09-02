@@ -39,11 +39,20 @@ TV150_CFG = dict(FINAL_CFG, target_vol=1.50)
 
 
 def run_final(cfg_dict: dict | None = None,
-              tag: str = "final") -> tuple[FactorModuleComboStrategy, object, pd.DatetimeIndex]:
+              tag: str = "final",
+              exclude: list | None = None,
+              ) -> tuple[FactorModuleComboStrategy, object, pd.DatetimeIndex]:
     cfg_kw = dict(cfg_dict or FINAL_CFG)
     cfg = ComboConfig(**{f.name: cfg_kw[f.name] for f in fields(ComboConfig)
                          if f.name in cfg_kw})
-    s = FactorModuleComboStrategy(config=cfg)
+    if exclude:
+        from QuantNodes.strategy.cta.data_loader import CtaDataLoader
+        dl = CtaDataLoader()
+        all_prods = dl.list_active_products()
+        cfg_kw_products = [p for p in all_prods if p not in exclude]
+        s = FactorModuleComboStrategy(config=cfg, products=cfg_kw_products)
+    else:
+        s = FactorModuleComboStrategy(config=cfg)
     r = s.run()
     return s, r, pd.DatetimeIndex(r.dates)
 
@@ -100,11 +109,24 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tv150", action="store_true",
                         help="用tv=1.5定版配置 (默认tv=0.30)")
+    parser.add_argument("--calibrated", action="store_true",
+                        help="用按品种校准成本 (cost_model.json)")
+    parser.add_argument("--exclude", nargs="*", default=[],
+                        help="剔除品种列表 (如 --exclude EC)")
     args = parser.parse_args()
 
-    cfg = TV150_CFG if args.tv150 else FINAL_CFG
+    cfg = dict(TV150_CFG if args.tv150 else FINAL_CFG)
+    if args.calibrated:
+        import json
+        table = json.loads((REPORT_DIR / "cost_model.json").read_text())
+        cfg["commission_rate"] = {p: v["commission_bps"] / 10000 for p, v in table.items()}
+        cfg["slippage_bps"] = {p: v["slippage_bps"] for p, v in table.items()}
     tag = "tv150" if args.tv150 else "final"
-    s, r, dates = run_final(cfg, tag)
+    if args.calibrated:
+        tag += "_calibrated"
+    if args.exclude:
+        tag += "_ex" + "-".join(args.exclude)
+    s, r, dates = run_final(cfg, tag, exclude=args.exclude or None)
     nav = pd.Series(r.nav.values, index=dates)
     pos = pd.DataFrame(r.positions, index=dates)
     m = r.metrics
@@ -138,7 +160,8 @@ def main():
     for i, (p, v) in enumerate(pos_pnl.items(), 1):
         cum += v
         if cum / total >= 0.5 and i <= 15:
-            print(f"→ 前{i}个品种贡献全期净收益的{cum/total:.0%} (TOP{i}: {', '.join(pos_pnl.head(i).index)})")
+            top_str = ", ".join(pos_pnl.head(i).index)
+            print(f"→ 前{i}个品种贡献全期净收益的{cum/total:.0%} (TOP{i}: {top_str})")
             break
     # 年度贡献占比
     ycols = [c for c in pp.columns if c.startswith("y")]

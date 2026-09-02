@@ -126,7 +126,7 @@ class ModuleConfig:
     vol_lookback: int = 20          # 波动率回看
     max_leverage: float = 3.0       # 最大杠杆
     initial_cash: float = 2_000_000.0
-    commission_rate: float = 0.0001
+    commission_rate: float | dict = 0.0001  # 手续费比例; 或 {product: rate} 按品种
     aggregation: str = "equal"      # 组内聚合: equal | inv_vol | regression | tvpr
     agg_window: int = 252           # inv_vol/regression/tvpr 滚动窗口
     agg_update: int = 21            # 权重更新频率 (天)
@@ -567,7 +567,16 @@ class _ModuleStrategy:
             from QuantNodes.strategy.cta.backtest.cta_slippage import (
                 SlippageEngine, SquareRootImpact,
             )
-            model = SquareRootImpact(scale=cfg.slippage_bps)
+            if isinstance(cfg.slippage_bps, dict):
+                # {product: bps} 按品种滑点表
+                from QuantNodes.strategy.cta.backtest.cta_slippage import (
+                    PerProductFlatSlippage,
+                )
+                model = PerProductFlatSlippage(
+                    bps_table=cfg.slippage_bps, default_bps=1.0,
+                )
+            else:
+                model = SquareRootImpact(scale=cfg.slippage_bps)
             slippage_engine = SlippageEngine(
                 model=model,
                 roll_cost_bps=getattr(cfg, 'roll_cost_bps', 0.0),

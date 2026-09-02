@@ -30,6 +30,18 @@ class FlatSlippage:
 
 
 @dataclass
+class PerProductFlatSlippage:
+    """按品种固定基点滑点: {product: bps}, 缺失品种用 default_bps."""
+    bps_table: dict
+    default_bps: float = 1.0
+
+    def compute(self, notional: float, price: float, volume: float,
+                volatility: float, product: str | None = None, **kwargs) -> float:
+        bps = self.bps_table.get(product, self.default_bps) if product else self.default_bps
+        return abs(notional) * bps / 10000
+
+
+@dataclass
 class SquareRootImpact:
     """Almgren-Chriss 简化版: sigma * sqrt(notional / ADV) * scale.
 
@@ -136,6 +148,7 @@ class SlippageEngine:
             price=price,
             volume=row["adv"],
             volatility=row["volatility"],
+            product=product,
         )
 
     def load_roll_dates(self, products: List[str], dl=None):
@@ -182,6 +195,7 @@ class SlippageEngine:
                 base = self.model.compute(
                     notional=notional, price=price,
                     volume=row["adv"], volatility=row["volatility"],
+                    product=product,
                 )
 
         # 换月成本: 在换月日起 roll_days 天内分摊

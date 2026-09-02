@@ -61,11 +61,13 @@ class CtaBroker:
         self,
         registry: CtaContractRegistry,
         initial_cash: float = 1_000_000.0,
-        commission_rate: float = 0.0001,
+        commission_rate: float | dict = 0.0001,
         allow_short: bool = True,
         margin_call: bool = False,
         slippage_engine=None,
     ):
+        """commission_rate: 标量 (全局bp比例) 或 {product: rate} 按品种费率;
+        dict缺失品种用全局默认0.0001."""
         self._registry = registry
         self._initial_cash = initial_cash
         self._cash = initial_cash
@@ -192,7 +194,11 @@ class CtaBroker:
         spec = self._registry.get_or_default(product)
         mult = spec.contract_multiplier
         margin = spec.margin_ratio
-        fee_rate = self._commission_rate
+        fee_rate = (
+            self._commission_rate.get(product, 0.0001)
+            if isinstance(self._commission_rate, dict)
+            else self._commission_rate
+        )
         is_option = contract is not None and contract.is_option
 
         # ── 期权分支 ────────────────────────────────────────────────────────
