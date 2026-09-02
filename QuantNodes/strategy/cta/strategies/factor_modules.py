@@ -1088,6 +1088,8 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         'financial': ['IF', 'IH', 'IC', 'IM', 'T', 'TF', 'TS', 'TL'],
         'shipping': ['EC'],
     }
+    # tail_risk_filter 相关性计算只用这些板块（排除shipping等单品种板块）
+    VALID_TAIL_RISK_SECTORS = ('precious', 'black', 'base', 'energy_chem', 'agri', 'financial')
 
     def _filter_conflicting_signals(self, signals: pd.DataFrame) -> pd.DataFrame:
         """Cluster内信号一致性衰减 (仅极端冲突时).
@@ -1131,11 +1133,13 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         if not cfg.tail_risk_enabled:
             return weights
 
-        # 构造板块收益序列, 统计每个板块的品种数
+        # 构造板块收益序列, 统计每个板块的品种数 (只用 VALID_TAIL_RISK_SECTORS)
         ret = self._price_panel.pct_change(fill_method=None)
         sector_returns = {}
         sector_sizes = {}
         for sector_name, products in self.CLUSTERS.items():
+            if sector_name not in self.VALID_TAIL_RISK_SECTORS:
+                continue
             avail = [p for p in products if p in ret.columns]
             if avail:
                 sector_returns[sector_name] = ret[avail].mean(axis=1)
@@ -1274,11 +1278,19 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         return panel
 
     def _signals_raw(self) -> pd.DataFrame:
-        """模块信号加权求和 (fixed/inv_vol/regression)."""
+        """模块信号加权求和 (fixed/inv_vol/regression).
+
+        未上市/无价格数据的品种信号统一置NaN:
+        - 不污染 inv_vol 模块权重的行均值 (0列会稀释权重)
+        - 不参与 n_active 资金等分 (signal_on=False)
+        - 不产生虚假交易 (lots=0)
+        """
         self.module_signals = {}
         sigs = []
+        price_valid = self._price_panel.notna()
         for m in self._modules:
             sig = m._signals_raw()
+            sig = sig.where(price_valid)
             self.module_signals[m.__class__.__name__] = sig
             sigs.append(sig)
         if self._config.module_weighting == "inv_vol":

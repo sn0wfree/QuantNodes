@@ -182,3 +182,71 @@ EC全期+26.07的25%PnL占比已识别为依赖。叠加换月未建模：
 ## 结论
 
 换月建模是实盘前必须补的最后一环。代码已具备，加数据即可生效。
+
+---
+
+## tail_risk_filter n_pairs bug修复（2026-09-02）
+
+### 根因
+
+`_tail_risk_filter`中，板块间相关性平均时`n_pairs`随CLUSTERS动态计算。shipping板块只含EC（早期无数据），剔除后：
+- 含EC时7板块→21对
+- 剔EC时6板块→15对（shipping消失）
+
+分母不同→`avg_sector_corr = corr_sum / n_pairs`不同→触发降仓日期不同→**非EC品种仓位也被改变**。
+
+### 修复方案
+
+新增类常量 `VALID_TAIL_RISK_SECTORS = ('precious', 'black', 'base', 'energy_chem', 'agri', 'financial')`，`_tail_risk_filter`只对这些板块计算相关性，shipping永远排除。
+
+### 修复后继续发现的模块信号NaN污染bug（更深的bug）
+
+VALID_TAIL_RISK_SECTORS修复后，2019-2022仍有1-2.66pp差异（理论应为0）。继续追查：
+
+未上市品种（如EC在2018-2020）的模块信号不是NaN，而是**0甚至±值**：
+
+| 模块 | EC列值（2018-2020） |
+|------|---------------------|
+| TrendMomentum | 全NaN ✓ |
+| VolumeFlow | **全0.0** ❌ |
+| TermBasis | **全0.0** ❌ |
+| IndustrialChain | **全0.0** ❌ |
+| **Macro** | **442个非零值** ❌（宏观信号广播到了无价格数据的EC列）|
+
+**污染路径**：
+1. `inv_vol`模块权重 = `s.rolling().std().mean(axis=1)`——EC的0列参与行均值→**所有模块权重变**
+2. `signal_on`把EC算进`n_active`→**资金等分被稀释**（EC无数据但参与66分之1）
+
+### 二次修复
+
+`_signals_raw`循环开头统一应用`price_panel.notna()`mask：
+
+```python
+price_valid = self._price_panel.notna()
+for m in self._modules:
+    sig = m._signals_raw()
+    sig = sig.where(price_valid)  # 无价格数据品种 → NaN
+    ...
+```
+
+修复后效果：
+- 2018-2022含EC vs 剔EC NAV**完全一致**（0.00%差异）✓
+- EC真实贡献**纯粹集中在2023-2024**（红海危机+延续）
+
+### 修复后EC真实贡献（无伪影）
+
+| 年份 | 含EC | 剔EC | 真实EC贡献 |
+|------|------|------|-----------|
+| 2019-2022 | — | — | **0** ✓ |
+| **2023** | **+36.32%** | **+14.34%** | **+21.98pp** |
+| **2024** | **+9.59%** | **-0.56%** | **+10.15pp** |
+| 2025 | +6.19% | +7.17% | -0.98pp |
+
+### 最终定版（两次修复后，lump口径）
+
+| 口径 | Sharpe | Calmar | MaxDD |
+|------|--------|--------|-------|
+| 含EC | 2.41 | 3.25 | -6.1% |
+| **剔EC（实盘保守预期）** | **2.20** | **2.55** | **-6.3%** |
+
+注：剔EC Sharpe从2.10升到2.20——之前未上市的LC/AO/BR等品种信号也污染组合，修复后剔EC更准确。
