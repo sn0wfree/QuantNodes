@@ -1,0 +1,27 @@
+{
+  "config": {
+    "roll_model": "lump",
+    "roll_cost_bps": 10.0,
+    "target_vol": 1.5,
+    "position_ema_alpha": 0.15,
+    "cost_basis": "per_product_calibrated"
+  },
+  "metrics": {
+    "AnnRet": 0.20518448753104424,
+    "Vol": 0.08466424885234981,
+    "Sharpe": 2.4235080368914117,
+    "Sortino": 3.628342031196305,
+    "MaxDD": -0.05848861467127764,
+    "MaxDDDays": 277.0,
+    "Calmar": 3.5081098891508784,
+    "WinRate": 0.4731958762886598,
+    "PayoffRatio": 1.4617954402235525,
+    "Years": 7.991786447638604,
+    "Freq": 252.0
+  },
+  "n_products": 66,
+  "date_range": [
+    "2018-01-03",
+    "2025-12-31"
+  ]
+}

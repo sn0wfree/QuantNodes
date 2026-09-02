@@ -29,6 +29,7 @@ CFG_KW = dict(
     momentum_filter_window=60, momentum_filter_coef=0.0,
     target_vol=1.5, max_leverage=3.0, leverage_hard_cap=3.0,
     margin_call=True, position_ema_alpha=0.15,
+    roll_cost_bps=10.0, roll_model="lump",
 )
 
 

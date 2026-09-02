@@ -112,8 +112,11 @@ def run_one(name: str, overrides: dict, slippage: float | None,
             commission: float | None = None) -> dict:
     cfg_kw = dict(BASE_CFG)
     cfg_kw.update(overrides)
-    if "按品种成本" in name or "+roll" in name:
-        # 按品种校准成本 + 可选换月成本
+    # 任何含lump的变体都走按品种成本+真实换月成本
+    use_calibrated = ("按品种成本" in name
+                     or "+roll" in name
+                     or "lump" in name.lower())
+    if use_calibrated:
         import json
         table = json.loads((REPORT_DIR / "cost_model.json").read_text())
         cfg_kw["commission_rate"] = {
