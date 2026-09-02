@@ -17,7 +17,6 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from QuantNodes.strategy.cta.strategies.factor_modules import (
@@ -35,8 +34,13 @@ CFG = ComboConfig(
 )
 
 
-def run_baseline(tag: str = "") -> dict:
-    s = FactorModuleComboStrategy(config=CFG)
+def run_baseline(tag: str = "", slippage: float | None = None) -> dict:
+    cfg = CFG
+    if slippage is not None:
+        cfg = ComboConfig(**{
+            f: getattr(CFG, f) for f in ComboConfig.__dataclass_fields__
+        } | {"slippage_bps": slippage})
+    s = FactorModuleComboStrategy(config=cfg)
     r = s.run()
     dates = pd.DatetimeIndex(r.dates)
     nav = r.nav
@@ -54,11 +58,11 @@ def run_baseline(tag: str = "") -> dict:
     # 2. 指标汇总
     summary = {
         "config": {
-            "aggregation": CFG.aggregation,
-            "module_weighting": CFG.module_weighting,
-            "target_vol": CFG.target_vol,
-            "max_leverage": CFG.max_leverage,
-            "slippage_bps": getattr(CFG, "slippage_bps", None),
+            "aggregation": cfg.aggregation,
+            "module_weighting": cfg.module_weighting,
+            "target_vol": cfg.target_vol,
+            "max_leverage": cfg.max_leverage,
+            "slippage_bps": getattr(cfg, "slippage_bps", None),
         },
         "metrics": {k: float(v) for k, v in m.items()},
         "n_products": len(s._price_panel.columns),
@@ -74,19 +78,48 @@ def run_baseline(tag: str = "") -> dict:
     )
     yearly.rename("ann_ret").to_csv(REPORT_DIR / f"baseline_yearly{suffix}.csv")
 
-    print(f"Sharpe={m['Sharpe']:.3f} AnnRet={m['AnnRet']:.3f} Vol={m['Vol']:.3f} "
+    slip_str = f" slippage={slippage}bps" if slippage else ""
+    print(f"[{tag or 'baseline'}{slip_str}] "
+          f"Sharpe={m['Sharpe']:.3f} AnnRet={m['AnnRet']:.3f} Vol={m['Vol']:.3f} "
           f"MaxDD={m['MaxDD']:.3f} Calmar={m['Calmar']:.3f}")
-    print(f"品种数={summary['n_products']}  区间={summary['date_range']}")
-    print(f"年度收益: {yearly.apply(lambda x: f'{x:+.1%}').to_dict()}")
-    print(f"已保存: {REPORT_DIR}/baseline_*{suffix}.*")
     return summary
+
+
+def run_sensitivity(slippages: list[float]) -> pd.DataFrame:
+    """成本敏感性: 不同滑点下的指标衰减."""
+    rows = []
+    for slip in slippages:
+        tag = "pre" if slip is None else f"slip{slip:g}"
+        s = run_baseline(tag=tag, slippage=slip)
+        rows.append({
+            "slippage_bps": slip or 0.0,
+            "sharpe": s["metrics"]["Sharpe"],
+            "ann_ret": s["metrics"]["AnnRet"],
+            "vol": s["metrics"]["Vol"],
+            "max_dd": s["metrics"]["MaxDD"],
+            "calmar": s["metrics"]["Calmar"],
+        })
+    df = pd.DataFrame(rows)
+    df.to_csv(REPORT_DIR / "slippage_sensitivity.csv", index=False)
+    print("\n=== 成本敏感性 ===")
+    print(df.to_string(index=False))
+    print(f"已保存: {REPORT_DIR}/slippage_sensitivity.csv")
+    return df
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", default="", help="输出文件标签")
+    parser.add_argument("--sensitivity", action="store_true",
+                        help="跑成本敏感性 (0/1/5/10 bps)")
+    parser.add_argument("--slippage", type=float, default=None,
+                        help="单次指定滑点 (bps)")
     args = parser.parse_args()
-    run_baseline(args.tag)
+
+    if args.sensitivity:
+        run_sensitivity([None, 1.0, 5.0, 10.0])
+    else:
+        run_baseline(tag=args.tag, slippage=args.slippage)
 
 
 if __name__ == "__main__":

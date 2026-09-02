@@ -65,7 +65,7 @@ class ShortTermReversalTrendFactor(Factor):
         rsi = self._rsi(prices, self.rsi_window)
 
         # 中期趋势: 20日动量
-        momentum = prices.pct_change(self.trend_window)
+        momentum = prices.pct_change(self.trend_window, fill_method=None)
 
         # 短期反转信号
         short_signal = pd.DataFrame(0, index=prices.index, columns=prices.columns)

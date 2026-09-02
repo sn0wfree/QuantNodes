@@ -52,7 +52,7 @@ class TrendQualityFactor(Factor):
             r2 = prices[col].rolling(self.window).apply(_r2_fit, raw=False)
             # R² 高 → 趋势纯 → 顺势; R² 低 → 震荡 → 无信号
             # 方向: 用窗口收益方向
-            ret = prices[col].pct_change(self.window)
+            ret = prices[col].pct_change(self.window, fill_method=None)
             sig.loc[(r2 > self.threshold) & (ret > 0), col] = 1.0
             sig.loc[(r2 > self.threshold) & (ret < 0), col] = -1.0
         return sig
@@ -79,7 +79,7 @@ class MomentumSlopeFactor(Factor):
         self.z_threshold = z_threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        mom = prices.pct_change(self.lookback)
+        mom = prices.pct_change(self.lookback, fill_method=None)
         slope = mom.diff(self.slope_window)
         mean = slope.rolling(self.slope_window).mean()
         std = slope.rolling(self.slope_window).std()

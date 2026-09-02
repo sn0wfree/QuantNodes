@@ -112,7 +112,7 @@ class MomentumFactor(Factor):
         self.threshold = threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change(self.lookback)
+        ret = prices.pct_change(self.lookback, fill_method=None)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         sig[ret > self.threshold] = 1.0
         sig[ret < -self.threshold] = -1.0
@@ -133,7 +133,7 @@ class TSMAFactor(Factor):
         self.lookback = lookback
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        return np.sign(prices.pct_change(self.lookback))
+        return np.sign(prices.pct_change(self.lookback, fill_method=None))
 
 
 def compute_atr(df: pd.DataFrame, window: int = 14) -> pd.DataFrame:

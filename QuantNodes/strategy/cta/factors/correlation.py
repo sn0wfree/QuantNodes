@@ -31,7 +31,7 @@ class AvgCorrelationFactor(Factor):
         self.threshold = threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         # 逐品种对计算滚动相关, 取均值
         cols = list(prices.columns)
         corr_sum = None
@@ -67,7 +67,7 @@ class DispersionFactor(Factor):
         self.z_threshold = z_threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         dispersion = ret.std(axis=1)  # 横截面日收益标准差
         smooth = dispersion.rolling(self.window).mean()
         z = (smooth - smooth.rolling(self.window * 3).mean()) / \

@@ -101,9 +101,9 @@ class OptionsEnhancedCTA(CtaStrategy):
             ma5 = series.rolling(5).mean()
             ma20 = series.rolling(20).mean()
             ma60 = series.rolling(60).mean()
-            mom5 = series.pct_change(5)
-            mom20 = series.pct_change(20)
-            mom60 = series.pct_change(60)
+            mom5 = series.pct_change(5, fill_method=None)
+            mom20 = series.pct_change(20, fill_method=None)
+            mom60 = series.pct_change(60, fill_method=None)
 
             # 多因子投票
             sig = (
@@ -193,7 +193,7 @@ class OptionsEnhancedCTA(CtaStrategy):
             adjusted_signal = cta_signal * adj
 
             # vol_target
-            vol = self._price_panel[product].pct_change().rolling(self._cfg.vol_lookback).std()
+            vol = self._price_panel[product].pct_change(fill_method=None).rolling(self._cfg.vol_lookback).std()
             vol_val = vol.loc[date] if date in vol.index else 0.02
             if np.isnan(vol_val) or vol_val <= 0:
                 vol_val = 0.02

@@ -68,13 +68,13 @@ def variance_ratio(series: pd.Series, k: int = 5) -> float:
 
     VR > 1: 正自相关 (动量), VR < 1: 负自相关 (反转).
     """
-    ret = series.pct_change().dropna()
+    ret = series.pct_change(fill_method=None).dropna()
     if len(ret) < k * 2:
         return 1.0
     var_1 = ret.var(ddof=1)
     if var_1 <= 0:
         return 1.0
-    ret_k = series.pct_change(k).dropna()
+    ret_k = series.pct_change(k, fill_method=None).dropna()
     var_k = ret_k.var(ddof=1)
     return float(var_k / (k * var_1))
 
@@ -157,7 +157,7 @@ class AutocorrelationFactor(Factor):
         self.threshold = threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         ac = ret.rolling(self.window).apply(
             lambda s: s.autocorr() if len(s.dropna()) > 2 else np.nan, raw=False,
         )
@@ -185,7 +185,7 @@ class SkewnessFactor(Factor):
         self.threshold = threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         skew = ret.rolling(self.window).skew()
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         sig[skew < -self.threshold] = 1.0   # 负偏 → 多

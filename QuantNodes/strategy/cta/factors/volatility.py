@@ -142,7 +142,7 @@ class GARCHFactor(Factor):
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
         from arch import arch_model
 
-        ret = prices.pct_change().dropna()
+        ret = prices.pct_change(fill_method=None).dropna()
         out = pd.DataFrame(index=prices.index, columns=prices.columns, dtype=float)
         for col in prices.columns:
             s = ret[col].dropna() * 100  # 收益×100 提高数值稳定性
@@ -179,7 +179,7 @@ class VolSkewnessFactor(Factor):
         self.threshold = threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         # 绝对收益的偏度: 衡量波动率冲击的不对称
         vol_skew = ret.abs().rolling(self.window).skew()
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)

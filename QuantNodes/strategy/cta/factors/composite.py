@@ -36,7 +36,7 @@ class MultiHorizonMomentumFactor(Factor):
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
         rets = {}
         for h, w in zip(self.horizons, self.weights):
-            rets[h] = prices.pct_change(h) * w
+            rets[h] = prices.pct_change(h, fill_method=None) * w
         combined = sum(rets.values())
         # 归一化: 除以权重和
         combined = combined / sum(self.weights)
@@ -67,7 +67,7 @@ class SharpeMomentumFactor(Factor):
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
         ret = np.log(prices).diff()
-        mom = prices.pct_change(self.lookback)
+        mom = prices.pct_change(self.lookback, fill_method=None)
         vol = ret.rolling(self.vol_window).std() * np.sqrt(252)
         sharpe_mom = mom / vol.replace(0, np.nan)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
@@ -94,8 +94,8 @@ class MomentumCrashFilterFactor(Factor):
         self.long_lookback = long_lookback
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        short_mom = prices.pct_change(self.short_lookback)
-        long_mom = prices.pct_change(self.long_lookback)
+        short_mom = prices.pct_change(self.short_lookback, fill_method=None)
+        long_mom = prices.pct_change(self.long_lookback, fill_method=None)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         # 短期转负 & 长期仍正 → 崩溃
         sig[(short_mom < 0) & (long_mom > 0)] = -1.0

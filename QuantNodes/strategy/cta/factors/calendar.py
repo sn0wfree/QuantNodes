@@ -32,7 +32,7 @@ class SeasonalityFactor(Factor):
         self.threshold = threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         month = prices.index.month
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         for col in prices.columns:
@@ -68,7 +68,7 @@ class WeekdayFactor(Factor):
         self.threshold = threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         dow = prices.index.dayofweek
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         for col in prices.columns:
@@ -104,7 +104,7 @@ class MonthTurnFactor(Factor):
         self.threshold = threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         for col in prices.columns:
             for _, group in ret[col].groupby(prices.index.to_period("M")):

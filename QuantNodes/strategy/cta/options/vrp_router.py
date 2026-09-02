@@ -102,7 +102,7 @@ class VrpRouterStrategy(FactorModuleComboStrategy):
             return
         iv = self._iv_panel.reindex(index=self._price_panel.index,
                                     columns=self._price_panel.columns)
-        ret = self._price_panel.pct_change()
+        ret = self._price_panel.pct_change(fill_method=None)
         hv20 = ret.rolling(20).std() * np.sqrt(252)
         vrp = iv - hv20
         self._vrp_pct = vrp.rolling(252, min_periods=60).rank(pct=True)

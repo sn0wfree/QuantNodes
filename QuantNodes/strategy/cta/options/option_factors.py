@@ -297,10 +297,10 @@ def build_option_factor_panel(
     result["iv_rank"] = rank_df.mean(axis=1)
 
     # IV Momentum (5日变化)
-    result["iv_momentum_5d"] = iv_panel.pct_change(5).mean(axis=1)
+    result["iv_momentum_5d"] = iv_panel.pct_change(5, fill_method=None).mean(axis=1)
 
     # IV Momentum (20日变化)
-    result["iv_momentum_20d"] = iv_panel.pct_change(20).mean(axis=1)
+    result["iv_momentum_20d"] = iv_panel.pct_change(20, fill_method=None).mean(axis=1)
 
     # IV Short-Long 斜率 (简化: 用 rolling std 近似)
     result["iv_spread"] = (

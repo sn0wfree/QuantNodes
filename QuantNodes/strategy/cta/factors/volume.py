@@ -39,7 +39,7 @@ class VolumeTrendFactor(Factor):
         """需要价格面板 + 成交量面板 (同 index/columns)."""
         vol_ma = volumes.rolling(self.window).mean()
         vol_growth = volumes / vol_ma.replace(0, np.nan) - 1
-        price_dir = np.sign(prices.pct_change(self.price_window))
+        price_dir = np.sign(prices.pct_change(self.price_window, fill_method=None))
         return price_dir * np.sign(vol_growth)
 
 
@@ -152,7 +152,7 @@ class AmihudFactor(Factor):
         self.z_threshold = z_threshold
 
     def compute(self, prices: pd.DataFrame, volumes: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change().abs()
+        ret = prices.pct_change(fill_method=None).abs()
         illiq = ret / volumes.replace(0, np.nan)
         mean = illiq.rolling(self.window).mean()
         std = illiq.rolling(self.window).std()
@@ -181,7 +181,7 @@ class VolumePriceCorrFactor(Factor):
         self.threshold = threshold
 
     def compute(self, prices: pd.DataFrame, volumes: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         corr = ret.rolling(self.window).corr(volumes)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         sig[corr > self.threshold] = 1.0
@@ -214,7 +214,7 @@ class OIPriceDivergenceFactor(Factor):
         prices = prices[common_cols]
         oi = open_interest[common_cols]
 
-        price_ret = prices.pct_change(self.price_window)
+        price_ret = prices.pct_change(self.price_window, fill_method=None)
         oi_change = oi.diff(self.window)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         # 价涨仓减 → 顶背离 → 空

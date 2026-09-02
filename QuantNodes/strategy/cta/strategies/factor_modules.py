@@ -450,7 +450,7 @@ class _ModuleStrategy:
         # 配合 _exec_sig 的 execution_lag=1 (T+1 执行) → 无前视.
         # ⚠️ 切勿改 shift(-2): 会让 Y[τ-1]=r[τ+1] 用到明天价格 p[τ+1], 引入前视.
         #    (scripts/fut_v1_purge_test.py 已验证: shift(-1) vs shift(0) 结果完全一致)
-        Y = self._price_panel.pct_change().shift(-1)
+        Y = self._price_panel.pct_change(fill_method=None).shift(-1)
         beta = tvpr_estimator(
             Y, X,
             lambda_tv=cfg.tvpr_lambda_tv,
@@ -487,7 +487,7 @@ class _ModuleStrategy:
             # 同 _agg_tvpr: Y[t] = 下一日收益. 滚动窗在 t 期拟合 [t-window, t-1]
             # 的已实现收益, 末项 Y[t-1]=r[t] (今天收益, 依赖 p[t] 今天收盘可用).
             # 权重应用到 X[t], 配合 execution_lag=1 (T+1 执行) → 无前视.
-            Y = self._price_panel.pct_change().shift(-1).values
+            Y = self._price_panel.pct_change(fill_method=None).shift(-1).values
             for t in range(win, T, self._config.agg_update):
                 x = stack[t - win:t].reshape(-1, len(names))
                 y = Y[t - win:t].reshape(-1)
@@ -586,13 +586,16 @@ class _ModuleStrategy:
                 slippage_engine.load_roll_dates(list(price_panels.keys()), self._dl)
 
         # 第2层: 持仓EMA平滑 — 渐进调整目标手数
+        # (前置零行匹配循环初始条件 prev=0, ewm(adjust=False) 递推等价)
         if cfg.position_ema_alpha > 0:
-            smoothed = lots.copy()
-            prev = pd.Series(0.0, index=lots.columns)
-            for i in range(len(smoothed)):
-                smoothed.iloc[i] = prev + cfg.position_ema_alpha * (lots.iloc[i] - prev)
-                prev = smoothed.iloc[i].copy()
-            lots = smoothed
+            zero_row = pd.DataFrame(0.0, index=[lots.index[0] - pd.Timedelta(days=1)],
+                                    columns=lots.columns)
+            lots = (
+                pd.concat([zero_row, lots])
+                .ewm(alpha=cfg.position_ema_alpha, adjust=False)
+                .mean()
+                .iloc[1:]
+            )
 
         class _PanelStrategy(CtaStrategy):
             def __init__(self, pos_df, min_change=0.0, dates_list=None, prices_map=None):
@@ -1057,13 +1060,18 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         self.module_signals: dict[str, pd.DataFrame] = {}
         self._filter = VolRiskFilter() if self._config.filter_enabled else None
 
-    # 品种Cluster定义 (基于相关性分析)
+    # 品种Cluster定义 (板块分组, 覆盖全部品种, 供一致性过滤/尾部风险/敞口上限共用)
     CLUSTERS = {
-        'black': ['RB', 'I'],
-        'precious': ['AG', 'AU'],
-        'base': ['CU'],
-        'chemical': ['TA', 'RU', 'PP'],
-        'agri': ['M', 'SR'],
+        'precious': ['AU', 'AG'],
+        'black': ['RB', 'HC', 'I', 'J', 'JM', 'SF', 'SM', 'SS'],
+        'base': ['CU', 'AL', 'ZN', 'PB', 'NI', 'SN', 'SI', 'AO', 'LC'],
+        'energy_chem': ['SC', 'FU', 'LU', 'PG', 'TA', 'RU', 'NR', 'BR', 'PP',
+                        'MA', 'EG', 'PF', 'V', 'EB', 'BU', 'PX', 'SP', 'SH',
+                        'SA', 'FG', 'UR', 'L'],
+        'agri': ['A', 'B', 'M', 'Y', 'P', 'C', 'CS', 'RM', 'OI', 'CF', 'SR',
+                 'JD', 'LH', 'AP', 'CJ', 'PK'],
+        'financial': ['IF', 'IH', 'IC', 'IM', 'T', 'TF', 'TS', 'TL'],
+        'shipping': ['EC'],
     }
 
     def _filter_conflicting_signals(self, signals: pd.DataFrame) -> pd.DataFrame:
@@ -1109,7 +1117,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             return weights
 
         # 构造板块收益序列, 统计每个板块的品种数
-        ret = self._price_panel.pct_change()
+        ret = self._price_panel.pct_change(fill_method=None)
         sector_returns = {}
         sector_sizes = {}
         for sector_name, products in self.CLUSTERS.items():
@@ -1201,11 +1209,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
 
     def _cluster_limit(self, lots: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
         """Cluster级别敞口上限, 防止同板块高乘数品种合计敞口过大."""
-        clusters = {
-            'precious': ['AG', 'AU'],
-            'black': ['RB', 'HC', 'I', 'J', 'JM'],
-            'chemical': ['TA', 'RU', 'PP', 'MA', 'EG', 'PF'],
-        }
+        clusters = self.CLUSTERS
         equity = cfg.initial_cash
         max_cluster_notional = equity * 1.0
 
@@ -1259,6 +1263,11 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         if self._config.module_weighting == "tvpr":
             return self._agg_module_tvpr(sigs)
         w = self._config.module_weights
+        if len(w) != len(sigs):
+            raise ValueError(
+                f"module_weights 长度 {len(w)} != 模块数 {len(sigs)}, "
+                "zip会静默丢弃多余信号, 请检查 ComboConfig.module_weights"
+            )
         combo = None
         for sig, w_i in zip(sigs, w):
             combo = sig * w_i if combo is None else combo + sig * w_i
@@ -1274,7 +1283,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             s.reindex(columns=cols).values for s in sigs
         ], axis=-1)
         # Y: 下一日收益
-        Y = self._price_panel.pct_change().shift(-1).values
+        Y = self._price_panel.pct_change(fill_method=None).shift(-1).values
         win = self._config.agg_window
         agg_update = self._config.agg_update
         # 初始化等权
@@ -1305,7 +1314,7 @@ class FactorModuleComboStrategy(_ModuleStrategy):
         X = np.stack([
             s.reindex(columns=cols).values for s in sigs
         ], axis=-1)
-        Y = self._price_panel.pct_change().shift(-1)
+        Y = self._price_panel.pct_change(fill_method=None).shift(-1)
         beta = expanding_window_tvpr(
             Y, X,
             lambda_tv=cfg.tvpr_lambda_tv,

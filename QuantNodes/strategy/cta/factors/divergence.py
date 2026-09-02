@@ -78,7 +78,7 @@ class VolumeConfirmationFactor(Factor):
 
         vol_ma = volumes.rolling(self.window).mean()
         vol_expand = (volumes > vol_ma.replace(0, np.nan) * self.mult).fillna(False).astype(bool)
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         sig[vol_expand & (ret > 0)] = 1.0   # 放量上涨 → 多
         sig[vol_expand & (ret < 0)] = -1.0  # 放量下跌 → 空

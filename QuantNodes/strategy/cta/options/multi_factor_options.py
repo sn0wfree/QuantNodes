@@ -238,7 +238,7 @@ class MultiFactorOptionsStrategy:
 
         # Realized Vol Asymmetry
         for prod, series in self._price_data.items():
-            returns = series.pct_change()
+            returns = series.pct_change(fill_method=None)
             self._vol_asym = realized_vol_asymmetry(returns, window=60)
             break
 

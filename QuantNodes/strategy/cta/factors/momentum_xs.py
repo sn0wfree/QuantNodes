@@ -3,6 +3,8 @@
 
 截面因子在同一时点比较所有品种, 做多强品种/做空弱品种.
 用分位数 (quantile) 作为多空分组阈值, 比 rank 阈值更稳健 (避免边界冲突).
+
+实现说明: 全部向量化 (逐行 quantile(axis=1) + mask), 无 per-row Python 循环.
 """
 from __future__ import annotations
 
@@ -10,6 +12,35 @@ import numpy as np
 import pandas as pd
 
 from .base import Factor
+
+
+def _quantile_signals(
+    metric: pd.DataFrame, top_pct: float,
+    long_when: str, min_cross: int = 3,
+) -> pd.DataFrame:
+    """通用横截面分位数多空信号 (向量化).
+
+    Args:
+        metric: (T, N) 截面指标面板
+        top_pct: 多空分组分位
+        long_when: 'high' (指标高做多) | 'low' (指标低做多)
+        min_cross: 截面最小品种数 (少于则该日全0)
+
+    Returns:
+        信号面板 (+1/-1/0)
+    """
+    n = metric.notna().sum(axis=1)
+    valid = n.ge(min_cross).to_numpy()[:, None]
+    lo = metric.quantile(top_pct, axis=1)
+    hi = metric.quantile(1 - top_pct, axis=1)
+    if long_when == "high":
+        long_mask = metric.gt(hi, axis=0).to_numpy() & valid
+        short_mask = metric.lt(lo, axis=0).to_numpy() & valid
+    else:
+        long_mask = metric.lt(lo, axis=0).to_numpy() & valid
+        short_mask = metric.gt(hi, axis=0).to_numpy() & valid
+    values = np.where(long_mask, 1.0, np.where(short_mask, -1.0, 0.0))
+    return pd.DataFrame(values, index=metric.index, columns=metric.columns)
 
 
 class MomentumXSFactor(Factor):
@@ -30,17 +61,8 @@ class MomentumXSFactor(Factor):
         self.top_pct = top_pct
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change(self.lookback)
-        sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-        for date in ret.index:
-            row = ret.loc[date].dropna()
-            if len(row) < 3:
-                continue
-            lo = row.quantile(self.top_pct)
-            hi = row.quantile(1 - self.top_pct)
-            sig.loc[date, row[row > hi].index] = 1.0
-            sig.loc[date, row[row < lo].index] = -1.0
-        return sig
+        ret = prices.pct_change(self.lookback, fill_method=None)
+        return _quantile_signals(ret, self.top_pct, long_when="high")
 
 
 class VolatilityXSFactor(Factor):
@@ -63,16 +85,7 @@ class VolatilityXSFactor(Factor):
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
         ret = np.log(prices).diff()
         vol = ret.rolling(self.window).std() * np.sqrt(252)
-        sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-        for date in vol.index:
-            row = vol.loc[date].dropna()
-            if len(row) < 3:
-                continue
-            lo = row.quantile(self.top_pct)
-            hi = row.quantile(1 - self.top_pct)
-            sig.loc[date, row[row < lo].index] = 1.0       # 低波 → 多
-            sig.loc[date, row[row > hi].index] = -1.0      # 高波 → 空
-        return sig
+        return _quantile_signals(vol, self.top_pct, long_when="low")
 
 
 class BasisXSFactor(Factor):
@@ -92,16 +105,7 @@ class BasisXSFactor(Factor):
 
     def compute(self, basis: pd.DataFrame, **kwargs) -> pd.DataFrame:
         """basis: (T, N) 每品种的 spread_1_2 面板 (近月-次月)."""
-        sig = pd.DataFrame(0.0, index=basis.index, columns=basis.columns)
-        for date in basis.index:
-            row = basis.loc[date].dropna()
-            if len(row) < 3:
-                continue
-            lo = row.quantile(self.top_pct)
-            hi = row.quantile(1 - self.top_pct)
-            sig.loc[date, row[row > hi].index] = 1.0      # 贴水深 → 多
-            sig.loc[date, row[row < lo].index] = -1.0     # 升水深 → 空
-        return sig
+        return _quantile_signals(basis, self.top_pct, long_when="high")
 
 
 class AmihudXSFactor(Factor):
@@ -124,16 +128,7 @@ class AmihudXSFactor(Factor):
 
     def compute(self, prices: pd.DataFrame, volumes: pd.DataFrame,
                 **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change().abs()
+        ret = prices.pct_change(fill_method=None).abs()
         illiq = ret / volumes.replace(0, np.nan)
         illiq_smooth = illiq.rolling(self.window).mean()
-        sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-        for date in illiq_smooth.index:
-            row = illiq_smooth.loc[date].dropna()
-            if len(row) < 3:
-                continue
-            lo = row.quantile(self.top_pct)
-            hi = row.quantile(1 - self.top_pct)
-            sig.loc[date, row[row < lo].index] = 1.0      # 流动性好 → 多
-            sig.loc[date, row[row > hi].index] = -1.0     # 流动性差 → 空
-        return sig
+        return _quantile_signals(illiq_smooth, self.top_pct, long_when="low")

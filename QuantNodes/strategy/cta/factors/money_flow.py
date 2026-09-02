@@ -116,7 +116,7 @@ class PVTFactor(Factor):
 
     def compute(self, prices: pd.DataFrame, volumes: pd.DataFrame,
                 **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         pvt = (ret * volumes).cumsum()
         change = pvt.diff(self.window)
         mean = change.rolling(self.window).mean()

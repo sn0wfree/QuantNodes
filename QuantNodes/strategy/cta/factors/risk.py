@@ -33,7 +33,7 @@ class DownsideVolFactor(Factor):
         self.z_threshold = z_threshold
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         # 仅负收益: 正收益填充 0, 保持序列连续 (避免 NaN 空洞)
         downside = ret.clip(upper=0)
         dvol = downside.rolling(self.window).std() * np.sqrt(252)
@@ -93,7 +93,7 @@ class TailRiskFactor(Factor):
         self.quantile = quantile
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         var = ret.rolling(self.window).quantile(self.quantile)
         # var 通常为负; 越负 = 尾部风险越大
         mean = var.rolling(self.window).mean()

@@ -34,7 +34,7 @@ class CapitalInflowFactor(Factor):
     def compute(self, prices: pd.DataFrame, open_interest: pd.DataFrame,
                 **kwargs) -> pd.DataFrame:
         capital = prices * open_interest
-        change = capital.pct_change(self.window)
+        change = capital.pct_change(self.window, fill_method=None)
         mean = change.rolling(self.window).mean()
         std = change.rolling(self.window).std()
         z = (change - mean) / std.replace(0, np.nan)

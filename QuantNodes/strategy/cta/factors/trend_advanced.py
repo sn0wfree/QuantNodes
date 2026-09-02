@@ -163,7 +163,7 @@ class TRIXFactor(Factor):
         ema1 = prices.ewm(span=self.window, adjust=False).mean()
         ema2 = ema1.ewm(span=self.window, adjust=False).mean()
         ema3 = ema2.ewm(span=self.window, adjust=False).mean()
-        return ema3.pct_change() * 100
+        return ema3.pct_change(fill_method=None) * 100
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
         trix = self.raw_value(prices)

@@ -34,7 +34,7 @@ class ExtremeMoveFactor(Factor):
         self.direction = direction
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         avg = ret.abs().rolling(self.window).mean()
         extreme_up = (ret > avg * self.mult) & (ret > 0)
         extreme_down = (ret < -avg * self.mult) & (ret < 0)
@@ -104,7 +104,7 @@ class LimitMoveFactor(Factor):
         self.tolerance = tolerance
 
     def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        ret = prices.pct_change()
+        ret = prices.pct_change(fill_method=None)
         near_limit_up = ret > (self.limit_pct - self.tolerance)
         near_limit_down = ret < -(self.limit_pct - self.tolerance)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)

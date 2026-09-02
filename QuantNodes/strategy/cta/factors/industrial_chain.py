@@ -223,8 +223,8 @@ class LeadLagFactor(Factor):
                 f"products {self.upstream}/{self.downstream} not in panel: "
                 f"{list(prices.columns)}"
             )
-        up_ret = prices[self.upstream].pct_change()
-        dn_ret = prices[self.downstream].pct_change()
+        up_ret = prices[self.upstream].pct_change(fill_method=None)
+        dn_ret = prices[self.downstream].pct_change(fill_method=None)
         # 上游 t-lag 日收益 vs 下游 t 日收益
         corr = up_ret.shift(self.lag).rolling(self.window).corr(dn_ret)
         col = f"{self.upstream}->{self.downstream}"

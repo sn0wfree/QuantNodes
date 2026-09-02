@@ -73,8 +73,8 @@ class VolumeReturnResidualFactor(Factor):
         prices = prices[common_cols]
         volumes = volumes[common_cols]
 
-        ret = prices.pct_change()
-        vol = volumes.pct_change()
+        ret = prices.pct_change(fill_method=None)
+        vol = volumes.pct_change(fill_method=None)
         sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
         for col in prices.columns:
             r = ret[col]

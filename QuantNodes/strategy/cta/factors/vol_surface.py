@@ -145,7 +145,7 @@ class IVRegimeFactor(Factor):
         )
 
         # IV动量
-        iv_mom = iv_panel.pct_change(self.iv_momentum_window)
+        iv_mom = iv_panel.pct_change(self.iv_momentum_window, fill_method=None)
 
         # 信号: IV低+上升 → 加仓, IV高+下降 → 减仓
         signal = pd.DataFrame(1.0, index=iv_panel.index, columns=iv_panel.columns)

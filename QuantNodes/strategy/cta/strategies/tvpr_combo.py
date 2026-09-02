@@ -124,7 +124,7 @@ class TVPRComboStrategy(_ModuleStrategy):
             self.module_signals[n].reindex(columns=cols).values
             for n in names
         ], axis=-1)                       # (T,N,7)
-        Y = self._price_panel.pct_change().shift(-1)   # (T,N) 未来收益
+        Y = self._price_panel.pct_change(fill_method=None).shift(-1)   # (T,N) 未来收益
         beta = tvpr_estimator(
             Y, X,
             lambda_tv=self._lambda_tv,

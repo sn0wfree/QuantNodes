@@ -1,0 +1,27 @@
+{
+  "config": {
+    "aggregation": "tvpr",
+    "module_weighting": "inv_vol",
+    "target_vol": 0.3,
+    "max_leverage": 3.0,
+    "slippage_bps": 1.0
+  },
+  "metrics": {
+    "AnnRet": 0.10161377757011247,
+    "Vol": 0.08105650986471297,
+    "Sharpe": 1.2536164922436277,
+    "Sortino": 1.6934447869196834,
+    "MaxDD": -0.11671978989858445,
+    "MaxDDDays": 365.0,
+    "Calmar": 0.8705788252223784,
+    "WinRate": 0.3902061855670103,
+    "PayoffRatio": 1.2119070907089606,
+    "Years": 7.991786447638604,
+    "Freq": 252.0
+  },
+  "n_products": 66,
+  "date_range": [
+    "2018-01-03",
+    "2025-12-31"
+  ]
+}
