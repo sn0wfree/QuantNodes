@@ -171,7 +171,14 @@ CFM (Bouchaud) 论文明确警告: 期货市场板块内强相关 → 板块簇�
 - [x] 加载 29 期货 DuckDB 面板
 - [x] 对齐 38 资产到统一日期索引, 输出 `data/allweather/panel_v1.parquet`
 - [x] 数据完整性检查 (各资产起始日, 缺失率)
-- [ ] D4: roll jump 检测 (pre_settlement 区分涨跌停 vs 拼接跳变), 视结果决定是否加 roll 处理
+- [x] D4: roll jump 检测 (2026-09-02 完成, **发现两处数据缺陷并修复**):
+  - 期货: 13 品种 roll 日波动 2-5x (未复权拼接假收益 1-3%, M 最高 4.9x 方差膨胀)
+    → `load_futures_returns_roll_adjusted` 收益拼接 (换月日=持有合约真实收益),
+    修复后全部品种 roll/非roll 波动比 0.69~1.46 ✓ (产出 panel_v2.parquet, 主线)
+  - ETF: 512690 NAV 面板 18 个坏日 (份额折算) + OHLCV 面板 5 个拆分日毛刺
+    → `load_etf_panel` 收益级交叉验证合并 (NAV主 + OHLCV回退 + 拆分比修正),
+    修复后 9 ETF 超±10.5% 单日数 = 0 ✓, ETF 期限延长至 2026-07-08
+  - 脚本: `scripts/check_allweather_roll_jumps.py`
 
 ### Phase 1: 组件实现 + 单测 (1 天)
 - [ ] `cov_rmt.py`: RMT 去噪 (移植自 portfolio_research DenoisedCov) + LW 非线性收缩对照 (§5.3)

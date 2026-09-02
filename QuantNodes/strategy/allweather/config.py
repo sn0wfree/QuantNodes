@@ -14,8 +14,15 @@ from pathlib import Path
 # ── 路径 ──────────────────────────────────────────────────────────────
 DUCKDB_PATH: Path = Path("~/Public/DataCache/futures_options_daily.duckdb").expanduser()
 
-ETF_NAV_PATH: Path = Path("~/Public/QuantNodes/data/real/etf_nav_2018-01-01_2026-06-30.parquet").expanduser()
-ETF_SMARTBETA_PATH: Path = Path("~/Public/QuantNodes/data/real/etf_nav_smartbeta_2018-01-01_2026-06-30.parquet").expanduser()
+ETF_NAV_PATH: Path = Path(
+    "~/Public/QuantNodes/data/real/etf_nav_2018-01-01_2026-06-30.parquet"
+).expanduser()
+ETF_SMARTBETA_PATH: Path = Path(
+    "~/Public/QuantNodes/data/real/etf_nav_smartbeta_2018-01-01_2026-06-30.parquet"
+).expanduser()
+ETF_OHLCV_ADJ_PATH: Path = Path(
+    "~/Public/QuantNodes/data/real/etf_ohlcv_2018-01-01_2026-06-30_adjusted.parquet"
+).expanduser()
 
 OUTPUT_DIR: Path = Path("~/Public/QuantNodes/data/allweather").expanduser()
 PANEL_OUTPUT: Path = OUTPUT_DIR / "panel_v1.parquet"
@@ -84,3 +91,4 @@ ARTICLE_BENCHMARK = {
     "target_vol": 0.10,
     "monthly_win_rate": 0.764,
 }
+
