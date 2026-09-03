@@ -278,6 +278,98 @@ def diag_d4(cfg: AllWeatherConfig | None = None) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# ── V5 触发器: episode 锚定验收 ─────────────────────────────────────
+def validate_trig_episodes() -> pd.DataFrame:
+    """验收 gate: 两个已验证 episode 上, 触发器须在 ±5 交易日内容差内触发.
+
+    ① 黄金 (518880, 面板外): trigA 须在 2026-03-16 ±5 交易日触发
+    ② 权益 (IF/IC/513100): trigB 须在 2026-07-03 ±5 交易日触发 (任一资产)
+    """
+    from .trend_overlay import trig_a, trig_b
+
+    oh = pd.read_parquet(Path("~/Public/QuantNodes/data/real/"
+                              "etf_ohlcv_2018-01-01_2026-06-30_adjusted.parquet")
+                         .expanduser())
+    rows = []
+
+    # ① 黄金 trigA
+    gold = oh[("518880", "close")].dropna()
+    gold.index = pd.to_datetime(gold.index)
+    gold = gold.loc["2025-06-01":]
+    state = trig_a(pd.DataFrame({"g": gold}))["g"]
+    anchor = pd.Timestamp("2026-03-16")
+    window = state.loc[anchor - pd.Timedelta(days=10):anchor + pd.Timedelta(days=10)]
+    fired = (window == 0.0).any()
+    first_fire = window[window == 0.0].index.min()
+    rows.append({"episode": "gold_3-16", "trigger": "trigA", "asset": "518880",
+                 "anchor": anchor.date(), "fired_in_window": fired,
+                 "first_fire": first_fire.date() if fired else None,
+                 "state_at_anchor": float(state.asof(anchor))})
+
+    # ② 权益 trigB (期货面板)
+    panel = pd.read_parquet(PANEL_V2_OUTPUT)
+    anchor2 = pd.Timestamp("2026-07-03")
+    for asset in ("fut_if", "fut_ic", "etf_513100"):
+        s = panel[asset].dropna().loc["2025-06-01":]
+        state_b = trig_b(pd.DataFrame({asset: s}))[asset]
+        w2 = state_b.loc[anchor2 - pd.Timedelta(days=10):anchor2 + pd.Timedelta(days=10)]
+        fired2 = (w2 == 0.0).any()
+        ff2 = w2[w2 == 0.0].index.min()
+        rows.append({"episode": "equity_7月", "trigger": "trigB", "asset": asset,
+                     "anchor": anchor2.date(), "fired_in_window": fired2,
+                     "first_fire": ff2.date() if fired2 else None,
+                     "state_at_anchor": float(state_b.asof(anchor2))})
+
+    df = pd.DataFrame(rows)
+    gate = bool(df["fired_in_window"].iloc[0]) and bool(df["fired_in_window"].iloc[1:].any())
+    print(f"episode 验收 gate: {'PASS' if gate else 'FAIL'}")
+    return df
+
+
+# ── V5 触发器: A/B 单独回测 + 触发质量 ──────────────────────────────
+def run_trig_ab(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """2 基线 × 3 变体 (none/trigA/trigB) = 6 跑, 返回 (指标表, 触发质量表)."""
+    mm = _metrics_fn()
+    baselines = {
+        "A_X2L4": dict(use_hrp=True, trend_mode="none", max_weight=0.40,
+                       max_leverage=4),
+        "B_EWvt": dict(use_hrp=False, trend_mode="none", use_vol_target=True,
+                       max_leverage=1.0),
+    }
+    trig_modes = ["none", "trigA", "trigB"]
+    rows, quality_rows = [], []
+    for bname, kw in baselines.items():
+        for tm in trig_modes:
+            kw2 = {**kw, "trend_mode": tm}
+            res = run_backtest(panel, AllWeatherConfig(**kw2),
+                               compute_metrics_fn=_noop)
+            row = {"config": f"{bname}+{tm}"}
+            for seg, (s, e) in SEGMENTS.items():
+                nav = res.nav.loc[s:e]
+                if len(nav) < 30:
+                    continue
+                m = mm(nav, freq="D")
+                for k in ("Sharpe", "AnnRet", "Vol", "MaxDD"):
+                    row[f"{seg}_{k}"] = m.get(k)
+            rows.append(row)
+            print(f"  [{bname}+{tm}] full Sharpe={row['full_Sharpe']:.3f} "
+                  f"stress={row.get('stress_25+_Sharpe', float('nan')):.3f}")
+        # 触发质量: 触发后 20d 收益
+        for tm in ("trigA", "trigB"):
+            from .trend_overlay import combined as _comb
+            ov = _comb(panel, mode=tm)
+            fwd20 = panel.pct_change(20, fill_method=None).shift(-20)
+            trig_events = (ov.shift(1) == 0.0) & (ov.shift(2) == 1.0)  # 1→0 转换日
+            hit = fwd20[trig_events.reindex(fwd20.index, fill_value=False)]
+            vals = hit.stack().dropna()
+            share = ov.mean().mean()
+            quality_rows.append({"trigger": tm, "invested_share": float(share),
+                                 "empty_share": float(1.0 - share),
+                                 "n_events": int(trig_events.sum().sum()),
+                                 "fwd20_mean": float(vals.mean()) if len(vals) else np.nan,
+                                 "fwd20_median": float(vals.median()) if len(vals) else np.nan,
+                                 "hit_rate_neg": float((vals < 0).mean()) if len(vals) else np.nan})
+    return pd.DataFrame(rows), pd.DataFrame(quality_rows)
 # ── CLI ─────────────────────────────────────────────────────────────
 def _save(df: pd.DataFrame, name: str) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -292,7 +384,8 @@ def main():
     ap.add_argument("cmd", choices=["lever-sweep", "cap-sweep", "trend-matrix",
                                     "unlevered", "segments", "diag-d1",
                                     "diag-d2", "diag-d3", "diag-d4", "phase5",
-                                    "phase5-costs", "phase5-optimize", "all"])
+                                    "phase5-costs", "phase5-optimize",
+                                    "trig-validate", "trig-ab", "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
     ap.add_argument("--n", type=int, default=10, help="diag-d2 重复次数")
@@ -353,6 +446,18 @@ def main():
         print(pv.round(3).to_string())
         print("\n=== 换手/成本汇总 ===")
         print(df_tc.round(4).to_string(index=False))
+    if args.cmd in ("trig-validate", "all"):
+        df_tv = validate_trig_episodes()
+        _save(df_tv, "trig_episode_validation")
+        print(df_tv.round(4).to_string(index=False))
+    if args.cmd in ("trig-ab", "all"):
+        df_trig, df_q = run_trig_ab(panel)
+        _save(df_trig, "trig_ab_results")
+        _save(df_q, "trig_quality")
+        print("\n=== 触发质量 (触发后 20d 收益) ===")
+        print(df_q.round(4).to_string(index=False))
+        print("\n=== 回测指标 ===")
+        print(df_trig.round(4).to_string(index=False))
     if args.cmd in ("phase5-optimize", "all"):
         from .ensemble import phase5_optimize
         cta_df, combo_df = phase5_optimize(

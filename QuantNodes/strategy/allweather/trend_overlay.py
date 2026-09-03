@@ -117,6 +117,54 @@ def momentum_tilt(
     return overlay.clip(lower=0.0)
 
 
+def _apply_state(trigger: pd.DataFrame, release: pd.DataFrame) -> pd.DataFrame:
+    """逐列状态机 (向量化): trigger=1 → 空仓(0); release=1 → 恢复(1).
+
+    状态 = ffill(最近一次 trigger/release 信号), 初始为 1 (持仓).
+    同日 trigger 与 release 并发 → trigger 优先 (保守).
+    """
+    t = trigger.fillna(False).to_numpy()
+    r = release.fillna(False).to_numpy()
+    sig = np.where(t, 0.0, np.where(r, 1.0, np.nan))
+    state = pd.DataFrame(sig, index=trigger.index, columns=trigger.columns)
+    state = state.ffill().fillna(1.0)
+    return state
+
+
+def trig_a(prices: pd.DataFrame, ma_window: int = 20, mom_window: int = 20,
+           slope_lag: int = 5) -> pd.DataFrame:
+    """触发器 A「趋势转弱」(锚定黄金 3-16 episode, 波动未扩张时触发).
+
+    触发: close < MA{ma} 且 MA 斜率 < 0 (MA 较 slope_lag 日前下降) 且 {mom}d 动量 < 0
+    解除: close > MA 且 {mom}d 动量 ≥ 0
+    输出: 1=持仓, 0=空仓 (资产级)
+    """
+    ma = prices.rolling(ma_window, min_periods=ma_window).mean()
+    mom = prices.pct_change(mom_window, fill_method=None)
+    trigger = (prices < ma) & (ma.diff(slope_lag) < 0) & (mom < 0)
+    release = (prices > ma) & (mom >= 0)
+    return _apply_state(trigger, release)
+
+
+def trig_b(prices: pd.DataFrame, vol_short: int = 20, vol_long: int = 120,
+           dd_window: int = 5, dd_thr: float = -0.03,
+           trig_thr: float = 1.4, rel_thr: float = 1.2) -> pd.DataFrame:
+    """触发器 B「波动扩张」(锚定权益 7/1 episode, 动量未负时触发).
+
+    触发: (vol{short}/vol{long}) > {trig} 且 {dd}d 收益 < {dd_thr}
+    解除: 波动比 < {rel} (滞后带 1.2-1.4 之间维持原状态)
+    输出: 1=持仓, 0=空仓 (资产级)
+    """
+    ret = prices.pct_change(fill_method=None)
+    v_short = ret.rolling(vol_short, min_periods=vol_short).std()
+    v_long = ret.rolling(vol_long, min_periods=vol_long).std()
+    ratio = v_short / v_long.replace(0, np.nan)
+    ret_dd = prices.pct_change(dd_window, fill_method=None)
+    trigger = (ratio > trig_thr) & (ret_dd < dd_thr)
+    release = ratio < rel_thr
+    return _apply_state(trigger, release)
+
+
 def combined(prices: pd.DataFrame, mode: str = "v1", **kwargs) -> pd.DataFrame:
     """趋势 overlay 分发器: v1 / v3 / v4 / tilt / none (全 1)."""
     if mode == "v1":
@@ -127,6 +175,10 @@ def combined(prices: pd.DataFrame, mode: str = "v1", **kwargs) -> pd.DataFrame:
         return v4_overlay(prices, **kwargs)
     if mode == "tilt":
         return momentum_tilt(prices, **kwargs)
+    if mode == "trigA":
+        return trig_a(prices, **kwargs)
+    if mode == "trigB":
+        return trig_b(prices, **kwargs)
     if mode == "none":
         return pd.DataFrame(1.0, index=prices.index, columns=prices.columns)
-    raise ValueError(f"未知趋势模式: {mode}, 可选 v1/v3/v4/tilt/none")
+    raise ValueError(f"未知趋势模式: {mode}, 可选 v1/v3/v4/tilt/trigA/trigB/none")

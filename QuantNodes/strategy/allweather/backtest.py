@@ -219,14 +219,17 @@ def run_backtest(panel: pd.DataFrame, config: AllWeatherConfig | None = None,
             base = _base_weights(rets_hist, list(panel.columns), cfg)
 
             # 趋势 overlay: 用截至 date 的价格 (按模式传参)
-            ov_kwargs = {"lookback": cfg.trend_lookback}
-            if cfg.trend_mode == "v1":
-                ov_kwargs["coef"] = cfg.trend_coef
-            elif cfg.trend_mode == "v3":
-                ov_kwargs["coef"] = cfg.trend_coef
+            ov_kwargs: dict = {}
+            if cfg.trend_mode in ("v1", "v3"):
+                ov_kwargs = {"lookback": cfg.trend_lookback,
+                             "coef": cfg.trend_coef}
+            elif cfg.trend_mode == "v4":
+                ov_kwargs = {"lookback": cfg.trend_lookback}
             elif cfg.trend_mode == "tilt":
-                ov_kwargs["risk_adj"] = cfg.trend_risk_adj
-                ov_kwargs["floor"] = cfg.trend_floor
+                ov_kwargs = {"lookback": cfg.trend_lookback,
+                             "risk_adj": cfg.trend_risk_adj,
+                             "floor": cfg.trend_floor}
+            # trigA/trigB: 使用各自默认参数 (episode 锚定值), 不透传引擎参数
             ov = combined(panel.loc[:date], mode=cfg.trend_mode,
                           **ov_kwargs).iloc[-1]
             base = base * ov
