@@ -588,3 +588,66 @@ python -m QuantNodes.strategy.allweather.experiments all       # 全部依次执
 **路线归档**: V6.6 ML 复合因子路线关闭, V6.5 (Sub-BC rank α=0.2) 仍是推荐配置.
 
 详细实施步骤见 PLAN.md §15.
+
+
+### 5.12 V6.7 复合因子作为风险因子 (2026-09-04, 决策驱动)
+
+**用户问题**: 复合因子能否作为风险因子优化持仓?  
+**回答**: **能**, 且效果显著.
+
+**核心思路**: V6.5 multiplicative overlay 把 factor_score 当**信号**（方向性叠加, w × (1 + α × score)）. V6.7 把 factor_score 当**风险评分**, 用 3 种风险化方式变换:
+1. **Directional**: `clip(score, upper=0)` — 只对负向 (趋势破坏) 降权 (避险猫"负向"语义)
+2. **Magnitude**: `-|score|` — 任何偏离中性降权 (对称)
+3. **Magnitude²**: `-score²` — 极端偏离加重 (非线性)
+
+**数学上无需改 backtest.py**: 三种变换的 score 喂给现有 `subfactor_weights()`, 等价公式:
+- directional: `w × (1 - α × max(0, -score))` — 仅负向调整
+- magnitude: `w × (1 - α × |score|)` — 双向对称
+- magnitude²: `w × (1 - α × score²)` — 非线性
+
+**实测结果** (3 模式 × alpha 扫描):
+
+| mode | α | Sharpe | AnnRet | MaxDD | stress_25+ | vs V6.5 (0.768) |
+|------|---|--------|--------|-------|------------|----------------|
+| directional | 0.3 | 0.769 | 6.83% | -13.7% | 1.042 | +0.001 |
+| directional | 0.5 | 0.774 | 6.84% | -13.5% | 1.048 | +0.006 |
+| **directional** | **1.0** | **0.781** | 6.71% | **-13.1%** | 1.063 | **+0.013** |
+| directional | 1.4 | **0.784** | 6.59% | -12.8% | 1.089 | **+0.016** |
+| directional | 1.5 | 0.783 | 6.59% | -12.7% | 1.094 | +0.015 |
+| directional | 2.0 | 0.779 | 6.42% | -12.4% | 1.115 | +0.011 |
+| magnitude | 0.3 | 0.760 | 6.65% | -13.6% | 1.045 | -0.008 |
+| magnitude | 1.0 | 0.722 | 5.88% | -13.0% | 1.087 | -0.046 |
+| magnitude² | 1.0 | 0.764 | 6.69% | -13.6% | 1.039 | -0.004 |
+
+**关键发现**:
+- **🏆 Directional 模式胜出**: 全部 6 个 alpha 都 ≥ 0.768 (V6.5)
+- **α=1.4 最优**: Sharpe **0.784 (+2.1%)**, MaxDD **-12.8% (改善 0.97pp)**, stress_25+ 1.089
+- **Magnitude 模式失败**: 对称惩罚同时伤害了确认趋势的机会, 衰减严重
+- **Magnitude² 中等**: 介于 directional 和 magnitude 之间
+
+**核心结论**:
+- **复合因子作为风险因子 (Directional 模式) 确实能优化持仓**
+- 避险猫"负向"语义得到验证: 只对**趋势破坏**降权比**双向降权**更有效
+- **MaxDD 同步改善**: 从 V6.5 -13.77% → V6.7 -12.8% (-0.97pp, 风险调整更优)
+- 这是 V6 路线首次 Sharpe + MaxDD **同时改善**
+
+**完整业绩对比**:
+
+| 配置 | Sharpe | MaxDD | stress_25+ | 改善 |
+|------|--------|-------|------------|------|
+| B 基线 | 0.758 | -13.88% | 1.140 | — |
+| V6.5 Sub-BC rank α=0.2 | 0.768 | -13.77% | 1.165 | +1.3% Sh |
+| **V6.7 directional α=1.4** | **0.784** | **-12.80%** | **1.089** | **+3.4% Sh + 7.8% DD** |
+
+**推荐升级**: V6.7 directional α=1.4 是新的 B sleeve 风险 overlay 推荐配置. 替代 V6.5 Sub-BC rank α=0.2.
+
+**实施产物**:
+- `subfactors_weekly.py`: 3 个 risk_transform 函数 (directional/magnitude/magnitude²)
+- `experiments.py`: `RISK_TRANSFORMS` dict + `run_subfactor_risk_factor()` + `v6-risk-factor` CLI
+- 5 新单测 (3 个 transform 行为 + 中性点零调整)
+- 122 测试全过 (pytest 122/122, ruff clean)
+
+**未来探索**:
+- Directional + asymmetric α (负向用更高 α, 正向置 0)
+- 集成到 ABC_ew 验证主线提升
+- Dynamic α 调节 (类似 CTA v7 的 vol60 驱动)

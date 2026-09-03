@@ -114,6 +114,45 @@ def rank_cross_section(
     return out
 
 
+# ── 风险因子变换 (V6.7) ─────────────────────────────────────────────
+def directional_risk_transform(factor_panel: pd.DataFrame) -> pd.DataFrame:
+    """方向性风险因子: 只保留负向 (避险猫"负向"语义).
+
+    公式: clip(score, upper=0)
+    语义: factor_score < 0 (趋势破坏) → 降权;
+          factor_score >= 0 (趋势确认) → 不动.
+
+    数学等价: w × (1 + α × clip(score, upper=0))
+            = w × (1 - α × max(0, -score))  (仅负向调整).
+    """
+    return factor_panel.clip(upper=0.0)
+
+
+def magnitude_risk_transform(factor_panel: pd.DataFrame) -> pd.DataFrame:
+    """Magnitude 风险因子: |score| 双向降权 (任何偏离中性都是风险).
+
+    公式: -|score|
+    语义: 任何 |score| > 0 → 降权 (无论正负向).
+
+    数学等价: w × (1 + α × (-|score|))
+            = w × (1 - α × |score|).
+    """
+    return -factor_panel.abs()
+
+
+def magnitude_squared_risk_transform(factor_panel: pd.DataFrame) -> pd.DataFrame:
+    """Magnitude² 风险因子: 极端偏离加重 (非线性惩罚).
+
+    公式: -score²
+    语义: |score| 越大, 惩罚非线性加重 (平方放大).
+
+    数学等价: w × (1 + α × (-score²))
+            = w × (1 - α × score²).
+    注意: |score| ∈ [0, 0.5] (rank), score² ≤ 0.25, 需更大 α.
+    """
+    return -(factor_panel ** 2)
+
+
 def combine_subfactors(
     factors: dict[str, pd.DataFrame],
     weights: Optional[dict[str, float]] = None,

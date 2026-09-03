@@ -703,6 +703,80 @@ def run_subfactor_subA_fix(panel: pd.DataFrame,
               f"Sh={row.get('full_Sharpe', float('nan')):.3f}")
 
     return pd.DataFrame(rows)
+
+
+# ── V6.7 风险因子模式 (复合因子作为风险因子优化持仓) ──────────────
+RISK_TRANSFORMS: dict[str, object] = {}
+
+
+def _build_risk_transforms():
+    """Lazy import 避免循环依赖."""
+    from .subfactors_weekly import (
+        directional_risk_transform,
+        magnitude_risk_transform,
+        magnitude_squared_risk_transform,
+    )
+    RISK_TRANSFORMS.update({
+        "directional": directional_risk_transform,
+        "magnitude": magnitude_risk_transform,
+        "magnitude_sq": magnitude_squared_risk_transform,
+    })
+
+
+def run_subfactor_risk_factor(
+    panel: pd.DataFrame,
+    alphas: tuple[float, ...] = (0.3, 0.5, 1.0),
+    baseline_kw: dict | None = None,
+) -> pd.DataFrame:
+    """V6.7 复合因子作为风险因子优化持仓 (3 模式 × N alpha).
+
+    V6.5 best config (Sub-BC rank α=0.2 = 0.768) 作为 baseline.
+    本函数测试 3 种风险因子化方式:
+      - directional: clip(score, upper=0) — 只对负向降权 (避险猫语义)
+      - magnitude: -|score| — 任何偏离中性降权 (对称)
+      - magnitude_sq: -score² — 极端偏离加重 (非线性)
+
+    数学等价: w × (1 + α × transformed) 通过现有 subfactor_weights() 实现.
+
+    Args:
+        panel: 价格面板.
+        alphas: alpha 扫描范围.
+        baseline_kw: B sleeve baseline kwargs.
+
+    Returns:
+        DataFrame columns: mode, alpha, full_Sharpe, full_AnnRet, full_MaxDD,
+                           stress_25+_Sharpe, ...
+    """
+    from .subfactors import SubFactorConfig
+
+    if not RISK_TRANSFORMS:
+        _build_risk_transforms()
+
+    baseline_kw = baseline_kw or _baseline_kw_b()
+    sf_cfg = SubFactorConfig(
+        trend_quality_w=60, mom_slope_w=30, mom_slope_sw=15,
+    )
+    bc_score = _build_subfactor_score(panel, "bc", method="rank", sf_cfg=sf_cfg)
+    mm = _metrics_fn()
+
+    rows = []
+    for mode_name, transform in RISK_TRANSFORMS.items():
+        transformed = transform(bc_score)
+        for alpha in alphas:
+            cfg = AllWeatherConfig(
+                **baseline_kw,
+                subfactor_mode="abc",
+                subfactor_alpha=alpha,
+                subfactor_score=transformed,
+            )
+            res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+            row = {"mode": mode_name, "alpha": alpha}
+            row = _row_from_result(row, res, mm, "")
+            rows.append(row)
+            print(f"  [{mode_name} α={alpha}] "
+                  f"Sh={row.get('full_Sharpe', float('nan')):.3f} "
+                  f"stress={row.get('stress_25+_Sharpe', float('nan')):.3f}")
+    return pd.DataFrame(rows)
 # ── CLI ─────────────────────────────────────────────────────────────
 def _save(df: pd.DataFrame, name: str) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -724,6 +798,7 @@ def main():
                                     "v6-lookback-scan",
                                     "v6-subA-fix",
                                     "v6-ml-composite",
+                                    "v6-risk-factor",
                                     "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
@@ -742,6 +817,8 @@ def main():
     ap.add_argument("--v6-extended-alphas", type=str,
                     default="0.05,0.1,0.2,0.3,0.5,1.0",
                     help="V6 扩展 alpha 扫描 (含 0.05, 1.0)")
+    ap.add_argument("--v6-risk-alphas", type=str, default="0.3,0.5,1.0",
+                    help="V6.7 风险因子 alpha 扫描 (3 模式通用)")
     ap.add_argument("--v6-lookback-factor", type=str, default="a",
                     choices=["a", "b", "c"], help="V6 lookback 扫描的因子")
     ap.add_argument("--v6-lookback-alpha", type=float, default=0.2,
@@ -853,6 +930,17 @@ def main():
         _save(df, "v6_subA_fix")
         print("\n=== V6 Sub-A 修复变体 ===")
         print(df.round(3).to_string(index=False))
+    if args.cmd in ("v6-risk-factor", "all"):
+        df = run_subfactor_risk_factor(
+            panel,
+            alphas=tuple(float(x) for x in args.v6_risk_alphas.split(",")),
+        )
+        _save(df, "v6_risk_factor")
+        print("\n=== V6.7 风险因子模式 (3 模式 × 3 alpha = 9 跑) ===")
+        print(df.round(3).to_string(index=False))
+        print("\n按 Sharpe 排序 Top 5:")
+        print(df.sort_values("full_Sharpe", ascending=False).head(5)
+              .round(3).to_string(index=False))
     if args.cmd in ("v6-ml-composite", "all"):
         from .ml_composite import (
             build_features,

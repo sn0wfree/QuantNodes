@@ -5,6 +5,9 @@ import pandas as pd
 
 from QuantNodes.strategy.allweather.subfactors_weekly import (
     combine_subfactors,
+    directional_risk_transform,
+    magnitude_risk_transform,
+    magnitude_squared_risk_transform,
     rank_cross_section,
     resample_weekly,
     zscore_cross_section,
@@ -91,3 +94,48 @@ class TestRankCrossSection:
         r = rank_cross_section(weekly, lookback_weeks=52)
         assert r.max().max() <= 0.5
         assert r.min().min() >= -0.5
+
+
+class TestRiskTransforms:
+    def test_directional_positive_zero(self):
+        """Directional: 正向分数 → 0 (不调整)."""
+        score = pd.DataFrame([[0.3, -0.2, 0.0]], columns=["a", "b", "c"])
+        out = directional_risk_transform(score)
+        assert out.iloc[0, 0] == 0.0
+        assert out.iloc[0, 1] == -0.2
+        assert out.iloc[0, 2] == 0.0
+
+    def test_directional_negative_preserved(self):
+        """Directional: 负向分数保留, 调整时用 -score (向下)."""
+        score = pd.DataFrame([[-0.1, -0.4, -0.5]], columns=["a", "b", "c"])
+        out = directional_risk_transform(score)
+        assert (out.values == score.values).all()
+        assert out.max().max() <= 0.0
+
+    def test_magnitude_symmetric(self):
+        """Magnitude: ±x 都映射为 -|x| (对称)."""
+        score = pd.DataFrame([[0.3, -0.3, 0.5]], columns=["a", "b", "c"])
+        out = magnitude_risk_transform(score)
+        assert abs(out.iloc[0, 0] - (-0.3)) < 1e-9
+        assert abs(out.iloc[0, 1] - (-0.3)) < 1e-9
+        assert abs(out.iloc[0, 2] - (-0.5)) < 1e-9
+
+    def test_magnitude_squared_quadratic(self):
+        """Magnitude²: |x|² 比 |x| 增长快 (极端值惩罚更重)."""
+        small = magnitude_squared_risk_transform(
+            pd.DataFrame([[0.1, -0.1]], columns=["a", "b"])
+        )
+        large = magnitude_squared_risk_transform(
+            pd.DataFrame([[0.5, -0.5]], columns=["a", "b"])
+        )
+        # 0.5² = 0.25 vs 0.1² = 0.01, 比例 25 倍 (vs magnitude 5 倍)
+        assert abs(small.iloc[0, 0] - (-0.01)) < 1e-9
+        assert abs(large.iloc[0, 0] - (-0.25)) < 1e-9
+        assert abs(large.iloc[0, 0] / small.iloc[0, 0]) > 10  # 非线性放大
+
+    def test_all_three_zero_at_neutral(self):
+        """score = 0 时三种模式都返回 0 (无调整)."""
+        score = pd.DataFrame([[0.0, 0.0]], columns=["a", "b"])
+        assert (directional_risk_transform(score).values == 0).all()
+        assert (magnitude_risk_transform(score).values == 0).all()
+        assert (magnitude_squared_risk_transform(score).values == 0).all()
