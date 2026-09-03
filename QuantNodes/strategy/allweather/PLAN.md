@@ -837,3 +837,110 @@ z-score 标准化对低波动资产偏正 (历史 vol 稳定 → z-score 偏右 
 | 压力段 (Sub-ABC α=0.2) | 1.085 | **1.174** | +8.2% |
 
 **Gate 判定**: **PROMOTE**. Sub-BC rank α=0.2 是 V6 备选主推配置, 待 ABC_ew 集成验证.
+
+
+---
+
+## 十五、V6.6 ML 复合因子测试 (2026-09-04, 决策驱动)
+
+### 15.1 起源
+
+V6.5 完成后, 用户提出新诉求: 用 ML (线性 + 树模型) 测试三个子因子能否组合成更有效的复合因子, 用于预测风险或转折点. 这与避险猫原话 "合成计算出的综合因子" 高度契合.
+
+### 15.2 5 个决策
+
+| 决策点 | 选择 |
+|--------|------|
+| 预测目标 | Y1 20d vol 突变 (binary) / Y2 20d vol 水平 (regression) / Y3 20d 趋势反转 (binary) |
+| 模型 | 线性 (LogReg + Ridge) + 树 (DecisionTree + RandomForest) |
+| 交叉验证 | Purged K-Fold (5 折 + 5d purge + 1% embargo) |
+| 验证方式 | IC + B sleeve 回测双验证 (不上 ABC_ew) |
+| 模型架构 | 全局模型 + 资产特征 (sector + vol class + volume class, 14 维 one-hot) |
+| 类别不均衡 | class_weight="balanced" |
+| 输出处理 | Soft 信号 (sigmoid/tanh 限制 [-1, +1]) |
+
+### 15.3 资产特征设计
+
+| 特征 | 类型 | 编码 | 维度 |
+|------|------|------|------|
+| Sector | 分类 | one-hot (8 类: 有色/黑色/化工/农产品/股指/国债/商品ETF/股票ETF) | 8 |
+| Vol Class | 分类 (252d 滚动年化 vol 三分位) | one-hot (3 类) | 3 |
+| Volume Class | 分类 (252d 滚动平均成交量三分位) | one-hot (3 类) | 3 |
+| **资产特征小计** | | | **14** |
+
+### 15.4 完整特征矩阵 (29 维)
+
+```
+[1-3]   sub_a, sub_b, sub_c               (原始子因子)
+[4-6]   sub_a_lag1, sub_b_lag1, sub_c_lag1
+[7-9]   sub_a_lag5, sub_b_lag5, sub_c_lag5
+[10-12] sub_a_ma5, sub_b_ma5, sub_c_ma5
+[13-15] sub_a_std5, sub_b_std5, sub_c_std5
+[16-17] sub_a_x_b, sub_b_x_c              (交互项)
+[18-25] sector one-hot × 8
+[26-28] vol_class one-hot × 3
+[29-31] volume_class one-hot × 3
+```
+
+### 15.5 三目标定义
+
+```python
+# Y1: vol_spike (binary) — 20d forward vol > 历史 90 分位
+y1 = (rolling_20d_vol_future > rolling_252d_vol.quantile(0.9)).astype(int)
+
+# Y2: vol_level (regression) — 20d forward 已实现 vol (年化)
+y2 = returns.rolling(20).std().shift(-20) * np.sqrt(252)
+
+# Y3: turning_point (binary) — 20d 趋势反转
+y3 = (sign(close.shift(-20) - close) != sign(close - close.shift(20))).astype(int)
+```
+
+### 15.6 Soft 信号输出
+
+```python
+def to_soft_signal(oof_preds, target_type):
+    if target_type == "binary":
+        return 1.32 * (2 * sigmoid(oof_preds * 4) - 1)  # → [-1, +1]
+    else:
+        return tanh(oof_preds / oof_preds.std())          # → [-1, +1]
+```
+
+### 15.7 决策表
+
+| 指标 | V6.5 基线 | V6.6 目标 | 失败判定 |
+|------|----------|----------|---------|
+| B sleeve Sharpe | 0.768 | > 0.78 | < 0.768 |
+| 压力段 Sharpe (25+) | 1.165 | > 1.20 | < 1.165 |
+| Per-asset IC | — | > 0.03 | < 0.02 |
+| Y1 vol_spike AUC | — | > 0.55 | < 0.52 |
+| Y2 vol_level RMSE | — | < 历史 vol 均值 | > 均值 |
+| Y3 turning AUC | — | > 0.55 | < 0.52 |
+| 特征重要性 | Sub-B 主导 | ML 是否发现新交互 | 无新发现 |
+
+### 15.8 实施步骤 (7 步, ~7h)
+
+| 步骤 | 内容 | 文件 | 产物 | 耗时 |
+|------|------|------|------|------|
+| 15.8.1 | PurgedKFold + 单测 | ml_composite.py + test_ml_composite.py | 5 单测 | 1.5h |
+| 15.8.2 | 特征工程 | ml_composite.py:build_features | 29 维 | 1h |
+| 15.8.3 | 三目标定义 | ml_composite.py:build_targets | Y1/Y2/Y3 | 0.5h |
+| 15.8.4 | 模型训练 | ml_composite.py:train_models | OOF + importance | 2h |
+| 15.8.5 | IC 验证 + 特征重要性 | experiments.py:v6-ml-ic | IC table | 1h |
+| 15.8.6 | Soft 信号 + B sleeve 回测 | experiments.py:v6-ml-backtest | 12 跑 × 4 alpha | 1h |
+
+### 15.9 文件变更清单
+
+| 状态 | 文件 | 行数 | 内容 |
+|------|------|------|------|
+| 新增 | ml_composite.py | +300 | PurgedKFold + features + targets + train + soft_signal |
+| 修改 | experiments.py | +150 | v6-ml-ic + v6-ml-backtest 子命令 |
+| 新增 | test_ml_composite.py | +200 | 15 单测 |
+| 修改 | allweather-replication-report.md | +50 | §5.11 V6.6 ML 结果 |
+
+### 15.10 失败回退预案
+
+若 V6.6 < V6.5 基线 (0.768):
+1. 保留 ML IC 部分 (特征重要性是永久知识)
+2. 回测部分归档
+3. V6.5 Sub-BC rank α=0.2 仍为推荐配置
+4. ML 工作作为 "未来 ML 方向" 的探索记录

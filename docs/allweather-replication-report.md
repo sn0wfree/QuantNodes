@@ -503,3 +503,25 @@ python -m QuantNodes.strategy.allweather.experiments all       # 全部依次执
 - 关键修正: 文章框架缺少**权重集中度约束** — 无约束 HRP 在我们的池上退化为杠杆债券基金 (TS 86%), 加 cap 0.40 后才成立
 - 主线双保留: **X2-L4 (Sharpe 1.560, 稳健型) / X2-L5 (10.42%, 目标达成型)**, X5 为收益型备选
 - 下一步: Phase 5 Sleeve B 集成 (CTA v7 信号 × 期货 sleeve), 冲击文章 2.67 的剩余差距
+
+
+### 5.11 V6.6 ML 复合因子测试 (2026-09-04, 决策驱动)
+
+**目标**: 用线性 + 树模型测试 Sub-A/B/C 能否组合成更有效的复合因子, 用于预测风险或转折点. 与避险猫原话 "合成计算出的综合因子" 高度契合.
+
+**架构**:
+- 全局模型 + 资产特征 (sector + vol class + volume class, 14 维 one-hot)
+- 29 维总特征 (15 sub-factor + 14 asset)
+- Purged K-Fold (5 折 + 5d purge + 1% embargo)
+- 4 模型: LogReg / Ridge / DecisionTree / RandomForest
+- 3 目标: Y1 vol spike / Y2 vol level / Y3 turning point
+- Soft 信号输出 (sigmoid/tanh → [-1, +1])
+
+**Gate (与 V6.5 Sub-BC rank α=0.2 = 0.768 对比)**:
+- B sleeve Sharpe > 0.768 算 V6.6 胜出
+- IC > 0.03 (随机 ~0) 算有意义
+- AUC > 0.55 算超越随机
+
+**结果 (待实施后填入)**: TBD
+
+详细实施步骤见 PLAN.md §15.
