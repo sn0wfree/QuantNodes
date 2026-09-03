@@ -760,6 +760,78 @@ def run_subfactor_single_directional(
     return pd.DataFrame(rows)
 
 
+# ── V6.10 C sleeve + V6.8 Sub-B directional 缩放 ────────────────
+def run_subfactor_C_sleeve(
+    panel: pd.DataFrame,
+    alphas: tuple[float, ...] = (1.0, 1.5, 2.0, 2.5, 3.0),
+    sf_cfg=None,
+) -> pd.DataFrame:
+    """C sleeve (CTA v7) + V6.8 Sub-B directional 缩放.
+
+    应用方式: per-future 位置缩放.
+      scale = clip(1 + α × directional_score, 0, 1)
+      new_signal = original_signal × scale
+    clip 到 [0, 1] 避免仓位反向 (negative scale).
+
+    Args:
+        panel: 价格面板.
+        alphas: alpha 扫描范围.
+        sf_cfg: SubFactorConfig (None 用 Sub-B best).
+
+    Returns:
+        DataFrame columns: alpha, sharpe, ann_ret, max_dd, stress_25.
+    """
+    from .subfactors import SubFactorConfig
+    from .subfactors_weekly import directional_risk_transform
+    from .ensemble import cta_sleeve_returns, CTA_SIGNALS_PATH
+
+    sf_cfg = sf_cfg or SubFactorConfig(
+        trend_quality_w=60, mom_slope_w=30, mom_slope_sw=15,
+    )
+    score = _build_subfactor_score(panel, "b", method="rank", sf_cfg=sf_cfg)
+    directional_score = directional_risk_transform(score)
+
+    sig_base = pd.read_parquet(CTA_SIGNALS_PATH)
+    sig_base.index = pd.to_datetime(sig_base.index)
+    sig_base = sig_base.rename(
+        columns={c: f"fut_{c.lower()}" for c in sig_base.columns},
+    )
+    sig_base = sig_base.reindex(panel.index).ffill().fillna(0.0)
+    fut_cols = [c for c in panel.columns if c.startswith("fut_")]
+    sig_base = sig_base[[c for c in sig_base.columns if c in fut_cols]]
+    dir_score_fut = directional_score[fut_cols].reindex(panel.index).ffill().fillna(0.0)
+
+    def _sleeve_metrics(returns: pd.Series) -> tuple[float, float, float, float]:
+        nav = (1 + returns.fillna(0)).cumprod()
+        rets = returns.fillna(0)
+        ann_ret = rets.mean() * 252
+        ann_vol = rets.std() * np.sqrt(252) if rets.std() > 0 else 0
+        sharpe = ann_ret / ann_vol if ann_vol > 0 else 0
+        dd = (nav / nav.cummax() - 1).min()
+        nav_s = nav.loc["2025-09":] if "2025-09" in nav.index else nav
+        rets_s = nav_s.pct_change().fillna(0)
+        sharpe_s = rets_s.mean() / rets_s.std() * np.sqrt(252) if rets_s.std() > 0 else 0
+        return sharpe, ann_ret, dd, sharpe_s
+
+    rows = []
+    for alpha in alphas:
+        scale = (1.0 + alpha * dir_score_fut).clip(lower=0.0, upper=1.0)
+        scaled_sig = (sig_base * scale).clip(lower=-1.0, upper=1.0)
+        tmp_path = Path(f"/tmp/cta_v6_{alpha}.parquet")
+        cta_only = scaled_sig.rename(
+            columns={c: c.replace("fut_", "") for c in scaled_sig.columns},
+        )
+        cta_only.to_parquet(tmp_path)
+        cta_scaled = cta_sleeve_returns(panel, signals_path=tmp_path)
+        sh, ar, dd, s25 = _sleeve_metrics(cta_scaled[0])
+        rows.append({"alpha": alpha, "sharpe": sh, "ann_ret": ar,
+                     "max_dd": dd, "stress_25": s25})
+        print(f"  [C sleeve + Sub-B dir α={alpha}] "
+              f"Sh={sh:.3f} R={ar*100:.2f}% DD={dd*100:.2f}% stress={s25:.3f}")
+        tmp_path.unlink()
+    return pd.DataFrame(rows)
+
+
 # ── V6.7 风险因子模式 (复合因子作为风险因子优化持仓) ──────────────
 RISK_TRANSFORMS: dict[str, object] = {}
 
@@ -855,6 +927,7 @@ def main():
                                     "v6-ml-composite",
                                     "v6-risk-factor",
                                     "v6-subA-directional",
+                                    "v6-C-subfactor",
                                     "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
@@ -877,6 +950,8 @@ def main():
                     help="V6.7 风险因子 alpha 扫描 (3 模式通用)")
     ap.add_argument("--v6-subA-alphas", type=str, default="0.3,0.5,1.0,1.4,2.0",
                     help="V6.8 Sub-A directional alpha 扫描")
+    ap.add_argument("--v6-C-alphas", type=str, default="1.0,1.5,2.0,2.5,3.0",
+                    help="V6.10 C sleeve Sub-B directional alpha 扫描")
     ap.add_argument("--v6-lookback-factor", type=str, default="a",
                     choices=["a", "b", "c"], help="V6 lookback 扫描的因子")
     ap.add_argument("--v6-lookback-alpha", type=float, default=0.2,
@@ -1011,6 +1086,17 @@ def main():
         print(df.round(3).to_string(index=False))
         print("\n按 Sharpe 排序:")
         print(df.sort_values("full_Sharpe", ascending=False).round(3)
+              .to_string(index=False))
+    if args.cmd in ("v6-C-subfactor", "all"):
+        df = run_subfactor_C_sleeve(
+            panel,
+            alphas=tuple(float(x) for x in args.v6_C_alphas.split(",")),
+        )
+        _save(df, "v6_C_sleeve_subB")
+        print("\n=== V6.10 C sleeve + Sub-B directional 缩放 ===")
+        print(df.round(3).to_string(index=False))
+        print("\n按 Sharpe 排序 Top 3:")
+        print(df.sort_values("sharpe", ascending=False).head(3).round(3)
               .to_string(index=False))
     if args.cmd in ("v6-ml-composite", "all"):
         from .ml_composite import (

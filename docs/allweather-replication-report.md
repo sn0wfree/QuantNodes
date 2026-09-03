@@ -782,3 +782,67 @@ python -m QuantNodes.strategy.allweather.experiments all       # 全部依次执
 - 测试代码: 单脚本 (未集成到 experiments.py 因 A 已失败)
 - 数据: data/allweather/v6_A_sleeve_with_subB.csv
 - 122 测试仍全过
+
+
+### 5.15 V6.10 C sleeve + V6.8 Sub-B directional 缩放 (2026-09-04, 复杂结果)
+
+**用户要求**: 继续测试 C sleeve.
+**结果**: C sleeve V6.8 改善 MaxDD 但 Sharpe 略降, 与 B sleeve 不同.
+
+**C baseline (CTA v7)**: Sharpe 1.126, AnnRet 13.83%, MaxDD -16.11%, stress_25+ 0.197
+
+**C sleeve + V6.8 Sub-B directional per-future 缩放**:
+
+缩放公式: `scale = clip(1 + α × directional_score, 0, 1)` (避免仓位反向)
+         `new_signal = original_signal × scale`
+
+| α | Sharpe | AnnRet | MaxDD | stress_25+ |
+|---|--------|--------|-------|------------|
+| 0.0 (baseline) | **1.126** | 13.83% | **-16.11%** | 0.197 |
+| 1.0 | 1.108 | 12.86% | -14.39% | 0.229 |
+| 1.5 | 1.094 | 12.38% | -13.57% | 0.246 |
+| 1.8 | 1.083 | 12.08% | -13.07% | 0.256 |
+| **2.0** | 1.075 | 11.89% | **-12.74%** | 0.263 |
+| 2.2 | 1.094 | 12.15% | -12.33% | 0.286 |
+| 2.4 | 1.083 | 12.14% | -13.06% | 0.381 |
+| 2.6 | 1.088 | 12.21% | -13.09% | 0.332 |
+| **2.8** | **1.112** | 12.62% | -13.11% | 0.293 |
+| 3.0 | 1.107 | 12.66% | **-12.01%** | 0.281 |
+
+**关键发现**:
+- ❌ **Sharpe 单调下降** (1.126 → 1.075, 最低 α=2.0; α>2.0 反弹至 1.112)
+- ✅ **MaxDD 显著改善** (-16.11% → -12.01%, 最高 +4.10pp at α=3.0)
+- ✅ **stress_25+ 显著改善** (0.197 → 0.293-0.381, +50%-94%)
+- ⚠️ **AnnRet 损失 1-2pp** (13.83% → 11.89-12.86%)
+
+**C vs B sleeve 关键对比**:
+
+| Sleeve | Sharpe 改善 | MaxDD 改善 | 净效果 |
+|--------|------------|-----------|--------|
+| B (等权+vt) | +11.9% (0.758→0.848) | +3.58pp (-13.88%→-10.30%) | **双优** |
+| C (CTA v7) | -1.2% (1.126→1.112) | +3.00pp (-16.11%→-13.11%) | **MaxDD 单优** |
+| A (HRP) | -59% (1.560→0.640) | -1.2pp | **双劣** |
+
+**根因分析**:
+- **A (HRP) 严重受损**: HRP 已有协方差 + cap 风控, Sub-B 叠加冲突
+- **B (等权) 大胜**: 等权 + vt 是"裸" sleeve, 适合风险因子叠加
+- **C (CTA) 中性**: CTA v7 已是 38 因子, Sub-B 边际信息少; 但通过缩放改善了风控
+
+**对 ABC_ew 主线影响**:
+- A sleeve 不可叠加 V6.8 (A baseline 已归档)
+- C sleeve Sharpe 微降 (-1.2%), 但 MaxDD 改善 3pp
+- B sleeve 显著改善 (+11.9% Sh, +3.58pp DD)
+- **主推集成**: 仅 B sleeve 用 V6.8, C sleeve 可选 α=2.8 (Sharpe 最优且 stress 改善)
+
+**V6.10 完整 Sleeve 适配表**:
+
+| Sleeve | 内建风控 | V6.8 适配 | 推荐配置 |
+|--------|---------|-----------|---------|
+| A (HRP) | 强 | ❌ 失败归档 | — |
+| **B (等权+vt)** | 弱 | **✅ 最佳** | **Sub-B dir α=3.0 (0.848)** |
+| C (CTA v7) | 强 | ⚠️ 边际 | Sub-B dir α=2.8 (1.112, MaxDD -13.11%) |
+
+**实施产物**:
+- `experiments.py`: `run_subfactor_C_sleeve()` + `v6-C-subfactor` CLI 子命令
+- 数据: data/allweather/v6_C_sleeve_subB.csv, v6_C_sleeve_finetune.csv
+- 122 测试仍全过
