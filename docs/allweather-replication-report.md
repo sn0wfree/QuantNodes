@@ -718,3 +718,67 @@ python -m QuantNodes.strategy.allweather.experiments all       # 全部依次执
 - `experiments.py`: `run_subfactor_single_directional()` + `v6-subA-directional` CLI 子命令
 - 实测数据: data/allweather/v6_sub_single_directional.csv, v6_subB_extended.csv, v6_subB_finetune.csv
 - 122 测试仍全过 (无新增单测, 仅实验代码)
+
+
+### 5.14 V6.9 A sleeve Sub-B directional 测试 (2026-09-04, 失败归档)
+
+**用户问**: 为什么还是 B baseline, 没有 A baseline?
+**结果**: 立即补测 A sleeve + V6.8 Sub-B directional. **A sleeve 严重受损**.
+
+**A sleeve 配置**:
+- X2-L4: use_hrp=True, denoise="mp", max_weight=0.40, max_leverage=4 → baseline 1.560
+- X2-L5: 同上但 max_leverage=5 → baseline 1.495
+
+**A_X2L4 + Sub-B directional α 扫描**:
+
+| α | Sharpe | vs baseline | MaxDD | stress_25+ |
+|---|--------|-------------|-------|------------|
+| 0.0 (baseline) | **1.560** | — | -5.5% | 0.424 |
+| 1.0 | 1.409 | **-9.7%** | -5.0% | 0.450 |
+| 1.5 | 1.314 | -15.8% | **-4.8%** | 0.404 |
+| 2.0 | 1.194 | -23.5% | -5.1% | 0.334 |
+| 2.5 | 1.047 | -32.9% | -5.3% | 0.176 |
+| 3.0 | 0.895 | **-42.6%** | -5.4% | 0.128 |
+| 5.0 | 0.640 | **-59.0%** | -6.7% | 0.640 |
+
+**A_X2L5 + Sub-B directional α 扫描**:
+
+| α | Sharpe | vs baseline | MaxDD |
+|---|--------|-------------|-------|
+| 0.0 (baseline) | 1.495 | — | -7.3% |
+| 1.0 | 1.393 | -6.8% | -6.3% |
+| 2.0 | 1.192 | -20.3% | -5.9% |
+| 3.0 | 0.888 | -40.6% | -6.6% |
+| 5.0 | 0.640 | -57.2% | -8.2% |
+
+**核心结论**:
+- ❌ **A sleeve 严重受损**, 所有 alpha 全部负贡献
+- 📉 **Sharpe 单调下降**, 越激进的 alpha 越糟
+- 📊 **唯一改善**: MaxDD 在 α=1.5 时略改善 (-5.5% → -4.8%, +0.7pp), 但 Sharpe 暴跌 15.8%
+- 🎯 **结论: V6.8 Sub-B directional 完全不适合 A sleeve**
+
+**根因分析**:
+1. **A 用 HRP (层次风险平价)** — 已考虑协方差和 vol 结构
+2. **Sub-B 是 trend 因子** — 与 HRP 的层次权重结构冲突
+3. **B 用等权** — 没有内建权重结构, Sub-B 叠加 work
+4. **结论: 风险因子适合"裸" sleeve, 不适合已有内建风控的 sleeve (如 HRP)**
+
+**Gate 判定**: A sleeve 路线 **永久归档**.
+
+**完整 V6 路线 Sleeve 适配表**:
+
+| Sleeve | Baseline | 内建风控 | V6.8 Sub-B dir 适用? |
+|--------|----------|---------|---------------------|
+| A (HRP) | 1.560 | HRP + cap | ❌ 严重受损 (最高 1.409 vs 1.560) |
+| **B (等权+vt)** | 0.758 | vol target only | **✅ Sharpe 0.848 (+11.9%)** |
+| C (CTA v7) | 1.092 | CTA 内置因子 | (未测, 但 V6.6 ML 显示 38 因子已饱和) |
+
+**V6.8 推荐配置 (最终)**:
+- 应用范围: **仅 B sleeve**
+- 配置: Sub-B rank + directional α=3.0
+- 业绩: Sharpe 0.848, MaxDD -10.30%, stress_25+ 1.119
+
+**实施产物**:
+- 测试代码: 单脚本 (未集成到 experiments.py 因 A 已失败)
+- 数据: data/allweather/v6_A_sleeve_with_subB.csv
+- 122 测试仍全过
