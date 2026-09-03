@@ -651,3 +651,70 @@ python -m QuantNodes.strategy.allweather.experiments all       # 全部依次执
 - Directional + asymmetric α (负向用更高 α, 正向置 0)
 - 集成到 ABC_ew 验证主线提升
 - Dynamic α 调节 (类似 CTA v7 的 vol60 驱动)
+
+
+### 5.13 V6.8 单因子 directional 风险因子对比 (2026-09-04, 重大突破)
+
+**用户问题**: 先测试哪个复合因子? 先测试 Sub-A.
+**结果**: Sub-A 单因子测试引发重大发现 — **Sub-B 单因子全面超越 Sub-BC 组合**.
+
+**测试设计**: 3 单因子 × 5 alpha = 15 跑 (V6.7 directional 模式)
+
+| 因子 | α=0.3 | α=0.5 | α=1.0 | α=1.4 | α=2.0 |
+|------|-------|-------|-------|-------|-------|
+| **Sub-A** (vol regime) | 0.766 | 0.768 | 0.769 | 0.765 | 0.763 |
+| **Sub-B** (trend) | 0.779 | 0.789 | 0.807 | 0.822 | **0.838** |
+| **Sub-C** (volume) | 0.759 | 0.756 | 0.736 | 0.708 | 0.663 |
+
+**重大发现**:
+- ❌ **Sub-C 单因子持续衰减** — 加 directional 模式伤害 B sleeve
+- ⚠️ **Sub-A 单因子几乎平稳** (0.763-0.769) — vol regime 单独不够
+- 🏆 **Sub-B 单因子持续单调上升** — 仍未到拐点
+
+**Sub-B 拐点扫描** (Sub-B best):
+
+| α | Sharpe | stress_25+ | MaxDD | AnnRet |
+|---|--------|-----------|-------|--------|
+| 2.0 | 0.838 | 1.141 | -11.0% | 6.5% |
+| 2.5 | 0.847 | 1.128 | -10.5% | 6.3% |
+| **3.0** | **0.848** | 1.119 | **-10.3%** | **6.1%** |
+| 4.0 | 0.825 | 1.136 | -10.5% | 5.7% |
+| 5.0 | 0.809 | 1.142 | -10.3% | 5.4% |
+| 7.0 | 0.796 | 1.136 | -10.1% | 5.1% |
+| 10.0 | 0.790 | 1.115 | -9.7% | 5.0% |
+
+**精细扫描 (α=2.7-3.5)**: α=2.7-3.0 都 0.848 (平台期), 之后单调下降. **α=3.0 为最优点**.
+
+**完整业绩对比**:
+
+| 配置 | Sharpe | AnnRet | MaxDD | stress_25+ | vs B baseline |
+|------|--------|--------|-------|------------|---------------|
+| B 基线 | 0.758 | 6.76% | -13.88% | 1.140 | — |
+| V6.5 Sub-BC rank α=0.2 | 0.768 | 6.86% | -13.77% | 1.165 | +1.3% Sh |
+| V6.7 Sub-BC directional α=1.4 | 0.784 | 6.59% | -12.80% | 1.089 | +3.4% Sh |
+| **V6.8 Sub-B directional α=3.0** | **0.848** | **6.10%** | **-10.30%** | 1.119 | **+11.9% Sh + 25.8% DD** |
+
+**核心洞察**:
+1. **Sub-B 单因子 + directional 是 V6 路线最大突破** — Sharpe 0.758 → 0.848 (+11.9%)
+2. **MaxDD 改善 3.58pp** (从 -13.88% 到 -10.30%) — 接近用户目标的 10%
+3. **AnnRet 损失 66bp** — 用收益换 Sharpe
+4. **Sub-C 在组合中拖累表现** — directional 模式与其语义冲突
+5. **Sub-A 几乎中性** — vol regime 信号已被 B sleeve vol target 部分捕获
+
+**与避险猫语义对照**:
+- Sub-B (TrendQuality + MomentumSlope) 是"趋势力度"维度
+- Directional 模式 (clip upper=0) 精确对应"负向"语义
+- 即: **只在趋势破坏时降权** — 这就是避险猫原文意图
+
+**推荐升级**: V6.8 Sub-B rank directional α=3.0 替代 V6.7 Sub-BC rank directional α=1.4.
+
+**对 ABC_ew 主线潜力**:
+- B sleeve 单独 Sharpe 0.848
+- ABC_ew = A (1.560) + B (0.848) + C (1.092) 等权混合
+- 简单估算: ABC_ew 可能达 1.93-1.97 (vs 当前 1.897)
+- 需要 Phase 5 ensemble 集成验证
+
+**实施产物**:
+- `experiments.py`: `run_subfactor_single_directional()` + `v6-subA-directional` CLI 子命令
+- 实测数据: data/allweather/v6_sub_single_directional.csv, v6_subB_extended.csv, v6_subB_finetune.csv
+- 122 测试仍全过 (无新增单测, 仅实验代码)

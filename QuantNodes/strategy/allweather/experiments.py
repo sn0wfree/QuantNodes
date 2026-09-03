@@ -705,6 +705,61 @@ def run_subfactor_subA_fix(panel: pd.DataFrame,
     return pd.DataFrame(rows)
 
 
+# ── V6.8 单因子 directional 风险因子对比 (找最佳单因子) ─────────
+def run_subfactor_single_directional(
+    panel: pd.DataFrame,
+    factor_letter: str = "a",
+    sf_cfg=None,
+    alphas: tuple[float, ...] = (0.3, 0.5, 1.0, 1.4, 2.0),
+    baseline_kw: dict | None = None,
+) -> pd.DataFrame:
+    """单因子 + V6.7 directional 模式测试.
+
+    用于回答: 单因子 (A/B/C) 哪个最适合作为风险因子?
+    V6.7 best (Sub-BC directional α=1.4 = 0.784) 作为基准.
+
+    Args:
+        panel: 价格面板.
+        factor_letter: 'a' / 'b' / 'c' 单因子.
+        sf_cfg: 子因子参数 (None 时用 Sub-A best).
+        alphas: alpha 扫描范围.
+        baseline_kw: B sleeve baseline kwargs.
+
+    Returns:
+        DataFrame columns: factor, mode, alpha, full_Sharpe, ...
+    """
+    from .subfactors import SubFactorConfig
+    from .subfactors_weekly import directional_risk_transform
+
+    sf_cfg = sf_cfg or SubFactorConfig(
+        vol_cone_sw=15, vol_cone_lw=180,  # Sub-A V6.5 best lookback
+    )
+    score = _build_subfactor_score(
+        panel, factor_letter, method="rank", sf_cfg=sf_cfg,
+    )
+    directional_score = directional_risk_transform(score)
+
+    baseline_kw = baseline_kw or _baseline_kw_b()
+    mm = _metrics_fn()
+
+    rows = []
+    for alpha in alphas:
+        cfg = AllWeatherConfig(
+            **baseline_kw,
+            subfactor_mode="abc",
+            subfactor_alpha=alpha,
+            subfactor_score=directional_score,
+        )
+        res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+        row = {"factor": factor_letter, "mode": "directional", "alpha": alpha}
+        row = _row_from_result(row, res, mm, "")
+        rows.append(row)
+        print(f"  [Sub-{factor_letter.upper()} directional α={alpha}] "
+              f"Sh={row.get('full_Sharpe', float('nan')):.3f} "
+              f"stress={row.get('stress_25+_Sharpe', float('nan')):.3f}")
+    return pd.DataFrame(rows)
+
+
 # ── V6.7 风险因子模式 (复合因子作为风险因子优化持仓) ──────────────
 RISK_TRANSFORMS: dict[str, object] = {}
 
@@ -799,6 +854,7 @@ def main():
                                     "v6-subA-fix",
                                     "v6-ml-composite",
                                     "v6-risk-factor",
+                                    "v6-subA-directional",
                                     "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
@@ -819,6 +875,8 @@ def main():
                     help="V6 扩展 alpha 扫描 (含 0.05, 1.0)")
     ap.add_argument("--v6-risk-alphas", type=str, default="0.3,0.5,1.0",
                     help="V6.7 风险因子 alpha 扫描 (3 模式通用)")
+    ap.add_argument("--v6-subA-alphas", type=str, default="0.3,0.5,1.0,1.4,2.0",
+                    help="V6.8 Sub-A directional alpha 扫描")
     ap.add_argument("--v6-lookback-factor", type=str, default="a",
                     choices=["a", "b", "c"], help="V6 lookback 扫描的因子")
     ap.add_argument("--v6-lookback-alpha", type=float, default=0.2,
@@ -941,6 +999,19 @@ def main():
         print("\n按 Sharpe 排序 Top 5:")
         print(df.sort_values("full_Sharpe", ascending=False).head(5)
               .round(3).to_string(index=False))
+    if args.cmd in ("v6-subA-directional", "all"):
+        from .subfactors import SubFactorConfig
+        sf_cfg_a = SubFactorConfig(vol_cone_sw=15, vol_cone_lw=180)
+        df = run_subfactor_single_directional(
+            panel, factor_letter="a", sf_cfg=sf_cfg_a,
+            alphas=tuple(float(x) for x in args.v6_subA_alphas.split(",")),
+        )
+        _save(df, "v6_subA_directional")
+        print("\n=== V6.8 Sub-A directional 模式 (vs Sub-BC 0.784) ===")
+        print(df.round(3).to_string(index=False))
+        print("\n按 Sharpe 排序:")
+        print(df.sort_values("full_Sharpe", ascending=False).round(3)
+              .to_string(index=False))
     if args.cmd in ("v6-ml-composite", "all"):
         from .ml_composite import (
             build_features,
