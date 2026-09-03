@@ -47,6 +47,7 @@ class AllWeatherConfig:
     target_vol: float = 0.10
     max_leverage: float = 3.0
     max_weight: float = 1.0        # 结构权重上限 (1.0=不约束); 修复 HRP 低波资产集中
+    bond_class_cap: float = 1.0    # 债券簇(T/TF/TS)结构权重合计上限 (1.0=不约束)
     use_vol_target: bool = True    # False → 杠杆恒 1 (无杠杆实验, gross ≤ 1)
     daily_vol_adjust: bool = True  # 混合频率: 期货 sleeve 日频微调
     futures_commission: float = 0.0001
@@ -107,6 +108,26 @@ def _cap_weights(w: pd.Series, cap: float) -> pd.Series:
             w[under] += excess * (w[under] / base)
         else:
             break
+    return w
+
+
+def _cap_group(w: pd.Series, members: list[str], cap: float) -> pd.Series:
+    """类别合计封顶: 超出部分按比例回填给类别外资产."""
+    members = [m for m in members if m in w.index]
+    if not members or cap >= 1.0:
+        return w
+    w = w.copy()
+    for _ in range(50):
+        cur = float(w[members].sum())
+        if cur <= cap:
+            break
+        scale = cap / cur
+        excess = cur - cap
+        w[members] *= scale
+        outside = w.index.difference(members)
+        base = float(w[outside].sum())
+        if base > 0:
+            w[outside] += excess * (w[outside] / base)
     return w
 
 
@@ -211,6 +232,9 @@ def run_backtest(panel: pd.DataFrame, config: AllWeatherConfig | None = None,
             base = base * ov
             if cfg.max_weight < 1.0:
                 base = _cap_weights(base, cfg.max_weight)
+            if cfg.bond_class_cap < 1.0:
+                base = _cap_group(base, ["fut_t", "fut_tf", "fut_ts"],
+                                  cfg.bond_class_cap)
 
             # ex-ante 波动 → 调仓杠杆 (cov 只含可用资产, base 对齐到同子集)
             cov = _window_cov(rets_hist, cfg)
