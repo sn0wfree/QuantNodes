@@ -374,23 +374,48 @@ def run_trig_ab(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 # ── V6 三子因子: 单因子 + 组合回测 ───────────────────────────────
-def _build_subfactor_score(panel: pd.DataFrame, mode: str) -> pd.DataFrame:
+def _build_subfactor_score(panel: pd.DataFrame, mode: str,
+                            method: str = "zscore",
+                            winsorize: float | None = None,
+                            sf_cfg=None) -> pd.DataFrame:
     """构建 cfg.subfactor_score: 给定 mode (a/b/c/ab/ac/bc/abc), 计算综合分数.
 
-    返回 W × N DataFrame (W-FRI 重采样后, 已 z-score).
+    返回 W × N DataFrame (W-FRI 重采样后, 已 z-score / rank).
     """
     from .subfactors import SubFactorConfig, compute_all_subfactors
     from .subfactors_weekly import combine_subfactors, resample_weekly
 
+    cfg = sf_cfg or SubFactorConfig()
     daily_factors = compute_all_subfactors(
-        prices=panel, volumes=panel, open_interest=None, cfg=SubFactorConfig(),
+        prices=panel, volumes=panel, open_interest=None, cfg=cfg,
     )
     weekly = {k: resample_weekly(v, agg="mean") for k, v in daily_factors.items()}
     if mode == "abc" or len(mode) == 2:
         keys = list(mode)
         sub = {k: weekly[k] for k in keys}
-        return combine_subfactors(sub)
-    return combine_subfactors({mode: weekly[mode]})
+        return combine_subfactors(sub, method=method, winsorize=winsorize)
+    return combine_subfactors(
+        {mode: weekly[mode]}, method=method, winsorize=winsorize,
+    )
+
+
+def _baseline_kw_b() -> dict:
+    """B sleeve baseline config."""
+    return dict(use_hrp=False, trend_mode="none",
+               use_vol_target=True, max_leverage=1.0)
+
+
+def _row_from_result(baseline_row: dict, res, mm, prefix: str = "") -> dict:
+    """从 BacktestResult 提取分段指标. prefix='' 时键名为 'full_Sharpe' 等."""
+    row = dict(baseline_row)
+    for seg, (s, e) in SEGMENTS.items():
+        nav = res.nav.loc[s:e]
+        if len(nav) < 30:
+            continue
+        m = mm(nav, freq="D")
+        for k in ("Sharpe", "AnnRet", "MaxDD"):
+            row[f"{seg}_{k}"] = m.get(k)
+    return row
 
 
 def run_subfactor_single(panel: pd.DataFrame, alpha_values=(0.1, 0.2, 0.3, 0.5),
@@ -508,6 +533,176 @@ def evaluate_v6_gate(single_df: pd.DataFrame, combo_df: pd.DataFrame,
         "combo_pass_combos": combo_pass["combo"].unique().tolist(),
         "verdict": verdict,
     }
+
+
+# ── V6.3 alpha 扫描 (扩展范围 0.05-1.0) ─────────────────────────────
+def run_subfactor_alpha_scan(panel: pd.DataFrame,
+                             alphas=(0.05, 0.1, 0.2, 0.3, 0.5, 1.0),
+                             baseline_kw: dict | None = None) -> pd.DataFrame:
+    """V6.3 扩展 alpha 扫描: 0.05-1.0 (原 0.1-0.5 已含).
+
+    输出列: factor, alpha, full_Sharpe, full_AnnRet, full_MaxDD,
+            stress_25+_Sharpe, stress_25+_AnnRet.
+    """
+    mm = _metrics_fn()
+    baseline_kw = baseline_kw or _baseline_kw_b()
+    rows = []
+    for factor in ("a", "b", "c"):
+        score = _build_subfactor_score(panel, factor)
+        for alpha in alphas:
+            cfg = AllWeatherConfig(
+                **baseline_kw,
+                subfactor_mode=factor,
+                subfactor_alpha=alpha,
+                subfactor_score=score,
+            )
+            res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+            row = {"factor": factor, "alpha": alpha}
+            row = _row_from_result(row, res, mm, prefix="")
+            rows.append(row)
+            print(f"  [Sub-{factor.upper()} α={alpha}] "
+                  f"full Sh={row.get('full_Sharpe', float('nan')):.3f} "
+                  f"stress={row.get('stress_25+_Sharpe', float('nan')):.3f}")
+    return pd.DataFrame(rows)
+
+
+# ── V6.4 lookback 扫描 (不同 sw/lw/w) ──────────────────────────────
+def run_subfactor_lookback_scan(panel: pd.DataFrame,
+                                factor: str = "a",
+                                lookbacks: dict | None = None,
+                                alpha: float = 0.2,
+                                baseline_kw: dict | None = None) -> pd.DataFrame:
+    """V6.4 lookback 窗口扫描 (默认 factor='a', Sub-A 衰减修复路径).
+
+    lookbacks: {label: SubFactorConfig_kwargs} 例:
+        {
+          'fast_sw5_lw60':  dict(vol_cone_sw=5,  vol_cone_lw=60),
+          'default_sw10_lw120': dict(),  # 默认
+          'slow_sw20_lw252':    dict(vol_cone_sw=20, vol_cone_lw=252),
+        }
+
+    输出列: factor, label, full_Sharpe, full_AnnRet, full_MaxDD,
+            stress_25+_Sharpe.
+    """
+    from .subfactors import SubFactorConfig
+    mm = _metrics_fn()
+    baseline_kw = baseline_kw or _baseline_kw_b()
+    if lookbacks is None:
+        if factor == "a":
+            lookbacks = {
+                "fast_sw5_lw60":  dict(vol_cone_sw=5,  vol_cone_lw=60),
+                "default_sw10_lw120": dict(),
+                "mid_sw15_lw180":    dict(vol_cone_sw=15, vol_cone_lw=180),
+                "slow_sw20_lw252":   dict(vol_cone_sw=20, vol_cone_lw=252),
+            }
+        elif factor == "b":
+            lookbacks = {
+                "fast_w20_slope15":  dict(trend_quality_w=20, mom_slope_w=15),
+                "default_w30_slope20": dict(),
+                "slow_w60_slope30":    dict(trend_quality_w=60, mom_slope_w=30),
+            }
+        else:  # factor == "c"
+            lookbacks = {
+                "fast_w3": dict(vol_trend_w=3, oi_div_w=3, oi_div_pw=3),
+                "default_w5": dict(),
+                "slow_w10":   dict(vol_trend_w=10, oi_div_w=10, oi_div_pw=10),
+                "slower_w20": dict(vol_trend_w=20, oi_div_w=20, oi_div_pw=20),
+            }
+    rows = []
+    for label, kwargs in lookbacks.items():
+        cfg_sf = SubFactorConfig(**kwargs)
+        score = _build_subfactor_score(panel, factor, sf_cfg=cfg_sf)
+        cfg = AllWeatherConfig(
+            **baseline_kw,
+            subfactor_mode=factor,
+            subfactor_alpha=alpha,
+            subfactor_score=score,
+        )
+        res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+        row = {"factor": factor, "label": label, "alpha": alpha}
+        row = _row_from_result(row, res, mm, prefix="")
+        rows.append(row)
+        print(f"  [{factor.upper()} {label} α={alpha}] "
+              f"full Sh={row.get('full_Sharpe', float('nan')):.3f} "
+              f"stress={row.get('stress_25+_Sharpe', float('nan')):.3f}")
+    return pd.DataFrame(rows)
+
+
+# ── V6.5 Sub-A 修复变体 (rank / winsorize / asymmetric alpha) ──────
+def run_subfactor_subA_fix(panel: pd.DataFrame,
+                           alphas=(0.1, 0.2, 0.3),
+                           baseline_kw: dict | None = None) -> pd.DataFrame:
+    """V6.5 Sub-A 衰减修复: rank / winsorize / asymmetric alpha.
+
+    修复点:
+      - rank: 用 rank percentile 替代 z-score (对极值稳健)
+      - winsorize: z-score 截尾 ±2 (防极值放大)
+      - asymmetric: 正向 α=0.1 (弱加仓), 负向 α=0.3 (强减仓)
+
+    输出列: fix, alpha, full_Sharpe, full_AnnRet, full_MaxDD,
+            stress_25+_Sharpe, stress_25+_MaxDD.
+    """
+    mm = _metrics_fn()
+    baseline_kw = baseline_kw or _baseline_kw_b()
+    rows = []
+    # 基线 (z-score 对称)
+    base_score = _build_subfactor_score(panel, "a", method="zscore")
+    for alpha in alphas:
+        cfg = AllWeatherConfig(
+            **baseline_kw, subfactor_mode="a",
+            subfactor_alpha=alpha, subfactor_score=base_score,
+        )
+        res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+        row = {"fix": "zscore_baseline", "alpha": alpha}
+        row = _row_from_result(row, res, mm, prefix="")
+        rows.append(row)
+        print(f"  [fix=zscore α={alpha}] "
+              f"Sh={row.get('full_Sharpe', float('nan')):.3f}")
+
+    # rank percentile
+    rank_score = _build_subfactor_score(panel, "a", method="rank")
+    for alpha in alphas:
+        cfg = AllWeatherConfig(
+            **baseline_kw, subfactor_mode="a",
+            subfactor_alpha=alpha, subfactor_score=rank_score,
+        )
+        res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+        row = {"fix": "rank", "alpha": alpha}
+        row = _row_from_result(row, res, mm, prefix="")
+        rows.append(row)
+        print(f"  [fix=rank α={alpha}] "
+              f"Sh={row.get('full_Sharpe', float('nan')):.3f}")
+
+    # winsorize ±2
+    win_score = _build_subfactor_score(panel, "a", method="zscore", winsorize=2.0)
+    for alpha in alphas:
+        cfg = AllWeatherConfig(
+            **baseline_kw, subfactor_mode="a",
+            subfactor_alpha=alpha, subfactor_score=win_score,
+        )
+        res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+        row = {"fix": "winsorize_2", "alpha": alpha}
+        row = _row_from_result(row, res, mm, prefix="")
+        rows.append(row)
+        print(f"  [fix=winsorize±2 α={alpha}] "
+              f"Sh={row.get('full_Sharpe', float('nan')):.3f}")
+
+    # asymmetric alpha (α_pos=0.1, α_neg=0.3)
+    for alpha in alphas:
+        cfg = AllWeatherConfig(
+            **baseline_kw, subfactor_mode="a",
+            subfactor_alpha=alpha, subfactor_score=base_score,
+            subfactor_alpha_pos=alpha * 0.33,
+            subfactor_alpha_neg=alpha,
+        )
+        res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+        row = {"fix": "asymmetric", "alpha": alpha}
+        row = _row_from_result(row, res, mm, prefix="")
+        rows.append(row)
+        print(f"  [fix=asymmetric α={alpha}] "
+              f"Sh={row.get('full_Sharpe', float('nan')):.3f}")
+
+    return pd.DataFrame(rows)
 # ── CLI ─────────────────────────────────────────────────────────────
 def _save(df: pd.DataFrame, name: str) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -525,6 +720,9 @@ def main():
                                     "phase5-costs", "phase5-optimize",
                                     "trig-validate", "trig-ab",
                                     "v6-subfactor-test",
+                                    "v6-alpha-scan",
+                                    "v6-lookback-scan",
+                                    "v6-subA-fix",
                                     "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
@@ -540,6 +738,13 @@ def main():
     ap.add_argument("--no-cta", action="store_true", help="phase5 跳过 CTA sleeve")
     ap.add_argument("--v6-alphas", type=str, default="0.1,0.2,0.3,0.5",
                     help="V6 子因子 alpha 扫描")
+    ap.add_argument("--v6-extended-alphas", type=str,
+                    default="0.05,0.1,0.2,0.3,0.5,1.0",
+                    help="V6 扩展 alpha 扫描 (含 0.05, 1.0)")
+    ap.add_argument("--v6-lookback-factor", type=str, default="a",
+                    choices=["a", "b", "c"], help="V6 lookback 扫描的因子")
+    ap.add_argument("--v6-lookback-alpha", type=float, default=0.2,
+                    help="V6 lookback 扫描的固定 alpha")
     args = ap.parse_args()
     panel = _load_panel(args.panel)
 
@@ -628,6 +833,25 @@ def main():
             print("\n  ✅ 至少 abc 通过 Gate, 进入 Phase 6 评估")
         else:
             print("\n  ❌ 三合一 (abc) 未通过 Gate, 永久归档本路线")
+    if args.cmd in ("v6-alpha-scan", "all"):
+        alphas = tuple(float(x) for x in args.v6_extended_alphas.split(","))
+        df = run_subfactor_alpha_scan(panel, alphas=alphas)
+        _save(df, "v6_alpha_scan")
+        print("\n=== V6 alpha 扩展扫描 ===")
+        print(df.round(3).to_string(index=False))
+    if args.cmd in ("v6-lookback-scan", "all"):
+        df = run_subfactor_lookback_scan(
+            panel, factor=args.v6_lookback_factor,
+            alpha=args.v6_lookback_alpha,
+        )
+        _save(df, f"v6_lookback_{args.v6_lookback_factor}")
+        print(f"\n=== V6 lookback 扫描 (factor={args.v6_lookback_factor}) ===")
+        print(df.round(3).to_string(index=False))
+    if args.cmd in ("v6-subA-fix", "all"):
+        df = run_subfactor_subA_fix(panel)
+        _save(df, "v6_subA_fix")
+        print("\n=== V6 Sub-A 修复变体 ===")
+        print(df.round(3).to_string(index=False))
 
 
 if __name__ == "__main__":

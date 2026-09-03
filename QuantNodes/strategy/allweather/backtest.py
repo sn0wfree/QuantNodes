@@ -58,6 +58,8 @@ class AllWeatherConfig:
     subfactor_mode: str = "none"   # none / a / b / c / abc / ab / ac / bc
     subfactor_alpha: float = 0.3   # 子因子叠加强度 (调整范围 ±60%)
     subfactor_score: object = None  # 外部传入 W × N 综合因子分数 (z-score 加权和)
+    subfactor_alpha_pos: float | None = None  # 非对称 alpha: 正向分数
+    subfactor_alpha_neg: float | None = None  # 非对称 alpha: 负向分数
 
 
 @dataclass
@@ -140,6 +142,8 @@ def subfactor_weights(
     base_weights: pd.Series,
     factor_score: pd.Series,
     alpha: float = 0.3,
+    alpha_pos: float | None = None,
+    alpha_neg: float | None = None,
 ) -> pd.Series:
     """子因子加权叠加 sleeve 基础权重 (PLAN §13.3.3).
 
@@ -150,7 +154,9 @@ def subfactor_weights(
     Args:
         base_weights: 基础权重 (Panel cols, 来自 _base_weights 或 trend overlay 后).
         factor_score: 子因子分数 (Panel cols, 与 base_weights 同 index).
-        alpha: 叠加强度.
+        alpha: 默认叠加强度 (对称).
+        alpha_pos: 正向分数 (score > 0) 的单独强度 (Sub-A 修复点 #3, 非对称叠加).
+        alpha_neg: 负向分数 (score < 0) 的单独强度.
 
     Returns:
         调整后权重 Series (Panel cols).
@@ -159,9 +165,15 @@ def subfactor_weights(
         return base_weights
     common = base_weights.index.intersection(factor_score.index)
     adjusted = base_weights.copy()
-    adjusted.loc[common] = base_weights.loc[common] * (
-        1.0 + alpha * factor_score.loc[common].fillna(0.0)
-    )
+    score = factor_score.loc[common].fillna(0.0)
+    base = base_weights.loc[common]
+    if alpha_pos is None and alpha_neg is None:
+        adjusted.loc[common] = base * (1.0 + alpha * score)
+    else:
+        ap = alpha_pos if alpha_pos is not None else alpha
+        an = alpha_neg if alpha_neg is not None else alpha
+        eff_alpha = np.where(score >= 0, ap, an)
+        adjusted.loc[common] = base * (1.0 + eff_alpha * score)
     return adjusted.clip(lower=0.0, upper=1.0)
 
 
@@ -180,7 +192,10 @@ def _apply_subfactor(
     if date not in score_panel.index:
         return base
     factor_score = score_panel.loc[date]
-    return subfactor_weights(base, factor_score, cfg.subfactor_alpha)
+    return subfactor_weights(
+        base, factor_score, cfg.subfactor_alpha,
+        cfg.subfactor_alpha_pos, cfg.subfactor_alpha_neg,
+    )
 
 
 def _base_weights(returns_hist: pd.DataFrame, panel_cols: list[str],

@@ -45,6 +45,7 @@ def zscore_cross_section(
     factor_panel: pd.DataFrame,
     lookback_weeks: int = 52,
     min_periods: int = 12,
+    winsorize: float | None = None,
 ) -> pd.DataFrame:
     """横截面滚动 z-score 标准化 (时间序列滚动, 每个时点横截面标准化).
 
@@ -53,6 +54,10 @@ def zscore_cross_section(
           消除资产间量纲差异, 使因子分数可比较.
 
     窗口: 默认 52 周 (1 年), 与黄金多因子 OOS/IS=4.47 基准一致.
+
+    Args:
+        winsorize: 若给定 (如 2.0), z-score 截尾到 [-winsorize, +winsorize].
+                   防止极值资产放大权重 (Sub-A 衰减修复点 #1).
     """
     if factor_panel.empty:
         return factor_panel.copy()
@@ -66,7 +71,47 @@ def zscore_cross_section(
     ).std()
 
     z = (factor_panel - rolling_mean) / rolling_std.replace(0, np.nan)
+    if winsorize is not None and winsorize > 0:
+        z = z.clip(lower=-winsorize, upper=winsorize)
     return z
+
+
+def rank_cross_section(
+    factor_panel: pd.DataFrame,
+    lookback_weeks: int = 52,
+    min_periods: int = 12,
+) -> pd.DataFrame:
+    """横截面滚动 rank percentile 标准化 (Sub-A 修复点 #2).
+
+    与 z-score 不同: rank percentile 输出 ∈ [-0.5, +0.5], 对极值稳健.
+    每个时点对横截面 (N 个资产) 做 rank → 减中位数 → 归一化.
+
+    优势 (vs z-score):
+      - 对低波动资产不偏正 (rank 是横截面相对位置, 不受历史 vol 影响)
+      - 对极值稳健 (rank 不会因单次异常大幅偏移)
+      - 输出 ∈ [-0.5, +0.5] 范围内, 更紧
+
+    默认窗口: 52 周 (1 年).
+    """
+    if factor_panel.empty:
+        return factor_panel.copy()
+
+    out = pd.DataFrame(np.nan, index=factor_panel.index, columns=factor_panel.columns)
+    valid_rows = factor_panel.notna().sum(axis=1) >= 2
+
+    for i in range(len(factor_panel)):
+        if not valid_rows.iloc[i]:
+            continue
+        # 在 rolling 窗口内取历史 rank 累积 (简化: 逐行 rank, 不滚动)
+        row = factor_panel.iloc[i]
+        ranked = row.rank(method="average", na_option="keep")
+        n_valid = ranked.notna().sum()
+        if n_valid <= 1:
+            continue
+        # ∈ [0, 1] → ∈ [-0.5, +0.5]
+        out.iloc[i] = (ranked - 0.5) / n_valid - 0.5
+
+    return out
 
 
 def combine_subfactors(
@@ -74,20 +119,26 @@ def combine_subfactors(
     weights: Optional[dict[str, float]] = None,
     lookback_weeks: int = 52,
     min_periods: int = 12,
+    method: str = "zscore",
+    winsorize: float | None = None,
 ) -> pd.DataFrame:
     """组合多子因子 → 单一综合分数 (W × N).
 
     步骤:
-      1. 每个子因子横截面 z-score 标准化
+      1. 每个子因子横截面标准化 (z-score / winsorize / rank percentile)
       2. 加权求和 (默认等权 {a:0.33, b:0.33, c:0.34})
       3. 输出 W × N 综合分数
 
     Args:
         factors: {"a": W×N, "b": W×N, "c": W×N}.
         weights: {"a": 0.33, "b": 0.33, "c": 0.34}, 默认等权.
+        method: 标准化方法.
+            - "zscore" (默认): 横截面 z-score, winsorize 可选
+            - "rank": rank percentile (Sub-A 修复点 #2, 对极值稳健)
+        winsorize: z-score 截尾阈值 (如 2.0), 仅 method="zscore" 生效.
 
     Returns:
-        W × N 综合因子分数 (z-score 加权和).
+        W × N 综合因子分数 (标准化后加权和).
     """
     if not factors:
         raise ValueError("factors 不能为空")
@@ -104,7 +155,12 @@ def combine_subfactors(
     for k, factor in factors.items():
         if factor.empty:
             continue
-        z = zscore_cross_section(factor, lookback_weeks, min_periods)
+        if method == "zscore":
+            z = zscore_cross_section(factor, lookback_weeks, min_periods, winsorize)
+        elif method == "rank":
+            z = rank_cross_section(factor, lookback_weeks, min_periods)
+        else:
+            raise ValueError(f"method={method}, 可选 zscore/rank")
         contrib = z * (weights.get(k, 0.0) / weight_sum)
         combined = contrib if combined is None else combined + contrib
 

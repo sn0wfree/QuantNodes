@@ -5,6 +5,7 @@ import pandas as pd
 
 from QuantNodes.strategy.allweather.subfactors_weekly import (
     combine_subfactors,
+    rank_cross_section,
     resample_weekly,
     zscore_cross_section,
 )
@@ -58,3 +59,35 @@ class TestCombineSubfactors:
         weekly = {k: resample_weekly(v, agg="mean") for k, v in daily.items()}
         out = combine_subfactors(weekly, weights={"a": 0.33, "b": 0.33, "c": 0.34})
         assert out.shape == weekly["a"].shape
+
+    def test_method_rank(self):
+        """method='rank' 输出 shape 对齐, 值域 [-0.5, +0.5]."""
+        daily_idx = pd.bdate_range("2020-01-01", periods=400)
+        rng = np.random.default_rng(3)
+        daily = {
+            "a": pd.DataFrame(rng.uniform(-1, 1, size=(400, 5)), index=daily_idx),
+            "b": pd.DataFrame(rng.uniform(-1, 1, size=(400, 5)), index=daily_idx),
+        }
+        weekly = {k: resample_weekly(v, agg="mean") for k, v in daily.items()}
+        out = combine_subfactors(weekly, method="rank")
+        assert out.shape == weekly["a"].shape
+        assert out.max().max() <= 0.5
+        assert out.min().min() >= -0.5
+
+    def test_method_winsorize(self):
+        """winsorize=2.0 时 z-score 被 clip 到 [-2, +2]."""
+        factor = _daily_factor(t=400, n=10, seed=4)
+        weekly = resample_weekly(factor, agg="mean")
+        z = zscore_cross_section(weekly, lookback_weeks=52, winsorize=2.0)
+        assert z.max().max() <= 2.0
+        assert z.min().min() >= -2.0
+
+
+class TestRankCrossSection:
+    def test_rank_output_range(self):
+        """rank_cross_section 输出 ∈ [-0.5, +0.5]."""
+        factor = _daily_factor(t=400, n=10, seed=5)
+        weekly = resample_weekly(factor, agg="mean")
+        r = rank_cross_section(weekly, lookback_weeks=52)
+        assert r.max().max() <= 0.5
+        assert r.min().min() >= -0.5

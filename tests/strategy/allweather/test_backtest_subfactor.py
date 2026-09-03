@@ -56,6 +56,17 @@ class TestSubfactorWeights:
         out = subfactor_weights(base, score, alpha=0.0)
         assert (out == base).all()
 
+    def test_asymmetric_alpha(self):
+        """alpha_pos/alpha_neg 非对称叠加."""
+        base = pd.Series({"a": 0.5, "b": 0.5})
+        score = pd.Series({"a": 2.0, "b": -2.0})
+        out = subfactor_weights(base, score, alpha=0.3,
+                                alpha_pos=0.1, alpha_neg=0.5)
+        # a 正向 → 0.5*(1+0.1*2)=0.6
+        # b 负向 → 0.5*(1+0.5*(-2))=0.5*(1-1)=0.0 (clip)
+        assert abs(out["a"] - 0.6) < 1e-9
+        assert abs(out["b"]) < 1e-9
+
 
 class TestApplySubfactor:
     def test_none_mode_returns_base(self):
