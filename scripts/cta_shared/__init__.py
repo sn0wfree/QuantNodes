@@ -29,10 +29,19 @@ from .factor_research import (
     vol_target_backtest,
     yearly_returns,
 )
+from .portfolio_tools import (
+    adaptive_factor,
+    adaptive_factors,
+    dynamic_leverage,
+    levered_portfolio,
+    yearly_diff,
+)
 
 __all__ = [
     "rolling_zscore", "compute_ic", "quintile_spread",
     "is_oos_direction_consistency", "vol_target_backtest",
     "period_stats", "yearly_returns", "load_cost_bps",
     "summarize_factor_test", "DEFAULT_IS_END", "REPORT_DIR",
+    "adaptive_factor", "adaptive_factors", "dynamic_leverage",
+    "levered_portfolio", "yearly_diff",
 ]
