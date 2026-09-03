@@ -133,10 +133,13 @@ def run_maincta(products: list[str], exec_mode: str) -> pd.Series:
     if exec_mode == "open":
         cfg_kw["execution_price_type"] = "open"
 
-    # 按品种校准成本
+    # 按品种校准成本 (cost_model.json: {product: {commission_bps, slippage_bps}})
     try:
         cost_table = json.loads((REPORT_DIR / "cost_model.json").read_text())
-        cfg_kw["commission_rate"] = {k: float(v) for k, v in cost_table.items()}
+        cfg_kw["commission_rate"] = {p: v["commission_bps"] / 10000
+                                       for p, v in cost_table.items()}
+        cfg_kw["slippage_bps"] = {p: v["slippage_bps"]
+                                     for p, v in cost_table.items()}
     except Exception:
         cfg_kw["commission_rate"] = 0.0001
 

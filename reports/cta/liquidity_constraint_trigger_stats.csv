@@ -1,0 +1,2 @@
+product,exec_mode,n_trigger_days,max_excess_lots,median_adv_lots,mult
+TS,close,21,0.11135,15099.3,10000.0
