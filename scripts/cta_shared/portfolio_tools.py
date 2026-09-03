@@ -59,6 +59,41 @@ def adaptive_factor(
     return factor.fillna(1.0)
 
 
+def multi_window_factor(
+    ret: pd.Series,
+    windows: tuple[int, ...] = (20, 40, 60),
+    cut: float = 0.5,
+    method: str = "multiply",
+    ann: int = 252,
+) -> pd.Series:
+    """多窗口独立评估 + 合成的渐进降权因子.
+
+    每个窗口独立判定逆境 (rolling Sharpe<expanding med×0.5 & <0), 触发则×cut.
+    合成方式:
+      - multiply: f = Π f_w (各窗口因子相乘; 1票触发→cut, 2票→cut², …)
+      - mean:     f = (Σ f_w) / n (各窗口因子均值; 1票→(1+(n-1)*1)/n 渐进)
+
+    Args:
+        ret: 子策略日收益
+        windows: 多时间尺度窗口 (默认(20,40,60))
+        cut: 单窗口触发后的因子值 (默认0.5)
+        method: 'multiply' 或 'mean'
+        ann: 年化因子
+
+    Returns:
+        权重因子序列 (与ret同index)
+    """
+    factors = [adaptive_factor(ret, w, cut=cut, ann=ann) for w in windows]
+    if method == "multiply":
+        out = factors[0].copy()
+        for f in factors[1:]:
+            out = out * f
+        return out
+    if method == "mean":
+        return sum(factors) / len(factors)
+    raise ValueError(f"method 必须是 'multiply' 或 'mean', 得到: {method}")
+
+
 def adaptive_factors(
     rets: pd.DataFrame,
     skip_cols: tuple = (DEFAULT_MAIN_COL,),
@@ -71,6 +106,24 @@ def adaptive_factors(
             out[col] = pd.Series(1.0, index=rets.index)
         else:
             out[col] = adaptive_factor(rets[col], **kwargs)
+    return pd.DataFrame(out)
+
+
+def multi_window_factors(
+    rets: pd.DataFrame,
+    skip_cols: tuple = (DEFAULT_MAIN_COL,),
+    windows: tuple[int, ...] = (20, 40, 60),
+    cut: float = 0.5,
+    method: str = "multiply",
+) -> pd.DataFrame:
+    """面板版多窗口渐进降权."""
+    out = {}
+    for col in rets.columns:
+        if col in skip_cols:
+            out[col] = pd.Series(1.0, index=rets.index)
+        else:
+            out[col] = multi_window_factor(rets[col], windows=windows,
+                                            cut=cut, method=method)
     return pd.DataFrame(out)
 
 
@@ -143,3 +196,41 @@ def yearly_diff(combo_a: pd.Series, combo_b: pd.Series) -> pd.DataFrame:
 
     yr_a, yr_b = _yr(combo_a), _yr(combo_b)
     return pd.DataFrame({"A": yr_a, "B": yr_b, "diff": yr_a - yr_b})
+
+
+# ── 换手成本 ────────────────────────────────────────────────────────────────
+
+def turnover_cost(
+    wf_panel: pd.DataFrame,
+    cost_bps: float | pd.Series = 5.0,
+    w_main: float | None = None,
+    lev_series: pd.Series | None = None,
+    main_col: str = DEFAULT_MAIN_COL,
+) -> pd.Series:
+    """组合层换手成本 (日序列).
+
+    包括两部分:
+      1. 子策略权重切换: |Δ(w_i × f_i)| × cost_bps_i / 1e4
+      2. 动态杠杆调整: |Δlev| × w_main × cost_main / 1e4 (若提供lev_series)
+
+    子策略NAV构建已含其内部交易成本, 此处仅扣组合层调制带来的额外仓位调整.
+
+    Args:
+        wf_panel: 权重×因子面板 (各列为 w_i × f_i, 应满足 Σ≈1.0)
+        cost_bps: 单边成本率 (bps), 标量或按列的Series
+        w_main: 主策略资金权重 (提供lev_series时必填)
+        lev_series: 动态杠杆序列 (若None则不扣杠杆调整成本)
+        main_col: 主策略列名
+
+    Returns:
+        日成本序列 (正值, 从组合收益中扣除)
+    """
+    if isinstance(cost_bps, pd.Series):
+        cbps = cost_bps.reindex(wf_panel.columns).fillna(5.0)
+    else:
+        cbps = pd.Series(cost_bps, index=wf_panel.columns)
+    cost = (wf_panel.diff().abs() * cbps / 1e4).sum(axis=1)
+    if lev_series is not None and w_main is not None:
+        lev_cost = w_main * lev_series.diff().abs() * float(cbps.get(main_col, 5.0)) / 1e4
+        cost = cost.fillna(0) + lev_cost.fillna(0)
+    return cost.fillna(0)

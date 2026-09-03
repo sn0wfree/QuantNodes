@@ -34,6 +34,9 @@ from .portfolio_tools import (
     adaptive_factors,
     dynamic_leverage,
     levered_portfolio,
+    multi_window_factor,
+    multi_window_factors,
+    turnover_cost,
     yearly_diff,
 )
 
@@ -42,6 +45,7 @@ __all__ = [
     "is_oos_direction_consistency", "vol_target_backtest",
     "period_stats", "yearly_returns", "load_cost_bps",
     "summarize_factor_test", "DEFAULT_IS_END", "REPORT_DIR",
-    "adaptive_factor", "adaptive_factors", "dynamic_leverage",
-    "levered_portfolio", "yearly_diff",
+    "adaptive_factor", "adaptive_factors", "multi_window_factor",
+    "multi_window_factors", "dynamic_leverage", "levered_portfolio",
+    "turnover_cost", "yearly_diff",
 ]
