@@ -95,6 +95,7 @@
 ### 6.1 交付物
 
 - `QuantNodes/strategy/cta/strategies/factor_modules.py`: 执行层基类 `_ModuleStrategy` + 3 模块子策略 + `FactorModuleComboStrategy`
+  > 2026-09-03 拆分: 该文件已拆为 `base.py`(基类+配置) / `filters.py`(过滤层) / `modules/`(一文件一模块+BUILTIN_MODULES注册表) / `combo.py`(组合策略+module_classes注入), `factor_modules.py` 保留为兼容层(re-export), 41个引用方零改动, NAV 逐位对账一致 (详见 `cta_tuning_log.md` §16)
 - 11 因子新增 `raw_value()` 连续化 (事件型 Chandelier/Squeeze 保持 0/±1)
 - `scripts/verify_round8_factors.py`: 真实数据因子验证脚本
 - `tests/strategy/cta/test_strategies_factor_modules.py`: 28 测试

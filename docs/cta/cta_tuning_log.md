@@ -889,3 +889,69 @@ from cta_shared.factor_research import (
 
 - **绝对盈亏法重算NAV** vs baseline nav 误差 ~10%（手×价×乘数 = 5.32M vs 真实 6.13M, 差14%）—— 主CTA复利/动态杠杆/借款利息等因素未完全建模。如需更高精度, 应在factor_modules.py层面加max_volume_participation参数（用户当前约束不允许）
 - **A重算NAV的"基础"场景** Sharpe=2.50 vs baseline 2.41（+0.09）—— 重算没考虑复利和动态杠杆, 单调累加存在轻微高估。这是已知偏差, 不影响相对比较
+
+## 16. factor_modules.py 插件式架构拆分（2026-09-03，用户授权后执行）
+
+### 16.1 背景与授权
+
+此前 §15.1 记录"不动 factor_modules.py"约束针对的是流动性测试场景。本次用户明确提出
+"优化代码结构，方便后续研发以及添加更多子策略"，**授权重构**该文件。原则：
+纯结构搬移（pure move）、行为逐位对账、41 个引用方零改动。
+
+### 16.2 拆分结果（1503 行 → 5 个组件，最大文件 534 行）
+
+```
+strategies/
+├── factor_modules.py   ~85行  纯兼容层: re-export 18名 + PEP 562 __getattr__兜底 (永久保留)
+├── base.py            ~625行  ModuleConfig + DEFAULT_PRODUCTS + _ModuleStrategy
+│                              (信号管线/_agg_tvpr/_run_with_lots整体保留 → fut_v1_purge_test
+│                               的 _ModuleStrategy._agg_tvpr monkeypatch 语义不变)
+├── filters.py          ~95行  VolRiskFilter + MarketRegimeFilter
+├── combo.py           ~534行  ComboConfig + FactorModuleComboStrategy + CLUSTERS
+│                              + DEFAULT_COMBO_MODULES + module_classes 注入
+└── modules/            7文件  一文件一模块 (仅FACTORS数据声明), __init__.py::BUILTIN_MODULES 注册表
+    trend_momentum.py / oscillator_alpha.py / volume_flow.py / event_calendar.py
+    term_basis.py / macro.py / industrial_chain.py
+```
+
+**新功能 — module_classes 注入**（本次唯一的行为面新增，默认 None=历史5模块组合）:
+```python
+FactorModuleComboStrategy(config=ComboConfig(
+    module_classes=(TrendMomentumModuleStrategy, MyNewModuleStrategy)))
+```
+
+### 16.3 加新子策略的成本对比
+
+| | 拆分前 | 拆分后 |
+|---|---|---|
+| 步骤 | 改1503行文件加类+顶部import+改combo硬编码 | 新建 modules/<name>.py + BUILTIN_MODULES加一行 |
+| 碰撞风险 | 与其他会话改同一热点文件 | 零（新文件） |
+
+### 16.4 验证协议与结果
+
+- **pytest 基线对照**: 每阶段跑 test_strategies_factor_modules.py，均为 62 passed / 8 failed
+  ——8 个失败（66<70品种数断言、combo相关5个、execution_lag 1个）在 HEAD 上完全一致，全部预存
+- **身份审计**: 17+9 项 `fm.X is 源模块.X` 断言通过（无类身份分裂）
+- **导入冒烟**: scripts.common / tvpr_combo / options.vrp_router / options_boosted_fut_v1 /
+  allweather依赖路径全通过
+- **golden NAV 对账**（重构前后各跑一次 cta_final_baseline，66品种2018-2025）:
+  - max|Δnav| = 4.4e-15，最大相对差 1.1e-15（机器精度噪声底）
+  - Sharpe 2.309750 / AnnRet 19.1794% / MaxDD -6.1412% / Calmar 3.123093 **6位小数完全一致**
+
+### 16.5 过程中发现并绕开的坑
+
+1. **set 迭代顺序的非确定性（预存）**: `_run_with_lots` 中 `set(targets) | set(self._last)`
+   顺序受 PYTHONHASHSEED 影响 → 跨进程 NAV 存在 ulp 级抖动，逐位==0 不可达；
+   正确标准是相对差 < 1e-12。未修（Surgical Changes），如需严格可复现可改有序遍历
+2. **陈旧报告陷阱**: `final_nav_lump.csv` 落后 HEAD 3 个 commit（golden 与它差 ~11%），
+   重构验证必须以"重构前当次运行"为 golden，而非 tracked CSV；跑完立即 `git checkout` 还原
+3. **意外依赖**: `test_combined_regime_factors.py` 从 factor_modules 导入
+   TurnPointBreakoutFactor 等3个因子类（借用旧顶部import命名空间）→ 兼容层显式 re-export；
+   factors 包 `__init__` 未导出 BasisConvergenceFactor → __getattr__ 兜底链补 term_basis 路径
+4. **历史文档不篡改**: docs/94 §6.1 的交付记录保留原文，追加日期注记
+
+### 16.6 后续建议（未做，待授权）
+
+- 41 个引用方可渐进迁移到新路径（base/combo/modules），但兼容层可永久保留，无迁移压力
+- `_ModuleStrategy` 与 combo 的继承关系可进一步改为组合（LSP 更干净），涉及行为面，需单独评估
+- gamma_scalper.py 存在 3 个预存 F401（非本次范围）
