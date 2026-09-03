@@ -291,13 +291,15 @@ def main():
     ap = argparse.ArgumentParser(description="AllWeather 实验脚本集")
     ap.add_argument("cmd", choices=["lever-sweep", "cap-sweep", "trend-matrix",
                                     "unlevered", "segments", "diag-d1",
-                                    "diag-d2", "diag-d3", "diag-d4", "all"])
+                                    "diag-d2", "diag-d3", "diag-d4", "phase5",
+                                    "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
     ap.add_argument("--n", type=int, default=10, help="diag-d2 重复次数")
     ap.add_argument("--k", type=int, default=5, help="diag-d2 每次剔除资产数")
     ap.add_argument("--max-weight", type=float, default=0.40)
     ap.add_argument("--max-leverage", type=int, default=3)
+    ap.add_argument("--no-cta", action="store_true", help="phase5 跳过 CTA sleeve")
     args = ap.parse_args()
     panel = _load_panel(args.panel)
 
@@ -330,6 +332,11 @@ def main():
         _save(diag_d3(panel), "diag_d3")
     if args.cmd in ("diag-d4", "all"):
         _save(diag_d4(), "diag_d4")
+    if args.cmd in ("phase5", "all"):
+        from .ensemble import run_phase5
+        df, _ = run_phase5(panel, include_cta=not args.no_cta)
+        _save(df.reset_index(), "phase5_ensemble")
+        print(df.round(4).to_string())
 
 
 if __name__ == "__main__":

@@ -171,12 +171,47 @@ X2 (cap0.40 HRP+RMT) 基础 vol 仅 4.4%, 杠杆 cap 3 未用满 → 扫描 3-8x
 
 对照文章 (20.35%/6.87%/-5.91%/2.67): X2-L5 的 vol/MaxDD 已在同一量级, 收益约为文章一半 (样本段 2018 vs 2015 + 池差异), Sharpe 56%。剩余差距留给 Phase 5 Sleeve B (CTA 信号 alpha)。
 
-## 六、主线定版 (2026-09-02)
+## 六、主线定版 (2026-09-02, Phase 5 更新)
 
-**双主线保留** (用户 2026-09-02 指令):
-- **X2-L4 = cap0.40 HRP+RMT + 杠杆≤4**: Sharpe 1.560 / 9.03% / -5.51% — 稳健型, Sharpe/Calmar 最优
-- **X2-L5 = cap0.40 HRP+RMT + 杠杆≤5**: 1.495 / 10.42% / 6.97% vol / -7.26% — 目标达成型 (10%+, vol 对齐文章)
-- X5 (cap0.25+RAtilt+杠杆3): 1.048 / 9.78% / -13.8% — 收益型备选
+### 6.1 Phase 5 双/三 sleeve 集成结果 (2026-09-02)
+
+三 sleeve 全部固定参数无调优, 等权/inv-vol 集成 (`ensemble.py`):
+
+| 组合 | Sharpe | AnnRet | Vol | MaxDD | Calmar | 压力段Sharpe |
+|------|--------|--------|-----|-------|--------|--------------|
+| A_X2L4 (HRP sleeve 单独) | 1.560 | 9.03% | 5.79% | -5.51% | 1.64 | 0.42 |
+| B_EWvt (等权sleeve) | 0.758 | 6.76% | 8.92% | -13.88% | 0.49 | 1.03 |
+| C_CTA (CTA v7 信号 sleeve) | 1.092 | 13.41% | 12.29% | -16.11% | 0.83 | 0.85 |
+| AB_invvol | 1.509 | 8.38% | 5.56% | -7.14% | 1.17 | 0.77 |
+| AC_invvol | 1.723 | 11.03% | 6.40% | -10.07% | 1.10 | 1.18 |
+| ABC_invvol | 1.660 | 9.82% | 5.92% | -10.07% | 0.98 | 1.50 |
+| **ABC_ew (三sleeve等权) ★** | **1.783** | **10.00%** | **5.61%** | **-4.92%** | **2.03** | **1.46** |
+
+**ABC_ew 分段** (对照 A sleeve 单独):
+
+| 段 | ABC_ew Sharpe | A 单独 |
+|----|---------------|--------|
+| full | 1.783 | 1.560 |
+| 18-20 | 2.534 | 2.019 |
+| 21-23 | 1.307 | 1.330 |
+| 24-26 | 1.754 | 1.316 |
+| **stress 25+** | **1.461 (年化 6.52%, MaxDD -2.01%)** | 0.424 |
+
+**关键发现**:
+1. **CTA sleeve 是压力段解药**: 其 long-short α 在 2025+ 为正 (0.85), 正好补 HRP 的债券坑 → 三 sleeve 等权压力段 0.42→1.46, MaxDD 仅 -2.01%
+2. **等权集成 > inv-vol 集成** (1.78 vs 1.66): CTA sleeve 波动 (12.3%) 与其他差异大, inv-vol 会在压力段把权重摆向低波的 A sleeve (恰是坑); 等权保持三个独立 α 源均衡 — 与 Phase 18 "inv-vol 更优"相反, 因为此处三 sleeve 波动结构异质
+3. 全程无调优: sleeve 参数全部沿用既定主线, 集成方式等权
+
+### 6.2 主线定版
+
+| 主线 | Sharpe | AnnRet | Vol | MaxDD | 压力段 | 定位 |
+|------|--------|--------|-----|-------|--------|------|
+| **ABC_ew 三sleeve等权 ★★** | **1.783** | **10.00%** | 5.61% | **-4.92%** | +1.46 | **新主线, 无杠杆成分可查** |
+| X2-L4 (HRP sleeve 单独) | 1.560 | 9.03% | 5.79% | -5.51% | +0.42 | 原 A sleeve 保留 |
+| X2-L5 (杠杆5) | 1.495 | 10.42% | 6.97% | -7.26% | +0.42 | 目标达成型 (外加杠杆) |
+| X5 (cap0.25+RAtilt) | 1.048 | 9.78% | 9.33% | -13.80% | +10.6% | 收益型备选 |
+
+对照文章 (2.67 / 20.35% / -5.91% / 76.4%): ABC_ew Sharpe 达 67%, MaxDD 更浅 (-4.92% < -5.91%), 年化一半。CTA sleeve 的 gross≤1 (sign×1/N) — **10% 年化在近似无杠杆下达成** (CTA sleeve 无杠杆, A sleeve 杠杆≤4)。
 
 ## 七、可复现执行手册 (脚本固化, 2026-09-02)
 
@@ -199,7 +234,11 @@ python -m QuantNodes.strategy.allweather.experiments diag-d1   # 权重稳定性
 python -m QuantNodes.strategy.allweather.experiments diag-d2 --n 10 --k 5          # 池敏感性
 python -m QuantNodes.strategy.allweather.experiments diag-d3   # 类别归因
 python -m QuantNodes.strategy.allweather.experiments diag-d4   # roll 对照
+python -m QuantNodes.strategy.allweather.experiments phase5    # Phase5 三sleeve集成
 python -m QuantNodes.strategy.allweather.experiments all       # 全部依次执行
+
+# CTA 信号面板重提取 (慢, ~3min, 有缓存 parquet 跳过)
+# data/allweather/cta_signals_v1.parquet
 ```
 
 单测: `python -m pytest tests/strategy/allweather/ -v` (61 项)。
