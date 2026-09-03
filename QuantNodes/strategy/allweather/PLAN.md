@@ -944,3 +944,84 @@ def to_soft_signal(oof_preds, target_type):
 2. 回测部分归档
 3. V6.5 Sub-BC rank α=0.2 仍为推荐配置
 4. ML 工作作为 "未来 ML 方向" 的探索记录
+
+
+## 十六、V7 类别级风险预算重构 (2026-09-05, A sleeve 债券集中诊断驱动)
+
+### 16.1 背景与诊断 (见报告 §5.17)
+
+前置诊断发现 A sleeve (HRP+MP+cap0.40+lev4) 实为 **3.5x 杠杆国债组合**:
+- fut_ts +158.8% / fut_tf +138.5% / fut_t +55.0%, 三债券合计 352% gross
+- 有效资产数仅 3.3; Sharpe 1.56 来源 = 2018-2026 国债牛市 carry, 非 HRP 分散
+
+因果链: MP 过度去噪 (0信号特征值) → 伪对角协方差 → HRP 退化为 inv-vol 极限
+→ 3 个同利率因子资产权重膨胀 → cap 0.40 只封单资产不封类 → 4x 杠杆放大。
+
+风险平价债券倾斜为文献确认的结构性问题 (报告 §5.18 调研):
+权重空间集中 / 杠杆放大 / Sharpe 押注 / 相关性 regime 翻转四缺陷;
+2022 美国 RP 全线 -10%~-28%; 我们 2025-2026 债市调整期 HRP 系全负 (报告 §4.3 判读4)。
+
+### 16.2 方案: 类别级 ERC + 债券风险预算封顶 (L3, 行业共识层级)
+
+- 债券保留 (stress 段 flight-to-quality alpha 是真价值) 但风险贡献封顶
+- regime 感知 cap (滚动股债相关 >0 收紧) 归档 V7.1, V7.0 只做静态 cap
+- 杠杆上限保持 max_leverage 可配置 (后续单独讨论, 扫描附 2.3x 参考行)
+
+### 16.3 类别定义 (10 细类, 用户确认)
+
+```python
+ASSET_CLASSES = {
+    "bond_rate":      ["fut_t", "fut_tf", "fut_ts"],
+    "equity_fut":     ["fut_if", "fut_ic", "fut_ih"],
+    "equity_etf_dom": ["etf_512890", "etf_512010", "etf_515030", "etf_512690",
+                       "etf_512800", "etf_515050", "etf_512200"],
+    "equity_etf_off": ["etf_513100", "etf_159740"],   # 纳指/恒科, 海外/离岸
+    "precious":       ["fut_au", "fut_ag"],
+    "nonferrous":     ["fut_cu", "fut_al", "fut_zn", "fut_ni"],
+    "ferrous":        ["fut_rb", "fut_hc", "fut_i", "fut_j", "fut_jm"],
+    "energy_chem":    ["fut_ta", "fut_ma", "fut_pp", "fut_l", "fut_bu", "fut_sc"],
+    "agri_oilseed":   ["fut_m", "fut_y", "fut_p"],
+    "agri_soft":      ["fut_cf", "fut_sr", "fut_c"],
+}
+```
+(ETF 身份以 data_loader 实际标注核对为准, Phase 0.0)
+
+### 16.4 算法 (新模块 class_erc.py)
+
+1. 类内: inverse-vol 加权合成类收益序列 → 类级协方差 (window 与 cfg.window 同源)
+2. 类间: ERC 等风险贡献 (迭代法) → 10 类风险预算
+3. 债券封顶: 若 bond 类 RC > bond_risk_cap → bond 预算固定为 cap,
+   剩余 (1-cap) 在其余 9 类间重新 ERC (cap 是约束而非定额, 未触发时全 ERC)
+4. 类内分配: 类权重按成员 inverse-vol 摊到资产
+5. 晚上市/观测不足资产: 复用 min_obs_per_asset 渐入池模式
+
+### 16.5 配置与接入
+
+- AllWeatherConfig 新增: weight_scheme="class_erc", bond_risk_cap: float = 1.0,
+  asset_classes: dict | None = None (外部可覆盖)
+- backtest.py `_base_weights`: class_erc 分支先于 use_hrp 判断
+- experiments.py: CLI `v7-class-erc` + `--v7-caps 0.25,0.33,0.5,1.0`
+
+### 16.6 执行路线 (粒度到验证)
+
+```
+Phase 0 — 归因确认 (只读诊断)
+  [0.0] 核对 9 只 ETF 身份 → verify: data_loader 标注与类别映射一致
+  [0.1] A sleeve P&L 分解: 债券类日贡献占比轨迹 + vs 债券合成滚动相关
+  [0.2] 利率熊市窗口回撤: 2020-04~07, 2022-11~2023-01 + DV01 解析估算
+Phase 1 — class_erc.py + 单测 (~8个)
+  verify: python -m pytest tests/strategy/allweather/test_class_erc.py -q
+          python -m pytest tests/strategy/allweather/ -q (122 旧测全过)
+          ruff check
+Phase 2 — 扫描与诚实重测
+  [2.1] bond_risk_cap × {25%,33%,50%,1.0} × lev {4x, 2.3x参考}
+  [2.2] verify: bond RC 轨迹 ≤ cap; 与 fut_t 相关性显著下降
+  [2.3] A_v7 替入 ABC, 重扫 A/B/C 权重 (不沿用 0.60/0.20/0.20)
+Phase 3 — 利率+100bp 压力测试 + 报告 §5.19 + commit
+```
+
+### 16.7 预期管理
+
+诚实代价: 主线 Sharpe 大概率从 1.995 回落 (去掉 Sharpe-bet, ABG 2012 教训);
+前瞻回报预期以修复后数字为准。修复成功标准: 债券 RC ≤ cap + 与 fut_t 相关性
+显著下降 + 全样本 Sharpe 回落幅度可解释 (carrying alpha 去除量级)。
