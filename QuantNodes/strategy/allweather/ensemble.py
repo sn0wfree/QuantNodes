@@ -37,24 +37,32 @@ def sleeve_a(panel: pd.DataFrame, max_leverage: int = 4):
     return run_backtest(panel, cfg, compute_metrics_fn=_noop)
 
 
-def sleeve_b(panel: pd.DataFrame):
+def sleeve_b(panel: pd.DataFrame, max_leverage: int = 1):
     """EW-vt: 等权 + vol target cap1 (风险资产参与 sleeve)."""
     cfg = AllWeatherConfig(use_hrp=False, trend_mode="none",
-                           use_vol_target=True, max_leverage=1.0)
+                           use_vol_target=True, max_leverage=max_leverage)
     return run_backtest(panel, cfg, compute_metrics_fn=_noop)
 
 
 # ── Sleeve C: CTA 信号 sleeve ───────────────────────────────────────
 def cta_sleeve_returns(panel: pd.DataFrame,
                        signals_path: Path = CTA_SIGNALS_PATH,
-                       momentum_filter_window: int = 60
-                       ) -> tuple[pd.Series, pd.Series]:
+                       momentum_filter_window: int = 60,
+                       position_ema_alpha: float = 0.0,
+                       min_hold_days: int = 1) -> tuple[pd.Series, pd.Series]:
     """CTA v7 信号 → (日净收益, 每日换手).
 
     信号 (T×N, -1/0/+1) 于 t 收盘生成, 赚 t→t+1 收益:
         w_i(t) = sign_i(t) / N_active(t)
         contrib(t+1) = Σ w_i(t) · r_i(t+1)
         cost(t+1) = Σ |Δw_i| · rate
+
+    position_ema_alpha: 0=原状 (sign→权重的瞬时切换, 高换手);
+        α>0 时, 权重在日间 EMA 平滑 → w_ema(t) = α·w_raw(t) + (1-α)·w_ema(t-1),
+        减少 signal 反转触发的 turnover (CTA 模块 _positions() 内部亦用此机制).
+
+    min_hold_days: 1=每日调仓; >1 时仅在每 N 天的调仓日重置权重 (其余日期
+        持仓不变), 大幅降低换手. 经验上 5 ≈ 周频, 兼具信号敏感度.
     """
     if Path(signals_path).exists():
         sig = pd.read_parquet(signals_path)
@@ -69,8 +77,21 @@ def cta_sleeve_returns(panel: pd.DataFrame,
     sig = sig[[c for c in sig.columns if c in fut_cols]]
 
     n_active = (sig != 0).sum(axis=1).clip(lower=1)
-    w = sig.div(n_active, axis=0)          # gross = Σ|sign|/N ≤ 1
-    w = w.fillna(0.0)
+    w_raw = sig.div(n_active, axis=0).fillna(0.0)
+
+    # 应用调仓频率 (min_hold_days)
+    if min_hold_days > 1:
+        # 仅在调仓日 (每 N 天) 重置为目标权重, 中间持仓不变
+        rb_mask = pd.Series(0, index=w_raw.index)
+        rb_mask.iloc[::min_hold_days] = 1  # 第 0, N, 2N... 天调仓
+        rb_mask = rb_mask.astype(bool)
+        w_raw = w_raw.where(rb_mask.reindex(w_raw.index, fill_value=False)).ffill().fillna(0.0)
+
+    if position_ema_alpha > 0:
+        a = position_ema_alpha
+        w = w_raw.ewm(alpha=a, adjust=False).mean()
+    else:
+        w = w_raw
 
     contrib = (w.shift(1) * ret[fut_cols].fillna(0.0)).sum(axis=1)
     dw = w.diff().abs().sum(axis=1).fillna(0.0)
@@ -138,17 +159,22 @@ def _metrics_fn():
 
 # ── Phase 5 编排 ────────────────────────────────────────────────────
 def run_phase5(panel: pd.DataFrame, include_cta: bool = True,
-               lookback: int = 60) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """构建各 sleeve + 集成组合, 返回 (指标长表, 各 nav 的 DataFrame)."""
+               lookback: int = 60, cta_alpha: float = 0.0,
+               a_cap: int = 4, b_cap: int = 1) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """构建各 sleeve + 集成组合, 返回 (指标长表, 各 nav 的 DataFrame).
+
+    a_cap / b_cap: A/B sleeve 的 max_leverage (T2 — 调控到文章 avg 2.3x).
+    cta_alpha: position_ema_alpha (T1 — 降 CTA sleeve 换手).
+    """
     mm = _metrics_fn()
-    res_a = sleeve_a(panel)
-    res_b = sleeve_b(panel)
+    res_a = sleeve_a(panel, max_leverage=a_cap)
+    res_b = sleeve_b(panel, max_leverage=b_cap)
     navs = {
         "A_X2L4": res_a.nav,
         "B_EWvt": res_b.nav,
     }
     if include_cta:
-        cta_ret, _ = cta_sleeve_returns(panel)
+        cta_ret, _ = cta_sleeve_returns(panel, position_ema_alpha=cta_alpha)
         nav_cta = (1 + cta_ret).cumprod()
         navs["C_CTA"] = nav_cta
 
@@ -177,18 +203,17 @@ def run_phase5(panel: pd.DataFrame, include_cta: bool = True,
 
 # ── 成本分解: ABC_ew 换手/成本细算 ─────────────────────────────────
 def analyze_costs(panel: pd.DataFrame, lookback: int = 60,
-                 blended_rate: float = 0.0002) -> pd.DataFrame:
+                 blended_rate: float = 0.0002,
+                 cta_alpha: float = 0.0,
+                 a_cap: int = 4, b_cap: int = 1) -> pd.DataFrame:
     """ABC_ew 三 sleeve 换手/成本细算.
 
-    Returns: DataFrame 含 per-sleeve 指标 + 组合汇总.
-    blended_rate: A/B sleeve 用的统一费率近似 (A sleeve ~29 期货 1bp + 9 ETF 5bp,
-                  按权重平均约 2bp; CTA sleeve 已用 1bp FUTURES_COMMISSION_RATE).
-
-    简化为日均成本 = (annualized turn) / 252 × blended_rate; 用于反推无成本 NAV.
+    cta_alpha: 传入 cta_sleeve_returns 平滑 CTA 权重
+    a_cap/b_cap: 调控 sleeve 杠杆 (T2: 整体 avg 杠杆 ≈ 2.3x)
     """
-    res_a = sleeve_a(panel)
-    res_b = sleeve_b(panel)
-    cta_ret, cta_dw = cta_sleeve_returns(panel)
+    res_a = sleeve_a(panel, max_leverage=a_cap)
+    res_b = sleeve_b(panel, max_leverage=b_cap)
+    cta_ret, cta_dw = cta_sleeve_returns(panel, position_ema_alpha=cta_alpha)
     mm = _metrics_fn()
 
     def ann_turn(t):
@@ -238,6 +263,71 @@ def analyze_costs(panel: pd.DataFrame, lookback: int = 60,
          "cost_rate": "blended", "cost_ann_pct": (cost_a + cost_b + cost_c) / 3 * 100},
     ])
     return df, turn_cost
+
+
+# ── T1+T2 优化扫描: CTA 换手降 + 整体 avg 杠杆 2.3x ─────────────────
+def phase5_optimize(panel: pd.DataFrame,
+                    cta_alphas: tuple[float, ...] = (0.0, 0.10, 0.15, 0.20, 0.30, 0.50),
+                    a_caps: tuple[int, ...] = (3, 4, 5, 6, 7),
+                    b_caps: tuple[int, ...] = (1, 2, 3),
+                    include_b: bool = True) -> pd.DataFrame:
+    """CTA α × A cap × B cap 三维扫描 → 输出 ABC_ew 全样本 + 压力段 Sharpe/MaxDD/换手/成本.
+
+    目标: 选 Sharpe≥1.7 + AvgLeverage≈2.3x + 换手<80x + 压力段为正.
+    """
+    mm = _metrics_fn()
+    # 先扫描 α (CTA 单独看, 只需算 CTA sleeve)
+    cta_results = []
+    for a in cta_alphas:
+        ret, dw = cta_sleeve_returns(panel, position_ema_alpha=a)
+        nav = (1 + ret).cumprod()
+        m = mm(nav.dropna(), freq="D")
+        turn = float(dw.sum() / max(len(dw.dropna()), 1) * 252)
+        s25 = mm(nav.loc[SEG25[0]:SEG25[1]].dropna(), freq="D")
+        cta_results.append({"alpha": a, "turn_ann": turn,
+                            "Sharpe": m["Sharpe"], "AnnRet": m["AnnRet"],
+                            "stress_Sharpe": s25["Sharpe"]})
+
+    # 三维 (α, a_cap, b_cap) 扫描 ABC_ew (含 B 与否)
+    combo_rows = []
+    for a in cta_alphas:
+        for ac in a_caps:
+            bcs = b_caps if include_b else (1,)
+            for bc in bcs:
+                cfg_a = dict(trend_mode="none", max_weight=0.40, max_leverage=ac)
+                cfg_b = dict(use_hrp=False, trend_mode="none",
+                             use_vol_target=True, max_leverage=bc)
+                res_a = run_backtest(panel, AllWeatherConfig(**cfg_a),
+                                     compute_metrics_fn=_noop)
+                res_b = run_backtest(panel, AllWeatherConfig(**cfg_b),
+                                     compute_metrics_fn=_noop)
+                cta_ret, cta_dw = cta_sleeve_returns(panel, position_ema_alpha=a)
+                nav_a, nav_b = res_a.nav, res_b.nav
+                nav_c = (1 + cta_ret).cumprod()
+                abc_nav = equal_combine({"A": nav_a, "B": nav_b, "C": nav_c})
+
+                # 平均杠杆 (按 sleeve 的平均 |sum(w)|)
+                avg_lev = (res_a.weights.sum(axis=1).mean()
+                           + res_b.weights.sum(axis=1).mean()
+                           + 1.0) / 3  # CTA gross≤1
+                turn = float((res_a.turnover.dropna().sum()
+                             + res_b.turnover.dropna().sum()
+                             + cta_dw.dropna().sum()) / max(len(cta_dw.dropna()), 1) * 252 / 3)
+
+                m = mm(abc_nav.dropna(), freq="D")
+                s25 = mm(abc_nav.loc[SEG25[0]:SEG25[1]].dropna(), freq="D")
+                combo_rows.append({
+                    "alpha": a, "a_cap": ac, "b_cap": bc,
+                    "avg_leverage": round(avg_lev, 2),
+                    "turn_ann": round(turn, 1),
+                    "Sharpe": round(m["Sharpe"], 3),
+                    "AnnRet": round(m["AnnRet"], 4),
+                    "MaxDD": round(m["MaxDD"], 4),
+                    "stress_Sharpe": round(s25["Sharpe"], 3),
+                })
+    cta_df = pd.DataFrame(cta_results)
+    combo_df = pd.DataFrame(combo_rows)
+    return cta_df, combo_df
 
 
 def main():

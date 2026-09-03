@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 
 from QuantNodes.strategy.allweather.backtest import AllWeatherConfig
+from QuantNodes.strategy.allweather.ensemble import cta_sleeve_returns
 from QuantNodes.strategy.allweather.experiments import (
     diag_d1,
     diag_d2,
@@ -44,3 +45,11 @@ class TestExperiments:
     def test_segments(self):
         df = run_segments(_panel(), AllWeatherConfig(window=126), "smoke")
         assert set(df["segment"]) >= {"full"}
+
+    def test_cta_min_hold_days(self):
+        panel = _panel()
+        ret1, dw1 = cta_sleeve_returns(panel, min_hold_days=1)
+        ret5, dw5 = cta_sleeve_returns(panel, min_hold_days=5)
+        # 持有5天换手应 < 持有1天
+        assert dw5.sum() < dw1.sum()
+        assert len(ret5) == len(ret1)

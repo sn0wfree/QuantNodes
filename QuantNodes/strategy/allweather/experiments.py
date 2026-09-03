@@ -292,13 +292,18 @@ def main():
     ap.add_argument("cmd", choices=["lever-sweep", "cap-sweep", "trend-matrix",
                                     "unlevered", "segments", "diag-d1",
                                     "diag-d2", "diag-d3", "diag-d4", "phase5",
-                                    "phase5-costs", "all"])
+                                    "phase5-costs", "phase5-optimize", "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
     ap.add_argument("--n", type=int, default=10, help="diag-d2 重复次数")
     ap.add_argument("--k", type=int, default=5, help="diag-d2 每次剔除资产数")
     ap.add_argument("--max-weight", type=float, default=0.40)
     ap.add_argument("--max-leverage", type=int, default=3)
+    ap.add_argument("--a-cap", type=int, default=4, help="phase5 sleeve A 杠杆 cap")
+    ap.add_argument("--b-cap", type=int, default=1, help="phase5 sleeve B 杠杆 cap")
+    ap.add_argument("--cta-alphas", type=str, default="0.0,0.10,0.15,0.20,0.30,0.50")
+    ap.add_argument("--a-caps", type=str, default="3,4,5,6,7")
+    ap.add_argument("--b-caps", type=str, default="1,2,3")
     ap.add_argument("--no-cta", action="store_true", help="phase5 跳过 CTA sleeve")
     args = ap.parse_args()
     panel = _load_panel(args.panel)
@@ -339,7 +344,7 @@ def main():
         print(df.round(4).to_string())
     if args.cmd in ("phase5-costs", "all"):
         from .ensemble import analyze_costs
-        df_sleeve, df_tc = analyze_costs(panel)
+        df_sleeve, df_tc = analyze_costs(panel, a_cap=args.a_cap, b_cap=args.b_cap)
         _save(df_sleeve, "phase5_costs_sleeve")
         _save(df_tc, "phase5_costs_summary")
         print("=== 单 sleeve net vs gross ===")
@@ -348,6 +353,20 @@ def main():
         print(pv.round(3).to_string())
         print("\n=== 换手/成本汇总 ===")
         print(df_tc.round(4).to_string(index=False))
+    if args.cmd in ("phase5-optimize", "all"):
+        from .ensemble import phase5_optimize
+        cta_df, combo_df = phase5_optimize(
+            panel,
+            cta_alphas=tuple(float(x) for x in args.cta_alphas.split(",")),
+            a_caps=tuple(int(x) for x in args.a_caps.split(",")),
+            b_caps=tuple(int(x) for x in args.b_caps.split(",")),
+        )
+        _save(cta_df, "cta_alpha_sweep")
+        _save(combo_df, "phase5_3d_sweep")
+        print("=== CTA α 单 sleeve ===")
+        print(cta_df.round(4).to_string(index=False))
+        print("\n=== ABC_ew 3D sweep (按 Sharpe 排序) ===")
+        print(combo_df.sort_values("Sharpe", ascending=False).round(3).to_string(index=False))
 
 
 if __name__ == "__main__":
