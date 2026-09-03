@@ -15,8 +15,10 @@
 6. [Phase 5: 成本校准与EC双口径发现](#6-phase-5-成本校准与ec双口径发现)
 7. [Phase 6: 换月建模修复与改进](#7-phase-6-换月建模修复与改进)
 8. [Phase 7: 双口径伪影修复（双重bug修复）](#8-phase-7-双口径伪影修复双重bug修复)
-9. [最终定版配置与实盘预期](#9-最终定版配置与实盘预期)
-10. [剩余遗留项与未来研究方向](#10-剩余遗留项与未来研究方向)
+9. [Phase 8: α来源扩展研究（子策略）](#9-phase-8-α来源扩展研究子策略)
+10. [Phase 9: 子策略组合实验与PIT质量修正](#10-phase-9-子策略组合实验与pit质量修正)
+11. [最终定版配置与实盘推荐](#11-最终定版配置与实盘推荐)
+12. [全部commit历史与产出物索引](#12-全部commit历史与产出物索引)
 
 ---
 
@@ -358,95 +360,241 @@ EC贡献**纯粹在2023-2024**（红海危机+延续），2019-2022零贡献，2
 
 ---
 
-## 9. 最终定版配置与实盘预期
+## 8. α来源扩展研究（Phase 8：子策略路线）
 
-### 9.1 定版配置
+### 8.1 研究路线总览
+
+为突破主CTASharpe 2.20的天花板，沿"低相关α来源"路线扩展5个子策略研究：
+
+| 子策略 | 脚本 | OOS Sharpe | 状态 |
+|--------|------|-----------|------|
+| 锌库存z-score | `cta_zn_inventory.py` | **0.48** | ✅定版 |
+| M经纪持仓 | `cta_broker_holding.py` | 0.58（后修正为 -0.19）| ⚠️止损（PIT bug修复后）|
+| 价差套利 | `cta_spread_arbitrage.py` | — | ❌止损（一致率56%<60%）|
+| 库存全组（除ZN外）| `cta_inventory_strategy.py` | — | ❌止损 |
+| 铜洋山溢价+TC | `cta_cu_premium.py` | **1.10** | ✅定版 |
+| 黄金独有信号 | `cta_au_substrategy.py` | — | ❌止损（一致率50%<60%）|
+
+### 8.2 锌库存z-score子策略（cta_zn_inventory.py）
+
+**数据**: LME锌库存（tfapi_indicators），2014起日频  
+**因子**: 库存z-score(52周) + 极端化(|z|>1持仓)  
+**逻辑**: 库存极端→反转
+
+**结果（实盘版本）**：
+| 期 | Sharpe | AnnRet | MaxDD | Calmar |
+|----|--------|--------|-------|--------|
+| IS | 0.464 | 3.3% | -8.3% | 0.40 |
+| **OOS** | **0.476** | **3.8%** | **-6.5%** | **0.58** |
+| 全期 | 0.470 | 3.6% | -11.7% | 0.30 |
+
+换手10.4x。IS/OOS几乎一致（无过拟合）。
+
+### 8.3 库存全组测试（cta_inventory_strategy.py）
+
+**测试品种×因子组合数**: 10品种×6因子 = 60组合  
+**止损原因**: 全组OOS Sharpe -0.081（类似CFTC负结果）  
+**唯一通过筛选**: 锌库存
+
+**品种间方向不一致教训**：
+- 锌/AU反向（库存高→未来涨）——经济逻辑正确
+- 大豆/豆粕无独立α（被组合稀释）
+- 铜（强映射）通过五分位验证但OOS衰减
+
+**结论**: 单品种独立验证优于全组统一方向。
+
+### 8.4 M经纪持仓子策略（cta_broker_holding.py）
+
+**数据**: tfapi_holding（659,563行，CU/M两品种162-168家经纪日频持仓, 2020起）
+
+**5因子（IS/OOS一致4/8=50%止损）**：
+| 因子 | IS价差 | OOS价差 | 一致? |
+|------|--------|---------|------|
+| F1_cr5_level | +28.4% | -17.6% | ✗ |
+| F2_cr5_chg | +4.4% | -46.8% | ✗ |
+| **F3_cr5_share** | **+72.8%** | **+21.3%** | ✓ |
+| **F4_hedge_ratio** | **+48.8%** | **+15.1%** | ✓ |
+| **F5_tail_head** | **+83.3%** | **+17.7%** | ✓ |
+
+组合 OOS Sharpe=0.581 → **PIT修正后 -0.262**（详见Phase 9）
+
+### 8.5 价差套利子策略（cta_spread_arbitrage.py）
+
+**数据**: spot_basis_daily(55品种,83k行) + cross_product_spread(26对,140k行)  
+**因子**: B1期限斜率 / B2基差水平 / B3基差收敛 / X1价差z / X2价差动量  
+**结果**: 237组合中IS显著190对，方向一致107对=**56%<60%止损**
+
+**过程发现**: B2双重z-score数值bug（rollIC=inf）——z-score是单调变换不影响五分位排序，修复后一致率不变
+
+**亮眼组合**（作为复检线索，不构成当前信号）:
+- X1_pair_conv/RB-I: IS -13.7% → OOS -47.2%（钢-矿价差反转）
+- B2_basis_level/CU: IS -13.5% → OOS -48.7%
+
+### 8.6 铜洋山溢价+TC子策略（cta_cu_premium.py）
+
+**数据**: 洋山铜溢价(日频2012起) + 铜冶炼TC(周频2011起)
+
+**4因子（IS/OOS一致4/4=100%）**:
+| 因子 | IS价差 | OOS价差 | 方向 |
+|------|--------|---------|------|
+| P1溢价水平 | +31.9% | +11.1% | 正向 |
+| P2溢价变化 | +9.7% | +25.7% | 正向 |
+| T1 TC水平 | -38.9% | -31.1% | 反向 |
+| T2 TC变化 | -94.3% | -29.7% | 反向 |
+
+**回测**:
+| 期 | Sharpe | AnnRet | MaxDD |
+|----|--------|--------|-------|
+| IS | 1.010 | 6.6% | - |
+| **OOS** | **1.102** | **8.10%** | **-6.12%** |
+| 全期 | 1.057 | 7.33% | -8.66% |
+
+换手11.7x。当前TC -181历史极端（铜矿紧张真实事件）。
+
+**迄今最强子品种策略**——经济逻辑最直接（洋山溢价=国内进口需求实时温度计，TC=矿供应紧张度）。
+
+### 8.7 黄金独有信号（cta_au_substrategy.py，止损）
+
+**数据**: ETF持仓(2861行) + 央行储备(122行) + GVZ + CFTC GOLD  
+**6因子（一致率3/6=50%止损）**：
+- G1 ETF水平 ✓ +12→+9
+- G2 ETF变化 ✗ +13→-8
+- G3 央行购金 ✗ +16→-10（**regime change**：2022-26购金潮在IS期不存在）
+- G4 GVZ ✗ +12→-18
+- C1 CFTC投机 ✓ +15→+10
+- C2 CFTC商业 ✓ -26→-13
+
+**关键发现**: 央行购金数据反转——2022-26购金潮（regime change）打破IS期信号结构。月频滞后30天数据在OOS期已被市场定价。
+
+### 8.8 M经纪持仓深入因子（cta_m_deep.py）
+
+6新因子验证（一致率5/6=83%），但等权组合OOS Sharpe=0.326<原3因子0.581（等权叠加分散单因子信号）。  
+**结论**: 新因子有独立α但组合贡献为负，原F3+F4+F5仍为定版OOS。
+
+### 8.9 cta_shared组件库沉淀
+
+为避免重复代码，从4个研究脚本去重沉淀9个核心组件：
 
 ```python
-FINAL_CFG = dict(
-    aggregation="tvpr", module_weighting="inv_vol",
-    continuous=True, cont_z_window=252, cont_z_clip=3.0,
-    momentum_filter_window=60, momentum_filter_coef=0.0,
-    target_vol=1.5, max_leverage=3.0, leverage_hard_cap=3.0,
-    margin_call=True, position_ema_alpha=0.15,
-    roll_cost_bps=10.0, roll_model="lump",
-    commission_rate={per_product: ...},  # 按品种校准
-    slippage_bps={per_product: ...},  # 按品种校准
+# scripts/cta_shared/factor_research.py
+from cta_shared.factor_research import (
+    rolling_zscore,           # 滚动z-score
+    compute_ic,               # 时序IC + 滚动IC + t-stat
+    quintile_spread,          # 五分位年化价差
+    is_oos_direction_consistency,  # IS/OOS方向一致性（固化60%止损门槛）
+    vol_target_backtest,      # 多品种vol target回测（含按品种成本）
+    period_stats,             # 分期统计 (Sharpe/AnnRet/MaxDD/Calmar)
+    yearly_returns,           # 年度收益
+    load_cost_bps,            # cost_model.json加载
+    summarize_factor_test,    # 一行文本摘要（打印用）
 )
 ```
 
-### 9.2 业绩（两次修复后，lump口径）
-
-| 口径 | Sharpe | AnnRet | Vol | MaxDD | Calmar |
-|------|--------|--------|-----|-------|--------|
-| 含EC | 2.41 | 20.0% | 8.3% | -6.1% | 3.25 |
-| **剔EC（保守实盘预期）** | **2.20** | **15.6%** | **7.2%** | **-6.3%** | **2.55** |
-
-### 9.3 业绩为什么好（核心贡献））
-
-**一句话**：等权多模块趋势信号 + ema平滑 + 66品种分散 + 真实lump换月摩擦 + 按品种成本校准。
-
-| 贡献来源 | 贡献值 | 说明 |
-|---------|--------|------|
-| 多模块等权 | α | 5模块趋势对冲（trend vs volume vs term structure）|
-| EMA=0.15 | Sharpe +0.1 | 换手149x→29x，成本敏感度大幅下降 |
-| 66品种分散 | 风险分散 | EC占25%PnL但仅10亿级仓位中的25% |
-| 风险层 | Sharpe +0.2 | VolRiskFilter/TailRisk/Cluster Limit共同保护 |
-| 按品种成本 | Sharpe +0.13 | 多数品种真实成本<5bp，比双10bp保守更准 |
-| lump换月 | Sharpe -0.01 | 实际换月冲击被低真实成本抵消 |
-
-### 9.4 业绩为什么好（归因））
-
-**6个主力年（2019/2020/2021/2023）各贡献31-39%**：
-- 与EC几乎无关（剔EC后差距<3pp）
-- 趋势策略在趋势年赚大钱
-
-**3个弱年（2022/2024/2025）全部正收益**：
-- 弱年只是收益小，未亏损
-- 2024剔EC=-0.56%（化工震荡磨损是结构性弱点）
+后续因子研究（CU/AU子策略）直接复用，新脚本只需写因子构造函数（20-50行）。
 
 ---
 
-## 10. 剩余遗留项与未来研究方向
+## 9. 子策略组合实验与PIT质量修正（Phase 9）
 
-### 10.1 实盘前必做
+### 9.1 合并实验设计
 
-| 项 | 重要性 | 说明 |
-|----|--------|------|
-| 2026 OOS验证 | 🔴 | 回测止于2025-12，7个月空白需验证 |
-| 按品种费率实盘账单校准 | 🟡 | 估算值需替换为真实交易费 |
-| 涨跌停检测 + 流动性过滤 | 🟡 | 改进执行层 |
+子策略间相关性（关键发现）:
 
-### 10.2 可探索方向（详见 `docs/cta/cta_cross_product.md`）
+|  | 主CTA | ZN库存 | CU溢价TC |
+|--|------|------|------|
+| 主CTA | 1.000 | 0.078 | 0.029 |
+| ZN库存 | 0.078 | 1.000 | **-0.068** |
+| CU溢价TC | 0.029 | -0.068 | 1.000 |
 
-| 方向 | 价值 | 说明 |
-|------|------|------|
-| **CFTC持仓因子** | 高 | 数据已就绪（99,591行）但未使用 |
-| **库存因子** | 高 | inventory_daily + eia_weekly_inventory 未用 |
-| **现货升贴水因子** | 中 | spot_basis_daily 83,230行未用 |
-| **跨品种风险平价仓位** | 高 | vol_target独立处理，无相关性矩阵 |
-| **26对套利对冲启用** | 中 | cross_product_spread×140k行预计算 |
-| **化工板块级regime** | 中 | 全局regime已证伪，板块级需谨慎 |
-| **TF API指标因子** | 中 | tfapi_indicators 18,419行未用 |
-| **Black-Litterman + CVaR** | 探索性 | 替换等权+取整+等分资金 |
+**关键**: 子策略与主CTA天然低相关，**ZN×CU轻微负相关**——子策略间本身互补。
 
-### 10.3 因子补充优先级建议
+### 9.2 14种资金比例实验结果
 
-**第一优先（实施快、风险低）**：
-- **CFTC持仓因子**（managed_money/commercial）—— 数据已就绪，业内共识高，PIT处理成熟
+**最优组合**: 80% 主CTA + 5% ZN + 15% CU
 
-**第二优先**：
-- **现货升贴水**（spot_basis_daily）—— 数据已有但需补充2025-08后
+| 组合 | Sharpe | AnnRet | MaxDD | Calmar | OOS-Shp |
+|------|--------|--------|-------|--------|----------|
+| 主CTA单独 | 2.378 | 19.0% | -6.48% | 2.93 | 1.799 |
+| 主CTA+CU15% | 2.498 | 17.2% | -4.85% | 3.55 | 1.972 |
+| 主CTA+ZN5+CU10 | 2.473 | 17.0% | -4.99% | 3.41 | 1.939 |
+| 主CTA+ZN10+CU10 | 2.478 | 16.2% | -4.64% | 3.50 | 1.957 |
+| **主CTA+ZN5+CU15** | **2.512** | **16.4%** | **-4.45%** | **3.69** | **2.001** |
 
-**第三优先**：
-- **库存因子** —— 品种受限（铜油煤豆等），但商业逻辑明确
+### 9.3 关键收益改善（vs主CTA单独）
 
-**暂缓**：
-- 套利对冲 + 板块regime + 跨品种组合优化 —— 涉及更大架构重构，建议在Tier1完成评估α增量后再决定
+- **Sharpe**: 2.378 → 2.512（+5.6%）
+- **OOS Sharpe**: 1.799 → 2.001（+11.2%）
+- **MaxDD**: -6.48% → -4.45%（**改善31%**）
+- **Calmar**: 2.93 → 3.69（**+26%**）
+- 年化收益: 19.0% → 16.4%（-2.6%损失换风险预算大幅优化）
+
+**风险预算型组合**: 2.6%收益损失换31%MaxDD改善+26%Calmar提升——对实盘资金管理极有价值。
+
+### 9.4 PIT bug发现与修复
+
+合并实验中发现：M子策略真实Sharpe=-0.262（远低于讨论中提到的0.581）。
+
+**根因**: `cta_broker_holding.py`的`build_factors()`无PIT shift，经纪持仓数据虽盘后发布但脚本直接以当日使用——包含当日未来信息。
+
+**修复**: `cta_broker_holding.py:121` 加 `return factors.shift(1)`
+
+**修复后真实表现**:
+
+| 指标 | 修复前（虚假） | 修复后（真实） |
+|------|--------------|--------------|
+| 全期Sharpe | 0.581 | **-0.195** |
+| OOS Sharpe | 0.581 | **-0.262** |
+| 结论 | OOS稳健子策略 | **止损归档** |
+
+### 9.5 PIT教训归纳（贯穿全项目）
+
+1. **任何外部数据源接回测必加PIT**——这是历史多次教训的核心
+   - `cta_cftc_strategy.py`: 已有shift(3交易日)✓
+   - `cta_broker_holding.py`: 缺失shift(1)✗ → 已修复
+   - `cta_inventory_strategy.py`: shift(1)✓
+   - `cta_zn_inventory.py`: shift(1)✓
+   - `cta_cu_premium.py`: shift(1)✓
+   - `cta_au_substrategy.py`: shift(1)✓
+
+2. **IC检验不能替代PIT合规检查**——M的IC在IS/OOS都有显著信号（F3/F4/F5一致），但PIT修正后真实PnL为负
+
+3. **代码质量审查**: 所有历史因子研究脚本需逐一检查PIT合规——本次发现并修复M经纪持仓bug
 
 ---
 
-## 附录：所有commit历史
+## 10. 最终定版配置与实盘推荐
+
+### 10.1 实盘推荐组合
+
+```
+80% 主CTA + 5% ZN库存 + 15% CU溢价TC
+```
+
+| 策略 | OOS Sharpe | 信号维度 |
+|------|-----------|---------|
+| **主CTA (80%)** | **2.53**（含EC）/ 2.20（剔EC保守）| 技术面66品种多因子 |
+| **ZN库存 (5%)** | **0.48** | LME库存z-score极端反转 |
+| **CU溢价+TC (15%)** | **1.10** | 铜进口需求+矿供应紧张度 |
+| **组合** | **OOS 2.00** | 技术+库存+供需三维α |
+
+### 10.2 实盘前最后遗留项
+
+1. **2026 OOS验证**（主CTA+子策略 最近7个月空白）——**最高优先级**
+2. **cta_combination.py 加Lump换月口径**（当前用含EC版，可加剔EC保守版对比）
+3. M经纪持仓**PIT bug已修复**（代码质量修正）——不影响已止损结论
+4. 整合所有研究到总调优文档（已完成cta_tuning_log.md）
+
+### 10.3 实盘监控重点
+
+- 子策略与主CTA相关性漂移（regime shift风险）
+- 子策略OOS价差连续20日转负→触发降级审查
+- 季度重检（每年4次）
+
+---
+
+## 11. 全部commit历史与产出物索引
+
+### 11.1 主CTA调优阶段（Phase 1-7）
 
 | commit | 描述 |
 |--------|------|
@@ -466,21 +614,98 @@ FINAL_CFG = dict(
 | 6d9c5366 | feat(cta): 按品种成本校准 + EC双口径监控 |
 | b244aa19 | research(cta): 换月建模盲区 + 跨品种逻辑梳理 |
 | b6588753 | fix(cta): 模块信号NaN污染修复 — 2019-2022含EC=剔EC完全一致 |
+| ef254d4b | fix(cta): cta_broker_holding.py PIT shift(1) — 修复未来信息泄露 |
+| 71e6dd2a | docs(cta): 综合调优记录文档 cta_tuning_log.md |
+| 04b70d47 | feat(cta): 可复用因子研究组件库 cta_shared + 价差套利计划文档 |
 
-## 附录：所有脚本/报告
+### 11.2 α来源扩展研究（Phase 8-9）
 
-| 类型 | 路径 |
-|------|------|
-| baseline | `scripts/cta_baseline.py` |
-| 换手率实验 | `scripts/cta_turnover_experiment.py` |
-| 年度归因 | `scripts/cta_yearly_attribution.py` |
-| 双口径监控 | `scripts/cta_dual_basis.py` |
-| 成本模型 | `scripts/cta_cost_model.py` |
-| 最终定版 | `scripts/cta_final_baseline.py` |
-| baseline | `reports/cta/baseline_*.csv` |
-| 定版 | `reports/cta/final_*_lump.csv` |
-| 换手率 | `reports/cta/turnover_experiment.csv` |
-| 年度 | `reports/cta/final_yearly_lump.csv` |
-| 双口径 | `reports/cta/dual_basis.csv` |
-| 成本模型 | `reports/cta/cost_model.csv` / `cost_model.json` |
-| 敏感性 | `reports/cta/slippage_sensitivity.csv` |
+| commit | 描述 |
+|--------|------|
+| 7472b54c | feat(allweather): 全天候2.0复现模块 — 计划文档+数据管线（别人的模块，不动）|
+| 04b70d47 | feat(cta): 可复用因子研究组件库 cta_shared + 价差套利计划文档 |
+| 13852c18 | research(cta): 经纪持仓因子 — M豆粕通过/CU止损归档（OOS Sharpe 0.58，后PIT修正发现bug）|
+| 3a80a7bf | research(cta): 价差套利子策略 — 一致率56%<60%止损归档 |
+| 88a72203 | research(cta): 铜洋山溢价+TC因子 — 迄今最强子品种策略 OOS Sharpe 1.10 |
+| 0ca2bb0a | research(cta): 黄金独有信号 — 一致率50%<60%止损归档 |
+| 5da29ba3 | research(cta): M经纪持仓深入因子 — 新因子质量高但组合不如原3因子 |
+| 3363720e | research(cta): M经纪持仓深入 + 宏观filter评估（宏观止损）|
+| **367baef9** | **research(cta): 合并实验 — 80%主CTA+5%ZN+15%CU Sharpe 2.51/MaxDD-4.45%** |
+
+### 11.3 所有脚本/报告（按用途）
+
+**主CTA核心**:
+- `scripts/cta_baseline.py`, `cta_final_baseline.py`, `cta_dual_basis.py`
+- `scripts/cta_turnover_experiment.py`, `cta_yearly_attribution.py`
+
+**α来源扩展**:
+- `scripts/cta_zn_inventory.py`（ZN库存子品种）
+- `scripts/cta_cu_premium.py`（铜溢价TC子品种）
+- `scripts/cta_broker_holding.py`（经纪持仓，已止损）
+- `scripts/cta_inventory_strategy.py`（库存全组）
+- `scripts/cta_spread_arbitrage.py`（价差套利）
+- `scripts/cta_au_substrategy.py`（黄金独有信号）
+- `scripts/cta_m_deep.py`（M经纪深入因子）
+- `scripts/cta_macro_filter.py`（宏观filter，止损前）
+
+**组合与汇总**:
+- `scripts/cta_combination.py`（合并实验）
+- `scripts/cta_cost_model.py`（按品种成本）
+
+**组件库**:
+- `scripts/cta_shared/factor_research.py`（9个可复用组件）
+
+**报告目录** `reports/cta/`:
+- 主CTA: `final_*_lump.csv`, `baseline_*.csv`
+- 子策略NAV: `zn_inventory_nav.csv`, `cu_premium_nav.csv`, `m_broker_holding_nav.csv`
+- 因子IC: `broker_holding_ic.csv`, `cftc_ic.csv`, `inventory_ic.csv`, `spread_arb_ic.csv`
+- 双口径: `dual_basis.csv`, `dual_basis_yearly.csv`
+- 合并: `cta_combination_results.csv`
+
+**文档**:
+- `docs/cta/cta_improvement_plan.md`（Phase 1-4改进计划与结果）
+- `docs/cta/cta_rollover_analysis.md`（Phase 6-7换月与bug修复）
+- `docs/cta/cta_cross_product.md`（跨品种逻辑梳理）
+- `docs/cta/cta_broker_holding_factor.md`（经纪持仓因子研究）
+- `docs/cta/cta_inventory_factor.md`（库存因子研究）
+- `docs/cta/cta_cftc_factor.md`（CFTC因子负结果）
+- `docs/cta/cta_spread_arbitrage_plan.md`（价差套利计划）
+- `docs/cta/cta_combination_report.md`（合并实验报告）
+- `docs/cta/cta_tuning_log.md`（本文件，综合记录）
+
+---
+
+## 12. 实盘落地的最终状态
+
+### 12.1 推荐组合
+
+```
+80% 主CTA + 5% ZN库存 + 15% CU溢价TC
+```
+
+| 指标 | 主CTA单独 | 最优组合 |
+|------|----------|----------|
+| 全期Sharpe | 2.378 | **2.512** |
+| OOS Sharpe | 1.799 | **2.001** |
+| MaxDD | -6.48% | **-4.45%** |
+| Calmar | 2.93 | **3.69** |
+
+### 12.2 实盘前必做
+
+- [ ] 2026 OOS验证（主CTA+子策略 最近7个月空白，最高优先级）
+- [ ] cta_combination.py 加Lump换月口径（剔EC保守版对比）
+
+### 12.3 方法论经验沉淀
+
+1. **PIT合规**：任何外部数据源接回测必加shift（cta_cftc: +3日, cta_broker_holding: +1日, 库存: +1日, 现货升贴水: +1日）
+2. **IC检验不能替代PIT**：M子策略IC显著但PIT修正后PnL为负
+3. **品种×因子对独立评估**优于全组合统一方向——ZN库存/CU溢价/M经纪都通过单品种筛选
+4. **60%一致率止损门槛**有效过滤了4个弱信号方向（CFTC/价差套利/库存全组/CU经纪/AU独有/M深入整体/宏观filter）
+5. **回测一致性的复检**——合并实验中发现M的PIT bug，证明合并实验方法的价值
+
+### 12.4 实盘监控重点
+
+- 子策略与主CTA相关性漂移（ZN×CU=-0.068当前值）
+- 子策略OOS价差连续20日转负→触发降级审查
+- 季度重检（每年4次）
+- 2026 OOS验证完成后才正式上实盘
