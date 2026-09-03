@@ -122,6 +122,7 @@ def vol_target_backtest(
     cost_bps: Mapping[str, float] | float = 5.0,
     target_vol: float = 0.08, vol_window: int = 20,
     max_scale: float = 1.0, pit_shift: int = 0,
+    ret_df: pd.DataFrame | None = None,
 ) -> dict:
     """多品种vol target日频回测 (含按品种成本).
 
@@ -133,11 +134,14 @@ def vol_target_backtest(
         vol_window: 波动率窗口
         max_scale: vol scale上限
         pit_shift: 信号PIT延迟交易日 (0=当日起仓, 1=T+1执行)
+        ret_df: 自定义持仓收益面板 (T, N). None时用 close.pct_change()
+                (close-to-close口径); 提供时覆盖, 如open-to-open执行口径:
+                ret_open[t] = open[t+1]/open[t] - 1.
 
     Returns:
         dict(sharpe, ann_ret, vol, max_dd, calmar, nav, pnl, turnover_annual, positions)
     """
-    ret = close.pct_change(fill_method=None)
+    ret = ret_df if ret_df is not None else close.pct_change(fill_method=None)
     vol = ret.rolling(vol_window).std() * np.sqrt(252)
     scale = (target_vol / vol).clip(upper=max_scale).fillna(0)
     sig = signal.fillna(0)
