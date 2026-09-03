@@ -80,4 +80,9 @@ def __getattr__(name: str):
     if val is not None:
         return val
     from . import base as _base
-    return getattr(_base, name)
+    val = getattr(_base, name, None)
+    if val is not None:
+        return val
+    # factors 包未导出的类 (BasisConvergenceFactor 等) 随 term_basis 模块走
+    from .modules import term_basis as _tb
+    return getattr(_tb, name)
