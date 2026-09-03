@@ -242,12 +242,14 @@ CFM (Bouchaud) 论文明确警告: 期货市场板块内强相关 → 板块簇�
 ├── PLAN.md                  # 本文件
 ├── config.py                # 38 资产池 / 固定参数
 ├── data_loader.py           # 期货(DuckDB) + ETF(parquet 合并) → 统一面板
-├── cov_rmt.py               # RMT 去噪
+├── cov_rmt.py               # RMT 去噪 + LW 收缩
 ├── hrp.py                   # HRP (与 RMT 串联)
-├── trend_overlay.py         # V1 减仓型
+├── trend_overlay.py         # V1/V3/V4/tilt 趋势 overlay
 ├── vol_target.py            # 10% 目标波动
 ├── backtest.py              # 混合频率回测引擎
-└── run_replication.py       # 消融入口 (0/1/2/3a/3b/3 六配置)
+├── run_replication.py         # 消融入口 (0/1/2/3a/3/3v4 六配置)
+└── experiments.py          # 实验脚本集: lever-sweep/cap-sweep/trend-matrix/
+                              # unlevered/segments/diag-d1~d4 (CLI, 结果落盘 CSV)
 
 /home/ll/Public/QuantNodes/data/allweather/
 └── panel_v1.parquet         # 38 资产统一面板 (Phase 0 产出)

@@ -146,7 +146,40 @@ X2 (cap0.40 HRP+RMT) 基础 vol 仅 4.4%, 杠杆 cap 3 未用满 → 扫描 3-8x
 
 对照文章 (20.35%/6.87%/-5.91%/2.67): X2-L5 的 vol/MaxDD 已在同一量级, 收益约为文章一半 (样本段 2018 vs 2015 + 池差异), Sharpe 56%。剩余差距留给 Phase 5 Sleeve B (CTA 信号 alpha)。
 
-## 六、结论 (2026-09-02)
+## 六、主线定版 (2026-09-02)
+
+**双主线保留** (用户 2026-09-02 指令):
+- **X2-L4 = cap0.40 HRP+RMT + 杠杆≤4**: Sharpe 1.560 / 9.03% / -5.51% — 稳健型, Sharpe/Calmar 最优
+- **X2-L5 = cap0.40 HRP+RMT + 杠杆≤5**: 1.495 / 10.42% / 6.97% vol / -7.26% — 目标达成型 (10%+, vol 对齐文章)
+- X5 (cap0.25+RAtilt+杠杆3): 1.048 / 9.78% / -13.8% — 收益型备选
+
+## 七、可复现执行手册 (脚本固化, 2026-09-02)
+
+全部实验已固化为 CLI, 结果自动落盘 `data/allweather/*.csv`:
+
+```bash
+# 数据面板重建 (panel_v2, 含 roll/ETF 修复)
+python -m QuantNodes.strategy.allweather.data_loader
+
+# 消融六配置 × 五分段
+python -m QuantNodes.strategy.allweather.run_replication
+
+# 实验脚本集 (experiments.py)
+python -m QuantNodes.strategy.allweather.experiments lever-sweep --caps 3,4,5,6,7,8   # 杠杆扫描
+python -m QuantNodes.strategy.allweather.experiments cap-sweep                        # 集中度扫描
+python -m QuantNodes.strategy.allweather.experiments trend-matrix                    # 趋势矩阵
+python -m QuantNodes.strategy.allweather.experiments unlevered                       # 无杠杆矩阵
+python -m QuantNodes.strategy.allweather.experiments segments --max-weight 0.40 --max-leverage 4  # 主线分段
+python -m QuantNodes.strategy.allweather.experiments diag-d1   # 权重稳定性/集中度
+python -m QuantNodes.strategy.allweather.experiments diag-d2 --n 10 --k 5          # 池敏感性
+python -m QuantNodes.strategy.allweather.experiments diag-d3   # 类别归因
+python -m QuantNodes.strategy.allweather.experiments diag-d4   # roll 对照
+python -m QuantNodes.strategy.allweather.experiments all       # 全部依次执行
+```
+
+单测: `python -m pytest tests/strategy/allweather/ -v` (61 项)。
+
+## 八、结论 (2026-09-02)
 
 - 全样本 gate ✓ (cap0.40 + 杠杆4: Sharpe 1.560) / 压力段 gate ✓ (全段为正)
 - **10% 年化目标达成** (X2-L5: 10.42% @ vol 6.97%, 外加杠杆形态; 无杠杆纯配置天花板 ~8.3% 已系统证明)
