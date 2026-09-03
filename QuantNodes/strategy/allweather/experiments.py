@@ -904,6 +904,127 @@ def run_subfactor_risk_factor(
                   f"Sh={row.get('full_Sharpe', float('nan')):.3f} "
                   f"stress={row.get('stress_25+_Sharpe', float('nan')):.3f}")
     return pd.DataFrame(rows)
+
+
+# ── V6.11 动态 sleeve 分配 (V6.8 作 regime 探测) ────────────────
+DYNAMIC_RULES: list[dict] = [
+    # baseline: 1/3 等权
+    {"name": "ABC_ew_baseline", "A": 0.333, "B": 0.333, "C": 0.334},
+    # 风险偏好 1: B 用 V6.8 (B 已改善), C 不变
+    {"name": "risk_on_C",
+     "A": 0.30, "B": 0.40, "C": 0.30, "B_with_V68": True},
+    # 风险偏好 2: A 多配 (HRP 含债券, 防御)
+    {"name": "conservative_A",
+     "A": 0.50, "B": 0.30, "C": 0.20, "B_with_V68": True},
+    # 风险偏好 3: B 用 V6.8, C 略减
+    {"name": "B_aggressive",
+     "A": 0.35, "B": 0.45, "C": 0.20, "B_with_V68": True},
+    # 平衡型 1: 50/30/20 偏防御
+    {"name": "balanced_503020",
+     "A": 0.50, "B": 0.30, "C": 0.20, "B_with_V68": True},
+    # 平衡型 2: 40/35/25 平衡
+    {"name": "balanced_403525",
+     "A": 0.40, "B": 0.35, "C": 0.25, "B_with_V68": True},
+    # 激进型 1: A 少, C 多 (CTA 在趋势市场强)
+    {"name": "aggressive_AC",
+     "A": 0.25, "B": 0.30, "C": 0.45, "B_with_V68": True},
+    # 防御型 1: A 主导, C 极低
+    {"name": "defensive_703010",
+     "A": 0.70, "B": 0.20, "C": 0.10, "B_with_V68": True},
+    # V6.8 B 极致, 平衡
+    {"name": "V68_heavy_B",
+     "A": 0.30, "B": 0.50, "C": 0.20, "B_with_V68": True},
+    # 平衡偏 A, B 用 V6.8
+    {"name": "moderate_454525",
+     "A": 0.45, "B": 0.45, "C": 0.10, "B_with_V68": True},
+]
+
+
+def _build_b_sleeve_score(panel: pd.DataFrame) -> pd.DataFrame:
+    """构建 B sleeve 的 V6.8 subfactor_score (Sub-B rank directional)."""
+    from .subfactors import SubFactorConfig
+    from .subfactors_weekly import directional_risk_transform
+
+    sf_cfg = SubFactorConfig(
+        trend_quality_w=60, mom_slope_w=30, mom_slope_sw=15,
+    )
+    score = _build_subfactor_score(panel, "b", method="rank", sf_cfg=sf_cfg)
+    return directional_risk_transform(score)
+
+
+def run_dynamic_sleeve(panel: pd.DataFrame) -> pd.DataFrame:
+    """V6.11 动态 sleeve 分配: V6.8 Sub-B directional 作 B sleeve overlay.
+
+    静态权重方案 (regime-naive 起点, V6.11 第一阶段):
+      - baseline: ABC_ew 1/3 等权 (Phase 5 主推)
+      - 9 个权重方案: 涵盖保守/平衡/激进 + V6.8 B sleeve overlay
+
+    后续可加 regime 动态切换 (V6.8 directional > 0 → risk-on, < 0 → risk-off).
+
+    Returns:
+        DataFrame columns: rule, A_weight, B_weight, C_weight, full_Sharpe, ...
+    """
+    from .backtest import AllWeatherConfig
+    from .ensemble import cta_sleeve_returns
+
+    b_score_v68 = _build_b_sleeve_score(panel)
+    mm = _metrics_fn()
+
+    # 先取 C sleeve (不变)
+    cta_ret, _ = cta_sleeve_returns(panel)
+    nav_cta = (1 + cta_ret).cumprod()
+
+    rows = []
+    for rule in DYNAMIC_RULES:
+        # A sleeve (无 V6.8, 用 baseline)
+        cfg_a = AllWeatherConfig(
+            trend_mode="none", max_weight=0.40, max_leverage=4,
+        )
+        res_a = run_backtest(panel, cfg_a, compute_metrics_fn=_noop)
+        nav_a = res_a.nav
+
+        # B sleeve (V6.8 或 baseline)
+        if rule.get("B_with_V68"):
+            cfg_b = AllWeatherConfig(
+                use_hrp=False, trend_mode="none", use_vol_target=True,
+                max_leverage=1.0,
+                subfactor_mode="abc", subfactor_alpha=3.0,
+                subfactor_score=b_score_v68,
+            )
+        else:
+            cfg_b = AllWeatherConfig(
+                use_hrp=False, trend_mode="none", use_vol_target=True,
+                max_leverage=1.0,
+            )
+        res_b = run_backtest(panel, cfg_b, compute_metrics_fn=_noop)
+        nav_b = res_b.nav
+
+        # 等权混合 (per rule)
+        wa, wb, wc = rule["A"], rule["B"], rule["C"]
+        rets_a = nav_a.pct_change().fillna(0.0)
+        rets_b = nav_b.pct_change().fillna(0.0)
+        rets_c = nav_cta.pct_change().fillna(0.0)
+        rets_c_aligned = rets_c.reindex(rets_a.index).fillna(0.0)
+        port_rets = wa * rets_a + wb * rets_b + wc * rets_c_aligned
+        nav = (1 + port_rets).cumprod()
+
+        row = {
+            "rule": rule["name"],
+            "A_weight": wa, "B_weight": wb, "C_weight": wc,
+            "B_with_V68": rule.get("B_with_V68", False),
+        }
+        m = mm(nav.dropna(), freq="D")
+        for k in ("Sharpe", "AnnRet", "MaxDD", "Vol"):
+            row[f"full_{k}"] = m.get(k)
+        s25 = nav.loc["2025-09":] if "2025-09" in nav.index else nav
+        if len(s25) > 30:
+            row["stress_25+_Sharpe"] = mm(s25, freq="D")["Sharpe"]
+        rows.append(row)
+        print(f"  [{rule['name']:25} A={wa:.2f} B={wb:.2f} C={wc:.2f} "
+              f"V68={rule.get('B_with_V68', False)}] "
+              f"Sh={row.get('full_Sharpe', 0):.3f} R={row.get('full_AnnRet', 0)*100:.2f}% "
+              f"DD={row.get('full_MaxDD', 0)*100:.2f}%")
+    return pd.DataFrame(rows)
 # ── CLI ─────────────────────────────────────────────────────────────
 def _save(df: pd.DataFrame, name: str) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -928,6 +1049,7 @@ def main():
                                     "v6-risk-factor",
                                     "v6-subA-directional",
                                     "v6-C-subfactor",
+                                    "v6-dynamic-sleeve",
                                     "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
@@ -1097,6 +1219,15 @@ def main():
         print(df.round(3).to_string(index=False))
         print("\n按 Sharpe 排序 Top 3:")
         print(df.sort_values("sharpe", ascending=False).head(3).round(3)
+              .to_string(index=False))
+    if args.cmd in ("v6-dynamic-sleeve", "all"):
+        from .ensemble import run_phase5
+        df = run_dynamic_sleeve(panel)
+        _save(df, "v6_dynamic_sleeve")
+        print("\n=== V6.11 动态 sleeve 分配 (V6.8 作 regime 探测) ===")
+        print(df.round(3).to_string(index=False))
+        print("\n按 Sharpe 排序:")
+        print(df.sort_values("full_Sharpe", ascending=False).round(3)
               .to_string(index=False))
     if args.cmd in ("v6-ml-composite", "all"):
         from .ml_composite import (
