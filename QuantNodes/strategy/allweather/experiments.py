@@ -292,7 +292,7 @@ def main():
     ap.add_argument("cmd", choices=["lever-sweep", "cap-sweep", "trend-matrix",
                                     "unlevered", "segments", "diag-d1",
                                     "diag-d2", "diag-d3", "diag-d4", "phase5",
-                                    "all"])
+                                    "phase5-costs", "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
     ap.add_argument("--n", type=int, default=10, help="diag-d2 重复次数")
@@ -337,6 +337,17 @@ def main():
         df, _ = run_phase5(panel, include_cta=not args.no_cta)
         _save(df.reset_index(), "phase5_ensemble")
         print(df.round(4).to_string())
+    if args.cmd in ("phase5-costs", "all"):
+        from .ensemble import analyze_costs
+        df_sleeve, df_tc = analyze_costs(panel)
+        _save(df_sleeve, "phase5_costs_sleeve")
+        _save(df_tc, "phase5_costs_summary")
+        print("=== 单 sleeve net vs gross ===")
+        pv = df_sleeve.pivot(index="sleeve", columns="cost_basis", values="Sharpe")
+        pv["drag"] = pv["gross"] - pv["net"]
+        print(pv.round(3).to_string())
+        print("\n=== 换手/成本汇总 ===")
+        print(df_tc.round(4).to_string(index=False))
 
 
 if __name__ == "__main__":

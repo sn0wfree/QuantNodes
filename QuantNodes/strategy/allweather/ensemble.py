@@ -47,13 +47,14 @@ def sleeve_b(panel: pd.DataFrame):
 # ── Sleeve C: CTA 信号 sleeve ───────────────────────────────────────
 def cta_sleeve_returns(panel: pd.DataFrame,
                        signals_path: Path = CTA_SIGNALS_PATH,
-                       momentum_filter_window: int = 60) -> pd.Series:
-    """CTA v7 信号 → 日收益序列 (gross≤1, 含换手成本).
+                       momentum_filter_window: int = 60
+                       ) -> tuple[pd.Series, pd.Series]:
+    """CTA v7 信号 → (日净收益, 每日换手).
 
     信号 (T×N, -1/0/+1) 于 t 收盘生成, 赚 t→t+1 收益:
         w_i(t) = sign_i(t) / N_active(t)
         contrib(t+1) = Σ w_i(t) · r_i(t+1)
-        cost(t+1) = Σ |Δw_i| · rate_i
+        cost(t+1) = Σ |Δw_i| · rate
     """
     if Path(signals_path).exists():
         sig = pd.read_parquet(signals_path)
@@ -73,10 +74,10 @@ def cta_sleeve_returns(panel: pd.DataFrame,
 
     contrib = (w.shift(1) * ret[fut_cols].fillna(0.0)).sum(axis=1)
     dw = w.diff().abs().sum(axis=1).fillna(0.0)
-    cost = dw * FUTURES_COMMISSION_RATE
-    out = (contrib - cost).dropna()
+    rate = FUTURES_COMMISSION_RATE
+    out = (contrib - dw * rate).dropna()
     out.name = "cta_sleeve"
-    return out
+    return out, dw.rename("cta_turnover")
 
 
 def _extract_cta_signals(panel: pd.DataFrame,
@@ -125,9 +126,19 @@ def equal_combine(navs: dict[str, pd.Series]) -> pd.Series:
     return (1 + rets.mean(axis=1)).cumprod().rename("ensemble_ew")
 
 
+SEG25 = SEGMENTS["stress_25+"]
+
+
+def _metrics_fn():
+    from QuantNodes.strategy.momentum_etf_rotation.common.metrics import (
+        compute_metrics,
+    )
+    return compute_metrics
+
+
 # ── Phase 5 编排 ────────────────────────────────────────────────────
 def run_phase5(panel: pd.DataFrame, include_cta: bool = True,
-               lookback: int = 60) -> tuple[pd.DataFrame, pd.Series]:
+               lookback: int = 60) -> tuple[pd.DataFrame, pd.DataFrame]:
     """构建各 sleeve + 集成组合, 返回 (指标长表, 各 nav 的 DataFrame)."""
     mm = _metrics_fn()
     res_a = sleeve_a(panel)
@@ -137,7 +148,7 @@ def run_phase5(panel: pd.DataFrame, include_cta: bool = True,
         "B_EWvt": res_b.nav,
     }
     if include_cta:
-        cta_ret = cta_sleeve_returns(panel)
+        cta_ret, _ = cta_sleeve_returns(panel)
         nav_cta = (1 + cta_ret).cumprod()
         navs["C_CTA"] = nav_cta
 
@@ -164,14 +175,69 @@ def run_phase5(panel: pd.DataFrame, include_cta: bool = True,
     return df, pd.DataFrame(all_navs)
 
 
-SEG25 = SEGMENTS["stress_25+"]
+# ── 成本分解: ABC_ew 换手/成本细算 ─────────────────────────────────
+def analyze_costs(panel: pd.DataFrame, lookback: int = 60,
+                 blended_rate: float = 0.0002) -> pd.DataFrame:
+    """ABC_ew 三 sleeve 换手/成本细算.
 
+    Returns: DataFrame 含 per-sleeve 指标 + 组合汇总.
+    blended_rate: A/B sleeve 用的统一费率近似 (A sleeve ~29 期货 1bp + 9 ETF 5bp,
+                  按权重平均约 2bp; CTA sleeve 已用 1bp FUTURES_COMMISSION_RATE).
 
-def _metrics_fn():
-    from QuantNodes.strategy.momentum_etf_rotation.common.metrics import (
-        compute_metrics,
-    )
-    return compute_metrics
+    简化为日均成本 = (annualized turn) / 252 × blended_rate; 用于反推无成本 NAV.
+    """
+    res_a = sleeve_a(panel)
+    res_b = sleeve_b(panel)
+    cta_ret, cta_dw = cta_sleeve_returns(panel)
+    mm = _metrics_fn()
+
+    def ann_turn(t):
+        t = t.dropna()
+        return float(t.sum() / max(len(t), 1) * 252) if len(t) else 0.0
+
+    ta, tb, tc = ann_turn(res_a.turnover), ann_turn(res_b.turnover), ann_turn(cta_dw)
+    cost_a, cost_b = ta * blended_rate, tb * blended_rate
+    cost_c = tc * FUTURES_COMMISSION_RATE    # CTA 已内部按 1bp 扣除
+    cta_gross_ret = cta_ret + cta_dw * FUTURES_COMMISSION_RATE   # 反推 CTA 无成本
+
+    navs_net = {"A": res_a.nav, "B": res_b.nav, "C": (1 + cta_ret).cumprod()}
+    navs_gross = {
+        "A": (1 + res_a.nav.pct_change().fillna(0).add(cost_a / 252)).cumprod(),
+        "B": (1 + res_b.nav.pct_change().fillna(0).add(cost_b / 252)).cumprod(),
+        "C": (1 + cta_gross_ret).cumprod(),
+    }
+
+    rows = []
+    for s in ("A", "B", "C"):
+        for tag, ns in (("net", navs_net), ("gross", navs_gross)):
+            m = mm(ns[s].dropna(), freq="D")
+            rows.append({"sleeve": s, "cost_basis": tag,
+                         "Sharpe": m["Sharpe"], "AnnRet": m["AnnRet"],
+                         "Vol": m["Vol"], "MaxDD": m["MaxDD"]})
+    # portfolio ABC_ew net vs gross
+    rets_net = pd.DataFrame({k: v.pct_change().fillna(0) for k, v in navs_net.items()})
+    rets_gross = pd.DataFrame({k: v.pct_change().fillna(0) for k, v in navs_gross.items()})
+    nav_abc_net = (1 + rets_net.mean(axis=1)).cumprod()
+    nav_abc_gross = (1 + rets_gross.mean(axis=1)).cumprod()
+    for tag, nav in (("net", nav_abc_net), ("gross", nav_abc_gross)):
+        m = mm(nav.dropna(), freq="D")
+        rows.append({"sleeve": "ABC_ew", "cost_basis": tag,
+                     "Sharpe": m["Sharpe"], "AnnRet": m["AnnRet"],
+                     "Vol": m["Vol"], "MaxDD": m["MaxDD"]})
+    df = pd.DataFrame(rows)
+
+    # turn/cost 表 (单 sleeve + 组合汇总)
+    turn_cost = pd.DataFrame([
+        {"scope": "Sleeve A (HRP+RMT, lev≤4)", "turn_ann": ta, "cost_rate": blended_rate,
+         "cost_ann_pct": cost_a * 100},
+        {"scope": "Sleeve B (EW + vt cap1)", "turn_ann": tb, "cost_rate": blended_rate,
+         "cost_ann_pct": cost_b * 100},
+        {"scope": "Sleeve C (CTA signal, gross<=1)", "turn_ann": tc,
+         "cost_rate": FUTURES_COMMISSION_RATE, "cost_ann_pct": cost_c * 100},
+        {"scope": "ABC_ew portfolio (1/3 each)", "turn_ann": (ta + tb + tc) / 3,
+         "cost_rate": "blended", "cost_ann_pct": (cost_a + cost_b + cost_c) / 3 * 100},
+    ])
+    return df, turn_cost
 
 
 def main():
