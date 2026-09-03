@@ -783,3 +783,32 @@ from cta_shared.factor_research import (
 - 主CTA执行口径专项测试（需改回测引擎，66品种分散预计影响轻微）
 - 2026 OOS验证（重构组合）
 - rbi/ym正式归档止损（不纳入主推）
+
+---
+
+## 14. R0/R2版本固化 + 品种敏感性测试（2026-09-03）
+
+### 14.1 R0/R2双版本固化
+
+- **R0** (极简版: 主CTA + CU45%): `reports/cta/portfolio_R0_nav.csv` — Sharpe 3.058 / AnnRet 18.80% / MaxDD -3.26% / Calmar 5.76
+- **R2** (三子策略版: +T10y10% +jjm10%): `reports/cta/portfolio_R2_nav.csv` — Sharpe 3.062 / AnnRet 18.04% / MaxDD -3.15% / Calmar 5.72 / OOS 2.601
+- **选择**: R2作为主推（用户决策），R0作为极简备选
+
+### 14.2 品种敏感性测试
+
+详见 `docs/cta/cta_product_sensitivity.md` 及 `reports/cta/product_sensitivity_maincta.csv`
+
+**核心结论**:
+- 66品种主CTA剔除单品种平均 d_sharpe=-0.023, d_calmar=-0.08 — **高度分散**
+- 最敏感品种都是小品种: SM/EC/JD/SN/LH (剔除后d_sharpe -0.13~-0.27)
+- 关键品种剔除后 Sharpe 仍保持 >2.19 (vs 基线 2.46)
+- 7个品种 (AU/CU/HC/I/J/JM/RB) 因产业链因子硬编码依赖无法剔除 (产业连核心节点)
+- open vs close 口径差异 <0.01, 组合对执行口径稳健
+
+**集中度风险**:
+- CU 单品种 25.83% (子策略全部敞口) — 最大单点风险
+- 国债 T 单品种 10.83% — 第二大单点风险
+- 钢厂链 (RB+I+J+JM) 合计 ~10% — 结构稳健但有产业链联动风险
+- 其他品种 ≤ 1%, 高度分散
+
+**遗留**: R2组合层剔除测试未跑通 (杠杆换手成本在剔除品种时爆掉), 建议未来加杠杆硬上限或重新设计测试方法.
