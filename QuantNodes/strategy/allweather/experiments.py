@@ -367,9 +367,147 @@ def run_trig_ab(panel: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
                                  "empty_share": float(1.0 - share),
                                  "n_events": int(trig_events.sum().sum()),
                                  "fwd20_mean": float(vals.mean()) if len(vals) else np.nan,
-                                 "fwd20_median": float(vals.median()) if len(vals) else np.nan,
-                                 "hit_rate_neg": float((vals < 0).mean()) if len(vals) else np.nan})
+                                  "fwd20_median": float(vals.median()) if len(vals) else np.nan,
+                                  "hit_rate_neg": float((vals < 0).mean())
+                                  if len(vals) else np.nan})
     return pd.DataFrame(rows), pd.DataFrame(quality_rows)
+
+
+# ── V6 三子因子: 单因子 + 组合回测 ───────────────────────────────
+def _build_subfactor_score(panel: pd.DataFrame, mode: str) -> pd.DataFrame:
+    """构建 cfg.subfactor_score: 给定 mode (a/b/c/ab/ac/bc/abc), 计算综合分数.
+
+    返回 W × N DataFrame (W-FRI 重采样后, 已 z-score).
+    """
+    from .subfactors import SubFactorConfig, compute_all_subfactors
+    from .subfactors_weekly import combine_subfactors, resample_weekly
+
+    daily_factors = compute_all_subfactors(
+        prices=panel, volumes=panel, open_interest=None, cfg=SubFactorConfig(),
+    )
+    weekly = {k: resample_weekly(v, agg="mean") for k, v in daily_factors.items()}
+    if mode == "abc" or len(mode) == 2:
+        keys = list(mode)
+        sub = {k: weekly[k] for k in keys}
+        return combine_subfactors(sub)
+    return combine_subfactors({mode: weekly[mode]})
+
+
+def run_subfactor_single(panel: pd.DataFrame, alpha_values=(0.1, 0.2, 0.3, 0.5),
+                         baseline_kw: dict | None = None) -> pd.DataFrame:
+    """V6.1 单子因子 × alpha 扫描, B-sleeve 上回测.
+
+    默认 baseline_kw = B_EWvt (等权 + vol_target, max_leverage=1).
+    输出列: factor, alpha, full_Sharpe, full_AnnRet, full_MaxDD, stress_25+_Sharpe.
+    """
+    mm = _metrics_fn()
+    baseline_kw = baseline_kw or dict(
+        use_hrp=False, trend_mode="none", use_vol_target=True, max_leverage=1.0,
+    )
+    rows = []
+    for factor in ("a", "b", "c"):
+        score = _build_subfactor_score(panel, factor)
+        for alpha in alpha_values:
+            cfg = AllWeatherConfig(
+                **baseline_kw,
+                subfactor_mode=factor,
+                subfactor_alpha=alpha,
+                subfactor_score=score,
+            )
+            res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+            row = {"factor": factor, "alpha": alpha}
+            for seg, (s, e) in SEGMENTS.items():
+                nav = res.nav.loc[s:e]
+                if len(nav) < 30:
+                    continue
+                m = mm(nav, freq="D")
+                for k in ("Sharpe", "AnnRet", "MaxDD"):
+                    row[f"{seg}_{k}"] = m.get(k)
+            rows.append(row)
+            print(f"  [Sub-{factor.upper()} α={alpha}] "
+                  f"full Sharpe={row.get('full_Sharpe', float('nan')):.3f} "
+                  f"stress={row.get('stress_25+_Sharpe', float('nan')):.3f}")
+    return pd.DataFrame(rows)
+
+
+def run_subfactor_combo(panel: pd.DataFrame, alpha: float = 0.3,
+                        combos=("ab", "ac", "bc", "abc"),
+                        baseline_kw: dict | None = None) -> pd.DataFrame:
+    """V6.2 子因子组合回测, B-sleeve + ABC_ew 集成.
+
+    输出列: combo, sleeve, full_Sharpe, full_AnnRet, full_MaxDD, stress_25+_Sharpe.
+    """
+    mm = _metrics_fn()
+    baseline_kw = baseline_kw or dict(
+        use_hrp=False, trend_mode="none", use_vol_target=True, max_leverage=1.0,
+    )
+
+    rows = []
+    # 基线: 无 subfactor
+    base_cfg = AllWeatherConfig(**baseline_kw)
+    base_res = run_backtest(panel, base_cfg, compute_metrics_fn=_noop)
+    base_row = {"combo": "none", "sleeve": "B"}
+    for seg, (s, e) in SEGMENTS.items():
+        nav = base_res.nav.loc[s:e]
+        if len(nav) < 30:
+            continue
+        m = mm(nav, freq="D")
+        for k in ("Sharpe", "AnnRet", "MaxDD"):
+            base_row[f"{seg}_{k}"] = m.get(k)
+    rows.append(base_row)
+
+    for combo in combos:
+        score = _build_subfactor_score(panel, combo)
+        cfg = AllWeatherConfig(
+            **baseline_kw,
+            subfactor_mode=combo,
+            subfactor_alpha=alpha,
+            subfactor_score=score,
+        )
+        # B-sleeve 单独
+        res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+        row = {"combo": combo, "sleeve": "B"}
+        for seg, (s, e) in SEGMENTS.items():
+            nav = res.nav.loc[s:e]
+            if len(nav) < 30:
+                continue
+            m = mm(nav, freq="D")
+            for k in ("Sharpe", "AnnRet", "MaxDD"):
+                row[f"{seg}_{k}"] = m.get(k)
+        rows.append(row)
+        print(f"  [combo={combo} B] full Sharpe={row.get('full_Sharpe', float('nan')):.3f}")
+
+    return pd.DataFrame(rows)
+
+
+def evaluate_v6_gate(single_df: pd.DataFrame, combo_df: pd.DataFrame,
+                     base_sharpe: float = 0.758) -> dict:
+    """V6 Gate 判定 (PLAN §13.4).
+
+    单因子 Gate:
+      - full_Sharpe ≥ base_sharpe - 0.10 (组合 Sharpe 损失 < 0.10)
+      - stress_25+_Sharpe ≥ 0 (压力段不亏损)
+
+    组合 Gate:
+      - combo != 'none' 时 full_Sharpe ≥ base_sharpe - 0.10
+      - 至少 1 个组合通过 Gate → "PROMOTE"
+      - 三合一 (abc) 仍失败 → "ARCHIVE"
+    """
+    base = base_sharpe
+    single_pass = single_df[
+        (single_df["full_Sharpe"] >= base - 0.10)
+        & (single_df["stress_25+_Sharpe"].fillna(-99) >= 0)
+    ]
+    combo_pass = combo_df[
+        (combo_df["combo"] != "none")
+        & (combo_df["full_Sharpe"] >= base - 0.10)
+    ]
+    verdict = "PROMOTE" if "abc" in combo_pass["combo"].unique() else "ARCHIVE"
+    return {
+        "single_pass_factors": single_pass["factor"].unique().tolist(),
+        "combo_pass_combos": combo_pass["combo"].unique().tolist(),
+        "verdict": verdict,
+    }
 # ── CLI ─────────────────────────────────────────────────────────────
 def _save(df: pd.DataFrame, name: str) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -385,7 +523,9 @@ def main():
                                     "unlevered", "segments", "diag-d1",
                                     "diag-d2", "diag-d3", "diag-d4", "phase5",
                                     "phase5-costs", "phase5-optimize",
-                                    "trig-validate", "trig-ab", "all"])
+                                    "trig-validate", "trig-ab",
+                                    "v6-subfactor-test",
+                                    "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
     ap.add_argument("--n", type=int, default=10, help="diag-d2 重复次数")
@@ -398,6 +538,8 @@ def main():
     ap.add_argument("--a-caps", type=str, default="3,4,5,6,7")
     ap.add_argument("--b-caps", type=str, default="1,2,3")
     ap.add_argument("--no-cta", action="store_true", help="phase5 跳过 CTA sleeve")
+    ap.add_argument("--v6-alphas", type=str, default="0.1,0.2,0.3,0.5",
+                    help="V6 子因子 alpha 扫描")
     args = ap.parse_args()
     panel = _load_panel(args.panel)
 
@@ -472,6 +614,20 @@ def main():
         print(cta_df.round(4).to_string(index=False))
         print("\n=== ABC_ew 3D sweep (按 Sharpe 排序) ===")
         print(combo_df.sort_values("Sharpe", ascending=False).round(3).to_string(index=False))
+    if args.cmd in ("v6-subfactor-test", "all"):
+        alphas = tuple(float(x) for x in args.v6_alphas.split(","))
+        single_df = run_subfactor_single(panel, alpha_values=alphas)
+        combo_df = run_subfactor_combo(panel, alpha=0.3)
+        verdict = evaluate_v6_gate(single_df, combo_df)
+        _save(single_df, "v6_subfactor_single")
+        _save(combo_df, "v6_subfactor_combo")
+        print("\n=== V6 Gate 判定 ===")
+        for k, v in verdict.items():
+            print(f"  {k}: {v}")
+        if verdict["verdict"] == "PROMOTE":
+            print("\n  ✅ 至少 abc 通过 Gate, 进入 Phase 6 评估")
+        else:
+            print("\n  ❌ 三合一 (abc) 未通过 Gate, 永久归档本路线")
 
 
 if __name__ == "__main__":

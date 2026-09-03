@@ -116,3 +116,59 @@
 | **P3** | 自适应子权重 (滚动 Sharpe 减半机制) | 弱 sleeve 抗衰 | 需引擎加 sleeve 权重 hook |
 
 P0 优先级最高 (修复换手 + Sharpe 同步), 也是回报最直接的.
+
+---
+
+## 8. 三子因子调研 (2026-09-04, 用户指令)
+
+### 8.1 核心发现: 三个维度全部已在 CTA 因子库中实现
+
+V5 归档时判定"量能维度无法从公开信息复原"——但调研发现**我们的代码库已完整实现三个维度**，无需从零构建。
+
+| 子因子 | 信息维度 | 已有因子 (CTA因子库) | 文件 |
+|--------|----------|---------------------|------|
+| **Sub-A** 时序波动率 | 波动 regime | `VolatilityConeFactor` | volume_decay.py:45 |
+| **Sub-B** 趋势力度 | 价格方向+强度 | `TrendQualityFactor` + `MomentumSlopeFactor` | trend_quality.py:32, 70 |
+| **Sub-C** 量能确认 | 成交量/OI 方向 | `VolumeTrendFactor` + `OpenInterestTrendFactor` + `OIPriceDivergenceFactor` + `VolumeConfirmationFactor` + `OBVFactor` + `VolumePriceCorrFactor` | volume.py:21, 70, 166, 192; 93因子调研 |
+
+**关键**: V5 遗漏的 Sub-C (量能确认) 在 CTA 因子库中有 **6 个相关因子**， 全部可用。
+
+### 8.2 DVS 策略的量价共振模式 (docs/109, 111)
+
+DVS（动态波动率策略）已实现"量价共振拐点检测"：
+
+```python
+# turn_point.py — TurnPointBreakoutFactor
+# 价格突破 + 成交量确认 = 真实拐点
+# 参数: lookback=20, atr_mult=0.5, vol_mult=1.5, vol_lookback=10
+# 测试: 对2024年有+0.2%收益改善, MaxDD -5.1%→-4.8%
+```
+
+**对 AllWeather 的启示**: 量价共振 = Sub-B (价格突破) + Sub-C (放量确认), 这正是避险猫因子的"三维合成"中的 B+C 维度组合. DVS 已验证该模式在期货上可行.
+
+### 8.3 黄金多因子组合验证 (docs/gold)
+
+- **6因子等权**: 年化 13.94%, Sharpe 1.35, OOS/IS = 4.47
+- **趋势B&H (60%) + 因子信号 (40%)**: 年化 16.39%, Sharpe 1.37
+- 过拟合检测: 7/9 通过 OOS/IS > 0.8 阈值
+
+**对 AllWeather 的启示**: 多因子组合在黄金上已验证有效, 且等权 + 因子择时是稳健的组合方式. OOS/IS = 4.47 远超 0.8 阈值, 说明该方法不依赖样本内过拟合.
+
+### 8.4 Quant Alpha 因子挖掘教训 (docs/quant_alpha)
+
+- **简单逻辑 > 复杂逻辑**: 单算子约束成功率高, 6算子组合 (price_volume_divergence) 全部失败
+- **波动率因子反向**: 高波动率股票表现差 (IR = -0.12), 符合金融学直觉
+- **变量白名单有效**: 聚焦 close/volume/open 减少无效因子 80%
+
+**对 AllWeather 的启示**: Sub-A/B/C 作为连续因子 (非二值触发器) 保留信息量, 避免 trigA/trigB 失败的"硬阈值信息丢失"问题.
+
+### 8.5 V5 → V6 修正路径
+
+| 维度 | V5 (已归档) | V6 (新方案) |
+|------|------------|-------------|
+| Sub-A/B 实现 | trigA(trigB)自写, ad-hoc | 直接用 CTA 因子库已有因子 |
+| Sub-C (量能) | 完全缺失, 判死主因 | **6 个已有因子**, 无需新数据管线 |
+| 信号类型 | 二值触发器 (0/1) | 连续因子分数 (信息更丰富) |
+| 组合方式 | 未到组合就失败 | 可用黄金多因子方法 (等权+因子择时) |
+| 数据需求 | 需新 volume/OI 管线 | 全部已有, 零新管线 |
+| V5 gate 失败原因 | Sub-A/B 混合无法归因 + Sub-C 缺失 | 三维度独立可归因, Sub-C 已实现 |

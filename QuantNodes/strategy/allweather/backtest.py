@@ -54,6 +54,11 @@ class AllWeatherConfig:
     etf_commission: float = 0.0005
     min_obs_per_asset: int = MIN_OBS
 
+    # V6 子因子 (PLAN §13)
+    subfactor_mode: str = "none"   # none / a / b / c / abc / ab / ac / bc
+    subfactor_alpha: float = 0.3   # 子因子叠加强度 (调整范围 ±60%)
+    subfactor_score: object = None  # 外部传入 W × N 综合因子分数 (z-score 加权和)
+
 
 @dataclass
 class BacktestResult:
@@ -129,6 +134,53 @@ def _cap_group(w: pd.Series, members: list[str], cap: float) -> pd.Series:
         if base > 0:
             w[outside] += excess * (w[outside] / base)
     return w
+
+
+def subfactor_weights(
+    base_weights: pd.Series,
+    factor_score: pd.Series,
+    alpha: float = 0.3,
+) -> pd.Series:
+    """子因子加权叠加 sleeve 基础权重 (PLAN §13.3.3).
+
+    公式: w_final = w_base × (1 + α × factor_score)
+    其中 factor_score ∈ [-2, +2] (z-score 范围), α = 0.3 → 调整范围 [-60%, +60%].
+    输出: clip 到 [0, 1] (不允许负权重, 不允许单资产 > 100%).
+
+    Args:
+        base_weights: 基础权重 (Panel cols, 来自 _base_weights 或 trend overlay 后).
+        factor_score: 子因子分数 (Panel cols, 与 base_weights 同 index).
+        alpha: 叠加强度.
+
+    Returns:
+        调整后权重 Series (Panel cols).
+    """
+    if alpha == 0 or factor_score is None:
+        return base_weights
+    common = base_weights.index.intersection(factor_score.index)
+    adjusted = base_weights.copy()
+    adjusted.loc[common] = base_weights.loc[common] * (
+        1.0 + alpha * factor_score.loc[common].fillna(0.0)
+    )
+    return adjusted.clip(lower=0.0, upper=1.0)
+
+
+def _apply_subfactor(
+    base: pd.Series,
+    date,
+    cfg: AllWeatherConfig,
+) -> pd.Series:
+    """从 cfg.subfactor_score (W × N) 中取 date 那一行, 应用 subfactor_weights.
+
+    cfg.subfactor_score 是 None 或 mode='none' 时直接返回 base (零开销).
+    """
+    if cfg.subfactor_mode == "none" or cfg.subfactor_score is None:
+        return base
+    score_panel = cfg.subfactor_score
+    if date not in score_panel.index:
+        return base
+    factor_score = score_panel.loc[date]
+    return subfactor_weights(base, factor_score, cfg.subfactor_alpha)
 
 
 def _base_weights(returns_hist: pd.DataFrame, panel_cols: list[str],
@@ -233,6 +285,8 @@ def run_backtest(panel: pd.DataFrame, config: AllWeatherConfig | None = None,
             ov = combined(panel.loc[:date], mode=cfg.trend_mode,
                           **ov_kwargs).iloc[-1]
             base = base * ov
+            # V6 子因子 overlay (PLAN §13): 在 trend overlay 后, cap 前
+            base = _apply_subfactor(base, date, cfg)
             if cfg.max_weight < 1.0:
                 base = _cap_weights(base, cfg.max_weight)
             if cfg.bond_class_cap < 1.0:

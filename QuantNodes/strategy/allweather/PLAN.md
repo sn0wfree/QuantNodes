@@ -565,3 +565,184 @@ def run_backtest(panel: pd.DataFrame, config: AllWeatherConfig) -> BacktestResul
 3. 参数只从 `config.py` 读, 禁止散落 magic number
 4. 无前视是第一红线: 任何涉及"截断重算一致性"的测试失败 → 停下修 bug, 不继续
 5. 不做样本内调优: Phase 3 敏感性只做稳健性报告, **不据其改主线参数**
+
+---
+
+## 十三、V6 三子因子路线 (2026-09-04, 调研驱动)
+
+### 13.0 起源与修正
+
+V5 触发器 A/B 单独回测（2026-09-03）已永久归档（详见 §5.7 / docs/allweather-replication-report.md §5.7）。失败根因：
+- trigA = Sub-B (趋势) + 价格条件 (xmm + xmm_slope) 混合，无法归因
+- trigB = 纯波动扩张（vol_ratio > 1.0），无方向性
+- **Sub-C (量能维度) 完全缺失** → 三维度变两维度
+
+用户指出修正方向：**三个维度应作为独立子因子**，不可混成 trigger。调研发现 CTA 因子库已完整实现三个维度（详见 docs/allweather-cta-borrowed-notes.md §8），无需从零构建。
+
+### 13.1 V6 核心思路
+
+```
+V5 (失败):  trigger_A(trigger_B)  →  组合成避险猫因子
+V6 (新):   Sub-A + Sub-B + Sub-C  →  三个独立子因子叠加
+```
+
+| 子因子 | 信息维度 | 已有 CTA 因子 | 默认窗口（日） | 周-月尺度对应 |
+|--------|----------|---------------|----------------|---------------|
+| **Sub-A** 时序波动率 | 波动 regime | `VolatilityConeFactor` | sw=10, lw=120 | 2 周 / 6 月 |
+| **Sub-B** 趋势力度 | 价格方向+强度 | `TrendQualityFactor` + `MomentumSlopeFactor` | w=30 (R²), w=20 (slope) | 6 周 + 4 周 |
+| **Sub-C** 量能确认 | 成交量/OI 方向 | `VolumeTrendFactor` + `OIPriceDivergenceFactor` | w=5, w=5, pw=5 | 1 周 × 3 |
+
+**关键修正**：
+1. **不再自造 trigger**，直接复用 CTA 因子库已有因子
+2. **Sub-C 从缺失变已有**（CTA 库有 6 个相关因子），零新数据管线
+3. **信号从二值变连续**：因子分数 ∈ [-1, +1] 而非 {0, 1}
+4. **三维度独立可归因**：单因子回测可识别哪个维度有效
+
+### 13.2 频率匹配性验证（关键调研结论）
+
+| 系统 | 调仓频率 | 因子窗口尺度 |
+|------|---------|-------------|
+| AllWeather | **W-FRI** (周五) | — |
+| 黄金 gold_combined | W-FRI | mom=4 周, vol=4 周, tips=26 周 |
+| CTA v7 | 日级信号 + 周级调仓 | 5/20/60/120 日 = 1 周/1 月/3 月/6 月 |
+| CTA factor `momentum_filter_window` | 60 日 | 12 周（3 个月） |
+
+**结论**：CTA 因子库默认窗口（5/20/30/60/120 日）= **1 周/1 月/1.5 月/3 月/6 月**，正好覆盖 all-weather 周频调仓 + 月度风险预算视野。**无需重新调参**。
+
+### 13.3 实施步骤（4 步，~4.5h）
+
+#### 13.3.1 Step 1 — `subfactors.py`（新文件，~120 行）
+
+封装三个子因子计算，输出 T × N 日度因子分数 ∈ [-1, +1]。
+
+```python
+# subfactors.py 接口
+@dataclass
+class SubFactorConfig:
+    vol_cone_sw: int = 10
+    vol_cone_lw: int = 120
+    vol_cone_z: float = 1.0
+    trend_quality_w: int = 30
+    trend_quality_th: float = 0.6
+    mom_slope_w: int = 20
+    vol_trend_w: int = 5
+    oi_div_w: int = 5
+    oi_div_pw: int = 5
+
+def compute_subfactor_a(prices, cfg) -> pd.DataFrame: ...
+def compute_subfactor_b(prices, cfg) -> pd.DataFrame: ...
+def compute_subfactor_c(prices, volumes, open_interest=None, cfg) -> pd.DataFrame: ...
+def compute_all_subfactors(prices, volumes, open_interest=None, cfg) -> dict: ...
+```
+
+**ETF 处理**：`open_interest=None` 时（ETF 无 OI），Sub-C 仅用 `VolumeTrendFactor`。
+
+**单测**（`test_subfactors.py`，5 用例）：
+1. Sub-A 输出值域 [-1, +1]
+2. Sub-B 组合 TrendQuality + MomentumSlope
+3. Sub-C 无 OI 时仅用 VolumeTrend（ETF 路径）
+4. Sub-C 含 OI 时叠加 OIPriceDivergence（期货路径）
+5. compute_all_subfactors 返回 dict{a, b, c}
+
+#### 13.3.2 Step 2 — `subfactors_weekly.py`（新文件，~60 行）
+
+日度因子 → W-FRI 重采样 + 横截面 z-score 标准化。
+
+```python
+def resample_weekly(factor_daily, agg="last") -> pd.DataFrame: ...
+def zscore_cross_section(factor_panel, lookback_weeks=52) -> pd.DataFrame: ...
+def combine_subfactors(factors, weights=None, lookback_weeks=52) -> pd.DataFrame: ...
+```
+
+**核心参数**：
+- 重采样方式：`last`（默认，对齐 W-FRI）/ `mean`（更稳健）
+- z-score 窗口：52 周（1 年），min_periods=12（防冷启动）
+- 组合权重：默认等权 {a: 0.33, b: 0.33, c: 0.34}
+
+**单测**（`test_subfactors_weekly.py`，3 用例）：
+1. resample_weekly 输出 W-FRI 频率
+2. zscore 截面均值近似 0
+3. combine_subfactors 权重和为 1
+
+#### 13.3.3 Step 3 — `backtest.py` 扩展（+60 行）
+
+新增 `subfactor_weights()` 函数 + `AllWeatherConfig` 加 2 字段。
+
+```python
+def subfactor_weights(base_weights, factor_score, alpha=0.3):
+    """w_final = w_base × (1 + α × factor_score), clip 到 [0, 1]."""
+    adjusted = base_weights * (1.0 + alpha * factor_score)
+    return adjusted.clip(lower=0.0, upper=1.0)
+```
+
+**`AllWeatherConfig` 新增字段**：
+- `subfactor_mode: str = "none"` — none / a / b / c / abc / ab / ac / bc
+- `subfactor_alpha: float = 0.3` — 子因子叠加强度（扫描 {0.1, 0.2, 0.3, 0.5}）
+
+**接入点**：`run_backtest()` 的 `_rebalance_mask` 循环内，在 `compute_base_weights()` 之后插入 `apply_subfactor_to_sleeve()`。
+
+**单测**（`test_backtest_subfactor.py`，4 用例）：
+1. 中性分数（z=0）不动基础权重
+2. 正负分数对称调整
+3. 极负分数 clip 到 0
+4. sleeve 权重与因子分数索引对齐
+
+#### 13.3.4 Step 4 — `experiments.py` 新增子命令（+120 行）
+
+新增 `v6-subfactor-test` 子命令，包含三个函数：
+
+```python
+def run_subfactor_single(panel, cfg, factor, alpha_values=(0.1, 0.2, 0.3, 0.5)):
+    """单子因子 × alpha 扫描, B-sleeve 上回测."""
+
+def run_subfactor_combo(panel, cfg, combos=("ab", "ac", "bc", "abc"), alpha=0.3):
+    """子因子组合 × B-sleeve + ABC_ew 集成回测."""
+
+def evaluate_v6_gate(single_df, combo_df):
+    """V6 Gate 判定 (单因子 fwd20 + 组合 Sharpe 损失)."""
+```
+
+**CLI 接入**：`ap.add_argument` choices 列表加入 `"v6-subfactor-test"`。
+
+### 13.4 Pre-registered Gate（事先注册，比 V5 更严）
+
+| Gate | 阈值 | 比 V5 严在哪里 |
+|------|------|---------------|
+| 单因子 fwd20 均值 | < 0% | 新增（V5 缺失） |
+| 单因子 neg% | > 55% | 新增 |
+| 单因子 n | ≥ 100 | 新增 |
+| 组合 Sharpe 损失 | < **0.10** | V5 是 0.15 |
+| 压力段 MaxDD 改善 | ≥ 0.5pp | V5 未达标 |
+| 整体失败归档 | 三合一体仍失败 → **永久归档** | V5 是单 trigger 失败 |
+
+### 13.5 风险与回退预案
+
+| 步骤失败 | 应对 |
+|---------|------|
+| 7.3.1 因子计算维度不匹配 | 复用 CTA factor base class，加 `aggregate_etf_no_oi()` 子函数 |
+| 7.3.2 z-score 不稳定 | 改用 rank percentile（更稳健） |
+| 7.3.3 alpha=0.3 仍冲击大 | alpha 扫描 {0.1, 0.2, 0.3} |
+| 7.3.4 任一 Gate 不过 | 立即归档，不回退到 V5 |
+
+### 13.6 预期成果
+
+| 情景 | Sharpe | 压力段 | 是否推广 |
+|------|--------|--------|---------|
+| 乐观 | ABC_ew 1.897 → 2.0+ | 1.46 → 1.8+ | ✅ V6 主线 |
+| 中性 | ABC_ew 1.897 不变 | 持平 | 保留为备选 |
+| 悲观 | ABC_ew 1.897 略降 | 持平 | Gate 失败永久归档 |
+
+### 13.7 文件变更清单
+
+| 状态 | 文件 | 行数 | 内容 |
+|------|------|------|------|
+| 新增 | `QuantNodes/strategy/allweather/subfactors.py` | +120 | 三子因子计算 |
+| 新增 | `QuantNodes/strategy/allweather/subfactors_weekly.py` | +60 | 周频重采样+z-score |
+| 修改 | `QuantNodes/strategy/allweather/backtest.py` | +60 | subfactor_weights 接入 |
+| 修改 | `QuantNodes/strategy/allweather/config.py` | +5 | AllWeatherConfig + 2 字段 |
+| 修改 | `QuantNodes/strategy/allweather/experiments.py` | +120 | v6-subfactor-test 子命令 |
+| 新增 | `tests/strategy/allweather/test_subfactors.py` | +80 | 5 单测 |
+| 新增 | `tests/strategy/allweather/test_subfactors_weekly.py` | +40 | 3 单测 |
+| 新增 | `tests/strategy/allweather/test_backtest_subfactor.py` | +50 | 4 单测 |
+
+**总代码量**：新增 12 单测 + 240 行生产代码 + 本文档 90 行。
