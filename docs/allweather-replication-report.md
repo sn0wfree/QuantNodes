@@ -525,3 +525,66 @@ python -m QuantNodes.strategy.allweather.experiments all       # 全部依次执
 **结果 (待实施后填入)**: TBD
 
 详细实施步骤见 PLAN.md §15.
+
+
+**实测结果**:
+
+| 目标 | 模型 | IC | AUC/RMSE | 评估 |
+|------|------|-----|---------|------|
+| Y1 vol_spike | logreg | 0.007 | AUC 0.551 | 弱但超随机 |
+| Y1 vol_spike | rf | 0.012 | AUC 0.537 | 弱 |
+| Y2 vol_level | ridge | 0.023 | RMSE 0.133 | **IC 最高** |
+| Y2 vol_level | rf | 0.023 | RMSE 0.132 | 同 ridge |
+| Y3 turning | logreg | 0.013 | AUC 0.522 | 弱 |
+
+**B sleeve 回测 (Top 5 by Sharpe)**:
+
+| target | model | α | Sharpe | 压力段 |
+|--------|-------|---|--------|--------|
+| y_vol_spike | logreg | 0.1 | 0.758 | 1.049 |
+| y_vol_level | rf | 0.1 | 0.757 | 1.074 |
+| y_vol_level | rf | 0.2 | 0.754 | 1.114 |
+| y_vol_level | rf | 0.3 | 0.753 | **1.159** |
+| y_vol_spike | logreg | 0.2 | 0.752 | 1.067 |
+
+**对照 V6.5**:
+
+| 配置 | Sharpe | 压力段 | vs B 基线 0.758 |
+|------|--------|--------|-----------------|
+| **V6.5 Sub-BC rank α=0.2 (当前最佳)** | **0.768** | **1.165** | **+0.010** |
+| V6.6 y_vol_spike + logreg α=0.1 | 0.758 | 1.049 | 0.000 |
+| V6.6 y_vol_level + rf α=0.3 | 0.753 | **1.159** | -0.005 |
+| B 基线 | 0.758 | 1.140 | — |
+
+**结论**:
+- ❌ **V6.6 ML 复合因子未击败 V6.5** (Sharpe 0.768 > 0.758 ML best)
+- ⚠️ 压力段 y_vol_level + rf α=0.3 接近 V6.5 (1.159 vs 1.165)
+- ✅ ML 模型 IC > 0, AUC > 0.5 (弱但有信号)
+- ✅ 特征重要性揭示 Top 5: `sec_bond`, `sub_b_ma5`, `sub_a_ma5`, `sec_agri`, `sec_index` — 资产 sector + 5d 滚动均值是关键
+
+**特征重要性 Top 10** (y_vol_spike, 三模型平均):
+
+| 特征 | 类型 | importance_mean |
+|------|------|----------------|
+| sec_bond | asset | 0.240 |
+| sub_b_ma5 | sub-factor | 0.236 |
+| sub_a_ma5 | sub-factor | 0.208 |
+| sec_agri | asset | 0.184 |
+| sec_index | asset | 0.151 |
+| sub_b_std5 | sub-factor | 0.116 |
+| sec_energy | asset | 0.094 |
+| vclass_v_vol_lo | asset | 0.092 |
+| sub_a | sub-factor | 0.089 |
+| vclass_vol_lo | asset | 0.088 |
+
+**Gate 判定**: **V6.6 失败归档**. 三个目标 × 三个模型均未突破 V6.5 (Sub-BC rank α=0.2 = 0.768) 的 Sharpe 上限. 压力段接近但不及.
+
+**保留价值**:
+1. ML pipeline 工具化 (PurgedKFold + 特征 + 目标 + 训练 + Soft 信号)
+2. 特征重要性发现 (sector 特征比纯 sub-factor 更具预测力)
+3. IC > 0 证实 Sub-A/B/C 确有预测能力, 但 linear/tree ML 未能超越简单 weighted combination
+4. 未来可探索: 神经网络 / 非线性 interaction / 跨资产 attention
+
+**路线归档**: V6.6 ML 复合因子路线关闭, V6.5 (Sub-BC rank α=0.2) 仍是推荐配置.
+
+详细实施步骤见 PLAN.md §15.

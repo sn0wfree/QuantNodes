@@ -723,6 +723,7 @@ def main():
                                     "v6-alpha-scan",
                                     "v6-lookback-scan",
                                     "v6-subA-fix",
+                                    "v6-ml-composite",
                                     "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
@@ -852,6 +853,143 @@ def main():
         _save(df, "v6_subA_fix")
         print("\n=== V6 Sub-A 修复变体 ===")
         print(df.round(3).to_string(index=False))
+    if args.cmd in ("v6-ml-composite", "all"):
+        from .ml_composite import (
+            build_features,
+            build_targets,
+            train_models,
+            evaluate_classifier,
+            evaluate_regressor,
+            per_asset_ic,
+            rank_feature_importance,
+            to_soft_signal,
+        )
+        print("=== V6.6 ML 复合因子测试 ===")
+        print("\n构建特征 + 三目标...")
+        feat = build_features(panel)
+        tgt = build_targets(panel)
+        feat.to_parquet(OUTPUT_DIR / "v6_ml_features.parquet")
+        tgt.to_parquet(OUTPUT_DIR / "v6_ml_targets.parquet")
+        print(f"  features: {feat.shape}, targets: {tgt.shape}")
+
+        # IC 验证: 三目标 × 四模型
+        ic_rows = []
+        for target_name, target_type in [
+            ("y_vol_spike", "binary"),
+            ("y_vol_level", "regression"),
+            ("y_turning", "binary"),
+        ]:
+            y = tgt[target_name]
+            mask = feat.notna().all(axis=1) & y.notna()
+            X_train = feat[mask]
+            y_train = y[mask]
+            print(f"\n目标 {target_name}: {len(X_train)} 样本, "
+                  f"正样本 {y_train.mean():.3f}")
+            oof, imp, fitted = train_models(
+                X_train, y_train, target_type=target_type,
+            )
+            fwd_ret = panel.pct_change(20, fill_method=None).shift(-20)
+            assets = X_train.index.get_level_values("asset").values
+            fwd_aligned = pd.Series(
+                fwd_ret.values.ravel(),
+                index=pd.MultiIndex.from_product(
+                    [fwd_ret.index, fwd_ret.columns],
+                    names=["date", "asset"],
+                ),
+            ).reindex(X_train.index).values
+            ic_per_model = {}
+            for model_name, oof_pred in oof.items():
+                pred_clean = pd.DataFrame({
+                    "pred": oof_pred,
+                    "fwd": fwd_aligned,
+                    "asset": assets,
+                }).dropna()
+                ic_val = per_asset_ic(
+                    pred_clean["pred"].values,
+                    pred_clean["fwd"].values,
+                    pred_clean["asset"].values,
+                )
+                if target_type == "binary":
+                    eval_res = evaluate_classifier(
+                        y_train.fillna(0).values, np.nan_to_num(oof_pred),
+                    )
+                else:
+                    eval_res = evaluate_regressor(
+                        y_train.values, np.nan_to_num(oof_pred),
+                    )
+                ic_per_model[model_name] = ic_val
+                print(f"  [{model_name}] IC={ic_val:.4f} "
+                      f"AUC/RMSE={eval_res.get('auc', eval_res.get('rmse')):.3f}")
+                ic_rows.append({
+                    "target": target_name,
+                    "model": model_name,
+                    "ic": ic_val,
+                    "auc": eval_res.get("auc"),
+                    "rmse": eval_res.get("rmse"),
+                    "n": len(X_train),
+                })
+        ic_df = pd.DataFrame(ic_rows)
+        _save(ic_df, "v6_ml_ic")
+
+        # 特征重要性 (取 y_vol_spike logreg/reg 平均)
+        y1 = tgt["y_vol_spike"]
+        mask = feat.notna().all(axis=1) & y1.notna()
+        _, imp_y1, _ = train_models(feat[mask], y1[mask], "binary")
+        feat_imp = rank_feature_importance(imp_y1, list(feat.columns))
+        _save(feat_imp, "v6_ml_feature_importance")
+        print("\n=== 特征重要性 (y_vol_spike, 3 模型平均) ===")
+        print(feat_imp.head(10).round(4).to_string(index=False))
+
+        # B sleeve 回测: ML Soft 信号 × 多 alpha
+        print("\n=== B sleeve 回测 (ML Soft 信号) ===")
+        bt_rows = []
+        for target_name, target_type in [
+            ("y_vol_spike", "binary"),
+            ("y_vol_level", "regression"),
+            ("y_turning", "binary"),
+        ]:
+            y = tgt[target_name]
+            mask = feat.notna().all(axis=1) & y.notna()
+            X_train = feat[mask]
+            y_train = y[mask]
+            oof, _, _ = train_models(
+                X_train, y_train, target_type=target_type,
+            )
+            for model_name, oof_pred in oof.items():
+                # 构造 W × N score panel
+                pred_series = pd.Series(
+                    to_soft_signal(oof_pred, target_type),
+                    index=X_train.index,
+                )
+                score_wide = pred_series.unstack(level="asset").resample("W-FRI").last()
+                # z-score (横截面) 标准化
+                mu = score_wide.rolling(52, min_periods=12).mean()
+                std = score_wide.rolling(52, min_periods=12).std()
+                score_z = (score_wide - mu) / std.replace(0, np.nan)
+                for alpha in (0.1, 0.2, 0.3):
+                    cfg = AllWeatherConfig(
+                        use_hrp=False, trend_mode="none",
+                        use_vol_target=True, max_leverage=1.0,
+                        subfactor_mode="abc",
+                        subfactor_alpha=alpha,
+                        subfactor_score=score_z,
+                    )
+                    res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+                    row = {
+                        "target": target_name,
+                        "model": model_name,
+                        "alpha": alpha,
+                    }
+                    row = _row_from_result(row, res, _metrics_fn(), "")
+                    bt_rows.append(row)
+                    print(f"  [{target_name}/{model_name} α={alpha}] "
+                          f"Sh={row.get('full_Sharpe', float('nan')):.3f} "
+                          f"stress={row.get('stress_25+_Sharpe', float('nan')):.3f}")
+        bt_df = pd.DataFrame(bt_rows)
+        _save(bt_df, "v6_ml_backtest")
+        print("\n=== ML Soft B sleeve 回测汇总 (Top 10 by Sharpe) ===")
+        print(bt_df.sort_values("full_Sharpe", ascending=False).head(10)
+              .round(3).to_string(index=False))
 
 
 if __name__ == "__main__":
