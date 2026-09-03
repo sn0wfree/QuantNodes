@@ -61,6 +61,10 @@ class AllWeatherConfig:
     subfactor_alpha_pos: float | None = None  # 非对称 alpha: 正向分数
     subfactor_alpha_neg: float | None = None  # 非对称 alpha: 负向分数
 
+    # V7 类别级风险预算 (PLAN §16)
+    bond_risk_cap: float = 1.0     # 债券类风险贡献占比上限 (1.0=不约束)
+    asset_classes: object = None   # 类别映射覆盖 (None 用 class_erc.ASSET_CLASSES)
+
 
 @dataclass
 class BacktestResult:
@@ -200,8 +204,15 @@ def _apply_subfactor(
 
 def _base_weights(returns_hist: pd.DataFrame, panel_cols: list[str],
                   cfg: AllWeatherConfig) -> pd.Series:
-    """HRP / 等权 / inv-vol 基础权重 (未乘趋势/杠杆)."""
+    """HRP / 等权 / inv-vol / class_erc 基础权重 (未乘趋势/杠杆)."""
     avail = _available(returns_hist, cfg.window, cfg.min_obs_per_asset)
+    if cfg.weight_scheme == "class_erc":
+        from .class_erc import class_erc_weights
+        return class_erc_weights(
+            returns_hist, classes=cfg.asset_classes, window=cfg.window,
+            bond_risk_cap=cfg.bond_risk_cap,
+            min_obs_per_asset=cfg.min_obs_per_asset,
+        )[panel_cols].fillna(0.0)
     if cfg.weight_scheme == "inv_vol":
         w = pd.Series(0.0, index=panel_cols)
         if avail:

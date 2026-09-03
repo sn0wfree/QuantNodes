@@ -1025,6 +1025,51 @@ def run_dynamic_sleeve(panel: pd.DataFrame) -> pd.DataFrame:
               f"Sh={row.get('full_Sharpe', 0):.3f} R={row.get('full_AnnRet', 0)*100:.2f}% "
               f"DD={row.get('full_MaxDD', 0)*100:.2f}%")
     return pd.DataFrame(rows)
+
+
+# ── V7 类别ERC A sleeve 扫描 (PLAN §16) ────────────────────────
+def run_class_erc_scan(panel: pd.DataFrame,
+                       caps: tuple[float, ...] = (0.05, 0.08, 0.10, 1.0),
+                       lev: float = 2.3) -> pd.DataFrame:
+    """V7: A sleeve class ERC, bond_risk_cap × 扫描 (默认 lev2.3).
+
+    注: 类级 ERC 自然 RC = 1/K (K=10 类) = 0.10, cap ≥ 0.10 不触发;
+    有效约束区间在 0.10 以下 (§5.19 实测).
+    """
+    from QuantNodes.strategy.momentum_etf_rotation.common.metrics import (
+        compute_metrics as _mm,
+    )
+
+    rets = panel.pct_change(fill_method=None)
+    bonds = ["fut_t", "fut_tf", "fut_ts"]
+    bond_comp = rets[bonds].mean(axis=1)
+
+    rows = []
+    for cap in caps:
+        cfg = AllWeatherConfig(
+            trend_mode="none", max_weight=0.40, max_leverage=lev,
+            denoise="mp", weight_scheme="class_erc", bond_risk_cap=cap,
+        )
+        res = run_backtest(panel, cfg, compute_metrics_fn=_noop)
+        nav = res.nav.dropna()
+        m = _mm(nav, freq="D")
+        s25 = nav.loc[SEGMENTS["stress_25+"][0]:SEGMENTS["stress_25+"][1]]
+        m25 = _mm(s25, freq="D") if len(s25) > 30 else {}
+        valid = res.weights[(res.weights.sum(axis=1) > 0.9)]
+        port_ret = nav.pct_change(fill_method=None)
+        rows.append({
+            "bond_risk_cap": cap, "lev": lev,
+            "sharpe": m["Sharpe"], "ann_ret": m["AnnRet"], "vol": m["Vol"],
+            "max_dd": m["MaxDD"], "calmar": m["Calmar"],
+            "stress_25+_sharpe": m25.get("Sharpe"),
+            "bond_gross_pct": valid[bonds].sum(axis=1).mean() * 100,
+            "corr_bond_120d": port_ret.rolling(120).corr(bond_comp)
+                                   .dropna().mean(),
+        })
+        print(f"  [cap={cap}] Sh={m['Sharpe']:.3f} DD={m['MaxDD']*100:.2f}% "
+              f"bond_gross={rows[-1]['bond_gross_pct']:.0f}% "
+              f"corr={rows[-1]['corr_bond_120d']:.2f}")
+    return pd.DataFrame(rows)
 # ── CLI ─────────────────────────────────────────────────────────────
 def _save(df: pd.DataFrame, name: str) -> Path:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1050,6 +1095,7 @@ def main():
                                     "v6-subA-directional",
                                     "v6-C-subfactor",
                                     "v6-dynamic-sleeve",
+                                    "v7-class-erc",
                                     "all"])
     ap.add_argument("--panel", type=str, default=None)
     ap.add_argument("--caps", type=str, default=None, help="逗号分隔 (lever/cap sweep)")
@@ -1074,6 +1120,8 @@ def main():
                     help="V6.8 Sub-A directional alpha 扫描")
     ap.add_argument("--v6-C-alphas", type=str, default="1.0,1.5,2.0,2.5,3.0",
                     help="V6.10 C sleeve Sub-B directional alpha 扫描")
+    ap.add_argument("--v7-caps", type=str, default="0.05,0.08,0.10,1.0",
+                    help="V7 bond_risk_cap 列表 (逗号分隔; ≥1/K=0.10 不触发)")
     ap.add_argument("--v6-lookback-factor", type=str, default="a",
                     choices=["a", "b", "c"], help="V6 lookback 扫描的因子")
     ap.add_argument("--v6-lookback-alpha", type=float, default=0.2,
@@ -1229,6 +1277,14 @@ def main():
         print("\n按 Sharpe 排序:")
         print(df.sort_values("full_Sharpe", ascending=False).round(3)
               .to_string(index=False))
+    if args.cmd in ("v7-class-erc", "all"):
+        df = run_class_erc_scan(
+            panel,
+            caps=tuple(float(x) for x in args.v7_caps.split(",")),
+        )
+        _save(df, "v7_class_erc_scan")
+        print("\n=== V7 类别ERC A sleeve 扫描 ===")
+        print(df.round(3).to_string(index=False))
     if args.cmd in ("v6-ml-composite", "all"):
         from .ml_composite import (
             build_features,
