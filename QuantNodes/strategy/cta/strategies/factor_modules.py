@@ -41,58 +41,6 @@ import numpy as np
 import pandas as pd
 
 from ..backtest.cta_engine import CtaBacktestResult
-from ..factors.calendar import MonthTurnFactor, SeasonalityFactor, WeekdayFactor
-from ..factors.candlestick import (
-    DojiFactor, EngulfingFactor, HammerFactor, LongBodyFactor,
-)
-from ..factors.capital import CapitalInflowFactor, TurnoverFactor
-from ..factors.composite import (
-    MomentumCrashFilterFactor, MultiHorizonMomentumFactor, SharpeMomentumFactor,
-)
-from ..factors.divergence import (
-    PriceVolumeDivergenceFactor, VolumeConfirmationFactor,
-)
-from ..factors.event import ExtremeMoveFactor, GapStreakFactor, LimitMoveFactor
-from ..factors.market_structure import NewHighLowFactor, VolumeReturnResidualFactor
-from ..factors.mean_reversion import HalfLifeFactor, SqueezeFactor
-from ..factors.microstructure import (
-    CloseLocationFactor, GapFactor, IntradayReturnFactor,
-    OvernightIntradayDivergenceFactor, OvernightReturnFactor,
-)
-from ..factors.momentum_xs import AmihudXSFactor, MomentumXSFactor
-from ..factors.money_flow import CMFFactor, ForceIndexFactor, MFIFactor, PVTFactor
-from ..factors.oscillators import (
-    CCIFactor, MACDFactor, StochasticFactor, WilliamsRFactor,
-)
-from ..factors.price_location import (
-    OpenLocationFactor, PriceLocationFactor, VWAPDeviationFactor,
-)
-from ..factors.trend import (
-    ATRBreakoutFactor, BIASFactor, BollingerFactor,
-    EfficiencyFactor, MAFactor, MomentumFactor, RSIFactor,
-)
-from ..factors.trend_advanced import (
-    AroonFactor, ChandelierExitFactor, LinearSlopeFactor, TRIXFactor, VortexFactor,
-)
-from ..factors.trend_quality import MomentumSlopeFactor, TrendQualityFactor
-from ..factors.volume import (
-    AmihudFactor, OBVFactor, OIPriceDivergenceFactor, OpenInterestTrendFactor,
-    VolOIRatioFactor, VolumeBreakoutFactor, VolumePriceCorrFactor, VolumeTrendFactor,
-)
-from ..factors.volume_decay import VolumeDecayFactor
-from ..factors.volume_indicators import (
-    EaseOfMovementFactor, KlingerOscillatorFactor, VolumeMACrossFactor,
-    VolumeRatioFactor,
-)
-from ..factors.term_structure import TermSlopeFactor, BasisConvergenceFactor, CalendarSpreadMeanReversion
-from ..factors.basis_momentum import BasisLevelFactor
-from ..factors.macro_link import DXYLinkFactor, MacroStateFactor, VIXLinkFactor
-from ..factors.turn_point import TurnPointBreakoutFactor, FastTurnPointFactor
-from ..factors.short_term_reversal import ShortTermReversalTrendFactor
-from ..factors.industrial_chain import (
-    ChainMarginFactor, LeadLagFactor, MarginMomentumFactor, PriceRatioFactor,
-)
-from ..factors.cointegration import SpreadMeanReversionFactor
 
 
 # ── 基类/配置/品种池 (已拆至 base.py, 此处 re-export 保持兼容) ───────────
@@ -106,211 +54,35 @@ from .base import (  # noqa: E402,F401
 # ── 波动率风险过滤层 (已拆至 filters.py, 此处 re-export 保持兼容) ──────────
 from .filters import MarketRegimeFilter, VolRiskFilter  # noqa: E402,F401
 
-# ── 模块子策略 (Phase3 将拆至 modules/) ─────────────────────────────────
+# ── 模块子策略 (已拆至 modules/ 包, 此处 re-export 保持兼容) ────────────
+from .modules import (  # noqa: E402,F401
+    EventCalendarModuleStrategy,
+    IndustrialChainModuleStrategy,
+    MacroModuleStrategy,
+    MeanReversionModuleStrategy,
+    OscillatorAlphaModuleStrategy,
+    TermBasisModuleStrategy,
+    TrendMomentumModuleStrategy,
+    VolumeFlowModuleStrategy,
+)
 
-class TrendMomentumModuleStrategy(_ModuleStrategy):
-    """趋势动量组: 价格趋势/动量/突破类因子.
-
-    去重 (docs/94 §10.4): donchian×ma 相关 0.798 (72 品种离散信号最高对)
-    且 donchian 单因子 Sharpe 最弱 (-0.52), 删除.
-    """
-
-    FACTORS = [
-        ("ma", MAFactor, "panel"),
-        ("momentum", MomentumFactor, "panel"),
-        ("rsi", RSIFactor, "panel"),
-        ("efficiency", EfficiencyFactor, "panel"),
-        ("aroon", AroonFactor, "panel"),
-        ("linear_slope", LinearSlopeFactor, "panel"),
-        ("trix", TRIXFactor, "panel"),
-        ("macd", MACDFactor, "panel"),
-        ("multi_horizon_mom", MultiHorizonMomentumFactor, "panel"),
-        ("sharpe_mom", SharpeMomentumFactor, "panel"),
-        ("mom_crash_filter", MomentumCrashFilterFactor, "panel"),
-        ("mom_slope", MomentumSlopeFactor, "panel"),
-        ("trend_quality", TrendQualityFactor, "panel"),
-        ("new_high_low", NewHighLowFactor, "panel"),
-        ("momentum_xs", MomentumXSFactor, "panel"),
-        ("atr_breakout", ATRBreakoutFactor, "ohlc"),
-        ("turn_point_breakout", TurnPointBreakoutFactor, "ohlc"),
-        ("fast_turn_point", FastTurnPointFactor, "ohlc"),
-        ("short_term_reversal_trend", ShortTermReversalTrendFactor, "panel"),
-        ("overnight_ret", OvernightReturnFactor, "ohlc"),
-        ("intraday_ret", IntradayReturnFactor, "ohlc"),
-        ("overnight_intraday_div", OvernightIntradayDivergenceFactor, "ohlc"),
-        ("long_body", LongBodyFactor, "ohlc"),
-        ("vortex", VortexFactor, "ohlc"),
-        ("chandelier", ChandelierExitFactor, "ohlc"),
-    ]
+# legacy: 历史上因子类可从本模块导入 (scripts/test_combined_regime_factors.py 依赖)
+from .modules.trend_momentum import (  # noqa: E402,F401
+    FastTurnPointFactor,
+    ShortTermReversalTrendFactor,
+    TurnPointBreakoutFactor,
+)
 
 
-class OscillatorAlphaModuleStrategy(_ModuleStrategy):
-    """振荡器Alpha组: 15因子振荡器+inv_vol加权+双向交易.
+def __getattr__(name: str):
+    """PEP 562 兜底: 其余历史属性 (因子类等) 延迟委托, 保持完全向后兼容."""
+    from .. import factors as _factors
+    val = getattr(_factors, name, None)
+    if val is not None:
+        return val
+    from . import base as _base
+    return getattr(_base, name)
 
-    核心逻辑:
-        1. 15个振荡器/反转因子独立计算信号
-        2. inv_vol加权: 波动率低的因子权重更高
-        3. 双向交易: 55%做多, 44%做空
-        4. 始终在场: 仅1%时间空仓
-        5. vol_targeting: 仓位按波动率调整
-
-    收益来源:
-        - 做多贡献: +11.0% 年化 (主要来源)
-        - 做空贡献: +6.7% 年化 (次要来源)
-        - 始终在场: 避免空仓机会成本
-
-    适用场景:
-        - 趋势市: 更赚钱 (33%年化)
-        - 震荡市: 表现一般 (2%年化)
-    """
-    # 保留旧名称作为别名
-    MeanReversionModuleStrategy = None  # 向后兼容
-
-    FACTORS = [
-        ("bollinger", BollingerFactor, "panel"),
-        ("bias", BIASFactor, "panel"),
-        ("half_life", HalfLifeFactor, "panel"),
-        ("price_location", PriceLocationFactor, "panel"),
-        ("spread_mr", SpreadMeanReversionFactor, "series"),
-        ("stochastic", StochasticFactor, "ohlc"),
-        ("cci", CCIFactor, "ohlc"),
-        ("williams_r", WilliamsRFactor, "ohlc"),
-        ("squeeze", SqueezeFactor, "ohlc"),
-        ("close_location", CloseLocationFactor, "ohlc"),
-        ("open_location", OpenLocationFactor, "ohlc"),
-        ("doji", DojiFactor, "ohlc"),
-        ("hammer", HammerFactor, "ohlc"),
-        ("engulfing", EngulfingFactor, "ohlc"),
-        ("gap", GapFactor, "ohlc"),
-    ]
-
-
-# 向后兼容
-MeanReversionModuleStrategy = OscillatorAlphaModuleStrategy
-
-
-class VolumeFlowModuleStrategy(_ModuleStrategy):
-    """量能资金流组: 量价/持仓/资金流类因子."""
-
-    FACTORS = [
-        ("volume_trend", VolumeTrendFactor, "price_vol"),
-        ("volume_breakout", VolumeBreakoutFactor, "vols"),
-        ("obv", OBVFactor, "price_vol"),
-        ("oi_trend", OpenInterestTrendFactor, "ois"),
-        ("vol_oi_ratio", VolOIRatioFactor, "price_oi"),
-        ("amihud", AmihudFactor, "price_vol"),
-        ("volume_price_corr", VolumePriceCorrFactor, "price_vol"),
-        ("volume_confirmation", VolumeConfirmationFactor, "price_vol"),
-        ("price_vol_divergence", PriceVolumeDivergenceFactor, "price_vol"),
-        ("oi_price_divergence", OIPriceDivergenceFactor, "price_oi"),
-        ("volume_decay", VolumeDecayFactor, "vols"),
-        ("volume_ret_residual", VolumeReturnResidualFactor, "price_vol"),
-        ("capital_inflow", CapitalInflowFactor, "price_oi"),
-        ("turnover", TurnoverFactor, "price_vol"),
-        ("mfi", MFIFactor, "ohlcv"),
-        ("cmf", CMFFactor, "ohlcv"),
-        ("ease_of_movement", EaseOfMovementFactor, "ohlcv"),
-        ("klinger", KlingerOscillatorFactor, "ohlcv"),
-        ("volume_ratio", VolumeRatioFactor, "vols"),
-        ("volume_ma_cross", VolumeMACrossFactor, "vols"),
-        ("pvt", PVTFactor, "price_vol"),
-        ("force_index", ForceIndexFactor, "price_vol"),
-        ("vwap_deviation", VWAPDeviationFactor, "ohlcv"),
-        ("amihud_xs", AmihudXSFactor, "price_vol"),
-    ]
-
-
-class EventCalendarModuleStrategy(_ModuleStrategy):
-    """事件日历组: 极端波动/跳变/日历效应类因子."""
-
-    FACTORS = [
-        ("extreme_move", ExtremeMoveFactor, "panel"),
-        ("gap_streak", GapStreakFactor, "panel"),
-        ("limit_move", LimitMoveFactor, "panel"),
-        ("seasonality", SeasonalityFactor, "panel"),
-        ("weekday", WeekdayFactor, "panel"),
-        ("month_turn", MonthTurnFactor, "panel"),
-    ]
-
-
-class TermBasisModuleStrategy(_ModuleStrategy):
-    """期限结构/基差组: 近远月价差 + 现货基差类因子.
-
-    数据: load_term_structure (近远月 OI top-4 合约) + spot_basis_daily.
-    因子选择 (docs/94 §7.5/§8.9): 9 因子归因仅 term_slope/basis_level 为正
-    (basis/roll_yield/term_curvature/oi_concentration/front_month_oi/
-    near_basis/basis_momentum 单边信号在国内商品系统性失效, 剔除).
-    basis_level 单因子 72 品种归因转负 (-0.44) 但组合层面为正贡献
-    (sign 非线性), 保留.
-    IF/T 等无现货基差品种无信号 (NaN → 0).
-    """
-
-    FACTORS = [
-        ("term_slope", TermSlopeFactor, "spread"),
-        ("basis_level", BasisLevelFactor, "basis"),
-        ("basis_convergence", BasisConvergenceFactor, "basis"),
-        ("calendar_spread_mr", CalendarSpreadMeanReversion, "spread"),
-    ]
-
-
-class MacroModuleStrategy(_ModuleStrategy):
-    """宏观联动组: VIX/DXY 与品种联动类因子."""
-
-    FACTORS = [
-        ("vix_link", VIXLinkFactor, "macro_vix"),
-        ("dxy_link", DXYLinkFactor, "macro_dxy"),
-        ("macro_state", MacroStateFactor, "macro_vix"),
-    ]
-
-
-class IndustrialChainModuleStrategy(_ModuleStrategy):
-    """产业链组: 盘面利润/利润动量/比价/上下游传导.
-
-    信号 → 品种映射 (CHAIN_MAP):
-        chain_margin_rb  → RB   (螺纹盘面利润, 交易下游成品)
-        chain_margin_hc  → HC   (热卷盘面利润)
-        chain_margin_pp  → PP   (MTO 利润)
-        margin_momentum_m → M   (压榨利润动量)
-        price_ratio_au_cu → AU-CU 配对 (比价高估 → 空 AU 多 CU)
-        lead_lag_i_rb    → RB   (铁矿传导顺畅 → 做多下游螺纹)
-        chain_margin_j   → J    (焦化利润)
-        chain_margin_ta  → TA   (PTA加工费)
-        chain_margin_lh  → LH   (生猪饲料成本)
-    """
-
-    FACTORS = [
-        # 钢铁链: 铁矿→焦煤→焦炭→螺纹/热卷
-        ("chain_margin_rb", lambda: ChainMarginFactor("steel_profit_rb"), "chain"),
-        ("chain_margin_hc", lambda: ChainMarginFactor("steel_profit_hc"), "chain"),
-        # 化工链: 石化→化工
-        ("chain_margin_pp", lambda: ChainMarginFactor("mto_profit"), "chain"),
-        # 农产品链: 大豆压榨
-        ("margin_momentum_m", lambda: MarginMomentumFactor("crush_profit"), "chain"),
-        # 跨品种
-        ("price_ratio_au_cu", lambda: PriceRatioFactor("AU", "CU"), "chain"),
-        ("lead_lag_i_rb", lambda: LeadLagFactor("I", "RB"), "chain"),
-        # 新增: 焦化链
-        ("chain_margin_j", lambda: ChainMarginFactor("coke_profit"), "chain"),
-        # 新增: PTA加工费
-        ("chain_margin_ta", lambda: ChainMarginFactor("pta_fee"), "chain"),
-        # 新增: 生猪饲料成本
-        ("chain_margin_lh", lambda: ChainMarginFactor("hog_feed_cost"), "chain"),
-    ]
-
-    CHAIN_MAP = {
-        "chain_margin_rb": "RB",       # 螺纹盘面利润 → RB
-        "chain_margin_hc": "HC",       # 热卷盘面利润 → HC
-        "chain_margin_pp": "PP",       # MTO利润 → PP
-        "margin_momentum_m": "M",      # 大豆压榨利润 → M
-        "price_ratio_au_cu": "AU-CU",  # 比价 → AU和CU
-        "lead_lag_i_rb": "RB",         # 铁矿传导 → RB
-        "chain_margin_j": "J",         # 焦化利润 → J
-        "chain_margin_ta": "TA",       # PTA加工费 → TA
-        "chain_margin_lh": "LH",       # 生猪饲料成本 → LH
-    }
-
-
-# ── 组合策略 ───────────────────────────────────────────────────────────────
 
 @dataclass
 class ComboConfig(ModuleConfig):
