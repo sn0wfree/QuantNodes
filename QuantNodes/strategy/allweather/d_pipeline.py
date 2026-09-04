@@ -150,7 +150,8 @@ def _d_base_weights(
 
     cov_estimator: "lw" / "oas" / "lw_ewma" / "block_corr" / "avs"
     """
-    from .cov_extended import lw_ewma_cov, oas_cov, block_corr_shrink
+    from .cov_extended import lw_ewma_cov, oas_cov, block_corr_shrink, \
+        nqn_lw2012_cov, poet_cov
 
     avail = [c for c in panel_cols
              if returns_hist[c].notna().sum() >= min_obs_per_asset]
@@ -169,6 +170,10 @@ def _d_base_weights(
         cov_full = lw_ewma_cov(sub, window=window)
     elif cov_estimator == "block_corr":
         cov_full = block_corr_shrink(sub, window=window)
+    elif cov_estimator == "nqn":
+        cov_full = nqn_lw2012_cov(sub, window=window)
+    elif cov_estimator == "poet":
+        cov_full = poet_cov(sub, window=window)
     elif cov_estimator == "avs":
         cov_full = hierarchical_avs(sub, window=window)[0]
     elif cov_estimator == "none":

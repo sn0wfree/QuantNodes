@@ -448,3 +448,98 @@ def block_corr_shrink(returns: pd.DataFrame, window: int = 252,
     if eigvals.min() < 1e-10:
         C += np.eye(N) * (1e-10 - eigvals.min())
     return C
+
+
+# ═══════════════════════════════════════════════════════════════════
+# B 轮后半 (PLAN §17.11): 非线性收缩 + 因子模型
+# ═══════════════════════════════════════════════════════════════════
+
+
+def nqn_lw2012_cov(returns: pd.DataFrame, window: int = 252) -> np.ndarray:
+    """非线性收缩 (Ledoit & Wolf 2018 解析式; 忠实移植 nonlinshrink 参考).
+
+    逐特征值收缩 (p ≤ n 分支, Eq. 4.3):
+        d_i = λ_i / [(π·c·λ_i·f̂(λ_i))² + (1 − c − π·c·λ_i·Ĥf(λ_i))²]
+    - f̂: 样本谱密度 Epanechnikov 核估计, 比例带宽 h_j = n^{-1/3}·λ_j
+    - Ĥf: 同核的 Hilbert 变换估计 (含对数项闭式)
+    - 大特征值少收缩 (信号), 小特征值多收缩 (噪声)
+    """
+    sub = returns.iloc[-window:].dropna(axis=0, how="any")
+    n_obs, p = sub.shape
+    if n_obs < 30 or p < 2:
+        return np.cov(sub.to_numpy(), rowvar=False)
+
+    x = sub.to_numpy()
+    x = x - x.mean(axis=0)
+    n = n_obs - 1                       # 有效样本量 (去均值扣 1, 同参考实现)
+    sample_cov = x.T @ x / n
+
+    lam, u = np.linalg.eigh(sample_cov)  # ascending
+    if np.any(lam / max(lam.sum(), 1e-300) < 1e-8):
+        # 奇异防御: 回退 LW
+        return ledoit_wolf_shrink(sub, window=window)
+    c = p / n
+    h = n ** (-1.0 / 3.0)
+
+    # 比例带宽: κ_ij = (λ_i−λ_j)/(h·λ_j) — 带宽属于数据点 λ_j (论文记号 h_{n,j})
+    L = np.tile(lam[:, None], (1, p))    # L[i,j] = λ_i (行索引)
+    H = h * L.T                          # H[i,j] = h·λ_j
+    with np.errstate(divide="ignore", invalid="ignore"):
+        xij = (L - L.T) / H              # x[i,j] = (λ_i−λ_j)/(h·λ_j)
+
+    # Eq 4.9: 谱密度 (Epanechnikov 核)
+    ftilde = (3.0 / (4.0 * np.sqrt(5.0))) * np.mean(
+        np.maximum(1.0 - xij ** 2 / 5.0, 0.0) / H, axis=1)
+
+    # Eq 4.7-4.8: Hilbert 变换 (闭式, 含 log 项与 |x|=√5 特例)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_term = np.log(np.abs((np.sqrt(5.0) - xij) / (np.sqrt(5.0) + xij)))
+    Hftemp = (-3.0 / (10.0 * np.pi)) * xij \
+        + (3.0 / (4.0 * np.sqrt(5.0) * np.pi)) * (1.0 - xij ** 2 / 5.0) * log_term
+    on_edge = np.abs(xij) == np.sqrt(5.0)
+    Hftemp[on_edge] = (-3.0 / (10.0 * np.pi)) * xij[on_edge]
+    Hftilde = np.mean(Hftemp / H, axis=1)
+
+    # Eq 4.3: 收缩 (p ≤ n)
+    dtilde = lam / ((np.pi * c * lam * ftilde) ** 2
+                    + (1.0 - c - np.pi * c * lam * Hftilde) ** 2)
+
+    C = (u * dtilde) @ u.T
+    eigvals = np.linalg.eigvalsh(C)
+    if eigvals.min() < 1e-10:
+        C += np.eye(p) * (1e-10 - eigvals.min())
+    return C
+
+
+def poet_cov(returns: pd.DataFrame, window: int = 252, K: int = 3,
+             delta: float = 1.0) -> np.ndarray:
+    """POET (Fan, Liao, Mincheva 2013): 因子降维 + 残差阈值化.
+
+    Σ = B·Λ_K·B' + threshold(S − B·Λ_K·B')
+    - B: top-K PCA 载荷; Λ_K: 前 K 特征值 (PCA 因子正交)
+    - 残差幅度相对硬阈值: θ_ij = δ·√(r_ii·r_jj)·√(log N / T), 对角保留
+    - 末尾 PSD 修复 (阈值化可能破坏半正定)
+    """
+    sub = returns.iloc[-window:].dropna(axis=0, how="any")
+    T, N = sub.shape
+    if T < 30 or N < 2:
+        return np.cov(sub.to_numpy(), rowvar=False)
+
+    S = np.cov(sub.to_numpy(), rowvar=False)
+    K = max(1, min(K, N - 1))
+    lam, Q = np.linalg.eigh(S)               # ascending
+    lam_k = lam[::-1][:K]                    # top-K descending
+    Q_k = Q[:, ::-1][:, :K]
+    factor_part = (Q_k * lam_k[None, :]) @ Q_k.T   # Q_k Λ_k Q_k'
+
+    residual = S - factor_part
+    vols = np.sqrt(np.clip(np.diag(residual), 1e-12, None))
+    theta = delta * np.sqrt(np.log(max(N, 2)) / T) * np.outer(vols, vols)
+    R_th = residual * (np.abs(residual) >= theta)
+    np.fill_diagonal(R_th, np.diag(residual))      # 对角方差保留
+
+    C = factor_part + R_th
+    eigvals = np.linalg.eigvalsh(C)
+    if eigvals.min() < 1e-10:
+        C += np.eye(N) * (1e-10 - eigvals.min())
+    return C
