@@ -110,8 +110,9 @@ def risk_budget_solve(cov: np.ndarray, budgets: np.ndarray,
 # ── 合成债券资产 ──
 def _synth_bond_returns(returns: pd.DataFrame,
                         window: int, min_obs: int = 60) -> pd.Series | None:
-    """3 债券 inv-vol 合成序列 (合成资产用于盒约束)."""
-    avail = [c for c in BOND_COLS if returns[c].notna().sum() >= min_obs]
+    """债券类 inv-vol 合成序列 (合成资产用于盒约束); 缺列防御."""
+    avail = [c for c in BOND_COLS
+             if c in returns.columns and returns[c].notna().sum() >= min_obs]
     if not avail:
         return None
     sub = returns[avail].iloc[-window:]
