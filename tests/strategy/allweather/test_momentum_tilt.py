@@ -118,3 +118,24 @@ def test_run_d_sleeve_momentum_beta_wiring():
                         rebalance_freq="W-FRI", cov_estimator="lw",
                         momentum_beta=0.20)
     assert not np.allclose(res0.nav.values, res1.nav.values)
+
+
+def test_apply_tilt_preserves_gross_exposure():
+    """回归测试 (§5.32 杠杆bug): tilt 保持总敞口 (杠杆语义不被归一化抹掉)."""
+    weights = pd.Series([1.15, 1.15, 0], index=["x", "y", "z"])  # sum=2.3 (杠杆)
+    tilt_row = pd.Series([1.1, 1.1, 1.0], index=["x", "y", "z"])
+    w = apply_momentum_tilt(weights, tilt_row)
+    assert abs(w.sum() - 2.3) < 1e-9  # 杠杆保持, 不被归一化回 1.0
+    # 相对权重仍被倾斜 (x/y 同倾斜 → 比例不变)
+    assert abs(w["x"] / w["y"] - 1.0) < 1e-9
+    # 未上市资产保持 0
+    assert w["z"] == 0
+
+
+def test_apply_tilt_delever_preserved():
+    """去杠杆 (sum<1) 同样保持: 0.81x 的减杠杆不被 tilt 归一化抹掉."""
+    weights = pd.Series([0.405, 0.405], index=["x", "y"])  # sum=0.81
+    tilt_row = pd.Series([0.9, 1.1], index=["x", "y"])
+    w = apply_momentum_tilt(weights, tilt_row)
+    assert abs(w.sum() - 0.81) < 1e-9
+    assert w["x"] < w["y"]  # 负动量资产相对低配

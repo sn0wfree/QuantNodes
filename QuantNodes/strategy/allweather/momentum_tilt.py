@@ -46,7 +46,13 @@ def momentum_tilt_factors(panel: pd.DataFrame, lookback: int = 60,
 
 def apply_momentum_tilt(weights: pd.Series, tilt_row: pd.Series,
                         min_obs: int = 60) -> pd.Series:
-    """单次调仓: w_tilt = w_base × t_i (归一化; 量不足资产中性)."""
+    """单次调仓: w_tilt = w_base × t_i (保持总敞口; 量不足资产中性).
+
+    缺陷修复 (§5.32): 原实现无条件归一化 (w/total), 把 vol_target 的
+    杠杆语义抹掉 (sum 强制回 1.0) — 杠杆 2.3x 在 tilt 后失效.
+    修正: 按 (input_sum / tilted_sum) 重缩放, tilt 只再分配相对权重,
+    总敞口 (杠杆) 保持不变.
+    """
     if weights.abs().sum() <= 0:
         return weights
     t = tilt_row.reindex(weights.index)
@@ -55,7 +61,8 @@ def apply_momentum_tilt(weights: pd.Series, tilt_row: pd.Series,
     # 从未上市资产 (权重=0) 保持 0
     t = t.where(weights > 0, 1.0)
     w_tilt = weights * t
-    total = w_tilt.sum()
-    if total > 0:
-        w_tilt = w_tilt / total
+    gross = weights.sum()
+    tilted_sum = w_tilt.sum()
+    if tilted_sum > 0:
+        w_tilt = w_tilt * (gross / tilted_sum)   # 保持总敞口 = 杠杆语义
     return w_tilt
