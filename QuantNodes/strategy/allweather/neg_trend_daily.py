@@ -35,6 +35,24 @@ CLASS_HETERO_WEIGHTS: dict[str, dict[str, float]] = {
 
 DEFAULT_WEIGHTS = {"trend": 1 / 3, "vol": 1 / 3, "flow": 1 / 3}
 
+# ── D.1 三档参数 (§5.27 稳定性扫描, 三档全超基线, 用户确认全部保留) ──
+# 实测 (真实量价, D v2 lw 基线 1.036/DD -9.84%):
+#   aggressive: Sharpe 1.142 / MaxDD -6.74% / 换手 14.6x (激活最多, 风控最强)
+#   balanced:   Sharpe 1.111 / MaxDD -7.28% / 换手 12.5x (默认)
+#   conservative: Sharpe 1.080 / MaxDD -7.64% / 换手 10.7x (激活最少)
+NEG_TREND_PRESETS: dict[str, dict[str, float]] = {
+    "aggressive": {"base_threshold": 0.4, "threshold_low": 0.2},
+    "balanced": {"base_threshold": 0.5, "threshold_low": 0.3},
+    "conservative": {"base_threshold": 0.6, "threshold_low": 0.4},
+}
+
+DEFAULT_PRESET = "balanced"
+
+
+def get_preset_params(preset: str) -> dict[str, float]:
+    """按档位名取阈值参数 (未知名 → balanced)."""
+    return dict(NEG_TREND_PRESETS.get(preset, NEG_TREND_PRESETS[DEFAULT_PRESET]))
+
 
 def _asset_class(col: str, asset_classes: dict[str, list[str]]) -> str | None:
     for cls, members in asset_classes.items():

@@ -1187,3 +1187,18 @@ LW=1.030 可信 (0% 污染); D.0 AVS=0.751 需复核; 频率消融需复核.
 - 量价加载器: 期货 volume+OI (data/chinese_futures) + ETF volume (data/real/ohlcv)
 - 接入 run_d_sleeve: 日频 penalty 乘性叠加 w×(1−penalty)
 - 不做: 动量倾斜 (D.2) / 减仓补仓增强 (D.2) / 短融现金 (G5)
+
+### 17.13 D.1 定版: 三档参数保留 (2026-09-08, 用户确认)
+
+**饱和修复后画像翻转**: trend 止损全面超越基线 (基线 1.036/DD -9.84%):
+- aggressive 0.4/0.2: Sharpe 1.142 / MaxDD -6.74% / 换手 14.6x
+- balanced 0.5/0.3 (默认): Sharpe 1.111 / MaxDD -7.28% / 换手 12.5x
+- conservative 0.6/0.4: Sharpe 1.080 / MaxDD -7.64% / 换手 10.7x
+
+**正式化**: NEG_TREND_PRESETS 字典 (neg_trend_daily.py) + get_preset_params()
++ run_d_sleeve(neg_trend_preset=...) 档位透传 (preset 优先于显式阈值).
+mode 默认保持 trend-only (3d 的 vol/flow 维度在 D 管线稀释趋势信号, 与 V6.8 互证).
+
+**单测**: 三档阈值单调性 / 未知名回退 / 激活率单调 / run_d_sleeve 档位透传.
+
+**下一步 D.2**: 动量倾斜 (alpha 层) + 高位减仓低位补仓逻辑.

@@ -7,6 +7,7 @@ from QuantNodes.strategy.allweather.neg_trend_daily import (
     compute_neg_trend_penalty,
     compute_sub_signals,
     _hetero_weight,
+    NEG_TREND_PRESETS,
 )
 from QuantNodes.strategy.allweather.class_erc import ASSET_CLASSES
 
@@ -131,3 +132,66 @@ def test_sub_trend_saturation_fixed():
     st, _, _ = compute_sub_signals(panel, vol, oi)
     sat_ratio = ((st.abs() >= 0.9999).mean()).mean()
     assert sat_ratio < 0.10
+
+
+# ═══════════════════════════════════════════════════════════════════
+# D.1 三档参数 (用户确认全部保留) 单测
+# ═══════════════════════════════════════════════════════════════════
+
+def test_presets_defined_and_monotonic():
+    """三档都在字典里且阈值单调: aggressive < balanced < conservative."""
+    from QuantNodes.strategy.allweather.neg_trend_daily import (
+        NEG_TREND_PRESETS, DEFAULT_PRESET,
+    )
+    assert set(NEG_TREND_PRESETS) == {"aggressive", "balanced", "conservative"}
+    a = NEG_TREND_PRESETS["aggressive"]
+    b = NEG_TREND_PRESETS["balanced"]
+    c = NEG_TREND_PRESETS["conservative"]
+    assert a["base_threshold"] < b["base_threshold"] < c["base_threshold"]
+    assert a["threshold_low"] < b["threshold_low"] < c["threshold_low"]
+    assert DEFAULT_PRESET == "balanced"
+
+
+def test_get_preset_params_fallback():
+    """未知名回退 balanced."""
+    from QuantNodes.strategy.allweather.neg_trend_daily import (
+        get_preset_params, NEG_TREND_PRESETS,
+    )
+    assert get_preset_params("unknown") == NEG_TREND_PRESETS["balanced"]
+    assert get_preset_params("aggressive")["base_threshold"] == 0.4
+
+
+def test_preset_activation_monotonic():
+    """合成数据: 激活率单调 aggressive ≥ balanced ≥ conservative."""
+    panel = _make_panel(n_days=400, seed=99)
+    vol, oi = _make_volume_oi(panel)
+    rates = {}
+    for preset in ["aggressive", "balanced", "conservative"]:
+        pen = compute_neg_trend_penalty(panel, volume=vol, oi=oi,
+                                         asset_classes=ASSET_CLASSES,
+                                         mode="trend",
+                                         base_threshold=NEG_TREND_PRESETS[preset]
+                                         ["base_threshold"],
+                                         threshold_low=NEG_TREND_PRESETS[preset]
+                                         ["threshold_low"])
+        rates[preset] = (pen > 0).mean().mean()
+    assert rates["aggressive"] >= rates["balanced"]
+    assert rates["balanced"] >= rates["conservative"]
+
+
+def test_run_d_sleeve_preset_passthrough():
+    """run_d_sleeve 档位透传: 不同档位产生不同 nav (aggressive 减仓最多)."""
+    from QuantNodes.strategy.allweather.d_pipeline import run_d_sleeve
+    panel = _make_panel(n_days=300)
+    vol, oi = _make_volume_oi(panel)
+    navs = {}
+    for preset in ["aggressive", "conservative"]:
+        res = run_d_sleeve(panel, bond_cap=0.40, window=120,
+                           rebalance_freq="W-FRI", cov_estimator="lw",
+                           neg_trend_mode="trend", volume=vol, oi=oi,
+                           asset_classes=ASSET_CLASSES,
+                           neg_trend_preset=preset)
+        navs[preset] = res.nav
+    # 不同档位 → 不同净值
+    assert not np.allclose(navs["aggressive"].values,
+                           navs["conservative"].values)
