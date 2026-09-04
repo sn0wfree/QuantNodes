@@ -292,6 +292,8 @@ def run_d_sleeve(
     base_threshold: float = 0.5,
     threshold_low: float = 0.3,
     neg_trend_preset: str | None = None,
+    momentum_beta: float = 0.0,
+    momentum_lookback: int = 60,
     compute_metrics_fn=None,
 ) -> DSleeveResult:
     """运行 D sleeve 回测.
@@ -320,6 +322,15 @@ def run_d_sleeve(
 
     # 调仓掩码
     rb_mask = _rebalance_mask(dates, rebalance_freq)
+
+    # D.2: 动量倾斜因子 (周频 alpha 层; momentum_beta=0 → 关闭)
+    if momentum_beta != 0:
+        from .momentum_tilt import momentum_tilt_factors
+        tilt = momentum_tilt_factors(panel, lookback=momentum_lookback,
+                                     beta=momentum_beta)
+        tilt = tilt.reindex(dates).ffill()
+    else:
+        tilt = None
 
     # D.1: 负趋势因子日频 penalty (快层)
     if neg_trend_mode != "none":
@@ -373,6 +384,11 @@ def run_d_sleeve(
         elif i > 0:
             # 非调仓日: 延用上次权重 (无杠杆微调)
             w_exec.iloc[i] = w_exec.iloc[i - 1]
+
+        # D.2: 动量倾斜在调仓日应用 (周频 alpha; 非调仓日权重已携带)
+        if tilt is not None and is_rb:
+            from .momentum_tilt import apply_momentum_tilt
+            w_exec.iloc[i] = apply_momentum_tilt(w_exec.iloc[i], tilt.loc[date])
 
         # D.1: 日频 penalty 叠加 (乘性减仓, w×(1−penalty))
         if penalty is not None:
