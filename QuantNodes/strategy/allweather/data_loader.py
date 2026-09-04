@@ -39,6 +39,7 @@ from .config import (
     OUTPUT_DIR,
     PANEL_OUTPUT,
     PANEL_V2_OUTPUT,
+    PANEL_V3_OUTPUT,
     START_DATE,
 )
 
@@ -346,10 +347,11 @@ def _integrity_report(panel: pd.DataFrame, label: str, path: Path):
 def main():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # v2 (roll 调整, 主线)
-    panel_v2 = build_unified_panel(roll_adjust=True)
-    panel_v2.to_parquet(PANEL_V2_OUTPUT)
-    _integrity_report(panel_v2, "panel_v2 (roll调整)", PANEL_V2_OUTPUT)
+    # v2 (roll 调整, 38 资产) — 已存在则跳过重算
+    if not PANEL_V2_OUTPUT.exists():
+        panel_v2 = build_unified_panel(roll_adjust=True)
+        panel_v2.to_parquet(PANEL_V2_OUTPUT)
+        _integrity_report(panel_v2, "panel_v2 (roll调整)", PANEL_V2_OUTPUT)
 
     # v1 (未调整, 对照) — 已存在则跳过重算
     if not PANEL_OUTPUT.exists():
@@ -357,25 +359,37 @@ def main():
         panel_v1.to_parquet(PANEL_OUTPUT)
         _integrity_report(panel_v1, "panel_v1 (未调整)", PANEL_OUTPUT)
 
-    # v1 vs v2 差异抽查: roll 日收益变化幅度
+    # v3 (roll 调整 + 宽基 ETF 513500/159915/510300, 41 资产, §5.30 资产池对齐)
+    if not PANEL_V3_OUTPUT.exists():
+        panel_v3 = build_unified_panel(roll_adjust=True)
+        panel_v3.to_parquet(PANEL_V3_OUTPUT)
+        _integrity_report(panel_v3, "panel_v3 (roll调整+宽基ETF)", PANEL_V3_OUTPUT)
+
+    # v1 vs v2 差异抽查: roll 日收益变化幅度 (v2 若未构建则从盘读)
+    v2_path = PANEL_V2_OUTPUT
+    if v2_path.exists():
+        panel_v2 = pd.read_parquet(v2_path)
+    else:
+        panel_v2 = None
     v1 = pd.read_parquet(PANEL_OUTPUT)
     ret1 = v1.pct_change(fill_method=None)
-    ret2 = panel_v2.pct_change(fill_method=None)
-    diffs = (ret1 - ret2).abs()
-    print()
-    print("roll 调整效果 (|v1_ret - v2_ret| 分位数, 仅期货列):")
-    fut_cols = [c for c in v1.columns if c.startswith("fut_")]
-    d = diffs[fut_cols].stack()
-    print(f"  mean={d.mean():.5f}  p95={d.quantile(0.95):.5f}  "
-          f"p99={d.quantile(0.99):.5f}  max={d.max():.5f}")
-    print()
-    print("各资产起始日 (HRP 渐入池支持):")
-    for c in panel_v2.columns:
-        first = panel_v2[c].first_valid_index()
-        if first is not None:
-            n_valid = panel_v2[c].notna().sum()
-            pct = n_valid / len(panel_v2)
-            print(f"  {c:<20} 起始={first.date()}  非空={n_valid}/{len(panel_v2)} ({pct:.1%})")
+    if panel_v2 is not None:
+        ret2 = panel_v2.pct_change(fill_method=None)
+        diffs = (ret1 - ret2).abs()
+        print()
+        print("roll 调整效果 (|v1_ret - v2_ret| 分位数, 仅期货列):")
+        fut_cols = [c for c in v1.columns if c.startswith("fut_")]
+        d = diffs[fut_cols].stack()
+        print(f"  mean={d.mean():.5f}  p95={d.quantile(0.95):.5f}  "
+              f"p99={d.quantile(0.99):.5f}  max={d.max():.5f}")
+        print()
+        print("各资产起始日 (HRP 渐入池支持):")
+        for c in panel_v2.columns:
+            first = panel_v2[c].first_valid_index()
+            if first is not None:
+                n_valid = panel_v2[c].notna().sum()
+                pct = n_valid / len(panel_v2)
+                print(f"  {c:<20} 起始={first.date()}  非空={n_valid}/{len(panel_v2)} ({pct:.1%})")
 
 
 if __name__ == "__main__":

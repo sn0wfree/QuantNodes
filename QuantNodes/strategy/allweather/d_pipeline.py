@@ -395,8 +395,11 @@ def run_d_sleeve(
         if penalty is not None:
             w_exec.iloc[i] = w_exec.iloc[i] * (1.0 - penalty.iloc[i])
 
-    # 组合收益
-    port_ret = (w_exec.shift(1) * returns).sum(axis=1)
+    # 组合收益 (含交易成本, 与 run_backtest 同口径: futures 1bp / ETF 5bp)
+    rate = {c: (0.0001 if c.startswith("fut_") else 0.0005)
+            for c in panel.columns}
+    costs = (w_exec.diff().abs() * pd.Series(rate)).sum(axis=1).fillna(0.0)
+    port_ret = (w_exec.shift(1) * returns).sum(axis=1) - costs
     nav = (1 + port_ret).cumprod()
     nav.name = "D_sleeve"
 

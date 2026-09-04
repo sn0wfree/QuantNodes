@@ -1792,3 +1792,42 @@ rapid 捕捉快速缺口 (1-5日). rapid 作为趋势层的安全网, 不是独�
 - P0: 513500/159915/510300 正式纳入 panel (→ panel_v3)
 - P1: 全套重跑 (A/B/C/D 引擎 × 对齐池)
 - P2: 现金代理数据源解决 (G5 重启评估)
+
+
+### 5.27 D.1 负趋势因子日频风控层 (2026-09-09)
+
+**实现** (PLAN §17.12):
+- `volume_loader.py`: 期货 volume+OI (DuckDB continuous_main_*) + ETF volume
+  (data/real/ohlcv), 对齐 panel 索引, ffill 因果填充, 缓存 parquet
+- `neg_trend_daily.py`: 3D 子信号 (trend 5/10/20斜率 + vol 60日分位 + flow 价量/OI)
+  + 异质权重 (equity重trend/futures重flow/gold重vol) + 自适应阈值 (波动regime)
+  + 双阈值滞回 + penalty∈[0,1]; 消融开关 mode='3d'/'trend'/'none'
+- `run_d_sleeve`: 日频 penalty 乘性叠加 w×(1−penalty)
+- **成本口径修复**: run_d_sleeve 原未扣交易成本 (A/B/C 的 run_backtest 扣了)
+  → 补齐同口径 (futures 1bp / ETF 5bp)
+
+**panel_v3 迁移**: 资产池扩至 41 (新增 510300 沪深300 / 159915 创业板 / 513500 标普),
+class_erc.ASSET_CLASSES 同步更新 (equity_etf_dom +2, equity_etf_off +1).
+
+#### 验证结果 (panel_v3, 41 资产, 含成本, lw + W-FRI + cap40% + lev1.0)
+
+| neg_trend mode | Sharpe | AnnRet | MaxDD | stress | 日均换手 |
+|----------------|--------|--------|-------|--------|---------|
+| none (基线) | 0.942 | 5.2% | -9.89% | 1.713 | 1.94% |
+| 3d (三维合成) | 0.875 | 4.6% | -8.79% | 1.577 | 2.70% |
+| **trend (仅趋势)** | **0.970** | 4.6% | **-6.51%** | **1.764** | 4.55% |
+
+#### 结论
+
+1. **trend-only 模式有效**: Sharpe +3.0% (0.942→0.970), **MaxDD 改善 3.4pp
+   (-9.89%→-6.51%)**, stress 1.764 — 趋势维度是负趋势因子唯一有效成分
+2. **3d (含 vol/flow) 有害** (0.875 < 0.942) — 与 V6.8 B sleeve 发现完全一致:
+   波动率/量能维度在真实数据上无 alpha; 设计文稿的三维合成被再次证伪, 仅趋势维度有效
+3. 换手成本: trend 模式 4.55%/日 (基线 1.94%), 成本已计入 — 净改善仍为正
+4. **对照**: A (class ERC) 1.337 | D+trend 0.970 | D 基线 0.942 —
+   D 仍显著低于 A, 但 MaxDD 差距收窄 (-6.51% vs -3.60%)
+
+**D.1 定版**: neg_trend_mode='trend' (仅趋势维度). 三维合成正式归档.
+
+**全引擎对照 (panel_v3)**: A 1.337 / B 0.840 / C 1.092 / D+trend 0.970;
+ABC 主线 1.592 (0.50/0.20/0.30), MaxDD -4.20% — 主线无变化.

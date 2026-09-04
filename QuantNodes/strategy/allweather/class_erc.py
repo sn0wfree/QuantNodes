@@ -24,9 +24,10 @@ from .hrp import MIN_ASSETS_FOR_HRP
 ASSET_CLASSES: dict[str, list[str]] = {
     "bond_rate": ["fut_t", "fut_tf", "fut_ts"],
     "equity_fut": ["fut_if", "fut_ic", "fut_ih"],
-    "equity_etf_dom": ["etf_512890", "etf_512010", "etf_515030", "etf_512690",
+    "equity_etf_dom": ["etf_159915", "etf_510300",        # 创业板/沪深300 (panel_v3 新增)
+                       "etf_512890", "etf_512010", "etf_515030", "etf_512690",
                        "etf_512800", "etf_515050", "etf_512200"],
-    "equity_etf_off": ["etf_513100", "etf_159740"],
+    "equity_etf_off": ["etf_513100", "etf_513500", "etf_159740"],  # 纳指/标普/恒科
     "precious": ["fut_au", "fut_ag"],
     "nonferrous": ["fut_cu", "fut_al", "fut_zn", "fut_ni"],
     "ferrous": ["fut_rb", "fut_hc", "fut_i", "fut_j", "fut_jm"],

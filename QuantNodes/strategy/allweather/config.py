@@ -26,7 +26,8 @@ ETF_OHLCV_ADJ_PATH: Path = Path(
 
 OUTPUT_DIR: Path = Path("~/Public/QuantNodes/data/allweather").expanduser()
 PANEL_OUTPUT: Path = OUTPUT_DIR / "panel_v1.parquet"        # 未 roll 调整 (对照)
-PANEL_V2_OUTPUT: Path = OUTPUT_DIR / "panel_v2.parquet"     # roll 调整 (主线)
+PANEL_V2_OUTPUT: Path = OUTPUT_DIR / "panel_v2.parquet"     # roll 调整 (38 资产, 旧主线)
+PANEL_V3_OUTPUT: Path = OUTPUT_DIR / "panel_v3.parquet"     # +宽基ETF (41资产, §5.30 对齐)
 ABLATION_OUTPUT: Path = OUTPUT_DIR / "ablation_results.csv"
 
 
@@ -50,6 +51,9 @@ FUTURES_PRODUCTS: list[str] = [
 # ETF 9: 9 支代码 (513180 → 159740 同指数替代)
 ETF_CODES: list[str] = [
     "513100",   # 纳指 ETF
+    "513500",   # 标普500 ETF (panel_v3 新增, 资产池对齐实验 §5.30)
+    "159915",   # 创业板 ETF (panel_v3 新增)
+    "510300",   # 沪深300 ETF (panel_v3 新增, ≈A500 代理)
     "159740",   # 恒生科技 ETF (替代 513180, 同指数)
     "512890",   # 红利低波 ETF (来自 smartbeta 面板)
     "512010",   # 医药 ETF
