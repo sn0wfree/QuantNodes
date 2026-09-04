@@ -285,6 +285,10 @@ def run_d_sleeve(
     max_leverage: float = 1.0,
     min_obs_per_asset: int = 60,
     cov_estimator: str = "lw",
+    neg_trend_mode: str = "none",
+    volume: pd.DataFrame | None = None,
+    oi: pd.DataFrame | None = None,
+    asset_classes: dict[str, list[str]] | None = None,
     compute_metrics_fn=None,
 ) -> DSleeveResult:
     """运行 D sleeve 回测.
@@ -298,7 +302,10 @@ def run_d_sleeve(
         target_vol: 目标波动率
         max_leverage: 杠杆上限
         min_obs_per_asset: 资产渐入池门槛
-        cov_estimator: 协方差引擎 ("lw"/"oas"/"lw_ewma"/"block_corr"/"avs")
+        cov_estimator: 协方差引擎 ("lw"/"oas"/"lw_ewma"/"block_corr"/"nqn"/"poet"/"avs"/"none")
+        neg_trend_mode: 负趋势因子 ("3d"/"trend"/"none"); 非 none 需传 volume/oi
+        volume/oi: 量价面板 (neg_trend_mode!='none' 时必需)
+        asset_classes: 类别映射 (异质权重)
         compute_metrics_fn: 指标函数 (None = 不计算)
 
     Returns:
@@ -310,6 +317,17 @@ def run_d_sleeve(
 
     # 调仓掩码
     rb_mask = _rebalance_mask(dates, rebalance_freq)
+
+    # D.1: 负趋势因子日频 penalty (快层)
+    if neg_trend_mode != "none":
+        from .neg_trend_daily import compute_neg_trend_penalty
+        penalty = compute_neg_trend_penalty(
+            panel, volume=volume, oi=oi, asset_classes=asset_classes,
+            mode=neg_trend_mode,
+        )
+        penalty = penalty.reindex(dates).ffill().fillna(0.0)
+    else:
+        penalty = None
 
     w_exec = pd.DataFrame(0.0, index=dates, columns=panel.columns)
     leverage_rb = 1.0
@@ -346,6 +364,10 @@ def run_d_sleeve(
         elif i > 0:
             # 非调仓日: 延用上次权重 (无杠杆微调)
             w_exec.iloc[i] = w_exec.iloc[i - 1]
+
+        # D.1: 日频 penalty 叠加 (乘性减仓, w×(1−penalty))
+        if penalty is not None:
+            w_exec.iloc[i] = w_exec.iloc[i] * (1.0 - penalty.iloc[i])
 
     # 组合收益
     port_ret = (w_exec.shift(1) * returns).sum(axis=1)
