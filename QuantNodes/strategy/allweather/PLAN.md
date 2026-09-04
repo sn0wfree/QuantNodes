@@ -1175,3 +1175,15 @@ LW=1.030 可信 (0% 污染); D.0 AVS=0.751 需复核; 频率消融需复核.
 - poet_cov: Fan-Liao-Mincheva 2013 (PCA top-K 因子 + 残差幅度相对硬阈值)
 - 接入 d_pipeline cov_estimator={"nqn","poet"}; K=3 默认
 - 行为单测: 各向同性塌缩 / 尖峰保留 / 因子子空间恢复 / 阈值稀疏性
+
+### 17.12 D.1 负趋势因子日频风控层 (2026-09-08, 范围收窄)
+
+**用户决策**: 先做 D.1 (负趋势因子), 动量倾斜+减仓补仓逻辑放 D.2 (做完 D.1 再说).
+
+**D.1 Scope**:
+- neg_trend_daily.py: 3D 子信号 (trend 5/10/20斜率 + vol 60日分位 + flow 价量/OI背离)
+  + 异质权重 (equity重trend/futures重flow/gold重vol) + 自适应阈值 + 双阈值滞回
+  + penalty ∈ [0,1], 日频; 消融开关 mode='3d'/'trend'/'none'
+- 量价加载器: 期货 volume+OI (data/chinese_futures) + ETF volume (data/real/ohlcv)
+- 接入 run_d_sleeve: 日频 penalty 乘性叠加 w×(1−penalty)
+- 不做: 动量倾斜 (D.2) / 减仓补仓增强 (D.2) / 短融现金 (G5)
