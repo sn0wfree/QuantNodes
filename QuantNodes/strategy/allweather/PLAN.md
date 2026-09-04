@@ -1167,3 +1167,11 @@ D sleeve 爆炸因 cap+重分配启发式链. 重构让 D 采用与 A 同级的�
 
 **影响范围**: §5.24 初版结论作废 (None/EWMA/VolAdaptive 被污染);
 LW=1.030 可信 (0% 污染); D.0 AVS=0.751 需复核; 频率消融需复核.
+
+### 17.11 B 轮后半 (2026-09-08, 用户确认)
+
+- nqn_lw2012_cov: Ledoit & Wolf 2012/2018 非线性收缩 (直接核估计:
+  d_j = λ_j/[(1−c−c·λ_j·m̂)²+(π·c·λ_j·p̂)²], Hilbert变换+核密度, 对角排除)
+- poet_cov: Fan-Liao-Mincheva 2013 (PCA top-K 因子 + 残差幅度相对硬阈值)
+- 接入 d_pipeline cov_estimator={"nqn","poet"}; K=3 默认
+- 行为单测: 各向同性塌缩 / 尖峰保留 / 因子子空间恢复 / 阈值稀疏性
