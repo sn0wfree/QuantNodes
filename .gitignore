@@ -189,9 +189,15 @@ data/chinese_futures/
 
 # Cache files (regeneratable)
 data/cache/
+data/ifind_cache/
 
 # API keys for CMF data fetchers (EIA, FRED, etc.)
 data/cmf/.keys.json
+
+# DuckDB 数据库文件 (不入库)
+*.duckdb
+*.duckdb.bak
+*.duckdb.wal
 
 # Chart cache (regeneratable)
 combo/_chart_cache/
