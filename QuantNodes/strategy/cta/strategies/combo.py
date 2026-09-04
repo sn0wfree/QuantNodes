@@ -15,7 +15,7 @@ import pandas as pd
 
 from ..backtest.cta_engine import CtaBacktestResult
 from .base import ModuleConfig, _ModuleStrategy, vol_target_positions
-from .filters import MarketRegimeFilter, VolRiskFilter
+from .filters import ADXRegimeFilter, MarketRegimeFilter, VolRiskFilter
 from .modules import (
     IndustrialChainModuleStrategy,
     MacroModuleStrategy,
@@ -71,8 +71,11 @@ class ComboConfig(ModuleConfig):
     tail_risk_scale: float = 0.7      # 高相关时仓位乘数 (0.7=降仓30%)
     # 市场状态过滤 (震荡市→降仓)
     regime_filter_enabled: bool = False  # 市场状态过滤开关
-    regime_adx_threshold: float = 20.0  # ADX阈值: <此值=震荡市
+    regime_filter_type: str = "er"       # "er"=效率比(现版) | "adx_hysteresis"=ADX滞回
+    regime_adx_threshold: float = 20.0  # ER阈值: <此值=震荡市 (er版用)
     regime_chop_coef: float = 0.4      # 震荡市仓位系数
+    regime_adx_enter: float = 25.0     # ADX进入趋势阈值 (adx_hysteresis版用)
+    regime_adx_exit: float = 20.0      # ADX跌出趋势阈值 (滞回, ≠enter防抖动)
     # 单品种名义敞口系数: 上限 = equity × max_leverage × 此系数 (默认0.25=旧行为)
     max_product_notional_coef: float = 0.25
     # 全局杠杆系数: 资金等分基数放大 (1.0=现状; 1.7≈杠杆0.53→0.90, 线性放大器)
@@ -80,6 +83,9 @@ class ComboConfig(ModuleConfig):
     # 组合模块子集注入: None = DEFAULT_COMBO_MODULES (历史行为)
     # 自选: module_classes=(TrendMomentumModuleStrategy, MyNewModuleStrategy)
     module_classes: tuple | None = None
+    # inv_vol 模块权重上限: 防止窄覆盖低波模块(IndustrialChain)权重失控(曾达80%).
+    # 0=关闭(历史行为); 推荐0.40. clip后重新归一化.
+    module_weight_cap: float = 0.0
 
 
 class FactorModuleComboStrategy(_ModuleStrategy):
@@ -227,13 +233,22 @@ class FactorModuleComboStrategy(_ModuleStrategy):
             out = out * self._filter.coefficients(self._price_panel)
         # 尾部风险保护: 高相关性时全局降仓
         out = self._tail_risk_filter(out)
-        # 市场状态过滤: 震荡市降仓
+        # 市场状态过滤: 震荡市降仓 (er=效率比 | adx_hysteresis=ADX滞回)
         if getattr(cfg, "regime_filter_enabled", False):
-            regime_filter = MarketRegimeFilter(
-                er_threshold=cfg.regime_adx_threshold,
-                chop_coef=cfg.regime_chop_coef,
-            )
-            out = out * regime_filter.coefficients(self._price_panel)
+            if getattr(cfg, "regime_filter_type", "er") == "adx_hysteresis":
+                regime_filter = ADXRegimeFilter(
+                    enter_threshold=cfg.regime_adx_enter,
+                    exit_threshold=cfg.regime_adx_exit,
+                    chop_coef=cfg.regime_chop_coef,
+                )
+                out = out * regime_filter.coefficients(
+                    self._price_panel, self._ohlc_map)
+            else:
+                regime_filter = MarketRegimeFilter(
+                    er_threshold=cfg.regime_adx_threshold,
+                    chop_coef=cfg.regime_chop_coef,
+                )
+                out = out * regime_filter.coefficients(self._price_panel)
         return out
 
     def _signal_to_lots(self, signals: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
@@ -330,7 +345,14 @@ class FactorModuleComboStrategy(_ModuleStrategy):
                 for s in sigs
             ], axis=1)
             inv = 1.0 / w.replace(0, np.nan)
-            w_norm = inv.div(inv.sum(axis=1), axis=0).fillna(1 / len(sigs))
+            w_norm = inv.div(inv.sum(axis=1), axis=0)
+            # 单模块权重上限: 防止 inv_vol 把低波窄覆盖模块(如IndustrialChain)推到80%+;
+            # clip 后重新归一化. 0=关闭 (历史行为).
+            cap = getattr(self._config, "module_weight_cap", 0.0)
+            if cap > 0:
+                w_norm = w_norm.clip(upper=cap).div(
+                    w_norm.clip(upper=cap).sum(axis=1), axis=0)
+            w_norm = w_norm.fillna(1 / len(sigs))
             combo = None
             for sig, wi in zip(sigs, [w_norm[c] for c in w_norm.columns]):
                 combo = sig.mul(wi, axis=0) if combo is None else combo + sig.mul(wi, axis=0)

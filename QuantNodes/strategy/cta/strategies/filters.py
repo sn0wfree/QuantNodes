@@ -75,7 +75,7 @@ class MarketRegimeFilter:
         self.chop_coef = chop_coef
 
     def coefficients(self, price_panel: pd.DataFrame) -> pd.DataFrame:
-        """返回 (T,N) 仓位系数矩阵."""
+        """返回 (T,N) 仓位系数矩阵. (向量化: 逻辑与逐日循环版逐位等价)"""
         coef = pd.DataFrame(1.0, index=price_panel.index, columns=price_panel.columns)
 
         for product in price_panel.columns:
@@ -89,9 +89,54 @@ class MarketRegimeFilter:
             total_vol = close.diff().abs().rolling(self.er_window).sum()
             er = price_change / total_vol.replace(0, np.nan)
 
-            # ER < threshold → 震荡市 → 降仓
-            for idx in er.index:
-                if pd.notna(er.loc[idx]) and er.loc[idx] < self.er_threshold:
-                    coef.loc[idx, product] = self.chop_coef
+            # ER < threshold → 震荡市 → 降仓 (NaN → False, 与 pd.notna 守卫等价)
+            chop = er < self.er_threshold
+            coef.loc[chop[chop].index, product] = self.chop_coef
+
+        return coef
+
+
+class ADXRegimeFilter:
+    """ADX 滞回过滤层: ADX>enter → 满仓; ADX<exit → 降仓; 中间维持前状态.
+
+    滞回 (enter≠exit) 防止 ADX 在阈值附近抖动导致过滤系数频繁开关 (churn).
+    无 OHLC 数据的品种系数保持 1.0 (不降仓, 与 ER 版 NaN 语义一致).
+    """
+
+    def __init__(
+        self,
+        window: int = 14,
+        enter_threshold: float = 25.0,
+        exit_threshold: float = 20.0,
+        chop_coef: float = 0.4,
+    ):
+        self.window = window
+        self.enter_threshold = enter_threshold
+        self.exit_threshold = exit_threshold
+        self.chop_coef = chop_coef
+
+    def coefficients(
+        self, price_panel: pd.DataFrame, ohlc_map: dict[str, pd.DataFrame] | None = None,
+    ) -> pd.DataFrame:
+        """返回 (T,N) 仓位系数矩阵. 需逐品种 OHLC (ADX 依赖 high/low)."""
+        coef = pd.DataFrame(1.0, index=price_panel.index, columns=price_panel.columns)
+        if not ohlc_map:
+            return coef
+
+        from ..factors.indicators import adx as adx_fn
+
+        for product in price_panel.columns:
+            ohlc = ohlc_map.get(product)
+            if ohlc is None:
+                continue
+            adx_vals = adx_fn(ohlc, self.window)
+            adx_vals = adx_vals.reindex(price_panel.index)
+
+            # 滞回状态机 (ffill 向量化): >enter→满仓, <exit→降仓, 中间维持
+            raw = pd.Series(np.nan, index=adx_vals.index)
+            raw[adx_vals > self.enter_threshold] = 1.0
+            raw[adx_vals < self.exit_threshold] = self.chop_coef
+            state = raw.ffill().fillna(1.0)
+            coef[product] = state
 
         return coef
