@@ -1,10 +1,14 @@
-"""D sleeve: 资产级配置管线 (设计文稿核心版, PLAN §17).
+"""D sleeve: 资产级配置管线 (设计文稿核心版 v2, PLAN §17.10).
 
-管线: AVS分层去噪 → HRP(Ward) → 债券硬上限 + RC重分配 → vol_target
-频率: 可配置 (默认 W-FRI; 支持 20D 月频)
+管线 v2 (不变量 2 — 约束由求解器内建):
+  协方差 (AVS/LW/OAS/lw_ewma/block_corr 可选)
+    → HRP(Ward) 权重 → 风险预算 b = RC(w_HRP)/ΣRC
+    → 合成债券资产 (3 债券 inv-vol 合成, 盒约束 u=0.40)
+    → risk_budget_solve (SLSQP, 约束由求解器内建)
+    → 合成权重按 inv-vol 摊回 3 债券
+  约束 (w≥0, Σw=1, w_bond≤cap) 由求解器构造性满足 — 无重分配/无裁剪.
 
-与 A sleeve (class ERC) 是两种独立配置引擎的头对头测试.
-D.0 不含负趋势因子 (延后 D.1).
+v1 的 RC share 重分配已删除 (近奇异协方差下无界放大, 见 §5.24 勘误).
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ from .backtest import _rebalance_mask, ANN
 BOND_COLS = ["fut_t", "fut_tf", "fut_ts"]
 MIN_ASSETS = 5
 DEFAULT_BOND_CAP = 0.40
+SYNTH_BOND = "__synth_bond__"
 
 
 # ── 输出结构 ──
@@ -31,6 +36,106 @@ class DSleeveResult:
     turnover: pd.Series | None = None
 
 
+# ── 不变量 2: 盒约束风险预算求解器 ──
+def risk_budget_solve(cov: np.ndarray, budgets: np.ndarray,
+                      upper: np.ndarray | None = None,
+                      max_iter: int = 500) -> np.ndarray:
+    """盒约束风险预算权重 (SLSQP, 约束由求解器内建保证).
+
+    目标: min Σ_i (RC_i(w) - b_i)²,  s.t. Σw=1, 0 ≤ w ≤ u.
+    SLSQP 同时满足等式与边界约束 (tol 1e-8) — 构造性可行, 无需事后裁剪.
+    目标非凸, 但以无约束 ERC 解为暖启动, 实践中收敛可靠.
+
+    Args:
+        cov: (K x K) 正定协方差
+        budgets: (K,) 风险预算占比, sum=1
+        upper: (K,) 每资产权重上限; None = 1.0
+
+    Returns:
+        (K,) 权重, Σ=1 (±1e-9), 0 ≤ w ≤ u
+    """
+    from scipy.optimize import minimize
+
+    K = len(budgets)
+    b = np.asarray(budgets, dtype=float)
+    b = b / b.sum()
+    u = np.ones(K) if upper is None else np.clip(np.asarray(upper, float), 0.0, 1.0)
+    if u.sum() < 1.0 - 1e-9:
+        # 不可行 (Σu<1): 退化为上限比例分配
+        return u / u.sum()
+
+    def obj(w):
+        mrc = cov @ w
+        var = float(w @ mrc)
+        if var <= 0:
+            return 1e6
+        rc_share = w * mrc / var
+        return float(np.sum((rc_share - b) ** 2))
+
+    # 暖启动: 无约束 ERC 方向 (既有 CCD 核)
+    diag = np.diag(cov).copy()
+    diag = np.where(diag > 0, diag, 1e-12)
+    x = 1.0 / np.sqrt(diag)
+    x = x / x.sum()
+    for _ in range(200):
+        x_prev = x.copy()
+        for i in range(K):
+            s = float(cov[i] @ x) - diag[i] * x[i]
+            disc = max(s * s + 4.0 * diag[i] * b[i], 0.0)
+            x[i] = (-s + np.sqrt(disc)) / (2.0 * diag[i])
+        if np.max(np.abs(x - x_prev)) < 1e-10:
+            break
+    w0 = np.clip(x / x.sum(), 1e-6, u)
+    w0 = w0 / w0.sum()
+
+    res = minimize(
+        obj, w0, method="SLSQP",
+        bounds=[(0.0, float(ui)) for ui in u],
+        constraints={"type": "eq",
+                     "fun": lambda w: w.sum() - 1.0,
+                     "jac": lambda w: np.ones(K)},
+        options={"maxiter": max_iter, "ftol": 1e-12},
+    )
+    w = np.asarray(res.x, dtype=float)
+    # 数值清洗 (SLSQP tol 1e-8 内已可行; 只消 -1e-17 浮点尾, 不再归一化)
+    w = np.clip(w, 0.0, u)
+    drift = w.sum() - 1.0
+    if abs(drift) > 1e-6:
+        free = w < (u - 1e-9)
+        if free.any():
+            w[free] -= drift / free.sum()
+    return w
+
+
+# ── 合成债券资产 ──
+def _synth_bond_returns(returns: pd.DataFrame,
+                        window: int, min_obs: int = 60) -> pd.Series | None:
+    """3 债券 inv-vol 合成序列 (合成资产用于盒约束)."""
+    avail = [c for c in BOND_COLS if returns[c].notna().sum() >= min_obs]
+    if not avail:
+        return None
+    sub = returns[avail].iloc[-window:]
+    vols = sub.std().replace(0, np.nan).dropna()
+    if vols.empty:
+        return None
+    inv = 1.0 / vols
+    w = inv / inv.sum()
+    return (sub[w.index].fillna(0.0) * w).sum(axis=1)
+
+
+def _hrp_budgets(cov: np.ndarray, linkage_method: str = "ward") -> np.ndarray:
+    """HRP 权重 → 风险预算 b = RC/ΣRC (层次洞察 → 求解器预算)."""
+    w = hrp_weights(cov, linkage_method=linkage_method)
+    mrc = cov @ w
+    rc = w * mrc
+    rc_sum = rc.sum()
+    if rc_sum > 0:
+        b = np.clip(rc / rc_sum, 0.0, None)
+        if b.sum() > 0:
+            return b / b.sum()
+    return np.full(len(w), 1.0 / len(w))
+
+
 # ── 核心权重计算 ──
 def _d_base_weights(
     returns_hist: pd.DataFrame,
@@ -39,8 +144,14 @@ def _d_base_weights(
     n_clusters: int | None = None,
     bond_cap: float = DEFAULT_BOND_CAP,
     min_obs_per_asset: int = 60,
+    cov_estimator: str = "lw",
 ) -> pd.Series:
-    """单次调仓: AVS → HRP(ward) → 债券cap → RC重分配 → 归一."""
+    """单次调仓: 协方差 → HRP 预算 → 合成债券 → 盒约束 CCD → 摊回.
+
+    cov_estimator: "lw" / "oas" / "lw_ewma" / "block_corr" / "avs"
+    """
+    from .cov_extended import lw_ewma_cov, oas_cov, block_corr_shrink
+
     avail = [c for c in panel_cols
              if returns_hist[c].notna().sum() >= min_obs_per_asset]
     if len(avail) < MIN_ASSETS:
@@ -49,52 +160,114 @@ def _d_base_weights(
             out[avail] = 1.0 / len(avail)
         return out
 
-    # ① AVS 去噪
-    C_avs, delta, _, _ = hierarchical_avs(
-        returns_hist[panel_cols], window=window, n_clusters=n_clusters,
-    )
-    _ = delta  # 诊断用, 不影响权重
+    sub = returns_hist[avail].iloc[-window:].dropna(axis=0, how="any")
 
-    # ② HRP(Ward)
-    w_raw = hrp_weights(C_avs, linkage_method="ward")
-    w = pd.Series(w_raw, index=[c for c in panel_cols
-                                 if c in returns_hist[avail].columns
-                                 and returns_hist[c].notna().sum() >= min_obs_per_asset])
+    # ① 协方差 (可选估计器)
+    if cov_estimator == "oas":
+        cov_full = oas_cov(sub, window=window)
+    elif cov_estimator == "lw_ewma":
+        cov_full = lw_ewma_cov(sub, window=window)
+    elif cov_estimator == "block_corr":
+        cov_full = block_corr_shrink(sub, window=window)
+    elif cov_estimator == "avs":
+        cov_full = hierarchical_avs(sub, window=window)[0]
+    elif cov_estimator == "none":
+        cov_full = np.cov(sub.to_numpy(), rowvar=False)
+    else:
+        from .cov_rmt import ledoit_wolf_shrink
+        cov_full = ledoit_wolf_shrink(sub, window=window)
 
-    # 对齐到 panel_cols (缺失资产权重=0)
-    full_w = pd.Series(0.0, index=panel_cols)
-    full_w[w.index] = w.values
+    # ② HRP(Ward) → 风险预算
+    cov_cols = list(sub.columns)  # sub 的列序 = cov 行列序 (同一 dropna 交集)
+    w_hrp = hrp_weights(cov_full, linkage_method="ward")
+    mrc = cov_full @ w_hrp
+    rc = w_hrp * mrc
+    rc_sum = rc.sum()
+    budgets_38 = np.clip(rc / rc_sum, 0.0, None) if rc_sum > 0 \
+        else np.full(len(w_hrp), 1.0 / len(w_hrp))
+    if budgets_38.sum() <= 0:
+        budgets_38 = np.full(len(w_hrp), 1.0 / len(w_hrp))
+    budgets_38 = budgets_38 / budgets_38.sum()
 
-    # ③ 债券硬上限 + RC 重分配
-    bond_total = full_w[BOND_COLS].sum()
-    if bond_cap < 1.0 and bond_total > bond_cap:
-        overflow = bond_total - bond_cap
-        # 缩放债券到 cap
-        scale = bond_cap / bond_total if bond_total > 0 else 0
-        for b in BOND_COLS:
-            full_w[b] *= scale
-        # 非债资产按 pre-cap RC share 重分配
-        non_bond = [c for c in avail if c not in BOND_COLS]
-        if non_bond:
-            # 用 AVS 协方差计算 pre-cap RC
-            non_bond_idx = [list(avail).index(c) for c in non_bond]
-            w_avail = w.values
-            mrc = C_avs @ w_avail
-            rc = w_avail * mrc
-            rc_non_bond = rc[non_bond_idx]
-            rc_sum = rc_non_bond.sum()
-            if rc_sum > 0:
-                rc_share = rc_non_bond / rc_sum
-            else:
-                rc_share = np.ones(len(non_bond)) / len(non_bond)
-            for i, c in enumerate(non_bond):
-                full_w[c] += overflow * rc_share[i]
+    # ③ 合成债券资产: 3 债券 → 1 合成 (盒约束 u=bond_cap 直接可执行)
+    synth_ret = _synth_bond_returns(returns_hist, window, min_obs_per_asset)
+    bond_in_avail = [c for c in BOND_COLS if c in avail]
 
-    # ④ 归一
-    total = full_w.sum()
+    if synth_ret is None or not bond_in_avail or bond_cap >= 1.0:
+        # 无债券或无 cap → 直接 38 资产 CCD (无盒约束, 退化为 HRP 预算 ERC)
+        x = risk_budget_solve(cov_full, budgets_38)
+        out = pd.Series(0.0, index=panel_cols)
+        out[cov_cols] = x
+        total = out.sum()
+        if total > 0:
+            out = out / total
+        return out
+
+    # 合成系统: 非债资产 + 1 合成债券
+    non_bond = [c for c in cov_cols if c not in BOND_COLS]
+    synth_series = synth_ret.reindex(sub.index).fillna(0.0)
+    joint = pd.concat([sub[non_bond], synth_series.rename(SYNTH_BOND)], axis=1)
+    # 合成列与已有资产重名防御
+    if SYNTH_BOND in joint.columns[:len(non_bond)]:
+        joint = pd.concat([sub[non_bond],
+                           synth_series.rename(SYNTH_BOND + "_x")], axis=1)
+    joint = joint.dropna(axis=0, how="any")
+    if len(joint) < 30:
+        x = risk_budget_solve(cov_full, budgets_38)
+        out = pd.Series(0.0, index=panel_cols)
+        out[cov_cols] = x
+        total = out.sum()
+        if total > 0:
+            out = out / total
+        return out
+
+    cov_joint = np.cov(joint.to_numpy(), rowvar=False)
+    K = cov_joint.shape[0]
+    cov_joint += np.eye(K) * 1e-12
+
+    # 预算映射: 非债资产各自预算; 合成债券 = 3 债券预算之和
+    bud = []
+    bond_budget_sum = 0.0
+    bi = 0
+    for c in cov_cols:
+        if c in BOND_COLS:
+            bud.append(None)  # 占位, 稍后合成
+            bond_budget_sum += budgets_38[bi]
+        else:
+            bud.append(budgets_38[bi])
+        bi += 1
+    budgets_joint = [v for v in bud if v is not None] + [bond_budget_sum]
+    budgets_joint = np.asarray(budgets_joint, dtype=float)
+    if budgets_joint.sum() <= 0:
+        budgets_joint = np.full(K, 1.0 / K)
+    budgets_joint = budgets_joint / budgets_joint.sum()
+
+    # 盒约束: 合成债券 ≤ bond_cap, 其余 ≤ 1.0
+    upper = np.ones(K)
+    upper[-1] = bond_cap
+
+    x = risk_budget_solve(cov_joint, budgets_joint, upper=upper)
+
+    # ④ 摊回: 合成债券权重按 inv-vol 分给 3 剔债券
+    out = pd.Series(0.0, index=panel_cols)
+    for j, c in enumerate(non_bond):
+        out[c] = x[j]
+    w_synth = x[-1]
+    bond_sub = returns_hist[bond_in_avail].iloc[-window:]
+    vols = bond_sub.std().replace(0, np.nan).dropna()
+    if vols.empty or len(vols) != len(bond_in_avail):
+        for c in bond_in_avail:
+            out[c] = w_synth / len(bond_in_avail)
+    else:
+        inv = 1.0 / vols
+        share = inv / inv.sum()
+        for c in bond_in_avail:
+            out[c] = w_synth * share[c]
+
+    total = out.sum()
     if total > 0:
-        full_w = full_w / total
-    return full_w
+        out = out / total
+    return out
 
 
 def run_d_sleeve(
@@ -106,19 +279,21 @@ def run_d_sleeve(
     target_vol: float = 0.10,
     max_leverage: float = 1.0,
     min_obs_per_asset: int = 60,
+    cov_estimator: str = "lw",
     compute_metrics_fn=None,
 ) -> DSleeveResult:
     """运行 D sleeve 回测.
 
     Args:
         panel: (T x N) 价格面板
-        bond_cap: 债券硬上限 (默认0.40)
+        bond_cap: 债券硬上限 (默认0.40, 合成债券资产盒约束)
         window: 协方差估计窗口 (HRP+AVS共用)
         n_clusters: Ward簇数 (None=N//6)
         rebalance_freq: 调仓频率 ("W-FRI" / "20D" / "ME")
         target_vol: 目标波动率
         max_leverage: 杠杆上限
         min_obs_per_asset: 资产渐入池门槛
+        cov_estimator: 协方差引擎 ("lw"/"oas"/"lw_ewma"/"block_corr"/"avs")
         compute_metrics_fn: 指标函数 (None = 不计算)
 
     Returns:
@@ -142,6 +317,7 @@ def run_d_sleeve(
                 rets_hist, list(panel.columns), window=window,
                 n_clusters=n_clusters, bond_cap=bond_cap,
                 min_obs_per_asset=min_obs_per_asset,
+                cov_estimator=cov_estimator,
             )
 
             # vol_target
