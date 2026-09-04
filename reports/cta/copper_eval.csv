@@ -1,0 +1,4 @@
+variant,sharpe_full,sharpe_is,sharpe_oos,corr_main,corr_cu_tc,corr_cu_bh,oos_excess_sharpe
+v6.3_修正版,0.733,0.941,0.529,0.241,0.062,0.938,-0.431
+v6.3_原版(含patch),0.773,0.97,0.577,0.242,0.059,0.935,-0.384
+combined_干净回测,0.529,0.956,0.165,0.211,0.089,0.902,-0.906
