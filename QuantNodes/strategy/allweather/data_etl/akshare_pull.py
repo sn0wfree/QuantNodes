@@ -58,16 +58,20 @@ def pull_etf_daily(symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
 
 
 def pull_etf_panel(start_date: str, end_date: str) -> pd.DataFrame:
-    """拉取 7 个可用 ETF 的增量面板 (列名对齐 panel, 索引为 date)."""
-    frames = {}
+    """拉取 7 个可用 ETF 的增量面板 (列名对齐 panel, 索引为 DatetimeIndex).
+
+    使用 pd.concat 保留 DatetimeIndex (pd.DataFrame(dict) 会丢失 → RangeIndex).
+    """
+    series = []
     for etf_col, sina_code in ETF_CODE_MAP.items():
         try:
             df = pull_etf_daily(sina_code, start_date, end_date)
-            frames[etf_col] = df.set_index("date")["close"].rename(etf_col)
+            s = df.set_index("date")["close"].rename(etf_col)
+            series.append(s)
             print(f"  ✓ {etf_col} ({sina_code}): {len(df)} 行")
         except Exception as e:
             print(f"  ✗ {etf_col} ({sina_code}): {e}")
-    return pd.DataFrame(frames).sort_index()
+    return pd.concat(series, axis=1).sort_index()
 
 
 def pull_futures_panel(start_date: str, end_date: str) -> pd.DataFrame:

@@ -2101,26 +2101,51 @@ D. **重审业绩数字**: 现有 §5.20-§5.32 所有"截至 2026-07-21"的 Sha
    → 重测或如实标注, 不沿用幻觉数字
 
 
-#### 5.34 panel_v4 重建 (§5.34, akshare 增量数据)
+#### 5.34 panel_v4 重建 (akshare 增量数据, 今日 2026-09-04)
 
 **背景**: §5.33 审计发现 panel_v3 21 列期货末 2026-01-06~03-17,
-13 列指数末 2026-05-29, ETF NAV 末 2026-06-30 — 全部 DuckDB/NAV 底层未更新.
-**用户决策: 从 akshare 拉数据重建 panel_v4** (覆盖 2026-07-08 → 2026-09-03 增量).
+13 列指数末 2026-05-29, ETF NAV 末 2026-06-30 — DuckDB/NAV 底层未更新.
+**用户决策**: 从 akshare 拉数据重建 panel_v4 (覆盖 2026-07-08 → 2026-09-03 增量).
 
-**实现** (通用脚本):
-- `data_etl/akshare_pull.py` (~120行): ETF 7 个 (stock_zh_index_daily 接口)
-  + 期货 23 个 (futures_main_sina 主连接口) + roll-adjust 占位
-- `data_etl/build_panel_v4.py` (~50行): 合并 panel_v3 + akshare 增量 → panel_v4.parquet
-- 单测: test_akshare_pull.py (5) + test_build_panel_v4.py (4)
+##### 5.34.1 第一版 panel_v4 (commit 67dfcf45) 的 3 个 bug + P0 修复
 
-**panel_v4 重建结果**:
-- 形状 (2110, 41), 末 **2026-09-16** (vs v3 的 2026-07-21)
-- 沪金 fut_au 末 2026-09-03 (vs v3 的 2026-01-06, +8个月)
-- 20 个商品期货全部从 2026-Q1 末 推进到 2026-09-03
-- 4 个 ETF (512010/512690/515030/515050) 仍缺 (akshare stock_zh_index_daily 不支持)
-- v7_index_prices 末 2026-05-29 (未重建, 仍缺 53 天)
+第一版报告声称 panel_v4 末 2026-09-16 (含 9 个幽灵日期), 被用户识别为"时间穿越".
+事实核查定位 3 个 bug:
 
-**13 资产对齐池 panel_v3 → panel_v4 重审** (含 csi_1000):
+| Bug | 根因 | 后果 |
+|-----|------|------|
+| 1. ETF 增量 parquet 是 RangeIndex (无日期) | `pull_etf_panel` 用 `pd.DataFrame(dict).sort_index()` 丢弃 DatetimeIndex | 期货有日期, ETF 没有 → panel_v4 索引混乱 |
+| 2. build_panel_v4 用 `panel_v3.index.max()` 作起点 | 错把 v3 末当日 = 增量起点, 实际增量起点是 2026-07-08 | 丢了 2026-07-08→07-20 的 9 天 ETF 增量 |
+| 3. build_panel_v4 用 `bdate_range(42)` 推算末日期 | 起点 panel_v3 末 2026-07-21 + 42 bd = 2026-09-16 | 创建了 9 个幽灵日期 (2026-09-04→09-16), 全是 NaN |
+
+诊断证据:
+```
+面板最后 10 个日期 / 各列非空数:
+2026-09-03    30   ← 真实末日期
+2026-09-04     7   ← 幽灵 (今天, 没数据)
+2026-09-07     7   ← 幽灵
+...
+2026-09-16     7   ← 幽灵 (12 天后)
+```
+
+P0 修复 (commit XXXXXXX):
+1. `pull_etf_panel` 改用 `pd.concat([series...], axis=1)` 保留 DatetimeIndex
+2. `build_panel_v4` 起点用文件名解析的真实 `[inc_start, inc_end]`, 不再用 panel_v3 末
+3. `build_panel_v4` 末日期 = `max(etf_inc.index.max(), fut_inc.index.max())`, 严格不推算
+4. 新增 3 个 P0 回归单测 (`test_no_ghost_dates` / `test_incremental_overrides_v3_in_overlap` /
+   `test_no_dates_beyond_v3_max_appear_before_inc`) 防止 bug 回归
+
+##### 5.34.2 修复后 panel_v4 真实状态
+
+- 形状 **(2101, 41)**, 首 **2018-01-08** → 末 **2026-09-03** (今日 2026-09-04)
+- 2059 行 v3 (2018-01-08 → 2026-07-07) + 42 行增量 (2026-07-08 → 2026-09-03), **无幽灵日期**
+- 沪金 fut_au 末 2026-09-03 (vs v3 的 2026-01-06, +8 个月)
+- 22 个商品期货全部从 2026-Q1 末推进到 2026-09-03 (fut_ts 不在本次范围, 仍 2026-07-07)
+- 4 个 ETF (512010/512690/515030/515050) **仍缺** — akshare stock_zh_index_daily
+  不支持这些代码 (列名返回 'date' 单列). 末仍是 2026-07-07.
+- v7_index_prices 末 2026-05-29 (未重建, 仍缺 51 天)
+
+##### 5.34.3 13 资产对齐池 panel_v3 → panel_v4 重审 (含 csi_1000)
 
 | 配置 | v3 Sharpe | v4 Sharpe | Δ | v3 AnnRet | v4 AnnRet | Δ |
 |------|---------|---------|---|-----------|-----------|---|
@@ -2129,11 +2154,32 @@ D. **重审业绩数字**: 现有 §5.20-§5.32 所有"截至 2026-07-21"的 Sha
 | cap=0.4 mom=0.2 | 1.338 | **1.423** | +0.085 | 7.9% | 8.4% | +0.46pp |
 | cap=1.0 mom=0.2 | 1.739 | **1.820** | +0.081 | 3.6% | 3.7% | +0.15pp |
 
-**所有 4 配置 Sharpe 稳定提升 +0.08~0.09** — 真数据补全的实质改善, 不是幻觉.
+**所有 4 配置 Sharpe 稳定提升 +0.08~0.09** — 真数据补全的实质改善 (P0 修复后).
 
 **主结论**: 数据补全后 D v3 在去 cap 版 Sharpe 从 1.74 → **1.82** (接近文章 2.67 折扣估计 1.5-1.7).
 这是 panel_v3 之前的数字基础上的真实修正, 不是模型调整.
 
-**遗留 4 个 ETF (医药/酒/新能源车/5G) + v7_index_prices 指数 53 天缺口**:
-修复需找替代数据源 (Tushare / Wind / akshare 其它接口).
-panel_v4 涵盖 41 列中 37 列真实 2026-09-16 数据, 4 列停在 2026-06-30/07-08.
+##### 5.34.4 反思: 不再用 `panel_v3.index.max()` / `bdate_range` 当末日期
+
+教训 1: **ETL 拉取时必须保留 DatetimeIndex**.
+`pd.DataFrame(dict_of_series)` 在 pandas 不同版本行为不一致 (有时保留有时丢弃),
+**始终用 `pd.concat([series_list], axis=1)`** 才能保证索引保留.
+
+教训 2: **末日期不能推算, 必须从数据来**.
+`bdate_range(start, periods=N)` 容易混淆 "N=窗口行数" vs "真实末日期". 增量数据
+应自带日期, 末日期 = `max(df.index.max())` 即可. 推算 = 幻觉.
+
+教训 3: **缺失日期要警惕**.
+当面板中出现"应该有数据但全是 NaN"的日期段, 第一反应应是 "这日期真的是数据源覆盖的吗?"
+而不是 "bdate_range 应该从某天起 N 天".
+
+教训 4: **用户发现"时间穿越" = 强信号**.
+模型声称 2026-09-04 当天看到 2026-09-16 数据, 不是"模型预测未来", 是 **数据 bug 创建了
+幽灵日期**. 用户识别 → 立即追溯数据源 → 找到 3 个 bug 链.
+
+##### 5.34.5 遗留 (P1 待办)
+
+- 4 个不可用 ETF (512010/512690/515030/515050): 需 akshare `fund_etf_hist_em` 或 Tushare
+- 6 个股指期货 (IC/IF/IH/T/TF/TS): akshare 主连接口应能拉, 需追加 FUT_PRODUCT_MAP
+- v7 指数 (13 列) 51 天缺口: akshare `stock_zh_index_daily(symbol="sh000852")` 等
+- OHLCV 复权面板与 NAV 交叉验证的 9 个 ETF 不一致 (审计 #23-31): 独立 issue
