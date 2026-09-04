@@ -294,6 +294,7 @@ def run_d_sleeve(
     neg_trend_preset: str | None = None,
     momentum_beta: float = 0.0,
     momentum_lookback: int = 60,
+    include_rapid: bool = False,
     compute_metrics_fn=None,
 ) -> DSleeveResult:
     """运行 D sleeve 回测.
@@ -332,18 +333,17 @@ def run_d_sleeve(
     else:
         tilt = None
 
-    # D.1: 负趋势因子日频 penalty (快层)
-    if neg_trend_mode != "none":
+    # D.1: 负趋势因子日频 penalty (快层); mode="none"+include_rapid → 仅 rapid
+    if neg_trend_mode != "none" or include_rapid:
         from .neg_trend_daily import compute_neg_trend_penalty, get_preset_params
         if neg_trend_preset is not None:
-            # 档位优先: 三档预设 (aggressive/balanced/conservative)
             preset = get_preset_params(neg_trend_preset)
             base_threshold = preset["base_threshold"]
             threshold_low = preset["threshold_low"]
         penalty = compute_neg_trend_penalty(
             panel, volume=volume, oi=oi, asset_classes=asset_classes,
-            mode=neg_trend_mode, base_threshold=base_threshold,
-            threshold_low=threshold_low,
+            mode=neg_trend_mode, include_rapid=include_rapid,
+            base_threshold=base_threshold, threshold_low=threshold_low,
         )
         penalty = penalty.reindex(dates).ffill().fillna(0.0)
     else:

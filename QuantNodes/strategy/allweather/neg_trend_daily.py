@@ -1,14 +1,17 @@
-"""自适应负向趋势因子 · 日频风控层 (D.1, PLAN §17.12; 设计文稿 §3.3).
+"""自适应负向趋势因子 · 日频风控层 (D.1/D.2+, PLAN §17.12/§17.14).
 
-三维子信号 (设计文稿 §3.3 忠实实现):
-- sub_trend: 多周期 (5/10/20日) 波动率标准化斜率, 短周期拐头即计分
-- sub_vol:   当前波动率 / 自身 60 日高分位 (上行低波突变/下行放量才计分)
-- sub_flow:  价跌 + 量增/OI 增 → 负向 (出货/增仓下行确认)
+子信号 (设计文稿 §3.3 + §5.29 急跌检测器扩展):
+- sub_trend:  多周期 (5/10/20日) t-stat 风险调整动量, tanh(0.5·t-stat)
+- sub_vol:    当前波动率 / 自身 60 日高分位
+- sub_flow:   价跌 + 量增/OI 增 → 负向
+- rapid:      资产通用急跌检测 (5日回撤 + vol-of-vol 突变, §5.29)
 
 异质权重 (设计文稿 §3.3): equity 重 trend / futures 重 flow / gold 重 vol
+rapid 维度: 所有资产统一权重 (急跌是速度问题, 非类别问题)
 自适应阈值: 高波动 regime 阈值下移 (更易触发)
-双阈值滞回: penalty 上行过 θ_high 才计满, 回落过 θ_low 才释放 (防频繁翻转)
-消融开关: mode='3d' (全维) / 'trend' (仅趋势) / 'none' (关闭)
+双阈值滞回: penalty 上行过 θ_high 才计满, 回落过 θ_low 才释放
+消融开关: mode='3d' / 'trend' / 'rapid' / 'none'
+include_rapid: 为 True 时在 trend/3d 上叠加 rapid (10% 权重)
 
 输出: penalty ∈ [0,1] (N×T 日频), 乘性作用于权重 w×(1−penalty).
 """
@@ -140,12 +143,43 @@ def compute_sub_signals(
     return sub_trend, sub_vol, sub_flow
 
 
+def _rapid_move_score(returns: pd.DataFrame, short: int = 5,
+                      long: int = 60) -> pd.DataFrame:
+    """资产通用急跌检测 (§5.29): 5日回撤代理 + vol-of-vol 扩张 → [0, 2].
+
+    A. 短期回撤代理: |5日累计收益| / (60日最大5日累计收益) → [0, 1]
+    B. 波动率扩张: (5日vol / 60日vol − 1).clip(0, 1) — 只响应 vol 增加, 基线 0
+    combined = max(A, B): 任一触发即有效, 覆盖"已发生急跌"和"正在发生急跌".
+
+    注: B 用 (ratio−1) 而非 raw ratio, 因为 vol5/vol60 ≈ 1.0 是随机数据基线,
+    raw ratio 会让 rapid 在平静期也常活跃 (§5.29 发现的设计修正).
+    """
+    ret = returns.pct_change(fill_method=None)
+    # A. 短期回撤代理 (5日累计收益的相对幅度)
+    cum5 = ret.rolling(short).sum()
+    cum5_abs = cum5.abs()
+    roll_max_abs = cum5_abs.rolling(long, min_periods=long // 2).max()
+    dd_proxy = (cum5_abs / roll_max_abs.replace(0, np.nan)).clip(0, 1).fillna(0.0)
+
+    # B. 波动率扩张 (基线 0, 只响应 vol 增加)
+    vol5 = ret.rolling(short).std()
+    vol60 = ret.rolling(long, min_periods=long // 2).std()
+    vol_spike = ((vol5 / vol60.replace(0, np.nan)) - 1.0).clip(0, 1).fillna(0.0)
+
+    # 合成: 取两者的 max (任一触发即有效)
+    return pd.DataFrame(
+        np.maximum(dd_proxy.values, vol_spike.values),
+        index=returns.index, columns=returns.columns,
+    )
+
+
 def compute_neg_trend_penalty(
     panel: pd.DataFrame,
     volume: pd.DataFrame | None = None,
     oi: pd.DataFrame | None = None,
     asset_classes: dict[str, list[str]] | None = None,
     mode: str = "3d",
+    include_rapid: bool = False,
     base_threshold: float = 0.5,
     threshold_low: float = 0.3,
     vol_regime_window: int = 60,
@@ -156,7 +190,8 @@ def compute_neg_trend_penalty(
         panel: 价格面板
         volume/oi: 量价面板 (None → flow 退化为 0)
         asset_classes: 类别映射 (异质权重)
-        mode: '3d' / 'trend' / 'none'
+        mode: '3d' / 'trend' / 'rapid' / 'none'
+        include_rapid: True 时在 trend/3d 上叠加 rapid 维度 (10%权重, 原维度缩至90%)
         base_threshold: 基础阈值 (高波 regime 下移); 0.5/0.3 为 §5.27 稳定性扫描均衡点
         threshold_low: 释放阈值 (滞回下沿)
         vol_regime_window: regime 检测窗口
@@ -164,24 +199,34 @@ def compute_neg_trend_penalty(
     Returns:
         penalty DataFrame ∈ [0,1], 索引对齐 panel
     """
-    if mode == "none":
+    if mode == "none" and not include_rapid:
         return pd.DataFrame(0.0, index=panel.index, columns=panel.columns)
 
     asset_classes = asset_classes or {}
     sub_trend, sub_vol, sub_flow = compute_sub_signals(panel, volume, oi)
 
-    if mode == "trend":
-        raw = sub_trend.clip(upper=0)          # 只取负向趋势
-        w = {"trend": 1.0, "vol": 0.0, "flow": 0.0}
-        neg = -raw * w["trend"]                # 负趋势 → 正危险分
-    else:  # 3d
+    # 计算 rapid 信号 (需要时)
+    rapid_score = None
+    if mode == "rapid" or include_rapid:
+        rapid_score = _rapid_move_score(panel)
+
+    if mode == "rapid":
+        # standalone rapid: full weight on rapid dimension
+        neg = rapid_score
+    elif mode == "trend":
+        raw = sub_trend.clip(upper=0)
+        neg = (-raw).clip(lower=0)
+        if include_rapid and rapid_score is not None:
+            neg = neg * 0.9 + rapid_score * 0.1
+    else:  # "3d" (or 3d+rapid)
         neg = pd.DataFrame(0.0, index=panel.index, columns=panel.columns)
         for col in panel.columns:
             hw = _hetero_weight(col, asset_classes)
-            # 负趋势贡献: 趋势为负时计分 (danger↑); vol/flow 为 0..1 正向危险分
             neg[col] = (-sub_trend[col]).clip(lower=0) * hw["trend"] \
                 + sub_vol[col] * hw["vol"] \
                 + sub_flow[col] * hw["flow"]
+        if include_rapid and rapid_score is not None:
+            neg = neg * 0.9 + rapid_score * 0.1
 
     # 自适应阈值: 组合波动 regime (全池均值 vol 分位) → 阈值下移
     ret = panel.pct_change(fill_method=None)

@@ -7,6 +7,7 @@ from QuantNodes.strategy.allweather.neg_trend_daily import (
     compute_neg_trend_penalty,
     compute_sub_signals,
     _hetero_weight,
+    _rapid_move_score,
     NEG_TREND_PRESETS,
 )
 from QuantNodes.strategy.allweather.class_erc import ASSET_CLASSES
@@ -195,3 +196,76 @@ def test_run_d_sleeve_preset_passthrough():
     # 不同档位 → 不同净值
     assert not np.allclose(navs["aggressive"].values,
                            navs["conservative"].values)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# D.3 急跌检测器 (§5.29)
+# ═══════════════════════════════════════════════════════════════════
+
+def test_rapid_move_score_bounds():
+    """rapid score ∈ [0, 2], 无 NaN."""
+    panel = _make_panel()
+    vol, oi = _make_volume_oi(panel)
+    rs = _rapid_move_score(panel)
+    assert rs.notna().all().all()
+    assert (rs >= 0).all().all()
+    assert (rs <= 1.0001).all().all()
+
+
+def test_rapid_catches_sudden_drop():
+    """合成急跌: 末两日全资产暴跌 → rapid penalty 在组合层面显著高于平静期."""
+    panel = _make_panel(n_days=200, seed=42)
+    # 最后 2 日全资产 -15% (模拟全市场急跌)
+    for c in panel.columns:
+        panel.iloc[-2, panel.columns.get_loc(c)] = panel.iloc[-3, panel.columns.get_loc(c)] * 0.85
+        panel.iloc[-1, panel.columns.get_loc(c)] = panel.iloc[-2, panel.columns.get_loc(c)] * 0.85
+    pen = compute_neg_trend_penalty(panel, mode="rapid", asset_classes=ASSET_CLASSES)
+    # 急跌日 penalty (组合层面均值) vs 平静期
+    calm_pen = pen.iloc[:190].mean(axis=1).mean()
+    shock_pen = pen.iloc[-1].mean()
+    # 组合层面: 急跌日 penalty 至少是平静期的 1.5 倍
+    assert shock_pen > calm_pen * 1.5
+
+
+def test_rapid_standalone_in_penalty():
+    """mode='rapid' standalone → 非零 penalty, 与 mode='none' 不同."""
+    panel = _make_panel(n_days=300, seed=55)
+    vol, oi = _make_volume_oi(panel)
+    pen_none = compute_neg_trend_penalty(panel, mode="none")
+    pen_rapid = compute_neg_trend_penalty(panel, volume=vol, oi=oi,
+                                           mode="rapid", asset_classes=ASSET_CLASSES)
+    assert (pen_none == 0).all().all()
+    assert (pen_rapid > 0).mean().mean() > 0  # 有非零激活
+
+
+def test_include_rapid_modifies_trend():
+    """include_rapid=True 在 trend 模式上叠加 rapid, 与纯 trend 不同."""
+    panel = _make_panel(n_days=300, seed=77)
+    vol, oi = _make_volume_oi(panel)
+    pen_trend = compute_neg_trend_penalty(panel, volume=vol, oi=oi,
+                                           mode="trend", asset_classes=ASSET_CLASSES)
+    pen_tr = compute_neg_trend_penalty(panel, volume=vol, oi=oi,
+                                        mode="trend", include_rapid=True,
+                                        asset_classes=ASSET_CLASSES)
+    # 两者不应完全相等 (rapid 叠加后部分日/资产有差异)
+    assert not np.allclose(pen_trend.values, pen_tr.values)
+    # 两者都不应全零
+    assert (pen_trend > 0).any().any()
+    assert (pen_tr > 0).any().any()
+
+
+def test_include_rapid_in_d_pipeline():
+    """run_d_sleeve include_rapid=True 与 False 产生不同 nav."""
+    from QuantNodes.strategy.allweather.d_pipeline import run_d_sleeve
+    from QuantNodes.strategy.allweather.class_erc import ASSET_CLASSES
+    panel = _make_panel(n_days=300, seed=33)
+    vol, oi = _make_volume_oi(panel)
+    res0 = run_d_sleeve(panel, bond_cap=0.40, window=120,
+                        rebalance_freq="W-FRI", cov_estimator="lw",
+                        neg_trend_mode="trend",
+                        volume=vol, oi=oi, asset_classes=ASSET_CLASSES)
+    res1 = run_d_sleeve(panel, bond_cap=0.40, window=120,
+                        rebalance_freq="W-FRI", cov_estimator="lw",
+                        neg_trend_mode="trend", include_rapid=True,
+                        volume=vol, oi=oi, asset_classes=ASSET_CLASSES)
+    assert not np.allclose(res0.nav.values, res1.nav.values)
