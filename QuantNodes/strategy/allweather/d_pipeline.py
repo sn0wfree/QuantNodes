@@ -296,6 +296,7 @@ def run_d_sleeve(
     momentum_beta: float = 0.0,
     momentum_lookback: int = 60,
     include_rapid: bool = False,
+    cash_ret: pd.Series | None = None,
     compute_metrics_fn=None,
 ) -> DSleeveResult:
     """运行 D sleeve 回测.
@@ -400,6 +401,11 @@ def run_d_sleeve(
             for c in panel.columns}
     costs = (w_exec.diff().abs() * pd.Series(rate)).sum(axis=1).fillna(0.0)
     port_ret = (w_exec.shift(1) * returns).sum(axis=1) - costs
+    # G5-lite: 空仓部分 (penalty 减仓释放) 赚现金收益 (§5.32 13资产复现)
+    if cash_ret is not None:
+        cash_daily = cash_ret.reindex(dates).ffill().fillna(0.0)
+        idle = (1.0 - w_exec.shift(1).sum(axis=1)).clip(lower=0.0)
+        port_ret = port_ret + idle * cash_daily
     nav = (1 + port_ret).cumprod()
     nav.name = "D_sleeve"
 
