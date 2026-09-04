@@ -289,6 +289,8 @@ def run_d_sleeve(
     volume: pd.DataFrame | None = None,
     oi: pd.DataFrame | None = None,
     asset_classes: dict[str, list[str]] | None = None,
+    base_threshold: float = 0.5,
+    threshold_low: float = 0.3,
     compute_metrics_fn=None,
 ) -> DSleeveResult:
     """运行 D sleeve 回测.
@@ -323,7 +325,8 @@ def run_d_sleeve(
         from .neg_trend_daily import compute_neg_trend_penalty
         penalty = compute_neg_trend_penalty(
             panel, volume=volume, oi=oi, asset_classes=asset_classes,
-            mode=neg_trend_mode,
+            mode=neg_trend_mode, base_threshold=base_threshold,
+            threshold_low=threshold_low,
         )
         penalty = penalty.reindex(dates).ffill().fillna(0.0)
     else:

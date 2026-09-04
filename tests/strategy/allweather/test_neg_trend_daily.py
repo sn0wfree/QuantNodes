@@ -122,3 +122,12 @@ def test_sub_signals_shape_and_bounds():
     assert (st.abs() <= 1.0001).all().all()   # tanh 压缩 [-1,1]
     assert (sv >= 0).all().all() and (sv <= 1).all().all()
     assert (sf >= 0).all().all() and (sf <= 1.0001).all().all()
+
+
+def test_sub_trend_saturation_fixed():
+    """饱和修复: |sub_trend|=1 的占比 < 10% (原 tanh(x) 重度饱和 ~25%)."""
+    panel = _make_panel()
+    vol, oi = _make_volume_oi(panel)
+    st, _, _ = compute_sub_signals(panel, vol, oi)
+    sat_ratio = ((st.abs() >= 0.9999).mean()).mean()
+    assert sat_ratio < 0.10

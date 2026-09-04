@@ -51,12 +51,18 @@ def _hetero_weight(col: str, asset_classes: dict[str, list[str]]) -> dict[str, f
 
 
 def _slope_vol_adj(close: pd.Series, win: int) -> pd.Series:
-    """win 日斜率 (回归), 用日波动率标准化."""
+    """win 日风险调整动量 (t-stat 尺度): 收益率单位斜率 / vol·√win.
+
+    缺陷修复 (§5.27): 原实现斜率用价格单位 (P_t − P_{t−win})/win, 除以
+    收益率 vol 后单位错配 — 高价资产 (铜/金) 的 slope/vol 是天文数字,
+    tanh 必然重度饱和 (实测 70% 格子 |x|≥1) → 危险分长期高位.
+    修正: 动量在收益率单位计算 (win 日累计收益), 除以 vol·√win
+    → 经典 t-stat 风险调整动量, 量纲统一.
+    """
     ret = close.pct_change(fill_method=None)
     vol = ret.rolling(win, min_periods=max(win // 2, 5)).std()
-    # 线性回归斜率: (P_t - P_{t-win}) / (win-1) 近似即可 (设计文稿为多周期斜率)
-    slope = (close - close.shift(win)) / win
-    return slope / vol.replace(0, np.nan)
+    mom = ret.rolling(win).sum()          # win 日累计收益 (收益率单位)
+    return mom / (vol.replace(0, np.nan) * np.sqrt(win))
 
 
 def compute_sub_signals(
@@ -78,7 +84,9 @@ def compute_sub_signals(
     trend_raw = pd.concat(slopes, axis=0).groupby(level=0).mean() \
         if len(slopes) == 1 else sum(s.dropna(how="all") for s in slopes) \
         / max(len([s for s in slopes if not s.empty]), 1)
-    sub_trend = np.tanh(trend_raw)
+    # 缺陷修复 (§5.27): 缩放 0.5 防饱和 — 原 tanh(x) 在 |x|~2-3 时重度饱和
+    # (25% 分位 = ±1.0) → trend-only 危险分长期高位 → 常态砍仓
+    sub_trend = np.tanh(0.5 * trend_raw)
 
     # ── vol: 当前 vol / 自身 vol_lookback 高分位 (0.8) ──
     ret = panel.pct_change(fill_method=None)
@@ -131,7 +139,7 @@ def compute_neg_trend_penalty(
         volume/oi: 量价面板 (None → flow 退化为 0)
         asset_classes: 类别映射 (异质权重)
         mode: '3d' / 'trend' / 'none'
-        base_threshold: 基础阈值 (高波 regime 下移)
+        base_threshold: 基础阈值 (高波 regime 下移); 0.5/0.3 为 §5.27 稳定性扫描均衡点
         threshold_low: 释放阈值 (滞回下沿)
         vol_regime_window: regime 检测窗口
 
