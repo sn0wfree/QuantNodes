@@ -78,14 +78,18 @@ class BacktestResult:
 
 
 def _rebalance_mask(dates: pd.DatetimeIndex, freq: str) -> np.ndarray:
-    """调仓日掩码: W-FRI → 周五; ME → 月内最后交易日."""
+    """调仓日掩码: W-FRI → 周五; ME → 月内最后交易日; 20D → 每20交易日."""
     if freq == "W-FRI":
         return dates.dayofweek == 4
     if freq == "ME":
         idx = pd.Series(dates, index=dates)
         month_end = idx.groupby(dates.to_period("M")).max().values
         return np.isin(dates, month_end)
-    raise ValueError(f"不支持调仓频率: {freq}, 可选 W-FRI / ME")
+    if freq == "20D":
+        mask = np.zeros(len(dates), dtype=bool)
+        mask[::20] = True  # 每20个交易日调仓 (含首日)
+        return mask
+    raise ValueError(f"不支持调仓频率: {freq}, 可选 W-FRI / ME / 20D")
 
 
 def _available(returns_hist: pd.DataFrame, window: int,
