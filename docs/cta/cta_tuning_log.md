@@ -955,3 +955,44 @@ FactorModuleComboStrategy(config=ComboConfig(
 - 41 个引用方可渐进迁移到新路径（base/combo/modules），但兼容层可永久保留，无迁移压力
 - `_ModuleStrategy` 与 combo 的继承关系可进一步改为组合（LSP 更干净），涉及行为面，需单独评估
 - gamma_scalper.py 存在 3 个预存 F401（非本次范围）
+
+## 17. 定版配置过拟合三件套重跑 + 上实盘就绪度评估（2026-09-04）
+
+### 17.1 背景
+
+docs/95 §七 的三件套是 2026-08-12 旧配置时代 (tv=0.30) 的结果, 不能沿用到
+现行定版 (tv=1.5/lump/按品种校准成本)。用户授权重跑 (方案A) 并出上实盘评估 (方案C)。
+**新脚本** `scripts/cta_overfit_final_check.py` — 方法论与旧版对齐 (同网格/块/起点),
+未改动旧脚本 `cta_overfitting_check.py` (他人工作)。
+
+### 17.2 结果: PASS (4/4)
+
+| 检查 | 定版配置 | 阈值 | 判定 |
+|---|---|---|---|
+| Bootstrap CV% (52块×200) | **14.9%** (p5 1.92/p95 3.12) | < 50% | ✅ |
+| 起点依赖 (5起点) | Sharpe 2.41/1.36/1.90/0.86/0.58 全正 | 全>0 | ✅ |
+| 严格OOS (IS选参→OOS验证) | IS最优=定版(0.5,60), OOS Sharpe **2.059** | ≥1 | ✅ |
+| IS最优=定版参数 | (0.5, 60) | 是 | ✅ |
+
+### 17.3 关键发现
+
+1. **Bootstrap CV 跨配置世代几乎不变** (14.9% vs 旧 15.9%) — 分布形态稳定
+2. **⚠️ TVPR 预热依赖**: 起点2021/2022 Sharpe 仅 0.86/0.58 且 MaxDD -22.7%/-20.7%
+   —— expanding 学习历史不足时 β 估计差 → 信号差。**实盘部署必须带足历史预热, 不能冷启动**
+3. 严格OOS框架下 OOS Sharpe 2.06 vs 全样本 2.41 (252计数) — OOS 衰减 ~15%,
+   属正常范围; 近两年 Sharpe 0.90 的衰减问题仍需 2026 真样本区分"衰减 vs 过拟合"
+
+### 17.4 上实盘结论
+
+- **允许小仓起步** (1/4~1/5 目标仓位, R2 open 为主推), 不建议直接全仓
+- 资金规划按 Sharpe 1.0~2.0 段位, MaxDD 预算 -8%~-10% (高于回测留余量)
+- 前置: ① 数据管线追平→2026 七个月真OOS (最高优先级, 管线属他人工作需授权)
+  ② 工程项 (资金成本/杠杆切换频率/滑点监控)
+- 完整评估: `docs/cta/cta_live_readiness_assessment.md`
+
+### 17.5 产出
+
+- `scripts/cta_overfit_final_check.py` (8次全量回测, 3并发, nav全部落盘)
+- `reports/cta/overfit_final_check.csv` / `overfit_final_bootstrap.csv` / `overfit_final_summary.json`
+- `reports/cta/overfit_final_navs/*.parquet` (8个nav序列)
+- `docs/cta/cta_live_readiness_assessment.md` (上实盘就绪度评估)

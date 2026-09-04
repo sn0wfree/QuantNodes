@@ -1,0 +1,82 @@
+{
+  "config": "FINAL_LUMP_CFG (tv=1.5, lump, 按品种校准成本)",
+  "baseline": {
+    "sharpe": 2.406,
+    "ann_ret": 0.1998,
+    "vol": 0.083,
+    "max_dd": -0.0614,
+    "calmar": 3.2533
+  },
+  "bootstrap": {
+    "mean": 2.4951,
+    "std": 0.3726,
+    "cv_pct": 14.9336,
+    "p5": 1.9187,
+    "p95": 3.1178,
+    "min": 1.4772,
+    "max": 3.6473,
+    "n_boot": 200,
+    "block_days": 52
+  },
+  "start_dependence": {
+    "2018": 2.406,
+    "2019": 1.364,
+    "2020": 1.901,
+    "2021": 0.861,
+    "2022": 0.584
+  },
+  "strict_oos": [
+    {
+      "lambda_tv": 0.5,
+      "momentum": 60,
+      "is_sharpe": 2.723227568625614,
+      "is_ann_ret": 0.24024457726655157,
+      "oos_sharpe": 2.0594448535685608,
+      "oos_ann_ret": 0.15961998474763983,
+      "oos_max_dd": -0.061411627418107906,
+      "oos_calmar": 2.599181807394573
+    },
+    {
+      "lambda_tv": 0.5,
+      "momentum": 40,
+      "is_sharpe": 2.4660703098776913,
+      "is_ann_ret": 0.23106676562103878,
+      "oos_sharpe": 1.98627738862196,
+      "oos_ann_ret": 0.15899776562797974,
+      "oos_max_dd": -0.06291234635284637,
+      "oos_calmar": 2.527290346734717
+    },
+    {
+      "lambda_tv": 0.15,
+      "momentum": 40,
+      "is_sharpe": 2.1359885489362163,
+      "is_ann_ret": 0.20614957093552877,
+      "oos_sharpe": 2.235369716610481,
+      "oos_ann_ret": 0.17704725098540064,
+      "oos_max_dd": -0.056706493445387696,
+      "oos_calmar": 3.1221689127350025
+    },
+    {
+      "lambda_tv": 0.15,
+      "momentum": 60,
+      "is_sharpe": 2.044864946872055,
+      "is_ann_ret": 0.19835571249409933,
+      "oos_sharpe": 2.2290479823880944,
+      "oos_ann_ret": 0.17199496305254458,
+      "oos_max_dd": -0.060810486418666376,
+      "oos_calmar": 2.8283767024719775
+    }
+  ],
+  "is_best": {
+    "lambda_tv": 0.5,
+    "momentum": 60,
+    "oos_sharpe": 2.0594448535685608
+  },
+  "checks": {
+    "bootstrap_cv_lt_50": true,
+    "start_all_positive": true,
+    "strict_oos_sharpe_ge_1": true,
+    "is_best_is_default": true
+  },
+  "verdict": "PASS"
+}
