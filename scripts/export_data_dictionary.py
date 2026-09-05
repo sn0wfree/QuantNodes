@@ -64,7 +64,6 @@ def classify(table: str) -> tuple[str, str]:
         "futures_rule_snapshot": ("参考-规则快照", "交易所规则快照"),
         "v_all_futures": ("视图-全量期货", "全品种期货宽表视图"),
         "v_all_options": ("视图-全量期权", "全品种期权宽表视图"),
-        "default_ip_futures_daily": ("行情-IP连续", "默认IP口径连续合约 (备用口径)"),
         # 基本面库
         "fundamentals_daily": ("基本面-宏观/全球",
             "长表: source(数据源)×trade_date×value_col(指标名)×value. 29个指标含 "
@@ -85,14 +84,11 @@ def classify(table: str) -> tuple[str, str]:
         "eia_weekly_inventory": ("基本面-EIA库存", "美国EIA周度原油/成品油库存 (周频)"),
         "term_structure_cu": ("基本面-铜期限结构", "铜期限结构 (copper策略族数据源, 与行情库"
             "term_structure_daily中CU部分同源不同期)"),
-        "futures_main_close_au": ("行情-黄金主力", "黄金主力合约日收盘 (周频策略用)"),
-        "futures_main_close_au_adj": ("行情-黄金主力(换月调整)", "黄金主力换月比率调整收盘"),
-        "futures_main_close_cu": ("行情-铜主力", "铜主力合约日收盘"),
-        "futures_main_close_m": ("行情-豆粕主力", "豆粕主力合约日收盘"),
-        "futures_main_close_sc": ("行情-原油主力", "原油主力合约日收盘"),
-        "futures_all_contracts_au": ("行情-黄金全合约", "黄金全部合约日行情"),
-        "gold_main_contracts": ("行情-黄金主力合约表", "黄金主力合约代码序列"),
-        "gold_main_switches": ("行情-黄金换月事件", "黄金主力切换事件 (31次)"),
+        "futures_main_close_au": ("⚠️已移除", "黄金主力收盘 — 该表不存在于库中 (实验脚本中间产物), 勿引用"),
+        "eia_weekly_inventory": ("基本面-EIA库存", "美国EIA周度原油/成品油库存 (周频)"),
+        "term_structure_cu": ("基本面-铜期限结构", "铜期限结构 (copper策略族数据源, 与行情库"
+            "term_structure_daily中CU部分同源不同期)"),
+        "default_ip_futures_daily": ("行情-IP连续", "默认IP口径连续合约 (⚠️空表, 历史遗留)"),
     }
     if table in m:
         return m[table]
