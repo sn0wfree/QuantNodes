@@ -1459,7 +1459,7 @@ auto_weight 的 ERC/inv_vol 思想一脉相承. 论文样本外 5.8%/Sharpe 0.64
 | Phase | 内容 | 工作量 | 状态 |
 |---|---|---:|---|
 | P1 | 精读笔记 + 脚手架骨架 | 3-4 h | ✅ 完成 (commit) |
-| P2 | 38 变量构造 + PIT 对齐 | 4-5 天 | pending |
+| P2 | 38 变量构造 + PIT 对齐 | 4-5 天 | ✅ 完成 (commit) |
 | P3 | 5 模型集成 + 60 月滚动 Beta | 2-3 天 | pending |
 | P4 | 月度再平衡回测 + cost_model 扣减 | 2-3 天 | pending |
 | P5 | Spanning Test vs 全部子策略 | 2 天 | pending |
@@ -1475,3 +1475,14 @@ auto_weight 的 ERC/inv_vol 思想一脉相承. 论文样本外 5.8%/Sharpe 0.64
   - `backtest.py` — 月度截面回测 + 成本扣减 (P4 待实装)
   - `spanning.py` — Spanning Test vs 全部 (P5 待实装)
   - `run.py` — CLI 入口 (features/train-test/spanning/all)
+
+### 28.8 P2 产出 (本次 commit)
+- `features_c.py` 12 类 Group C 变量实装 (库存族 6 / 对冲族 2 / 流动性族 4)
+- `features_m.py` 10 个 Group M 宏观实装 (fed_rate / term_spread / fed_balance /
+  m2_yoy / us_cpi_yoy / dxy / vix / tips10y / epu / wti_brent_spread)
+- `loader.py` 实装 PIT 对齐 (宏观滞后 1 期, 库存按记账日, 行情天然 PIT OK)
+- `INVENTORY_MAP`: 仅 CU/ZN/NI/AL 4 品种有 SHFE 库存数据
+- 输出: `reports/cta/zookeeper/features_c.parquet (91月×720列)` /
+  `features_m.parquet (91月×10列)` / `product_pool.csv (60品种按流动性)`
+- 验证: ruff All checks passed; NaN 比例 C 33% (库存族 4/60 + mom12 前12月),
+  M 1.1%; 日期 2018-01-31 ~ 2025-07-31 (覆盖论文测试期)

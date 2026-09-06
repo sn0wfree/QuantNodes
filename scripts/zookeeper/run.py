@@ -24,10 +24,30 @@ logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 LOG = logging.getLogger("zookeeper")
 
 
-def cmd_features(_args) -> int:
+def cmd_features(args) -> int:
     """P2: 构造 38 变量面板 → features_panel.parquet."""
-    LOG.info("P2: 构造 Group C/M 变量面板 (38 个, 跳过 S 族)")
-    raise SystemExit("P2 待实装 — 见 features_c.py / features_m.py")
+    import pandas as pd
+    from scripts.zookeeper import features_c, features_m
+    from scripts.zookeeper.config import OUT_DIR
+
+    start = args.start or "2018-01-01"
+    end = args.end or "2025-07-21"  # full 库 spot_basis/term_structure 截止日
+
+    LOG.info(f"P2: 构造 Group C/M 变量面板 (38 个, 跳过 S 族), {start} ~ {end}")
+    products = features_c.select_top_products(start, end)
+
+    panel_c = features_c.build_group_c(products, start, end)
+    panel_m = features_m.build_group_m(start, end, pit_lag=args.pit_lag)
+
+    n_feat = len(panel_c.columns.levels[1].unique())
+    LOG.info(f"Group C 面板: {panel_c.shape} (品种={len(products)}, 特征={n_feat})")
+    LOG.info(f"Group M 面板: {panel_m.shape}")
+
+    panel_c.to_parquet(OUT_DIR / "features_c.parquet")
+    panel_m.to_parquet(OUT_DIR / "features_m.parquet")
+    pd.Series(products, name="product").to_csv(OUT_DIR / "product_pool.csv", index=False)
+    LOG.info(f"输出: {OUT_DIR}/features_c.parquet, features_m.parquet, product_pool.csv")
+    return 0
 
 
 def cmd_train_test(_args) -> int:
@@ -42,16 +62,21 @@ def cmd_spanning(_args) -> int:
     raise SystemExit("P5 待实装")
 
 
-def cmd_all(_args) -> int:
+def cmd_all(args) -> int:
     """一键全跑."""
-    cmd_features(_args)
-    cmd_train_test(_args)
-    cmd_spanning(_args)
+    cmd_features(args)
+    cmd_train_test(args)
+    cmd_spanning(args)
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Zookeeper 因子复现 (Fan et al. 2026)")
+    parser.add_argument("--start", default="2018-01-01")
+    parser.add_argument("--end", default="2025-07-21")
+    parser.add_argument(
+        "--pit-lag", type=int, default=1,
+        help="宏观变量滞后月数 (P2 防御性, Spanning 鲁棒性加 2)")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("features", help="P2 构造变量面板")
     sub.add_parser("train-test", help="P3-P4 训练+回测")
