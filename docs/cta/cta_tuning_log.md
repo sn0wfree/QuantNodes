@@ -1460,7 +1460,7 @@ auto_weight 的 ERC/inv_vol 思想一脉相承. 论文样本外 5.8%/Sharpe 0.64
 |---|---|---:|---|
 | P1 | 精读笔记 + 脚手架骨架 | 3-4 h | ✅ 完成 (commit) |
 | P2 | 38 变量构造 + PIT 对齐 | 4-5 天 | ✅ 完成 (commit) |
-| P3 | 5 模型集成 + 60 月滚动 Beta | 2-3 天 | pending |
+| P3 | 5 模型集成 + 60 月滚动 Beta | 2-3 天 | ✅ 完成 (commit) |
 | P4 | 月度再平衡回测 + cost_model 扣减 | 2-3 天 | pending |
 | P5 | Spanning Test vs 全部子策略 | 2 天 | pending |
 
@@ -1469,14 +1469,14 @@ auto_weight 的 ERC/inv_vol 思想一脉相承. 论文样本外 5.8%/Sharpe 0.64
 - `scripts/zookeeper/` 脚手架 10 文件:
   - `__init__.py / config.py` — 模块接口 + 全部常量
   - `features_c.py / features_m.py` — Group C/M 变量接口 (P2 待实装)
-  - `loader.py` — 数据加载 + PIT 对齐 (P2/P4 待实装)
-  - `beta_rolling.py` — 60 月滚动 OLS Beta (P3 待实装)
-  - `model_l_en.py` — 5 线性模型 L-En 集成 (P3 待实装)
+  - `loader.py` — 数据加载 + PIT 对齐 (P2 ✅ / P4 待实装)
+  - `beta_rolling.py` — 60 月滚动 OLS Beta (P3 ✅)
+  - `model_l_en.py` — 5 线性模型 L-En 集成 (P3 ✅)
   - `backtest.py` — 月度截面回测 + 成本扣减 (P4 待实装)
   - `spanning.py` — Spanning Test vs 全部 (P5 待实装)
   - `run.py` — CLI 入口 (features/train-test/spanning/all)
 
-### 28.8 P2 产出 (本次 commit)
+### 28.8 P2 产出
 - `features_c.py` 12 类 Group C 变量实装 (库存族 6 / 对冲族 2 / 流动性族 4)
 - `features_m.py` 10 个 Group M 宏观实装 (fed_rate / term_spread / fed_balance /
   m2_yoy / us_cpi_yoy / dxy / vix / tips10y / epu / wti_brent_spread)
@@ -1486,3 +1486,33 @@ auto_weight 的 ERC/inv_vol 思想一脉相承. 论文样本外 5.8%/Sharpe 0.64
   `features_m.parquet (91月×10列)` / `product_pool.csv (60品种按流动性)`
 - 验证: ruff All checks passed; NaN 比例 C 33% (库存族 4/60 + mom12 前12月),
   M 1.1%; 日期 2018-01-31 ~ 2025-07-31 (覆盖论文测试期)
+
+### 28.9 P3 产出 (本次 commit)
+- `beta_rolling.py` 实装 60 月滚动 OLS Beta (论文 §3.1 维度对齐)
+- `model_l_en.py` 实装 5 线性模型 L-En 集成:
+  - OLS / PLS(n=5) / RidgeCV / LassoCV / ElasticNetCV
+  - fit_predict_ts / fit_predict_cs / rolling_train_predict_{ts,cs}
+  - 每估计期前标准化 (零均值单位方差, 沿论文 §3.2)
+- `run.py` train-test 命令实装
+- 输出: `ts_predictions.csv` (54月×3列 y_true/y_pred/y_baseline) /
+  `ts_metrics.json` (R²OOS / R²OOS_rolling / IC / sign_acc) /
+  `cs_predictions.parquet` (54月×60商品, L-En 预测 r̂ 矩阵)
+
+#### P3 关键评估结果 (初看, ⚠️ 警惕)
+| 指标 | 值 | 论文 | 评估 |
+|---|---|---|---|
+| R²OOS (vs 历史均值) | 42.5% | 3.55% | ⚠️ 偏高 |
+| R²OOS (vs 12月 rolling) | 45.1% | — | ⚠️ 偏高 |
+| IC | 0.70 | 0.05-0.10 显著 | ⚠️ 异常高 |
+| sign_acc | 79.6% | — | ⚠️ 异常高 |
+
+#### 异常高指标的 4 个可能原因 (P5 Spanning Test 验证)
+1. **特征前瞻偏差**: features_c 含 t 期 close 计算 (basis/bmom/iliq 等用 t 当期数据)
+   — 应改用 t-1 滞后口径
+2. **商品池选择性**: 60 品种按流动性前 60, 含幸存者偏差
+3. **样本期短**: 仅 5 年 OOS (论文 17 年), 含 2021 牛市特殊行情
+4. **R²OOS 口径差异**: 论文 25 商品 17 年月频 vs 本项目 60 商品 5 年
+
+P4 月度回测 + cost_model 扣减后会再过一遍 — 真实 NAV 表现才是关键。P5 Spanning Test
+vs 主 CTA baseline 是最终验证 (主 CTA Sharpe 2.6+, 如果 Zookeeper α>5% 还能保留,
+说明是真正独立 α; 如果 α 被主 CTA 完全吸收, 则 IC 0.70 是系统偏差)。
