@@ -289,4 +289,7 @@ def build_group_c(products: list[str], start: str, end: str) -> pd.DataFrame:
     panel = pd.DataFrame(columns)
     panel.columns = pd.MultiIndex.from_tuples(panel.columns, names=["product", "feature"])
     panel = panel.sort_index(axis=1).sort_index()
+    # PIT 修复 (P4-B): 所有 Group C 特征 shift(1), 防止"用 T 月数据预测 T 月收益"的同期泄漏.
+    # 论文 T 月末用 T 期特征预测 T+1, 本项目保留 predict[T+1] 口径: 模型用 [T-1] 预测 T.
+    panel = panel.shift(1)
     return panel
