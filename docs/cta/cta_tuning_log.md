@@ -1416,3 +1416,62 @@ NAV 1.0→4.064 (7年4倍). 分年: 27.5/39.3/29.1/11.8/36.3/9.6/6.2 (%).
 main_cta_full_assessment.csv (15行版本×窗口总表) /
 main_cta_curve.csv (日频NAV+回撤) / main_cta_curve_monthly.csv /
 main_cta_curve.html+.png (plotly三联: NAV/回撤/分年).
+
+---
+
+## 28. Zookeeper 因子复现立项 (2026-09-06, doc-first 启动)
+
+### 28.1 立项动机
+§25/§26 证伪了三族单变量信号 (carry / basis momentum / VRP), 与 Fan et al. 2026
+"Call the Zookeeper" 论文 Spanning Test "单因子脆弱性" 论断完全对应. 论文核心
+贡献是 L-En (5 线性模型等权集成) 用稳定性胜过单因子脆弱性 — 与本项目 §24
+auto_weight 的 ERC/inv_vol 思想一脉相承. 论文样本外 5.8%/Sharpe 0.64, 极
+可能解决本项目"alpha 池到顶"问题 (§27 后增量 alpha 找不到).
+
+### 28.2 调研关键发现
+- **81 变量** / 3 组 (C 商品 37 + M 宏观 40 + S 情绪 4)
+- 样本 25 商品 1988-2022, 论文是月度再平衡横截面策略 (与本项目日频趋势策略**架构互补**)
+- 关键陷阱 (知乎解读指出, 论文未充分强调):
+  - **交易成本致命**: quartiles 月度排序变动 → 单品种方向换手 200%, 月度单边换手 40-80%, 5.8% 扣 15-20bps 后 Sharpe 大缩水
+  - **前瞻偏差**: 宏观/文本情绪有 1-2 月发布延迟 + 修正机制, 用"修正后"数据严重高估 R²OOS
+- 本项目覆盖度: **~38/81 ≈ 47%** (Group C 28/37 缺 hp12; Group M 10/40; S 跳过)
+
+### 28.3 决策 (用户拍板)
+- A = 文档 + 完整复现实验
+- B = CTA 笔记 + 复现脚手架
+- S 族: **先跳过** (Baker-Wurgler/FinBERT WSJ 缺数据)
+- Spanning 对手: **vs 全部子策略** (carry/basis momentum/VRP/ZN inventory/jjm/CU 溢价 TC/AU layered/OscAlpha/主 CTA)
+
+### 28.4 评估硬指标 (硬阈值, 不达标即停)
+| 指标 | 通过 | 失败 |
+|---|---|---|
+| R²OOS (TS) | > 0% | < 0% (OLS 直接崩溃那种) |
+| Zookeeper 扣成本 Sharpe | > 0.5 | < 0.3 |
+| t-stat | > 2.0 | < 1.5 |
+| 月度单边换手 | < 80% | > 100% (知乎报警) |
+
+### 28.5 接入决策
+- Spanning α < 2%/年: 归档
+- 2% < α < 5%: 子策略候选 (组合 ≤10% 沿用硬约束)
+- α > 5%: **谨慎审查** (重跑成本 / PIT / 鲁棒性)
+
+### 28.6 Phase 计划
+| Phase | 内容 | 工作量 | 状态 |
+|---|---|---:|---|
+| P1 | 精读笔记 + 脚手架骨架 | 3-4 h | ✅ 完成 (commit) |
+| P2 | 38 变量构造 + PIT 对齐 | 4-5 天 | pending |
+| P3 | 5 模型集成 + 60 月滚动 Beta | 2-3 天 | pending |
+| P4 | 月度再平衡回测 + cost_model 扣减 | 2-3 天 | pending |
+| P5 | Spanning Test vs 全部子策略 | 2 天 | pending |
+
+### 28.7 P1 产出 (本次 commit)
+- `docs/cta/zookeeper_paper_notes.md`: 精读笔记 (论文 §1-§7 + 本地化覆盖度 + 启示)
+- `scripts/zookeeper/` 脚手架 10 文件:
+  - `__init__.py / config.py` — 模块接口 + 全部常量
+  - `features_c.py / features_m.py` — Group C/M 变量接口 (P2 待实装)
+  - `loader.py` — 数据加载 + PIT 对齐 (P2/P4 待实装)
+  - `beta_rolling.py` — 60 月滚动 OLS Beta (P3 待实装)
+  - `model_l_en.py` — 5 线性模型 L-En 集成 (P3 待实装)
+  - `backtest.py` — 月度截面回测 + 成本扣减 (P4 待实装)
+  - `spanning.py` — Spanning Test vs 全部 (P5 待实装)
+  - `run.py` — CLI 入口 (features/train-test/spanning/all)
