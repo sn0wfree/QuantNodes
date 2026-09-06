@@ -126,6 +126,18 @@ def cmd_train_test(args) -> int:
         cs_pred.to_parquet(OUT_DIR / "cs_predictions.parquet")
         LOG.info(f"  CS r̂ 矩阵: {cs_pred.shape}, 保存 → cs_predictions.parquet")
 
+    # P4: 月度截面回测 + cost 扣减
+    from scripts.zookeeper import backtest
+    cost_bps = args.cost_bps / 10000  # 15 → 0.0015
+    LOG.info(f"P4: 月度截面回测 (Q4/Q1 多空, 成本 {args.cost_bps}bps 单边)")
+    bt = backtest.cross_section_backtest(cs_pred, returns, cost_bps=cost_bps)
+    bt["nav"].to_csv(OUT_DIR / "factor_nav.csv", header=["nav"])
+    bt["turnover"].to_csv(OUT_DIR / "factor_turnover.csv", header=["turnover"])
+    bt["ls_net"].to_csv(OUT_DIR / "factor_ls.csv", header=["ls_net"])
+    LOG.info(f"  评估: {bt['metrics']}")
+    import json
+    with open(OUT_DIR / "factor_metrics.json", "w") as f:
+        json.dump({**bt["metrics"], "cost_bps": args.cost_bps}, f, indent=2)
     return 0
 
 
@@ -156,6 +168,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--roll-window", type=int, default=36,
         help="滚动训练窗口月数 (论文 120, 本项目数据短用 36)")
+    parser.add_argument(
+        "--cost-bps", type=float, default=15.0,
+        help="单边成本 bps (基础 15bps + 换月滑点, 沿 §22 校准)")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("features", help="P2 构造变量面板")
     sub.add_parser("train-test", help="P3-P4 训练+回测")

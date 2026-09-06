@@ -178,7 +178,9 @@ def rolling_train_predict_cs(features_c: pd.DataFrame, features_m: pd.DataFrame,
         return pd.DataFrame()
 
     LOG.info(f"CS 滚动训练: train_end={train_end}, test={test_dates[0]}~{test_dates[-1]}, "
-             f"window={roll_window}, beta_window={beta_window}")
+             f"window={roll_window}, beta_window={beta_window or min(35, roll_window)}")
+    # Beta 窗口不能超过训练窗口, 否则全 NaN. pct_change 后首行 NaN, 有效数据 = roll_window-1.
+    eff_beta_window = beta_window if beta_window is not None else min(35, roll_window)
     out = {}
     for t in test_dates:
         t_pos = returns.index.get_loc(t)
@@ -186,12 +188,10 @@ def rolling_train_predict_cs(features_c: pd.DataFrame, features_m: pd.DataFrame,
         ret_tr = returns.iloc[start_pos:t_pos]
         if len(ret_tr) < 12:
             continue
-        # 用截至 t 的数据计算 Beta (含 t 当期 Beta), 但预测 t+1 用 t 期 X
         feat_c_tr = features_c.iloc[start_pos:t_pos]
         feat_c_te = features_c.iloc[[t_pos]]
-        # 全期 Beta (含 t, 用于预测)
         beta_full = beta_rolling.rolling_beta(ret_tr, features_m.iloc[start_pos:t_pos],
-                                                window=beta_window)
+                                                window=eff_beta_window)
         # 构造 t 期商品面板
         if beta_full.empty:
             out[t] = pd.Series(np.nan, index=returns.columns)
@@ -203,11 +203,24 @@ def rolling_train_predict_cs(features_c: pd.DataFrame, features_m: pd.DataFrame,
             continue
         # 构造训练期商品面板: Group C 跨期 + (Group M × Beta)
         panels_tr, panels_te = [], []
+        feat_c_tr_cols = (feat_c_tr.columns.get_level_values(0)
+                          if isinstance(feat_c_tr.columns, pd.MultiIndex) else [])
+        feat_c_te_cols = (feat_c_te.columns.get_level_values(0)
+                          if isinstance(feat_c_te.columns, pd.MultiIndex) else [])
+        beta_cols = (beta_full.columns.get_level_values(0)
+                     if isinstance(beta_full.columns, pd.MultiIndex) else [])
+        te_cols = (beta_t_minus_1.columns.get_level_values(0)
+                   if isinstance(beta_t_minus_1.columns, pd.MultiIndex) else [])
         for prod in returns.columns:
-            cols_tr_c = feat_c_tr[prod] if prod in feat_c_tr.columns.get_level_values(0) else None
-            cols_te_c = feat_c_te[prod] if prod in feat_c_te.columns.get_level_values(0) else None
-            if cols_tr_c is None or cols_te_c is None:
+            if prod not in feat_c_tr_cols or prod not in feat_c_te_cols:
                 continue
+            cols_tr_c = feat_c_tr[prod]
+            cols_te_c = feat_c_te[prod]
+            # 保留 MultiIndex (prod, feat), 避免 concat 错位
+            cols_tr_c.columns = pd.MultiIndex.from_product(
+                [[prod], cols_tr_c.columns], names=["product", "feature"])
+            cols_te_c.columns = pd.MultiIndex.from_product(
+                [[prod], cols_te_c.columns], names=["product", "feature"])
             beta_cols = beta_full.columns.levels[0]
             te_cols = beta_t_minus_1.columns.levels[0]
             macro_tr = (beta_full[prod].shift(1) if prod in beta_cols else pd.DataFrame())
