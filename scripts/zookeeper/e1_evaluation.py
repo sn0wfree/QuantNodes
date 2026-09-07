@@ -28,14 +28,13 @@ LOG = __import__("logging").getLogger("zookeeper.e1_eval")
 
 
 def _run_strategy(enabled: bool, start: str = "2019-01-01",
-                  end: str = "2025-07-21") -> tuple[pd.Series, pd.DataFrame]:
-    """跑主 CTA 策略, 返回 (日频 NAV, 日频 position 矩阵).
+                  end: str = "2025-07-21") -> tuple[pd.Series, pd.DataFrame, pd.DataFrame]:
+    """跑主 CTA 策略, 返回 (日频 NAV, 日频 position 矩阵, 名义敞口矩阵).
 
     算法 (简化版, 仅供 vol_target 调节对比):
       pnl_{t,p} = position_{t,p} × notional_per_lot_{t,p} × price_return_{t,p}
       daily_pnl_t = Σ_p pnl_{t,p}
       NAV_t = initial_cash + cumulative_daily_pnl
-      daily_ret_t = daily_pnl_t / NAV_{t-1}
     """
     ZK_VOL_ADJ_CFG["enabled"] = enabled
     loader = CtaDataLoader()
@@ -59,44 +58,64 @@ def _run_strategy(enabled: bool, start: str = "2019-01-01",
     daily_pnl = pnl_per_product.sum(axis=1).fillna(0)
     # NAV = 期初资金 + 累计盈亏 (下限 0.01 防止除零)
     nav = (initial_cash + daily_pnl.cumsum()).clip(lower=initial_cash * 0.01)
-    return nav, positions
+    # 名义敞口 = Σ|手数 × 名义/手| (单位元)
+    notional = (positions.abs() * notional_per_lot).fillna(0)
+    return nav, positions, notional
 
 
-def _metrics(nav: pd.Series) -> dict:
+def _metrics(nav: pd.Series, notional: pd.DataFrame | None = None) -> dict:
     r = nav.pct_change(fill_method=None).dropna()
-    r = r[r != 0]
     if r.empty:
         return {"annual": np.nan, "sharpe": np.nan, "dd": np.nan,
-                "vol": np.nan, "n_days": 0}
-    ann = r.mean() * 252
-    shp = r.mean() / r.std() * np.sqrt(252) if r.std() > 0 else np.nan
-    vol = r.std() * np.sqrt(252)
+                "vol": np.nan, "calmar": np.nan, "n_days": 0,
+                "leverage_avg": np.nan, "leverage_max": np.nan}
+    # 移除极端异常值 (>1σ 4倍) 避免极值污染 Sharpe/Vol
+    r_clean = r.where(r.abs() < r.abs().mean() * 10)
+    r_clean = r_clean.dropna()
+    if len(r_clean) < 100:
+        r_clean = r  # 极端清洗后样本不足, 用原始
+    ann = r_clean.mean() * 252
+    shp = r_clean.mean() / r_clean.std() * np.sqrt(252) if r_clean.std() > 0 else np.nan
+    vol = r_clean.std() * np.sqrt(252)
     dd = (nav / nav.cummax() - 1).min()
+    calmar = -ann / dd if dd < 0 and ann > 0 else np.nan
+    # 杠杆率 = 名义敞口 / NAV
+    if notional is not None and not notional.empty:
+        total_notional = notional.sum(axis=1)
+        leverage = total_notional / nav.replace(0, np.nan)
+        lev_avg = leverage.mean()
+        lev_max = leverage.max()
+    else:
+        lev_avg = lev_max = np.nan
     return {"annual": float(ann), "sharpe": float(shp), "dd": float(dd),
-            "vol": float(vol), "n_days": int(len(r))}
+            "vol": float(vol), "calmar": float(calmar), "n_days": int(len(r_clean)),
+            "leverage_avg": float(lev_avg), "leverage_max": float(lev_max)}
 
 
 def main() -> int:
     # Baseline (无 ZK)
     LOG.info("=== Baseline (ZK disabled) ===")
-    nav_base, pos_base = _run_strategy(enabled=False)
-    m_base = _metrics(nav_base)
+    nav_base, pos_base, notional_base = _run_strategy(enabled=False)
+    m_base = _metrics(nav_base, notional_base)
     LOG.info(f"  Baseline: Sharpe={m_base['sharpe']:.3f} DD={m_base['dd']:.2%} "
-             f"Annual={m_base['annual']:.2%}")
+             f"Annual={m_base['annual']:.2%} Calmar={m_base['calmar']:.2f} "
+             f"Lev(avg/max)={m_base['leverage_avg']:.2f}/{m_base['leverage_max']:.2f}")
 
     # ZK vol_adj 启用
     LOG.info("=== ZK vol_adj enabled ===")
-    nav_zk, pos_zk = _run_strategy(enabled=True)
-    m_zk = _metrics(nav_zk)
+    nav_zk, pos_zk, notional_zk = _run_strategy(enabled=True)
+    m_zk = _metrics(nav_zk, notional_zk)
     LOG.info(f"  ZK vol_adj: Sharpe={m_zk['sharpe']:.3f} DD={m_zk['dd']:.2%} "
-             f"Annual={m_zk['annual']:.2%}")
+             f"Annual={m_zk['annual']:.2%} Calmar={m_zk['calmar']:.2f} "
+             f"Lev(avg/max)={m_zk['leverage_avg']:.2f}/{m_zk['leverage_max']:.2f}")
 
     # 增量
     delta_sharpe = m_zk["sharpe"] - m_base["sharpe"]
     delta_dd = m_zk["dd"] - m_base["dd"]
     delta_annual = m_zk["annual"] - m_base["annual"]
+    delta_lev = m_zk["leverage_avg"] - m_base["leverage_avg"]
     LOG.info(f"=== 增量: ΔSharpe={delta_sharpe:+.3f} ΔDD={delta_dd:+.2%} "
-             f"ΔAnnual={delta_annual:+.2%} ===")
+             f"ΔAnnual={delta_annual:+.2%} ΔLev(avg)={delta_lev:+.2f} ===")
 
     # 仓位总规模对比 (验证 ZK 确实调节了仓位)
     total_pos_base = pos_base.abs().sum(axis=1).mean()
@@ -109,10 +128,13 @@ def main() -> int:
     out = pd.DataFrame({
         "version": ["Baseline (ZK off)", "ZK vol_adj (on)"],
         "annual_return": [m_base["annual"], m_zk["annual"]],
-        "vol": [m_base["vol"], m_zk["vol"]],
+        "annual_vol": [m_base["vol"], m_zk["vol"]],
         "sharpe": [m_base["sharpe"], m_zk["sharpe"]],
         "max_dd": [m_base["dd"], m_zk["dd"]],
+        "calmar": [m_base["calmar"], m_zk["calmar"]],
         "n_days": [m_base["n_days"], m_zk["n_days"]],
+        "leverage_avg": [m_base["leverage_avg"], m_zk["leverage_avg"]],
+        "leverage_max": [m_base["leverage_max"], m_zk["leverage_max"]],
         "total_lots_avg": [total_pos_base, total_pos_zk],
     })
     out.to_csv(OUT_DIR / "e1_main_cta_evaluation.csv", index=False)
