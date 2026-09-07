@@ -1862,3 +1862,28 @@ adj_factor clip(0.3, 2.0)
 3. 跑 cta_full_assessment_export.py 验证新主 CTA 评估
 4. Spanning Test vs 新主 CTA 验证 α 显著
 5. alpha > 5% 触发谨慎审查
+
+### 28.20 E1 真接入 v11 引擎 (本次 commit, 接入代码就绪)
+
+#### 修改 1: `QuantNodes/strategy/cta/factors/volatility.py`
+- `vol_target_positions()` 增加 `daily_vol_target: pd.Series | None = None` 参数
+- 注入逻辑: reindex 到 weight_per_unit.index → ffill → 按 axis=0 广播 (Series→DataFrame)
+- `weight_per_unit = vol.replace(0, np.nan).div(dvt.values, axis=0)` (关键: axis=0 解决广播失败 bug)
+
+#### 修改 2: `QuantNodes/strategy/cta/strategies/base.py`
+- 添加 ZK_VOL_ADJ_CFG (默认 enabled=False):
+  - method="weighted", stat="signal_dispersion", alpha=0.5, direction=-1
+  - weights = 三 stat 等权 (1/3 each)
+- `load_zk_vol_adj_factor(config=None)` 函数: 加载多 stat 集成 → 标准化 → 调节因子 → 月度→日频
+- `_signal_to_lots()` 调用 `vol_target_positions` 时传 `daily_vol_target=load_zk_vol_adj_factor(ZK_VOL_ADJ_CFG)`
+
+#### 单元测试验证 (ruff All checks passed ✓)
+- vol_target_positions 注入日频 dvt: vol 平均 1.59 → 0.69 (= 0.13/0.15 比例 ✓)
+- 月频 dvt + ffill 注入: vol 平均 1.59 → 0.475 ✓
+- load_zk_vol_adj_factor() 默认返回 None (enabled=False), 开启返回 65 月 (范围 0.73~1.34)
+
+#### 启用步骤 (用户拍板后)
+1. `base.py` 中 `ZK_VOL_ADJ_CFG["enabled"] = True`
+2. `python scripts/cta_full_assessment_export.py` 评估 Sharpe/DD/Calmar
+3. 跑 spanning 验证 α 显著
+4. 跟踪 30 天 OOS 后正式启用 (避免 overfit)

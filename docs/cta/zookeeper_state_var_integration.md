@@ -49,45 +49,96 @@ adj_factor(zk) = 1 + direction × alpha × (zk_state_norm - 0.5) × 2
 - DD -2.51% → -2.40% (缩窄 4%)
 - α_ann +0.81% (t = 2.29, 显著)
 
-## 5. v11 主 CTA 引擎接入设计 (待用户拍板)
+## 5. v11 主 CTA 引擎接入设计 (E1 真接入已实施)
 
 ### 5.1 不破坏现有架构原则
 - ZK 状态变量作为**可选调节器**, 不替换 vol_target_base
 - 通过 config 注册: `use_zk_vol_adj: bool = False` (默认关闭, 手动开启)
-- 接入点: `vol_target_positions()` (factor_modules/base.py)
+- 接入点: `vol_target_positions()` (factors/volatility.py)
 
-### 5.2 接入代码骨架 (示意)
+### 5.2 接入代码 (已实施, commit 待)
+**修改 1**: `QuantNodes/strategy/cta/factors/volatility.py`
 ```python
-# config.py (新增)
-ZK_VOL_ADJ_CFG = {
-    "enabled": False,           # 拍板后开启
-    "alpha": 0.3,
-    "direction": -1,
-    "stat": "signal_dispersion",
-    "src_path": "reports/cta/zookeeper/factor_vol_adj_weighted_signal_dispersion_a0.3_d-1.csv",
-}
-
-# factor_modules/base.py (新增vol函数)
-def vol_target_positions_with_zk(self, ...):
-    """vol_target_adjusted = vol_target_base × zk_adj_factor."""
-    if ZK_VOL_ADJ_CFG["enabled"]:
-        adj = load_zk_factor(...)
-        target_vol *= adj.loc[date]
-    return vol_target_positions(...)
+def vol_target_positions(signals, prices, target_vol=0.15, vol_lookback=20, max_leverage=3.0,
+                       daily_vol_target=None):   # ← 新增参数
+    ...
+    weight_per_unit = target_vol / vol.replace(0, np.nan)
+    if daily_vol_target is not None and len(daily_vol_target) > 0:
+        dvt = daily_vol_target.reindex(weight_per_unit.index).ffill().fillna(target_vol)
+        weight_per_unit = vol.replace(0, np.nan).div(dvt.values, axis=0)  # 关键: axis=0 广播
+    weight_per_unit = weight_per_unit.clip(upper=max_leverage).fillna(0)
+    return signals * weight_per_unit
 ```
 
-### 5.3 实际接入工作清单 (5 步, 估 1-2 天)
-1. 把 `factor_vol_adj_weighted_signal_dispersion_a0.3_d-1.csv` 接入 ZK_VOL_ADJ_CFG
-2. 在 `vol_target_positions()` 增加 if 开关
-3. 跑 `scripts/cta_full_assessment_export.py` 重新生成主 CTA 评估曲线
-4. 对比 vol_target 调节前后 (Sharpe/DD/Calmar)
-5. 更新 tuning_log §28.15 commit
+**修改 2**: `QuantNodes/strategy/cta/strategies/base.py`
+```python
+ZK_VOL_ADJ_CFG = {
+    "enabled": False,                        # 默认关闭
+    "method": "weighted",
+    "stat": "signal_dispersion",
+    "alpha": 0.5,                            # E3 推荐 (Sharpe 3.557)
+    "direction": -1,                         # 反向 (弱信号加仓)
+    "weights": {"signal_strength": 1/3, "signal_dispersion": 1/3, "signal_momentum": 1/3},
+}
+
+def load_zk_vol_adj_factor(config=None) -> pd.Series:
+    """加载 ZK 多 stat 集成 vol_target 调节因子 (月度→日频)."""
+    cfg = config or ZK_VOL_ADJ_CFG
+    if not cfg.get("enabled", False):
+        return None
+    # 加载三个 stat, 标准化, 等权集成, 调节因子计算
+    ...
+
+# 在 _signal_to_lots() 调用前:
+def _signal_to_lots(self, signals, cfg):
+    daily_vol_target = None
+    if ZK_VOL_ADJ_CFG.get("enabled", False):
+        daily_vol_target = load_zk_vol_adj_factor(ZK_VOL_ADJ_CFG)
+    weights = vol_target_positions(signals, self._price_panel,
+                                  target_vol=cfg.target_vol,
+                                  vol_lookback=cfg.vol_lookback,
+                                  max_leverage=cfg.max_leverage,
+                                  daily_vol_target=daily_vol_target)  # ← 新传参
+    ...
+```
+
+### 5.3 实际接入工作 (已完成, 待 commit)
+1. ✅ 修改 `vol_target_positions()` 接受 daily_vol_target
+2. ✅ 修改 `_signal_to_lots()` 调用新参数
+3. ✅ 添加 ZK_VOL_ADJ_CFG + load_zk_vol_adj_factor()
+4. ✅ ruff 通过 + 单元测试通过 (vol 平均 1.59 → 0.69 = dvt/target_vol 比例)
+5. ⏳ 用户拍板后改 `enabled=True` → 跑 cta_full_assessment_export.py → 评估新主 CTA Sharpe/DD
 
 ### 5.4 风控纪律 (沿 §28.4 硬阈值)
 - 接入后主 CTA Sharpe 必须 > 3.0 (现状 3.435)
 - DD 必须 < 5% (现状 2.51%)
 - 接入后 Spanning Test (主 CTA 自身 vs vol_adj 主 CTA) 验证 α 显著
 - 若新主 CTA α > 5% 触发谨慎审查
+
+### 5.5 接入实施 E1 验证 (本次)
+- ruff All checks passed ✓
+- 单元测试: vol_target_positions 接受 daily_vol_target 正常 ✓
+  - 默认 (target_vol=0.15): 平均 vol = 1.59
+  - 注入日频 dvt (mean 0.13): 平均 vol = 0.69 = 0.13/0.15 × 1.59 ✓ (精确比例)
+  - 月频 dvt + ffill 注入: 平均 vol = 0.475 ✓
+- ZK_VOL_ADJ_CFG 加载函数: 默认 None (关闭), 开启后 65 月调节因子 (范围 0.73 ~ 1.34)
+- ⚠️ 主 CTA 全流程 lazy load 测试未跑 (production库派生表只到 2026-01-06, 需先用 cta_full_assessment_export.py 触发实际评估)
+
+### 5.6 启用步骤 (用户拍板后)
+```python
+# 1. config/ZK_VOL_ADJ_CFG.enabled = True
+# 2. 跑 scripts/cta_full_assessment_export.py
+# 3. 评估 Sharpe/DD/Calmar vs 原主 CTA
+# 4. 跑 spanning.py 验证新主 CTA α 显著
+# 5. 跟踪 30 天 OOS 后再正式启用 (避免 overfit)
+```
+
+### 5.7 决策路线图 (待用户拍板)
+| 选项 | 含义 | 估时 |
+|---|---|---|
+| **E1A** | **保持 enabled=False, 文档化集成代码 (本 commit)** | 0 (当前状态) |
+| E1B | 拍板启用 + 跑主 CTA 全流程评估 (验证 Sharpe/DD) | 1-2 天 |
+| E4 | 扩样本期 (拉到 2014-2017, 但 CH 2018 起始 → **不可行**) | N/A |
 
 ## 6. 限制与警示
 

@@ -29,7 +29,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DB = Path("~/Public/DataCache/futures_options_daily.duckdb").expanduser()
 TMP_DB = PROJECT_ROOT / "export" / "_tmp_2026.duckdb"
 CHECKPOINT = PROJECT_ROOT / "export" / "_tmp_2026_checkpoint.json"
-START_DATE = "2025-10-01"
+START_DATE = "2018-01-01"  # 2018 起始, 2026-09-04 截止 (CH tick 起始 2018-01)
 
 CH_CONFIG = {"host": "localhost", "port": 8123, "username": "data", "password": "123456"}
 

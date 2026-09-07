@@ -194,6 +194,7 @@ def vol_target_positions(
     target_vol: float = 0.15,
     vol_lookback: int = 20,
     max_leverage: float = 3.0,
+    daily_vol_target: pd.Series | None = None,
 ) -> pd.DataFrame:
     """波动率目标仓位.
 
@@ -205,6 +206,8 @@ def vol_target_positions(
         target_vol: 目标年化波动率 (0.15 = 15%)
         vol_lookback: 波动率回看窗口
         max_leverage: 最大杠杆
+        daily_vol_target: (T,) 可选日频 vol_target 调节 (Zookeeper 状态变量接入用)
+                       若提供则按日覆盖 target_vol.
 
     Returns:
         (T, N) 目标仓位手数 (含符号)
@@ -213,6 +216,9 @@ def vol_target_positions(
     vol = ret.rolling(vol_lookback).std() * np.sqrt(252)
     # 单位波动率敞口: 1/vol (vol 为 0 时用大数)
     weight_per_unit = target_vol / vol.replace(0, np.nan)
+    if daily_vol_target is not None and len(daily_vol_target) > 0:
+        dvt = daily_vol_target.reindex(weight_per_unit.index).ffill().fillna(target_vol)
+        weight_per_unit = vol.replace(0, np.nan).div(dvt.values, axis=0)
     weight_per_unit = weight_per_unit.clip(upper=max_leverage)
     weight_per_unit = weight_per_unit.fillna(0)
 

@@ -28,6 +28,62 @@ from ..backtest.cta_contract import CtaContractRegistry
 from ..backtest.cta_risk import PositionLimitRisk
 from ..factors.volatility import vol_target_positions
 
+
+# ── Zookeeper 因子 vol_target 调节配置 (§28.19 接入) ─────────────────────
+# 论文 §6 state variable 用法: ZK 因子作为状态变量接入 vol_target,
+# 不作子策略方向. 多 stat 等权集成 + α=0.5 + dir=-1 模拟 Sharpe 3.545.
+# 默认关闭 (enabled=False), 拍板后开启.
+ZK_VOL_ADJ_CFG = {
+    "enabled": False,
+    "method": "weighted",
+    "stat": "signal_dispersion",
+    "alpha": 0.5,
+    "direction": -1,
+    "weights": {  # 多 stat 等权集成权重
+        "signal_strength": 1/3,
+        "signal_dispersion": 1/3,
+        "signal_momentum": 1/3,
+    },
+}
+
+
+def load_zk_vol_adj_factor(config: dict | None = None) -> pd.Series | None:
+    """加载 ZK 多 stat 集成 vol_target 调节因子 (月度 → 日频 ffill).
+
+    Returns:
+        Daily Series, index=date, values ∈ [0.3*base, 2.0*base].
+    """
+    cfg = config or ZK_VOL_ADJ_CFG
+    if not cfg.get("enabled", False):
+        return None
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent.parent))
+    from scripts.zookeeper import integrate
+    weights = cfg.get("weights", {})
+    frames = {}
+    for stat in weights:
+        s = integrate._load_zk_state_variable(method=cfg["method"], stat=stat)
+        if s is None or s.empty:
+            return None
+        frames[stat] = integrate._normalize_state(s)
+    common = frames[next(iter(weights))].index
+    for s in frames:
+        common = common.intersection(frames[s].index)
+    composite = pd.Series(0.0, index=common)
+    for stat, w in weights.items():
+        composite = composite + frames[stat].reindex(common) * w
+    state_norm = composite.clip(0.0, 1.0)
+
+    alpha = cfg["alpha"]
+    direction = cfg["direction"]
+    adj_factor = (1 + direction * alpha * (state_norm - 0.5) * 2)
+    adj_factor = adj_factor.clip(lower=0.3, upper=2.0)
+    # 月度 → 日频 ffill (由 vol_target_positions 内部对齐)
+    return adj_factor
+
+
+from pathlib import Path  # noqa: E402
+
 # 默认品种池: 全部有交易量品种 (2023-2025 日均成交量 ≥ 1 万手, 82→72)
 # 覆盖全部产业链配方品种: 钢铁 RB/I/J/HC, 焦化 J/JM, PTA/聚酯 TA/PX/PF/EG,
 # MTO PP/MA, 压榨 M/Y/A, 饲料 LH/C
@@ -445,12 +501,17 @@ class _ModuleStrategy:
         return self._signal_to_lots(signals, cfg)
 
     def _signal_to_lots(self, signals: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
+        # Zookeeper vol_target 状态变量调节 (默认关闭, §28.19)
+        daily_vol_target = None
+        if ZK_VOL_ADJ_CFG.get("enabled", False):
+            daily_vol_target = load_zk_vol_adj_factor(ZK_VOL_ADJ_CFG)
         weights = vol_target_positions(
             signals,
             self._price_panel,
             target_vol=cfg.target_vol,
             vol_lookback=cfg.vol_lookback,
             max_leverage=cfg.max_leverage,
+            daily_vol_target=daily_vol_target,
         )
         equity = cfg.initial_cash
         signal_on = (weights.abs() > 1e-9).astype(float)
