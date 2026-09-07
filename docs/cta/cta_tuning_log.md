@@ -1944,3 +1944,58 @@ adj_factor clip(0.3, 2.0)
 2. `python scripts/cta_full_assessment_export.py` 评估 Sharpe/DD/Calmar
 3. 跑 spanning 验证 α 显著
 4. 跟踪 30 天 OOS 后正式启用 (避免 overfit)
+
+### 28.22 方案1: production 口径 ZK vol_adj 正式评估 (本次 commit, PASS)
+
+#### 背景 (§28.21 复盘)
+v1/v2 评估失败根因: **三条完全不同的回测链被混为一谈**
+- §27 Sharpe 3.435 来自 **t10y_removal 组合管线** (子策略权重合成+dynamic_leverage)
+- v2 跑的是 **v11 裸引擎** (不含子策略) → baseline -0.33 是裸引擎真实水平
+- v1 在裸引擎上叠加无成本 NAV → 6.61 虚高
+- Δ口径内可信 (v2 ZK +0.50), 绝对值无意义
+
+#### 方案 1 实施 (用户批准: 独立脚本, 不动其他)
+新脚本 `scripts/zookeeper/e1_production_eval.py` (纯 import 复用):
+- cta_t10y_removal.load_rets/run_portfolio (§27 组合管线)
+- cta_full_assessment_export.stats_of (指标口径)
+- scripts.zookeeper.integrate (ZK 月度状态变量)
+
+方法: 主CTA日收益 × ZK月度调节因子 (多stat集成 α=0.5 dir=-1, 覆盖1177天,
+因子0.735~1.337) → 替换 load_rets 的主CTA列 → 重算 §27 五版本 × 3窗口.
+bug修复: 版本序列先切 >=2019-01-01 (剔除2018 warmup, 与§27口径一致),
+修复前 baseline 被warmup年污染 (2.405), 修复后与§27完全一致 (2.609 ✓).
+
+#### production 口径结果 (15/15 全部正改善, 零负)
+| 版本 | 全样本 Sharpe | dSharpe | OOS dSharpe | IS dSharpe | OOS DD (base→zk) |
+|---|---:|---:|---:|---:|---|
+| 主CTA本体 | 2.609→2.641 | **+0.032** | +0.049 | +0.014 | -6.14%→-5.36% |
+| R2-R(55/45) | 3.332→3.379 | **+0.047** | +0.091 | +0.008 | -3.24%→-2.85% |
+| E2-R(45/55) | 3.549→3.592 | **+0.043** | +0.082 | +0.008 | -2.80%→-2.47% |
+| **E2-R+AU10%** | 3.705→3.752 | **+0.047** | **+0.092** | +0.009 | **-2.51%→-2.22%** |
+| B2满配 | 3.220→3.271 | **+0.051** | **+0.107** | +0.009 | -3.96%→-3.25% |
+
+关键特征:
+- **OOS 22-25 改善最大** (+0.05~+0.11), IS 19-21 几乎持平 (+0.01) → 非 IS 过拟合
+- **OOS DD 全部缩窄** (5/5)
+- Calmar: 全样本 4/5 改善 (E2-R+AU10% 7.34→8.14 最大), IS 段 5/5 微降 (-0.02~-0.34)
+- 主CTA权重被缩放效应稀释 (主CTA只占0.45, 缩放+0.05 合理 ≈ simulate 0.11×0.45)
+
+#### 对比: simulate 预期 vs production 正式
+| 口径 | E2-R+AU10% Sharpe | 增量 |
+|---|---:|---:|
+| P7-B simulate (历史NAV×月度缩放) | 3.435→3.545 | +0.11 |
+| **方案1 production (组合管线)** | **3.705→3.752** | **+0.047** |
+方向一致 (正改善), 幅度被组合稀释到合理比例.
+
+#### 结论: **PASS** (沿 §28.4 判定)
+- dSharpe 15/15 正, OOS 5/5 正且最大, OOS DD 5/5 缩窄
+- IS 段几乎持平 → 改善来自 OOS 真实信号, 非过拟合
+- production 口径 + E2-R+AU10% 定版: Sharpe 3.705→3.752, Calmar 7.34→8.14
+
+#### 启用架构决策 (待用户拍板)
+ZK vol_adj 的正确启用方式是 **production 组合层的月度缩放** (本脚本逻辑),
+而非 v11 引擎的 daily_vol_target 注入 (v2 已证伪, enabled=False 保持):
+- 选项 A: ZK_VOL_ADJ_CFG.enabled 保持 False; e1_production_eval.py 作为
+  §27 评估管线的可选步骤 (每次重评估时叠加)
+- 选项 B: 把月度缩放写入 cta_full_assessment_export.py (动别人脚本, 需授权)
+- 选项 C: 定版为 E2-R+AU10%+ZK (3.752/8.14), e1_production_eval.py 归档
