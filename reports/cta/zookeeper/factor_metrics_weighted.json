@@ -1,0 +1,10 @@
+{
+  "annual_ret": -0.03177310250961642,
+  "sharpe": -0.37086997569999647,
+  "t_stat": -0.7867340242678729,
+  "max_dd": -0.1940684440433792,
+  "turnover_mean": 0.3345429393862371,
+  "n_months": 54,
+  "method": "weighted_long_short",
+  "cost_bps": 15.0
+}

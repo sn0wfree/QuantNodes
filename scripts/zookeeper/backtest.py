@@ -109,6 +109,72 @@ def apply_costs(nav: pd.Series, turnover: pd.Series,
     return nav / (1 + turnover * cost_bps)
 
 
+def weighted_ls_backtest(predictions: pd.DataFrame,
+                          returns: pd.DataFrame,
+                          cost_bps: float = 0.0015) -> dict:
+    """P6-C 改造提取: L-En r̂ 作为权重 (保留强度+方向), 替代 Q4/Q1 等权排序.
+
+    权重: w_i[t] = r̂_i[t] / Σ|r̂_j[t]|  (归一化到净暴露 ≈ 0, 毛暴露 = 2)
+    组合收益: Σ w_i[t] × return_i[t+1]
+    加成本扣减 (双边换手 + 单边 15bps).
+
+    优势: 保留 L-En 预测的强度信息 (Q4/Q1 等权损失了强度信号).
+    """
+    LOG.info(f"P6-C 加权 LS 回测: predictions {predictions.shape}, cost_bps={cost_bps:.0%}")
+    common = predictions.index.intersection(returns.index)
+    pred = predictions.loc[common]
+    ret = returns.loc[common]
+
+    long_ret, short_ret, turnovers = [], [], []
+    prev_w = pd.Series(0.0, index=ret.columns)
+    for t in common:
+        if t not in ret.index:
+            continue
+        row = pred.loc[t].dropna()
+        if row.empty:
+            long_ret.append(np.nan)
+            short_ret.append(np.nan)
+            turnovers.append(np.nan)
+            continue
+        # 加权: 标准化到 |Σw| = 1 (净暴露 = 0)
+        abs_sum = row.abs().sum()
+        if abs_sum == 0:
+            w = pd.Series(0.0, index=row.index)
+        else:
+            w = row / abs_sum  # 净暴露 = 0, 毛暴露 = 2
+        # 月收益
+        month_ret = ret.loc[t].reindex(w.index).fillna(0)
+        ls_ret = (w * month_ret).sum()  # 加权组合收益
+        long_ret.append(ls_ret)
+
+        # 换手: Σ |w_new - w_old|
+        diff = (w - prev_w.reindex(w.index).fillna(0)).abs().sum()
+        turnovers.append(diff)
+        prev_w = w.reindex(ret.columns).fillna(0)
+
+    ls_series = pd.Series(long_ret, index=common[:len(long_ret)])
+    turnover_series = pd.Series(turnovers, index=ls_series.index)
+    # 扣成本 (双边换手 × 单边成本)
+    cost_drag = turnover_series * cost_bps
+    ls_net = ls_series - cost_drag
+    nav = (1 + ls_net).cumprod()
+    if not nav.empty:
+        nav.iloc[0] = 1.0
+
+    metrics = compute_metrics(ls_net, turnover_series)
+    check_turnover_alert(turnover_series)
+    LOG.info(f"  P6-C LS 净 Sharpe={metrics['sharpe']:.2f}, "
+             f"年化={metrics['annual_ret']:.2%}, "
+             f"换手={turnover_series.mean():.1%}, DD={metrics['max_dd']:.2%}")
+    return {
+        "nav": nav,
+        "ls_raw": ls_series,
+        "ls_net": ls_net,
+        "turnover": turnover_series,
+        "metrics": metrics,
+    }
+
+
 def compute_metrics(monthly_ret: pd.Series, turnover: pd.Series) -> dict:
     """评估指标: 年化 / Sharpe / t-stat / 最大回撤 / 月度换手."""
     r = monthly_ret.dropna()

@@ -128,34 +128,49 @@ def cmd_train_test(args) -> int:
 
     # P4: 月度截面回测 + cost 扣减
     from scripts.zookeeper import backtest
-    cost_bps = args.cost_bps / 10000  # 15 → 0.0015
+    cost_bps = args.cost_bps / 10000
     LOG.info(f"P4: 月度截面回测 (Q4/Q1 多空, 成本 {args.cost_bps}bps 单边)")
     bt = backtest.cross_section_backtest(cs_pred, returns, cost_bps=cost_bps)
     bt["nav"].to_csv(OUT_DIR / "factor_nav.csv", header=["nav"])
     bt["turnover"].to_csv(OUT_DIR / "factor_turnover.csv", header=["turnover"])
     bt["ls_net"].to_csv(OUT_DIR / "factor_ls.csv", header=["ls_net"])
-    LOG.info(f"  评估: {bt['metrics']}")
+    LOG.info(f"  Q4/Q1 评估: {bt['metrics']}")
     import json
     with open(OUT_DIR / "factor_metrics.json", "w") as f:
-        json.dump({**bt["metrics"], "cost_bps": args.cost_bps}, f, indent=2)
+        json.dump({**bt["metrics"], "method": "Q4_Q1_quantile",
+                   "cost_bps": args.cost_bps}, f, indent=2)
+
+    # P6-C: 改造提取方式 — 加权 long-short
+    LOG.info(f"P6-C: 改造提取 (加权 LS, 替代 Q4/Q1, 成本 {args.cost_bps}bps)")
+    bt_c = backtest.weighted_ls_backtest(cs_pred, returns, cost_bps=cost_bps)
+    bt_c["nav"].to_csv(OUT_DIR / "factor_nav_weighted.csv", header=["nav"])
+    bt_c["turnover"].to_csv(OUT_DIR / "factor_turnover_weighted.csv",
+                              header=["turnover"])
+    bt_c["ls_net"].to_csv(OUT_DIR / "factor_ls_weighted.csv", header=["ls_net"])
+    LOG.info(f"  P6-C 加权 LS 评估: {bt_c['metrics']}")
+    with open(OUT_DIR / "factor_metrics_weighted.json", "w") as f:
+        json.dump({**bt_c["metrics"], "method": "weighted_long_short",
+                   "cost_bps": args.cost_bps}, f, indent=2)
     return 0
 
 
-def cmd_spanning(_args) -> int:
+def cmd_spanning(args) -> int:
     """P5: Spanning Test vs 全部子策略 → spanning_alpha.csv."""
     from scripts.zookeeper import spanning
     from scripts.zookeeper.config import OUT_DIR
-    LOG.info("P5: Spanning Test vs 全部子策略 + 主 CTA")
-    df = spanning.run_all_spanning()
+    method = args.spanning_method  # 'weighted' (P6-C) / 'quantile' (P4)
+    LOG.info(f"P5: Spanning Test (method={method}) vs 全部子策略 + 主 CTA")
+    df = spanning.run_all_spanning(method=method)
     if df.empty:
         LOG.error("Spanning 无结果")
         return 1
-    df.to_csv(OUT_DIR / "spanning_alpha.csv", index=False)
+    suffix = f"_{method}" if method != "weighted" else "_weighted"
+    df.to_csv(OUT_DIR / f"spanning_alpha{suffix}.csv", index=False)
     n_targets = len(df)
     n_pass = (df["t_alpha"].abs() > 2).sum()
     n_candidate = df["decision"].str.contains("候选集成").sum()
     n_archive = df["decision"].str.contains("归档").sum()
-    LOG.info(f"汇总: {n_targets} 对手, |t|>2 = {n_pass}, "
+    LOG.info(f"汇总 ({method}): {n_targets} 对手, |t|>2 = {n_pass}, "
              f"候选集成 = {n_candidate}, 归档 = {n_archive}")
     return 0
 
@@ -184,9 +199,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--cost-bps", type=float, default=15.0,
         help="单边成本 bps (基础 15bps + 换月滑点, 沿 §22 校准)")
+    parser.add_argument(
+        "--spanning-method", default="weighted",
+        choices=["weighted", "quantile"],
+        help="Spanning Test 因子方法 (weighted=P6-C 加权 / quantile=P4 排序)")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("features", help="P2 构造变量面板")
-    sub.add_parser("train-test", help="P3-P4 训练+回测")
+    sub.add_parser("train-test", help="P3-P4 训练+回测 + P6-C 加权 LS")
     sub.add_parser("spanning", help="P5 Spanning Test")
     sub.add_parser("all", help="一键全跑")
     args = parser.parse_args(argv)

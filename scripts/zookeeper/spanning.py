@@ -96,12 +96,14 @@ def _load_main_cta(path: Path, version: str = "nav_E2-R+AU10%") -> pd.Series | N
     return df.set_index("Unnamed: 0")[version]
 
 
-def load_zk_factor() -> pd.Series | None:
+def load_zk_factor(method: str = "weighted") -> pd.Series | None:
     """加载 Zookeeper 因子月度收益.
 
-    factor_nav.csv 是日频 NAV, 转换为月度收益.
+    method='weighted' (P6-C): 用 factor_nav_weighted.csv (加权 LS, 推荐)
+    method='quantile' (P4):   用 factor_nav.csv (Q4/Q1 等权排序, 旧)
     """
-    f = OUT_DIR / "factor_nav.csv"
+    fname = "factor_nav_weighted.csv" if method == "weighted" else "factor_nav.csv"
+    f = OUT_DIR / fname
     if not f.exists():
         return None
     df = pd.read_csv(f, index_col=0, parse_dates=[0])
@@ -161,13 +163,13 @@ def spanning_regression(target_monthly_ret: pd.Series,
     }
 
 
-def run_all_spanning() -> pd.DataFrame:
+def run_all_spanning(method: str = "weighted") -> pd.DataFrame:
     """对全部对手跑 Spanning Test → spanning_alpha.csv."""
-    zk = load_zk_factor()
+    zk = load_zk_factor(method=method)
     if zk is None:
-        LOG.error("Zookeeper 因子 NAV 不存在, 请先跑 P4")
+        LOG.error(f"Zookeeper 因子 NAV 不存在 (method={method}), 请先跑 P4/P6-C")
         return pd.DataFrame()
-    LOG.info(f"Zookeeper 因子月度收益: {len(zk)} 月, "
+    LOG.info(f"Spanning Test 方法={method}, ZK 月度收益: {len(zk)} 月, "
              f"均值={zk.mean():.4f}, std={zk.std():.4f}, "
              f"Sharpe={zk.mean() / zk.std() * np.sqrt(12):.2f}")
 
