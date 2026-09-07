@@ -14,7 +14,8 @@ import numpy as np
 import pandas as pd
 
 from ..backtest.cta_engine import CtaBacktestResult
-from .base import ModuleConfig, _ModuleStrategy, vol_target_positions
+from .base import (ZK_VOL_ADJ_CFG, ModuleConfig, _ModuleStrategy,
+                   load_zk_vol_adj_factor, vol_target_positions)
 from .filters import ADXRegimeFilter, MarketRegimeFilter, VolRiskFilter
 from .modules import (
     IndustrialChainModuleStrategy,
@@ -253,9 +254,14 @@ class FactorModuleComboStrategy(_ModuleStrategy):
 
     def _signal_to_lots(self, signals: pd.DataFrame, cfg: ModuleConfig) -> pd.DataFrame:
         """组合层: vol_target × 权重过滤链 → 手数."""
+        # ZK_VOL_ADJ 状态变量调节 (§28.20 接入)
+        daily_vol_target = None
+        if ZK_VOL_ADJ_CFG.get("enabled", False):
+            daily_vol_target = load_zk_vol_adj_factor(ZK_VOL_ADJ_CFG)
         weights = vol_target_positions(
             signals, self._price_panel, target_vol=cfg.target_vol,
             vol_lookback=cfg.vol_lookback, max_leverage=cfg.max_leverage,
+            daily_vol_target=daily_vol_target,
         )
         weights = self._apply_weight_filters(weights, cfg)
         return self._weights_to_lots(weights, cfg)

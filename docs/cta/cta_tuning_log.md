@@ -1863,6 +1863,51 @@ adj_factor clip(0.3, 2.0)
 4. Spanning Test vs 新主 CTA 验证 α 显著
 5. alpha > 5% 触发谨慎审查
 
+### 28.21 E1 启用评估 (本次 commit, **真实接入 Sharpe 下降, 已回滚**)
+
+#### 启用步骤
+1. `QuantNodes/strategy/cta/strategies/base.py`: `ZK_VOL_ADJ_CFG.enabled = True`
+2. ⚠️ **bug**: combo.py 254 行自己重写 `_signal_to_lots` 不传 `daily_vol_target` → 修复:
+   ```python
+   from .base import (..., load_zk_vol_adj_factor, vol_target_positions, ZK_VOL_ADJ_CFG)
+   def _signal_to_lots(self, signals, cfg):
+       daily_vol_target = None
+       if ZK_VOL_ADJ_CFG.get("enabled", False):
+           daily_vol_target = load_zk_vol_adj_factor(ZK_VOL_ADJ_CFG)
+       weights = vol_target_positions(signals, self._price_panel, ..., daily_vol_target=daily_vol_target)
+   ```
+3. 写 `scripts/zookeeper/e1_evaluation.py` 对比 baseline vs ZK vol_adj (ruff All passed)
+
+#### 真实接入结果 (v11 引擎 + ZK vol_adj 启用, 简化 NAV 算法)
+| 指标 | Baseline (ZK off) | **ZK vol_adj (E1 真实接入)** | E2 模拟预期 |
+|---|---:|---:|---:|
+| Sharpe | **6.70** | 4.18 (-38%) | 3.545 (Baseline 3.435) |
+| Annual | 13.23% | 26.40% | — |
+| Vol | 1.97% | **6.31%** (+220%) | — |
+| DD | -0.97% | **-4.71%** (5×) | -2.37% |
+| 仓位均值 | 19 手 | 17 手 (-11%) | — |
+
+#### 关键发现: E1 真实接入 vs E2 模拟预期**完全相反**
+- 模拟预期: Sharpe 3.435 → 3.545 (+3.2%) ✓
+- 实际接入: Sharpe 6.70 → 4.18 (-38%) ✗
+- 真实策略 Sharpe 6.70 高于模拟 3.435 (差异是 NAV 算法不同: simplify vs cta_engine)
+- ZK vol_adj 让 Sharpe 大幅下降, DD放大 5倍
+
+#### 根因分析
+1. **简化 NAV 算法的局限性**: e1_evaluation.py 用的 pnl 算法未考虑手续费/换月/资金分配, 与 cta_engine 全功能有差异
+2. **daily_vol_target 期间错配**: ZK 调节因子仅覆盖 2021-03 ~ 2026-07 (65 月), 样本期 2019-01~2018 段无调节 (与 baseline 相同)
+3. **真实生效 vs 模拟预期**: 实际 daily_vol_target 在真实 signal 链上的调节路径与模拟的"按月缩放"不同
+
+#### 决策: **回滚关闭 ZK_VOL_ADJ_CFG**
+- 接入代码保留 (base.py + combo.py + volatility.py + e1_evaluation.py)
+- enabled=False 默认
+- 等更准确评估 (复用 cta_engine 全功能) 后再决定
+
+#### 后续建议 (不立即执行)
+- 复用 cta_full_assessment_export.py 流程评估 (含完整 cta_engine, 不需简化 NAV)
+- 或写更精细的 e1_evaluation 用 cta_engine.run() 直接跑
+- ZK vol_adj 默认 alpha/direction 在更长样本期下需重调优
+
 ### 28.20 E1 真接入 v11 引擎 (本次 commit, 接入代码就绪)
 
 #### 修改 1: `QuantNodes/strategy/cta/factors/volatility.py`

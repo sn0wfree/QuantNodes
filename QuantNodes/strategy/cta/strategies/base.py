@@ -34,7 +34,9 @@ from ..factors.volatility import vol_target_positions
 # 不作子策略方向. 多 stat 等权集成 + α=0.5 + dir=-1 模拟 Sharpe 3.545.
 # 默认关闭 (enabled=False), 拍板后开启.
 ZK_VOL_ADJ_CFG = {
-    "enabled": False,
+    "enabled": False,                         # ⚠️ E1 真实接入评估失败 (Sharpe 6.70→4.18), 回滚关闭
+                                # 接入代码保留, 等更准确评估后重开
+                                # 见 tuning_log §28.21
     "method": "weighted",
     "stat": "signal_dispersion",
     "alpha": 0.5,
