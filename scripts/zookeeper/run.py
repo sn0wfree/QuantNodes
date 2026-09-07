@@ -143,8 +143,21 @@ def cmd_train_test(args) -> int:
 
 def cmd_spanning(_args) -> int:
     """P5: Spanning Test vs 全部子策略 → spanning_alpha.csv."""
+    from scripts.zookeeper import spanning
+    from scripts.zookeeper.config import OUT_DIR
     LOG.info("P5: Spanning Test vs 全部子策略 + 主 CTA")
-    raise SystemExit("P5 待实装")
+    df = spanning.run_all_spanning()
+    if df.empty:
+        LOG.error("Spanning 无结果")
+        return 1
+    df.to_csv(OUT_DIR / "spanning_alpha.csv", index=False)
+    n_targets = len(df)
+    n_pass = (df["t_alpha"].abs() > 2).sum()
+    n_candidate = df["decision"].str.contains("候选集成").sum()
+    n_archive = df["decision"].str.contains("归档").sum()
+    LOG.info(f"汇总: {n_targets} 对手, |t|>2 = {n_pass}, "
+             f"候选集成 = {n_candidate}, 归档 = {n_archive}")
+    return 0
 
 
 def cmd_all(args) -> int:
