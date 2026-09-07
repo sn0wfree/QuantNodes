@@ -34,7 +34,7 @@ def cmd_features(args) -> int:
     from scripts.zookeeper.config import OUT_DIR
 
     start = args.start or "2018-01-01"
-    end = args.end or "2025-07-21"  # full 库 spot_basis/term_structure 截止日
+    end = args.end or "2026-09-04"  # CH tick 截止 (扩展到 2026-09-04)
 
     LOG.info(f"P2: 构造 Group C/M 变量面板 (38 个, 跳过 S 族), {start} ~ {end}")
     products = features_c.select_top_products(start, end)
@@ -186,7 +186,7 @@ def cmd_all(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Zookeeper 因子复现 (Fan et al. 2026)")
     parser.add_argument("--start", default="2018-01-01")
-    parser.add_argument("--end", default="2025-07-21")
+    parser.add_argument("--end", default="2026-09-04")
     parser.add_argument(
         "--pit-lag", type=int, default=1,
         help="宏观变量滞后月数 (P2 防御性, Spanning 鲁棒性加 2)")
