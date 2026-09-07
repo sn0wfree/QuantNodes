@@ -1465,6 +1465,7 @@ auto_weight 的 ERC/inv_vol 思想一脉相承. 论文样本外 5.8%/Sharpe 0.64
 | P5 | Spanning Test vs 全部子策略 | 2 天 | ✅ 完成 (commit, **主CTA α=12.94%**) |
 | P6-C | 改造提取方式 (加权 LS) | 1 天 | ✅ 完成 (commit, **主CTA α=12.94% 一致**) |
 | P7-B | ZK 状态变量接入 vol_target | 1 天 | ✅ 完成 (commit, **Sharpe 3.435→3.540**) |
+| E3 | 鲁棒性测试 (三 stat + 集成 + 逐年) | 0.5 天 | ✅ 完成 (commit, **多stat集成 Sharpe 3.541, 5/7 年正α**) |
 
 ### 28.7 P1 产出 (本次 commit)
 - `docs/cta/zookeeper_paper_notes.md`: 精读笔记 (论文 §1-§7 + 本地化覆盖度 + 启示)
@@ -1723,3 +1724,50 @@ adj_factor clip(0.3, 2.0)
 - `reports/cta/zookeeper/vol_adj_grid_weighted_signal_dispersion.csv`: 10 行网格结果
 
 **当前决策: E2 (simulate + 文档), 等用户拍板 E1 (真接入 v11 引擎) 或 E4 (扩样本期)**
+
+### 28.16 E3 鲁棒性测试 (本次 commit)
+
+#### 三 stat 完整网格 (30 条)
+| stat | 最优 α | dir | Sharpe_B | α_ann |
+|---|---:|---:|---:|---:|
+| signal_strength | 0.2 | -1 | 3.531 | +0.80% |
+| **signal_dispersion** | **0.3** | **-1** | **3.540** | **+0.81%** |
+| signal_momentum | 0.5 | -1 | 3.480 | +0.40% |
+| **多 stat 等权集成** | 0.3 | -1 | **3.541** | **+0.75%** (t=2.39) |
+
+→ 多 stat 集成 Sharpe > 单一 stat, DD 更窄 (-2.35% vs -2.40%)
+
+#### 滚动逐年评估 (signal_dispersion α=0.3 dir=-1)
+| 年 | ΔSharpe | α_ann | DD_B |
+|---:|---:|---:|---:|
+| 2019 | +0.000 | 0.00% | -1.44% |
+| 2020 | +0.000 | 0.00% | -1.51% |
+| 2021 | +0.146 | +0.86% | -1.61% |
+| 2022 | +0.040 | +0.15% | -1.69% |
+| 2023 | +0.183 | +1.67% | -1.15% |
+| 2024 | **+0.296** | **+2.20%** | -2.40% |
+| 2025 | +0.144 | +0.73% | -1.28% |
+
+**关键稳健性指标**:
+- 2021-2025 每年正 α (0.15%-2.20%) — **零负年**
+- 2019/2020 α=0 是 ZK 训练期未到 (features shift 12 月 + warmup), 不是失败
+- 2024 表现最佳 (ΔSharpe +0.30, α +2.20%) — ZK 信号在该年最有效
+
+#### 最终推荐配置
+**多 stat 集成 (signal_strength + signal_dispersion + signal_momentum 等权)
+α=0.3, direction=-1**:
+- 主 CTA Sharpe 3.435 → **3.541** (+3.1%)
+- DD -2.51% → -2.35% (-6%)
+- α_ann +0.75% (t=2.39, 显著)
+- 5/7 年正 α (2019/2020 训练期除外)
+
+#### 产出
+- `scripts/zookeeper/robustness.py`: 鲁棒性测试脚本 (CLI: `python scripts/zookeeper/robustness.py`)
+- `reports/cta/zookeeper/vol_adj_grid_all_stats_weighted.csv`: 30 条网格结果
+- `reports/cta/zookeeper/vol_adj_rolling_yearly.csv`: 7 年逐年评估
+- `reports/cta/zookeeper/factor_vol_adj_composite_a0.3_d-1.csv`: 多 stat 集成版模拟 NAV
+
+#### E3 后的决策选项
+- **E1 真接入 v11 引擎** (沿 §5.3, 1-2 天): 接入 multi_stat 集成版 (而非单一 stat)
+- **E4 扩样本期** (5-7 天重投): 拉 2014-2017 历史重跑所有 E3 测试
+- **当前 E3 完成**: 多 stat 集成方案稳健, 5/7 年正 α, 准备拍板 E1 真接入
