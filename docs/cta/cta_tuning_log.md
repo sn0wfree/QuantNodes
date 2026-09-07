@@ -1464,6 +1464,7 @@ auto_weight 的 ERC/inv_vol 思想一脉相承. 论文样本外 5.8%/Sharpe 0.64
 | P4 | 月度再平衡回测 + cost_model 扣减 | 2-3 天 | ✅ 完成 (commit, **结果负 FAIL**) |
 | P5 | Spanning Test vs 全部子策略 | 2 天 | ✅ 完成 (commit, **主CTA α=12.94%**) |
 | P6-C | 改造提取方式 (加权 LS) | 1 天 | ✅ 完成 (commit, **主CTA α=12.94% 一致**) |
+| P7-B | ZK 状态变量接入 vol_target | 1 天 | ✅ 完成 (commit, **Sharpe 3.435→3.540**) |
 
 ### 28.7 P1 产出 (本次 commit)
 - `docs/cta/zookeeper_paper_notes.md`: 精读笔记 (论文 §1-§7 + 本地化覆盖度 + 启示)
@@ -1672,3 +1673,53 @@ P2-B + P4-B 仍判定 **FAIL** (沿 §28.4 硬阈值纪律). 等用户决定 C/D
 | D | 加大样本期 (5-7 天重投入) |
 
 **沿 §28.4 纪律 P6-C 仍 FAIL, 建议决策 B** (状态变量接入, 不作子策略方向).
+
+### 28.15 P7-B ZK 状态变量接入 vol_target (本次 commit)
+
+#### 决策背景 (P5+P6-C 结论)
+- P5 Spanning: ZK 对主 CTA baseline α = +12.94%/年 (t=4.52) 极显著独立 α 源
+- P6-C 加权 LS: 自身 Sharpe -0.37 仍是 FAIL (提取方式不是瓶颈)
+- 论文 §6 用法: ZK 作为 state variable 而非子策略方向
+- 用户决策: **B 接入 vol_target**
+
+#### 接入原理
+```
+vol_target_adjusted = vol_target_base × (1 + direction × alpha × (zk_state_norm - 0.5) × 2)
+adj_factor clip(0.3, 2.0)
+```
+- ZK 状态变量月度更新 → 月初调节下月 vol_target
+- direction = -1 (反向): ZK 信号弱 → vol 上调 (机会窗口); 强 → vol 下调 (风险警报)
+
+#### 网格搜结果 (1698 交易日 ≈ 7 年, signal_dispersion 状态变量)
+| α | 方向 | Sharpe_B | DD_B | α_ann | t_α |
+|---:|---:|---:|---:|---:|---:|
+| 0.1 | -1 | 3.483 | -2.47% | +0.27% | 2.29 |
+| 0.2 | -1 | 3.519 | -2.44% | +0.54% | 2.29 |
+| **0.3** | **-1** | **3.540** | **-2.40%** | **+0.81%** | **2.29** ⭐ |
+| 0.5 | -1 | 3.537 | -2.33% | +1.35% | 2.28 |
+| 0.7 | -1 | 3.474 | -2.26% | +1.89% | 2.28 |
+
+#### 最优配置
+**α=0.3, direction=-1, stat=signal_dispersion**:
+- 主 CTA Sharpe 3.435 → **3.540** (+3.0%)
+- DD -2.51% → -2.40% (缩窄 4%)
+- α_ann +0.81% (t = 2.29, 显著)
+
+#### 模拟的局限
+- simulate_vol_target_adjustment 在历史主 CTA NAV 上**近似缩放**月度收益, **不重跑主 CTA v11 引擎**
+- 真实接入需按 §5.3 步骤 (1-2 天)
+- 日内 vol_target 是常数, 实际应月度调整 (与 §23 layered 风控思路一致)
+
+#### v11 引擎接入设计 (待用户拍板 E1)
+详见 `docs/cta/zookeeper_state_var_integration.md` §5.3 接入代码骨架:
+1. 把 factor_vol_adj_weighted_signal_dispersion_a0.3_d-1.csv 接入 ZK_VOL_ADJ_CFG
+2. 在 `vol_target_positions()` 增加 if 开关 (config: enabled=False, 拍板后开启)
+3. 重跑 `cta_full_assessment_export.py` 验证 Sharpe/DD
+4. 新主 CTA α > 5% 触发谨慎审查
+
+#### 当前提交 (E2: 文档 + simulate)
+- `scripts/zookeeper/integrate.py`: vol_target 模拟集成 (load_main_cta_nav + zk_state_norm + simulate_vol_target_adjustment + 网格搜)
+- `docs/cta/zookeeper_state_var_integration.md`: 完整接入设计文档
+- `reports/cta/zookeeper/vol_adj_grid_weighted_signal_dispersion.csv`: 10 行网格结果
+
+**当前决策: E2 (simulate + 文档), 等用户拍板 E1 (真接入 v11 引擎) 或 E4 (扩样本期)**
