@@ -40,13 +40,17 @@ ZK_CFG = {
                 "signal_momentum": 1/3},
 }
 
-# §27 五版本 (与 cta_full_assessment_export.main 一致)
+# §27 五版本 + E3-R + E4 (与 cta_full_assessment_export.main 一致)
 VERSIONS = {
     "主CTA本体(golden)": None,  # 特殊: 纯主CTA收益序列, 不走 run_portfolio
     "R2-R(55/45)": {"主CTA": 0.55, "CU溢价TC": 32.14, "jjm_coke": 12.86},
     "E2-R(45/55)": {"主CTA": 0.45, "CU溢价TC": 39.31, "jjm_coke": 15.69},
     "E2-R+AU10%": {"主CTA": 0.45, "CU溢价TC": 39.31, "jjm_coke": 15.69,
                    "AU_layered": 10},
+    "E3-R(主CTA70)": {"主CTA": 0.70, "CU溢价TC": 10, "jjm_coke": 10,
+                      "AU_layered": 10},
+    "E4(主CTA75/CU5)": {"主CTA": 0.75, "CU溢价TC": 5, "jjm_coke": 10,
+                        "AU_layered": 10},
     "B2满配(子≤10%)": {"主CTA": 0.60, "CU溢价TC": 10, "jjm_coke": 10,
                        "AU_layered": 10, "ZN库存": 10},
 }

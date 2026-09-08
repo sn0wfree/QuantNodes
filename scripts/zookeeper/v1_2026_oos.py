@@ -57,8 +57,8 @@ COST_BPS = 5.0
 BASE_LAMBDA_TV = 0.5
 W_MAIN = 0.45  # E2-R 权重 (run_portfolio 语义: 主CTA小数)
 
-# §27 E2-R+AU10% 定版权重 (与 cta_full_assessment_export 一致)
-E2R_AU_WEIGHTS = {"主CTA": 0.45, "CU溢价TC": 39.31, "jjm_coke": 15.69,
+# E3-R (主CTA70) 定版权重 (主CTA小数 + 子策略百分比, run_portfolio /100)
+E2R_AU_WEIGHTS = {"主CTA": 0.70, "CU溢价TC": 10, "jjm_coke": 10,
                   "AU_layered": 10}
 
 # 预先声明判定表 (§28.23)
