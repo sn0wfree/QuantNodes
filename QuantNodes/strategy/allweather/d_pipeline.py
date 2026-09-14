@@ -26,6 +26,8 @@ BOND_COLS = ["fut_t", "fut_tf", "fut_ts"]
 MIN_ASSETS = 5
 DEFAULT_BOND_CAP = 0.40
 SYNTH_BOND = "__synth_bond__"
+DEFAULT_CORR_WINDOW = 60
+DEFAULT_CORR_THRESHOLD = 0.60
 
 
 # ── 输出结构 ──
@@ -276,6 +278,78 @@ def _d_base_weights(
     return out
 
 
+# ── 相关性危机检测器 (P1-B, §5.37) ──
+def compute_correlation_signals(
+    returns: pd.DataFrame,
+    asset_classes: dict[str, list[str]],
+    window: int = DEFAULT_CORR_WINDOW,
+) -> dict[str, pd.Series]:
+    """计算各类内滚动两两相关系数均值 (结构性风控信号).
+
+    信号含义: 类内相关飙升 → 该类分散化坍缩 → 风险平价前提失效.
+    仅对 ≥2 成员的类计算; 阈值过滤在 apply_correlation_overlay 中完成.
+
+    Args:
+        returns: (T x N) 收益率面板
+        asset_classes: 类别映射
+        window: 滚动窗口 (默认 60)
+
+    Returns:
+        dict[类名 → Series of avg pairwise corr], 均为 reindexed to returns.index
+    """
+    dates = returns.index
+    signals = {}
+    for cls_name, members in asset_classes.items():
+        cols = [c for c in members if c in returns.columns]
+        if len(cols) < 2:
+            continue
+        sig = {}
+        for i, d in enumerate(dates):
+            if i < window:
+                sig[d] = np.nan
+                continue
+            sub = returns.iloc[i - window:i][cols].dropna(axis=0, how="any")
+            if sub.shape[0] < 30:
+                sig[d] = np.nan
+                continue
+            c = sub.corr()
+            upper = c.where(np.triu(np.ones(c.shape, dtype=bool), k=1)).stack()
+            sig[d] = float(upper.mean())
+        signals[cls_name] = pd.Series(sig).reindex(dates).ffill()
+    return signals
+
+
+def apply_correlation_overlay(
+    weights: pd.Series,
+    corr_signals: dict[str, pd.Series],
+    asset_classes: dict[str, list[str]],
+    date,
+    threshold: float = DEFAULT_CORR_THRESHOLD,
+    k: float = 0.0,
+) -> pd.Series:
+    """单日相关性覆盖层: 类内相关 > 阈值 → 线性降权.
+
+    平时 (sig < θ): m=1, 零影响.
+    危机 (sig ≥ θ): m = 1 - k × (sig-θ)/(1-θ), 最多降 k.
+
+    与 D.1 正交 (全样本相关 0.103): D.1 是价/量/波微观信号,
+    P1-B 是类内相关结构信号 — 不同信息, 安全叠加.
+    """
+    if k <= 0:
+        return weights
+    w_out = weights.copy()
+    for cls_name, sig_series in corr_signals.items():
+        sig = sig_series.get(date, np.nan)
+        if not np.isfinite(sig) or sig <= threshold:
+            continue
+        eff = (sig - threshold) / max(1.0 - threshold, 1e-6)
+        m = 1.0 - k * min(eff, 1.0)
+        members = [c for c in asset_classes.get(cls_name, []) if c in w_out.index]
+        if members and m < 1.0:
+            w_out[members] = w_out[members] * m
+    return w_out
+
+
 def run_d_sleeve(
     panel: pd.DataFrame,
     bond_cap: float = DEFAULT_BOND_CAP,
@@ -298,6 +372,9 @@ def run_d_sleeve(
     include_rapid: bool = False,
     cash_ret: pd.Series | None = None,
     compute_metrics_fn=None,
+    correlation_k: float = 0.0,
+    correlation_threshold: float = DEFAULT_CORR_THRESHOLD,
+    correlation_window: int = DEFAULT_CORR_WINDOW,
 ) -> DSleeveResult:
     """运行 D sleeve 回测.
 
@@ -315,6 +392,9 @@ def run_d_sleeve(
         volume/oi: 量价面板 (neg_trend_mode!='none' 时必需)
         asset_classes: 类别映射 (异质权重)
         compute_metrics_fn: 指标函数 (None = 不计算)
+        correlation_k: 相关性覆盖层强度 (0=关闭, 推荐0.60-1.00; §5.37 P1-B)
+        correlation_threshold: 类内相关触发阈值 (默认0.60, 信号>阈值才降权)
+        correlation_window: 相关性滚动窗口 (默认60日)
 
     Returns:
         DSleeveResult (nav, weights)
@@ -350,6 +430,13 @@ def run_d_sleeve(
         penalty = penalty.reindex(dates).ffill().fillna(0.0)
     else:
         penalty = None
+
+    # P1-B: 相关性覆盖层信号 (类内滚动两两相关; §5.37)
+    if correlation_k > 0 and asset_classes:
+        corr_signals = compute_correlation_signals(
+            returns, asset_classes, window=correlation_window)
+    else:
+        corr_signals = None
 
     w_exec = pd.DataFrame(0.0, index=dates, columns=panel.columns)
     leverage_rb = 1.0
@@ -395,6 +482,12 @@ def run_d_sleeve(
         # D.1: 日频 penalty 叠加 (乘性减仓, w×(1−penalty))
         if penalty is not None:
             w_exec.iloc[i] = w_exec.iloc[i] * (1.0 - penalty.iloc[i])
+
+        # P1-B: 日频相关性覆盖层 (类内相关 > θ → 线性降权; §5.37)
+        if corr_signals is not None:
+            w_exec.iloc[i] = apply_correlation_overlay(
+                w_exec.iloc[i], corr_signals, asset_classes, date,
+                threshold=correlation_threshold, k=correlation_k)
 
     # 组合收益 (含交易成本, 与 run_backtest 同口径: futures 1bp / ETF 5bp)
     rate = {c: (0.0001 if c.startswith("fut_") else 0.0005)
