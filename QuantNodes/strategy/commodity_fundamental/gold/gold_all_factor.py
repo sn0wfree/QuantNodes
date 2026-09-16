@@ -171,7 +171,11 @@ def backtest_all_factor(
     cost_bps: float = 5.0,
     dd_threshold: float = -0.20,
 ) -> dict:
-    """回测全因子策略."""
+    """回测全因子策略.
+
+    dd_threshold: 回撤止损阈值 (None 关闭). 触发后 T+1 起收益置零
+    (仅用截至上一期的回撤信息, 无前视).
+    """
     close = signal["close"]
     pos = signal["position"]
     ret = close.pct_change()
@@ -179,15 +183,12 @@ def backtest_all_factor(
     strat_ret = pos.shift(1) * ret
     cost = pos.diff().abs() * cost_bps / 10000
     strat_ret = (strat_ret - cost).dropna()
+    nav = (1 + strat_ret).cumprod()
 
     if dd_threshold is not None:
-        nav = (1 + strat_ret).cumprod()
-        for i in range(1, len(nav)):
-            current_dd = nav.iloc[i] / nav.iloc[:i + 1].max() - 1
-            if current_dd < dd_threshold:
-                strat_ret.iloc[i] = 0
-        nav = (1 + strat_ret).cumprod()
-    else:
+        dd = nav / nav.cummax() - 1
+        flat = (dd < dd_threshold).astype(float).shift(1, fill_value=0.0) > 0
+        strat_ret = strat_ret.mask(flat, 0.0)
         nav = (1 + strat_ret).cumprod()
 
     if len(strat_ret) == 0:

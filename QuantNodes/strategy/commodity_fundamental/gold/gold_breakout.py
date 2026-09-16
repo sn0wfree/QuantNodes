@@ -89,8 +89,13 @@ def compute_breakout_signal(
 def backtest_breakout(
     signal: pd.DataFrame,
     cost_bps: float = 5.0,
+    periods_per_year: float = 252.0,
 ) -> dict:
-    """回测黄金突破策略."""
+    """回测黄金突破策略 (日频口径).
+
+    与周频 backtest_weekly 的差异: 年化因子默认 252 (日频),
+    可通过 periods_per_year 显式指定以对齐其他策略口径.
+    """
     close = signal["close"]
     pos = signal["position"]
     ret = close.pct_change()
@@ -104,14 +109,18 @@ def backtest_breakout(
         return {
             "n_days": 0, "ann_ret": 0, "ann_vol": 0,
             "sharpe": 0, "max_dd": 0, "win_rate": 0,
-            "avg_pos": 0, "nav": pd.Series(dtype=float),
+            "win_rate_active": 0, "avg_pos": 0, "pct_active": 0,
+            "turnover": 0, "nav": pd.Series(dtype=float),
         }
 
     total_ret = nav.iloc[-1] / nav.iloc[0] - 1
-    n_years = len(strat_ret) / 252
+    n_years = len(strat_ret) / periods_per_year
     ann_ret = (1 + total_ret) ** (1 / n_years) - 1
-    ann_vol = strat_ret.std() * np.sqrt(252)
+    ann_vol = strat_ret.std() * np.sqrt(periods_per_year)
     max_dd = (nav / nav.cummax() - 1).min()
+    active = strat_ret[pos.shift(1).reindex(strat_ret.index).fillna(0) > 0]
+    n_turnover = pos.diff().abs().sum() / 2
+    turnover = n_turnover / (len(strat_ret) / periods_per_year)
 
     return {
         "n_days": len(strat_ret),
@@ -120,7 +129,10 @@ def backtest_breakout(
         "sharpe": ann_ret / ann_vol if ann_vol > 0 else 0,
         "max_dd": max_dd,
         "win_rate": (strat_ret > 0).mean(),
+        "win_rate_active": (active > 0).mean() if len(active) > 0 else 0,
         "avg_pos": pos.mean(),
+        "pct_active": (pos > 0).mean(),
+        "turnover": turnover,
         "nav": nav,
     }
 

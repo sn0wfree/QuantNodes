@@ -70,7 +70,8 @@ def compute_risk_signal(
         signal = ((s1 + s2) >= 1).astype(float)
     elif variant == "weighted":
         score = (vix_pct.fillna(0) + gprd_pct.fillna(0)) / 2
-        signal = (score > 0.7).astype(float)
+        weighted_threshold = (vix_threshold + gprd_threshold) / 2
+        signal = (score > weighted_threshold).astype(float)
     else:
         raise ValueError(f"Unknown variant: {variant}")
 
