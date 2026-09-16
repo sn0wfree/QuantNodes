@@ -60,6 +60,15 @@ class TestSkew(unittest.TestCase):
         self.assertTrue(set(sig.unique()).issubset({-1.0, 0.0, 1.0}))
         self.assertLess((sig != 0).mean(), 0.5)
 
+    def test_skew_trend_mode_opposite(self):
+        cache = _fake_cache(600)
+        skew = compute_skew_series(cache)
+        rev = skew_reversal_signal(skew, mode="reversal")
+        trd = skew_reversal_signal(skew, mode="trend")
+        pd.testing.assert_series_equal(rev, -trd)
+        with self.assertRaises(ValueError):
+            skew_reversal_signal(skew, mode="bad")
+
 
 class TestMultipliers(unittest.TestCase):
     def test_vrp_confirm(self):

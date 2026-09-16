@@ -65,16 +65,24 @@ def compute_skew_series(cache: pd.DataFrame, band: float = 0.05) -> pd.Series:
 
 
 def skew_reversal_signal(
-    skew: pd.Series, z_window: int = 60, hi: float = 1.5, lo: float = -1.5
+    skew: pd.Series, z_window: int = 60, hi: float = 1.5, lo: float = -1.5,
+    mode: str = "reversal",
 ) -> pd.Series:
-    """skew zscore 极值反转 → 三值事件信号 (+1/-1/0).
+    """skew zscore 极值信号 → 三值事件信号 (+1/-1/0).
 
-    z > hi (恐慌极端) → +1 (反转做多偏置); z < lo → -1; 其余 0.
+    mode="reversal" (vol_surface.py IO先例): z>hi 反转做多 / z<lo 反转做空
+    mode="trend" (商品实测方向, h10 IC=+0.096 t=+2.3): z>hi 顺势做空偏置
     """
     z = (skew - skew.rolling(z_window).mean()) / skew.rolling(z_window).std()
     sig = pd.Series(0.0, index=skew.index)
-    sig[z > hi] = 1.0
-    sig[z < lo] = -1.0
+    if mode == "reversal":
+        sig[z > hi] = 1.0
+        sig[z < lo] = -1.0
+    elif mode == "trend":
+        sig[z > hi] = -1.0
+        sig[z < lo] = 1.0
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
     return sig
 
 
