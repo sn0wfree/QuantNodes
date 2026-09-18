@@ -1,0 +1,2 @@
+strategy,n_products,is_calmar,oos_calmar,ratio,severity,is_cagr,oos_cagr,is_maxdd,oos_maxdd
+multi_period_equal,12,0.13963004869100296,1.0607139694116565,7.5966,robust,0.02828633660561697,0.09214628066106068,-0.202580582552211,-0.08687194033295442
