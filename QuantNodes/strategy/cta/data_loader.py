@@ -702,7 +702,8 @@ class CtaDataLoader:
         """读宏观代理序列 (VIX/DXY) 供宏观联动因子使用.
 
         Args:
-            name: 'vix' 或 'dxy' (macd 风格 v2 序列 1971-2026)
+            name: 'vix' / 'dxy' / 'cn_us_spread' / 'gold_oil_corr'
+                  (cn_us_spread: 中美10Y利差; gold_oil_corr: 金油相关性)
 
         Returns:
             pd.Series, index=DatetimeIndex, name=name
@@ -714,13 +715,21 @@ class CtaDataLoader:
             f = base / "macro_vix_daily.parquet"
         elif name == "dxy":
             f = base / "macro_dxy_daily_v2.parquet"
+        elif name == "cn_us_spread":
+            f = base / "cn_us_spread_10y.parquet"
+        elif name == "gold_oil_corr":
+            f = base / "gold_oil_corr.parquet"
         else:
             raise ValueError(f"unknown macro series: {name}")
         if not f.exists():
             raise FileNotFoundError(f"macro series not found: {f}")
         df = pd.read_parquet(f)
-        s = df.iloc[:, 0]
-        s.index = pd.to_datetime(df.index)
+        # 'date' 列优先 (CS/COR 格式), 否则用第一列
+        if "date" in df.columns:
+            s = pd.Series(df.iloc[:, 1].values, index=pd.to_datetime(df["date"]))
+        else:
+            s = df.iloc[:, 0]
+            s.index = pd.to_datetime(df.index)
         s.name = name
         return s.sort_index()
 
