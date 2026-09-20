@@ -54,7 +54,9 @@ class TestTrendFollowing:
         strat.load_panel()
         pos = strat._positions()
         # 手数应为整数
-        non_zero = pos[pos != 0].stack()
+        # dropna: pandas 3.0 起 stack() 不再丢弃 NaN, 布尔掩码的 False 格子
+        # 会以 NaN 形式保留在栈中, 需显式剔除后再校验整数性
+        non_zero = pos[pos != 0].stack().dropna()
         assert len(non_zero) > 0
         assert all(float(x).is_integer() for x in non_zero)
 

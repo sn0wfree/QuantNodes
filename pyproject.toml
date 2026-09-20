@@ -42,6 +42,7 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     # 统计分析
     "statsmodels>=0.14.0",
+    "arch>=6.0.0",
     "sympy>=1.12.0",
     # AI/LLM
     "openai>=1.3.0",
@@ -180,6 +181,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # CTA data loader: 继承历史长行风格 (SQL 拼接/推导式), 保持不动
 "QuantNodes/strategy/cta/data_loader.py" = ["E501"]
+# CTA adaptive: 标定参数字典, 数据密集型允许长行
+"QuantNodes/strategy/cta/optimization/adaptive.py" = ["E501"]
 # Symbolic dialect implements an abstract SQL dialect interface; one-liner
 # method bodies are intentional for line-by-line parity with the other dialects.
 "QuantNodes/symbolic/dialect.py" = ["E701", "E501"]

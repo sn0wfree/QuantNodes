@@ -208,6 +208,9 @@ _FACTOR_INPUTS = {
     "VortexFactor": lambda: (_mk_ohlc(), {}),
     "ChandelierExitFactor": lambda: (_mk_ohlc(), {}),
     "SqueezeFactor": lambda: (_mk_ohlc(), {}),
+    # 拐点类 (OHLC, volume 可选)
+    "TurnPointBreakoutFactor": lambda: (_mk_ohlc(), {}),
+    "FastTurnPointFactor": lambda: (_mk_ohlc(), {}),
     # 产业链
     "ChainMarginFactor": lambda: (_mk_prices(), {}),
     "PriceRatioFactor": lambda: (_mk_prices(), {}),
@@ -307,7 +310,8 @@ def _compute(instance, name):
                 "IntradayReturnFactor", "OvernightIntradayDivergenceFactor",
                 "GapFactor", "CloseLocationFactor", "OpenLocationFactor",
                 "StochasticFactor", "CCIFactor", "WilliamsRFactor",
-                "VortexFactor", "ChandelierExitFactor", "SqueezeFactor"):
+                "VortexFactor", "ChandelierExitFactor", "SqueezeFactor",
+                "TurnPointBreakoutFactor", "FastTurnPointFactor"):
         return instance.compute(_mk_ohlc(), **kwargs)
     if name == "VWAPDeviationFactor":
         return instance.compute(_mk_ohlcv(), **kwargs)

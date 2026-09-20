@@ -52,7 +52,9 @@ class DonchianChannelFactor(Factor):
 
         # 状态机向量化: 逐日推进 (DataFrame 逐行, 但无 pandas 内建递归)
         state = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
-        state_arr = state.to_numpy()
+        # copy=True: 新版 pandas 的 to_numpy() 可能返回零拷贝只读视图,
+        # 原地写入 state_arr[i] 会抛 "assignment destination is read-only"
+        state_arr = state.to_numpy(copy=True)
         p_arr = prices.to_numpy()
         up_arr = up.to_numpy()
         dn_arr = dn.to_numpy()

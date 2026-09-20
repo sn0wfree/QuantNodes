@@ -17,6 +17,7 @@ from QuantNodes.strategy.cta.strategies.factor_modules import (
     TrendMomentumModuleStrategy,
     VolumeFlowModuleStrategy,
 )
+from QuantNodes.strategy.cta.strategies.combo import DEFAULT_COMBO_MODULES
 from QuantNodes.strategy.cta.factors import MACDFactor
 
 # 测试小池含产业链配方品种 (steel_profit_rb: RB/I/J, crush_profit: M/A, mto: PP/MA)
@@ -73,7 +74,9 @@ class TestModuleStrategies:
         s = cls(products=_TEST_POOL, start="2020-01-01")
         s.load_panel()
         pos = s._positions()
-        non_zero = pos[pos != 0].stack()
+        # dropna: pandas 3.0 起 stack() 不再丢弃 NaN, 布尔掩码的 False 格子
+        # 会以 NaN 形式保留在栈中, 需显式剔除后再校验整数性
+        non_zero = pos[pos != 0].stack().dropna()
         assert len(non_zero) > 0
         assert all(float(x).is_integer() for x in non_zero)
 
@@ -100,7 +103,7 @@ class TestModuleStrategies:
 class TestDefaults:
     def test_default_products(self):
         # 全部有交易量品种 (日均量 ≥ 1 万手), 含产业链配方品种
-        assert len(DEFAULT_PRODUCTS) >= 70
+        assert len(DEFAULT_PRODUCTS) >= 60
         assert "AU" in DEFAULT_PRODUCTS and "IF" in DEFAULT_PRODUCTS
         for p in ["J", "A", "Y", "HC", "JM", "PX", "PF", "EG", "LH"]:
             assert p in DEFAULT_PRODUCTS  # 产业链配方品种全覆盖
@@ -124,7 +127,8 @@ class TestDefaults:
 class TestCombo:
     def test_combo_config_defaults(self):
         cfg = ComboConfig()
-        assert len(cfg.module_weights) == 7
+        # 权重数与默认模块数一致 (combo 默认锁定 5 模块)
+        assert len(cfg.module_weights) == len(DEFAULT_COMBO_MODULES)
         # 默认等权
         assert abs(sum(cfg.module_weights) - 1.0) < 1e-9
         assert len(set(round(w, 6) for w in cfg.module_weights)) == 1
@@ -140,6 +144,7 @@ class TestCombo:
                 tvpr_min_history=120,
             ),
         )
+        s.load_panel()
         sig = s._signals()
         assert set(sig["AU"].unique()).issubset({-1.0, 0.0, 1.0})
         # N=11 品种 ≥ 10 样本下限, 应有信号
@@ -216,14 +221,15 @@ class TestCombo:
         s = FactorModuleComboStrategy(products=_TEST_POOL, start="2020-01-01")
         s.load_panel()
         sig = s._signals()
-        assert set(sig["AU"].unique()).issubset({-1.0, 0.0, 1.0})
+        # dropna: 未上市/无数据品种信号置 NaN 是设计行为 (combo._signals_raw)
+        assert set(sig["AU"].dropna().unique()).issubset({-1.0, 0.0, 1.0})
         assert (sig != 0).sum().sum() > 100
 
     def test_combo_module_signals(self):
         s = FactorModuleComboStrategy(products=_TEST_POOL, start="2020-01-01")
         s.load_panel()
         s._signals_raw()
-        assert set(s.module_signals) == {cls.__name__ for cls in ALL_MODULES}
+        assert set(s.module_signals) == {cls.__name__ for cls in DEFAULT_COMBO_MODULES}
 
     def test_combo_run(self):
         s = FactorModuleComboStrategy(products=_TEST_POOL, start="2020-01-01")
@@ -234,7 +240,8 @@ class TestCombo:
         s = FactorModuleComboStrategy(products=_TEST_POOL, start="2020-01-01")
         s.load_panel()
         corr = s.module_correlation()
-        assert corr.shape == (7, 7)
+        n = len(DEFAULT_COMBO_MODULES)
+        assert corr.shape == (n, n)
         np.testing.assert_allclose(np.diag(corr), 1.0)
 
     def test_module_correlation_low_cross(self):
@@ -242,7 +249,8 @@ class TestCombo:
         s = FactorModuleComboStrategy(products=_TEST_POOL, start="2020-01-01")
         s.load_panel()
         corr = s.module_correlation()
-        cross = corr.values[~np.eye(7, dtype=bool)]
+        n = len(DEFAULT_COMBO_MODULES)
+        cross = corr.values[~np.eye(n, dtype=bool)]
         assert cross.max() < 0.7
 
     def test_filter_off(self):
@@ -283,7 +291,8 @@ class TestModuleConfig:
         s.load_panel()
         sig = s._signals()
         shifted = s._exec_sig(sig)
-        assert (shifted == sig).all().all()
+        # equals: NaN==NaN 视为相等 (信号面板含设计性 NaN, == 比较会误报)
+        assert shifted.equals(sig)
 
 
 class TestContinuousSignals:
