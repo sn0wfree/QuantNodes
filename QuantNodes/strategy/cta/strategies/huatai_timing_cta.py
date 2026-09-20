@@ -172,6 +172,11 @@ class HuataiTimingConfig:
     # 20品种实测: 平均 Calmar -0.038 → +0.042 (金属/TA 大幅改善, 少数震荡
     # 品种如 I/TF 恶化, 品种级差异留给 walk-forward 标定)
     rho_required: bool = False
+    # ── 做空开关 (Phase 10c 实证: 99.1% PnL 来自做多, 空信号仅 48/5741;
+    #    long-only Calmar 1.901 > 全信号 1.866 — 空头为负贡献, 默认关闭) ──
+    # False: TREND_DOWN / RANGE(RSI>70) 不产生空信号, 且跳过 short_gate 计算
+    # True: 恢复 v9 完整多空行为 (研究用)
+    allow_short: bool = False
     # ── 做空宏观闸门 (归因: trend_down 做空 -0.153%, t=-3.50, 组合亏损主因) ──
     # 商品广度 (close>MA250 品种占比) >= threshold → 结构性牛市 → 禁 trend_down 做空
     # mode: breadth / external / both_and / both_or (见 regime.macro_gate)
@@ -344,8 +349,9 @@ class HuataiTimingCTAStrategy:
             rho_required=cfg.rho_required,
         )
         # 做空宏观闸门 (归因: trend_down 做空 t=-3.50)
+        # allow_short=False 时空头信号不产生, 跳过宏观序列加载与广度计算
         self._short_gate = None
-        if cfg.short_gate_enabled:
+        if cfg.short_gate_enabled and cfg.allow_short:
             from ..regime.macro_gate import macro_short_gate
             self._short_gate = macro_short_gate(
                 self._price_panel,
@@ -575,8 +581,10 @@ class HuataiTimingCTAStrategy:
         cfg = self._config
         if self._entry is None:
             self._entry_signals()
+        # allow_short=False: 裁剪全部空信号 (覆盖 _entry_signals 及共振变体)
+        entry = self._entry if cfg.allow_short else self._entry.clip(lower=0.0)
         weights = vol_target_positions(
-            self._entry, self._price_panel,
+            entry, self._price_panel,
             target_vol=cfg.target_vol, vol_lookback=cfg.vol_lookback,
             max_leverage=cfg.max_leverage,
         )
