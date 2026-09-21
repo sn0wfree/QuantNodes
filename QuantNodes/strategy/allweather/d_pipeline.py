@@ -111,9 +111,11 @@ def risk_budget_solve(cov: np.ndarray, budgets: np.ndarray,
 
 # ── 合成债券资产 ──
 def _synth_bond_returns(returns: pd.DataFrame,
-                        window: int, min_obs: int = 60) -> pd.Series | None:
+                        window: int, min_obs: int = 60,
+                        bond_cols: list[str] | None = None) -> pd.Series | None:
     """债券类 inv-vol 合成序列 (合成资产用于盒约束); 缺列防御."""
-    avail = [c for c in BOND_COLS
+    bond_cols = bond_cols or BOND_COLS
+    avail = [c for c in bond_cols
              if c in returns.columns and returns[c].notna().sum() >= min_obs]
     if not avail:
         return None
@@ -148,11 +150,14 @@ def _d_base_weights(
     bond_cap: float = DEFAULT_BOND_CAP,
     min_obs_per_asset: int = 60,
     cov_estimator: str = "lw",
+    bond_cols: list[str] | None = None,
 ) -> pd.Series:
     """单次调仓: 协方差 → HRP 预算 → 合成债券 → 盒约束 CCD → 摊回.
 
     cov_estimator: "lw" / "oas" / "lw_ewma" / "block_corr" / "avs"
+    bond_cols: 债券资产集合 (默认 fut_t/tf/ts; 可扩充如 etf_511260)
     """
+    bond_cols = bond_cols or BOND_COLS
     from .cov_extended import lw_ewma_cov, oas_cov, block_corr_shrink, \
         nqn_lw2012_cov, poet_cov
 
@@ -198,8 +203,9 @@ def _d_base_weights(
     budgets_38 = budgets_38 / budgets_38.sum()
 
     # ③ 合成债券资产: 3 债券 → 1 合成 (盒约束 u=bond_cap 直接可执行)
-    synth_ret = _synth_bond_returns(returns_hist, window, min_obs_per_asset)
-    bond_in_avail = [c for c in BOND_COLS if c in avail]
+    synth_ret = _synth_bond_returns(returns_hist, window, min_obs_per_asset,
+                                    bond_cols=bond_cols)
+    bond_in_avail = [c for c in bond_cols if c in avail]
 
     if synth_ret is None or not bond_in_avail or bond_cap >= 1.0:
         # 无债券或无 cap → 直接 38 资产 CCD (无盒约束, 退化为 HRP 预算 ERC)
@@ -212,7 +218,7 @@ def _d_base_weights(
         return out
 
     # 合成系统: 非债资产 + 1 合成债券
-    non_bond = [c for c in cov_cols if c not in BOND_COLS]
+    non_bond = [c for c in cov_cols if c not in bond_cols]
     synth_series = synth_ret.reindex(sub.index).fillna(0.0)
     joint = pd.concat([sub[non_bond], synth_series.rename(SYNTH_BOND)], axis=1)
     # 合成列与已有资产重名防御
@@ -238,7 +244,7 @@ def _d_base_weights(
     bond_budget_sum = 0.0
     bi = 0
     for c in cov_cols:
-        if c in BOND_COLS:
+        if c in bond_cols:
             bud.append(None)  # 占位, 稍后合成
             bond_budget_sum += budgets_38[bi]
         else:
@@ -375,6 +381,7 @@ def run_d_sleeve(
     correlation_k: float = 0.0,
     correlation_threshold: float = DEFAULT_CORR_THRESHOLD,
     correlation_window: int = DEFAULT_CORR_WINDOW,
+    bond_cols: list[str] | None = None,
     financing_rate: float = 0.0,
     capital_base: str = "notional",
     etf_financing_rate: float | None = None,
@@ -399,6 +406,7 @@ def run_d_sleeve(
         correlation_k: 相关性覆盖层强度 (0=关闭, 推荐0.60-1.00; §5.37 P1-B)
         correlation_threshold: 类内相关触发阈值 (默认0.60, 信号>阈值才降权)
         correlation_window: 相关性滚动窗口 (默认60日)
+        bond_cols: 债券资产集合 (默认 fut_t/tf/ts; 可扩充, 用于合成债券+cap)
         financing_rate: 融资年利率 (0=关闭; 回购口径 ~2%)
         capital_base: "notional" (gross 口径) / "margin" (期货按保证金口径)
         etf_financing_rate: ETF 腿专用融资利率 (None=用 financing_rate; 两融 ~5%)
@@ -458,6 +466,7 @@ def run_d_sleeve(
                 n_clusters=n_clusters, bond_cap=bond_cap,
                 min_obs_per_asset=min_obs_per_asset,
                 cov_estimator=cov_estimator,
+                bond_cols=bond_cols,
             )
 
             # vol_target

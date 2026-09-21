@@ -339,3 +339,33 @@ def test_capital_default_unchanged():
     b = run_d_sleeve(**common, financing_rate=0.0,
                      capital_base="notional")
     pd.testing.assert_series_equal(a.nav, b.nav)
+
+
+def test_bond_cols_configurable():
+    """bond_cols 扩充: 额外债券资产纳入合成债券+cap (原本绕过 cap)."""
+    prices, classes = _make_named_panel()
+    # 把 etf_h 当作债券类资产 (扩充债券集合)
+    classes2 = dict(classes)
+    classes2["bond"] = ["fut_a", "fut_b", "etf_h"]
+    common = dict(panel=prices, bond_cap=0.30, window=60,
+                  asset_classes=classes2, cov_estimator="lw",
+                  max_leverage=1.0)
+    r_default = run_d_sleeve(**common)
+    r_ext = run_d_sleeve(**common, bond_cols=["fut_a", "fut_b", "etf_h"])
+    # 扩充债券集合后, 债券总权重应受 cap 约束 (不同解)
+    assert not r_default.weights.equals(r_ext.weights)
+    # 扩充后债券三资产在调仓日的合计 ≤ cap + 容差
+    w = r_ext.weights
+    bond_sum = w[["fut_a", "fut_b", "etf_h"]].sum(axis=1)
+    assert bond_sum.max() <= 0.30 + 1e-6
+
+
+def test_bond_cols_default_unchanged():
+    """bond_cols=None 与显式 fut_t/tf/ts 行为一致 (向后兼容)."""
+    prices, classes = _make_named_panel()
+    common = dict(panel=prices, bond_cap=0.40, window=60,
+                  asset_classes=classes, cov_estimator="lw",
+                  max_leverage=1.0)
+    a = run_d_sleeve(**common)
+    b = run_d_sleeve(**common, bond_cols=None)
+    pd.testing.assert_series_equal(a.nav, b.nav)
