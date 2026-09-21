@@ -243,3 +243,99 @@ def test_block_corr_target_bounded():
     cond_C = np.linalg.cond(C)
     # 协方差空间 F: 外积 vol² 使条件数 ≥ (0.03/0.002)² ≈ 225
     assert cond_C < 1e5  # 相关空间收缩不应继承病态
+
+
+# ── §5.37 P1-B 相关性覆盖 + §5.38 资本会计 ──
+
+def _make_named_panel(n_days=400, seed=7):
+    """合成价格面板 (fut_/etf_ 命名) + 类别映射."""
+    rets = _make_returns(n_days=n_days, n_assets=8, seed=seed)
+    cols = ["fut_a", "fut_b", "fut_c", "etf_d",
+            "etf_e", "etf_f", "fut_g", "etf_h"]
+    rets.columns = cols
+    prices = (1 + rets).cumprod()
+    classes = {
+        "c1": ["fut_a", "fut_b", "fut_c"],
+        "c2": ["etf_d", "etf_e"],
+        "c3": ["etf_f", "fut_g", "etf_h"],
+    }
+    return prices, classes
+
+
+def test_correlation_signals_shape():
+    """P1-B 信号: 每类一条 Series, 窗口内 NaN, 窗口后有限."""
+    from QuantNodes.strategy.allweather.d_pipeline import (
+        compute_correlation_signals, DEFAULT_CORR_WINDOW)
+    prices, classes = _make_named_panel()
+    rets = prices.pct_change(fill_method=None)
+    sigs = compute_correlation_signals(rets, classes, window=DEFAULT_CORR_WINDOW)
+    assert set(sigs.keys()) == {"c1", "c2", "c3"}
+    for cls, s in sigs.items():
+        assert len(s) == len(rets)
+        assert s.iloc[:DEFAULT_CORR_WINDOW].isna().all()
+        tail = s.dropna()
+        assert len(tail) > 0
+        assert tail.between(-1.0, 1.0).all()
+
+
+def test_correlation_overlay_gate():
+    """阈值门控: sig<θ 不动; sig>θ 降权; k=0 恒等 (平时不主动降)."""
+    from QuantNodes.strategy.allweather.d_pipeline import (
+        apply_correlation_overlay)
+    w = pd.Series({"fut_a": 0.2, "fut_b": 0.2, "etf_d": 0.3, "etf_e": 0.3})
+    classes = {"c1": ["fut_a", "fut_b"], "c2": ["etf_d", "etf_e"]}
+    date = pd.Timestamp("2025-01-01")
+    # k=0 → 恒等
+    s0 = apply_correlation_overlay(w, {"c1": pd.Series({date: 0.99})},
+                                   classes, date, threshold=0.60, k=0.0)
+    assert s0.equals(w)
+    # sig < θ → 恒等
+    s1 = apply_correlation_overlay(w, {"c1": pd.Series({date: 0.50})},
+                                   classes, date, threshold=0.60, k=1.0)
+    assert s1.equals(w)
+    # sig > θ → 该类降权, 他类不动
+    s2 = apply_correlation_overlay(w, {"c1": pd.Series({date: 0.80})},
+                                   classes, date, threshold=0.60, k=1.0)
+    assert s2["fut_a"] < w["fut_a"]          # c1 被削
+    assert s2["etf_d"] == w["etf_d"]         # c2 不动
+    # sig=1 → m = 1-k = 0
+    s3 = apply_correlation_overlay(w, {"c1": pd.Series({date: 1.0})},
+                                   classes, date, threshold=0.60, k=1.0)
+    assert abs(s3["fut_a"]) < 1e-12
+
+
+def test_capital_notional_financing_drag():
+    """名义口径: 融资利率 > 0 且 gross>1 → NAV 低于无融资."""
+    prices, classes = _make_named_panel()
+    common = dict(panel=prices, max_leverage=2.0, target_vol=0.50,
+                  window=60, asset_classes=classes, cov_estimator="lw")
+    r0 = run_d_sleeve(**common)
+    r1 = run_d_sleeve(**common, financing_rate=0.10)
+    assert r1.nav.iloc[-1] < r0.nav.iloc[-1]
+
+
+def test_capital_margin_idle_cash():
+    """保证金口径: 期货只占保证金 → 闲置资金更多 → 现金腿收益更高."""
+    prices, classes = _make_named_panel()
+    idx = prices.index
+    cash = pd.Series(0.20 / 252, index=idx)  # 20%/年 现金收益 (放大差异)
+    # lev=1.2: 名义口径 gross=1.2 (idle=0); 保证金口径 capital≈0.7 (idle>0)
+    common = dict(panel=prices, max_leverage=1.2, target_vol=10.0,
+                  window=60, asset_classes=classes, cov_estimator="lw",
+                  cash_ret=cash)
+    r_notional = run_d_sleeve(**common, capital_base="notional")
+    r_margin = run_d_sleeve(**common, capital_base="margin",
+                            futures_margin_ratio=0.15)
+    # margin 口径下 capital 更小 → idle 更大 → 现金收益更多
+    assert r_margin.nav.iloc[-1] > r_notional.nav.iloc[-1]
+
+
+def test_capital_default_unchanged():
+    """默认参数 (rate=0, notional) 与显式基线一致 (向后兼容)."""
+    prices, classes = _make_named_panel()
+    common = dict(panel=prices, max_leverage=1.5, target_vol=0.20,
+                  window=60, asset_classes=classes, cov_estimator="lw")
+    a = run_d_sleeve(**common)
+    b = run_d_sleeve(**common, financing_rate=0.0,
+                     capital_base="notional")
+    pd.testing.assert_series_equal(a.nav, b.nav)

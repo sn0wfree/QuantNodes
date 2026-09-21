@@ -375,6 +375,10 @@ def run_d_sleeve(
     correlation_k: float = 0.0,
     correlation_threshold: float = DEFAULT_CORR_THRESHOLD,
     correlation_window: int = DEFAULT_CORR_WINDOW,
+    financing_rate: float = 0.0,
+    capital_base: str = "notional",
+    etf_financing_rate: float | None = None,
+    futures_margin_ratio: float = 0.15,
 ) -> DSleeveResult:
     """运行 D sleeve 回测.
 
@@ -395,6 +399,10 @@ def run_d_sleeve(
         correlation_k: 相关性覆盖层强度 (0=关闭, 推荐0.60-1.00; §5.37 P1-B)
         correlation_threshold: 类内相关触发阈值 (默认0.60, 信号>阈值才降权)
         correlation_window: 相关性滚动窗口 (默认60日)
+        financing_rate: 融资年利率 (0=关闭; 回购口径 ~2%)
+        capital_base: "notional" (gross 口径) / "margin" (期货按保证金口径)
+        etf_financing_rate: ETF 腿专用融资利率 (None=用 financing_rate; 两融 ~5%)
+        futures_margin_ratio: 期货保证金比例 (margin 模式, 默认0.15)
 
     Returns:
         DSleeveResult (nav, weights)
@@ -494,11 +502,35 @@ def run_d_sleeve(
             for c in panel.columns}
     costs = (w_exec.diff().abs() * pd.Series(rate)).sum(axis=1).fillna(0.0)
     port_ret = (w_exec.shift(1) * returns).sum(axis=1) - costs
-    # G5-lite: 空仓部分 (penalty 减仓释放) 赚现金收益 (§5.32 13资产复现)
+    # 资本会计层 (§5.38): 口径统一控制 现金腿 + 融资成本
+    #  notional: 名义口径 — gross 视为占用资金 (idle=(1−gross)⁺, 超配付融资)
+    #  margin:   保证金口径 — 期货仅占 nominal×margin_ratio (idle=(1−capital)⁺)
+    cash_daily = None
     if cash_ret is not None:
         cash_daily = cash_ret.reindex(dates).ffill().fillna(0.0)
-        idle = (1.0 - w_exec.shift(1).sum(axis=1)).clip(lower=0.0)
+    gross_prev = w_exec.shift(1)
+    if capital_base == "margin" and futures_margin_ratio > 0:
+        fut_cols = [c for c in panel.columns if c.startswith("fut_")]
+        etf_cols = [c for c in panel.columns if not c.startswith("fut_")]
+        etf_cap = gross_prev[etf_cols].sum(axis=1)
+        fut_cap = gross_prev[fut_cols].sum(axis=1) * futures_margin_ratio
+        capital = etf_cap + fut_cap
+        share_etf = (etf_cap / capital.replace(0.0, np.nan)).fillna(0.0)
+    else:
+        capital = gross_prev.sum(axis=1)
+        share_etf = pd.Series(0.0, index=dates)
+    # G5-lite 现金腿: 闲置资金赚现金收益 (§5.32)
+    if cash_daily is not None:
+        idle = (1.0 - capital).clip(lower=0.0)
         port_ret = port_ret + idle * cash_daily
+    # 融资成本: 资金缺口付融资利率 (financing_rate=0 → 关闭, 向后兼容)
+    if financing_rate > 0:
+        excess = (capital - 1.0).clip(lower=0.0)
+        r_etf = etf_financing_rate if etf_financing_rate is not None \
+            else financing_rate
+        fin_cost = (excess * share_etf * r_etf
+                    + excess * (1.0 - share_etf) * financing_rate) / ANN
+        port_ret = port_ret - fin_cost
     nav = (1 + port_ret).cumprod()
     nav.name = "D_sleeve"
 
