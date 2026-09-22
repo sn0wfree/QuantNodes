@@ -28,6 +28,12 @@ DEFAULT_BOND_CAP = 0.40
 SYNTH_BOND = "__synth_bond__"
 DEFAULT_CORR_WINDOW = 60
 DEFAULT_CORR_THRESHOLD = 0.60
+# 共振门控默认 (§5.41; 仅结构破碎池启用)
+DEFAULT_RESONANCE_WINDOW = 60
+DEFAULT_RESONANCE_ENTER = 0.70
+DEFAULT_RESONANCE_EXIT = 0.40
+DEFAULT_RESONANCE_VOL_EXIT = 0.50
+DEFAULT_RESONANCE_DD_FLOOR = -0.03
 
 
 # ── 输出结构 ──
@@ -356,6 +362,97 @@ def apply_correlation_overlay(
     return w_out
 
 
+# ── 共振门控 (AR3 吸收比率, §5.41) ──
+def _pit_pct(s: pd.Series, min_periods: int = 120) -> pd.Series:
+    """扩张分位 (PIT, 无前视)."""
+    return s.expanding(min_periods=min_periods).rank(pct=True)
+
+
+def _absorption_ratio(returns: pd.DataFrame, window: int = 60) -> pd.Series:
+    """AR3: window 日相关阵前 3 主成分解释方差占比 (Kritzman)."""
+    out = np.full(len(returns), np.nan)
+    vals = returns.to_numpy()
+    for i in range(window, len(returns)):
+        sub = vals[i - window:i]
+        ok = ~np.isnan(sub).any(axis=0)
+        k = int(ok.sum())
+        if k < 3:
+            continue
+        sub = sub[:, ok]
+        if sub.shape[0] < max(30, k):      # 有效率 <50% 或无足够样本
+            continue
+        c = np.corrcoef(sub, rowvar=False)
+        if not np.isfinite(c).all():
+            continue
+        ev = np.clip(np.linalg.eigvalsh(c)[::-1], 0, None)
+        if ev.sum() > 0:
+            out[i] = float(ev[:3].sum() / ev.sum())
+    return pd.Series(out, index=returns.index)
+
+
+def apply_resonance_gate(
+    w_exec: pd.DataFrame,
+    returns: pd.DataFrame,
+    cash_ret: pd.Series | None,
+    window: int = DEFAULT_RESONANCE_WINDOW,
+    enter: float = DEFAULT_RESONANCE_ENTER,
+    exit_th: float = DEFAULT_RESONANCE_EXIT,
+    vol_exit: float = DEFAULT_RESONANCE_VOL_EXIT,
+    dd_floor: float = DEFAULT_RESONANCE_DD_FLOOR,
+    k: float = 0.7,
+    financing_rate: float = 0.0,
+) -> pd.DataFrame:
+    """共振门控 (事件式降杠杆): 入场领先 + 出场双确认.
+
+    入场: AR3 分位 ≥ enter 且 组合回撤 ≥ dd_floor (未深亏才行动 —
+          已深亏时 AR3 是滞后信号, 减仓即锁底).
+    出场: AR3 分位 ≤ exit_th 且 组合波动分位 ≤ vol_exit (双确认).
+    持仓: 事件期间敞口 ×(1−k); 平时 ×1 (零影响).
+
+    信号全部 PIT (扩张分位, shift(1)); 影子 NAV 与引擎同口径
+    (成本+融资+现金腿, 名义资本). 仅适用于结构性破碎池.
+    """
+    dates = w_exec.index
+    ar3 = _absorption_ratio(returns.reindex(dates), window=window)
+    p_ar3 = _pit_pct(ar3).shift(1).reindex(dates)
+    # 影子 NAV (未门控): 与引擎同口径 (成本+融资+现金腿)
+    r = returns.reindex(dates)
+    rate = pd.Series({c: (0.0001 if c.startswith("fut_") else 0.0005)
+                      for c in w_exec.columns})
+    gross_prev = w_exec.shift(1)
+    shadow = (gross_prev * r).sum(axis=1) \
+        - (w_exec.diff().abs() * rate).sum(axis=1).fillna(0.0)
+    capital_prev = gross_prev.sum(axis=1)
+    if cash_ret is not None:
+        cash_daily = cash_ret.reindex(dates).ffill().fillna(0.0)
+        shadow = shadow + (1.0 - capital_prev).clip(lower=0.0) * cash_daily
+    if financing_rate > 0:
+        shadow = shadow - (capital_prev - 1.0).clip(lower=0.0) \
+            * financing_rate / ANN
+    shadow = (1.0 + shadow.fillna(0.0)).cumprod()
+    vol20 = shadow.pct_change().rolling(20).std()
+    # 波动分位用滚动窗 (252d): 避免渐进入池期低波值污染扩张分位参考
+    p_vol = vol20.rolling(252, min_periods=120).rank(pct=True) \
+        .shift(1).reindex(dates)
+    dd = (shadow / shadow.cummax() - 1.0).reindex(dates)
+
+    mult = np.ones(len(dates))
+    on = False
+    for i in range(len(dates)):
+        a, v, d = p_ar3.iloc[i], p_vol.iloc[i], dd.iloc[i]
+        if not on:
+            ok = np.isfinite(a) and a >= enter
+            if dd_floor is not None and np.isfinite(d):
+                ok = ok and d >= dd_floor
+            if ok:
+                on = True
+        else:
+            if np.isfinite(a) and np.isfinite(v) and a <= exit_th and v <= vol_exit:
+                on = False
+        mult[i] = (1.0 - k) if on else 1.0
+    return w_exec.mul(pd.Series(mult, index=dates), axis=0)
+
+
 def run_d_sleeve(
     panel: pd.DataFrame,
     bond_cap: float = DEFAULT_BOND_CAP,
@@ -381,6 +478,12 @@ def run_d_sleeve(
     correlation_k: float = 0.0,
     correlation_threshold: float = DEFAULT_CORR_THRESHOLD,
     correlation_window: int = DEFAULT_CORR_WINDOW,
+    resonance_k: float = 0.0,
+    resonance_ar3_window: int = DEFAULT_RESONANCE_WINDOW,
+    resonance_enter: float = DEFAULT_RESONANCE_ENTER,
+    resonance_exit: float = DEFAULT_RESONANCE_EXIT,
+    resonance_vol_exit: float = DEFAULT_RESONANCE_VOL_EXIT,
+    resonance_dd_floor: float = DEFAULT_RESONANCE_DD_FLOOR,
     bond_cols: list[str] | None = None,
     financing_rate: float = 0.0,
     capital_base: str = "notional",
@@ -406,6 +509,12 @@ def run_d_sleeve(
         correlation_k: 相关性覆盖层强度 (0=关闭, 推荐0.60-1.00; §5.37 P1-B)
         correlation_threshold: 类内相关触发阈值 (默认0.60, 信号>阈值才降权)
         correlation_window: 相关性滚动窗口 (默认60日)
+        resonance_k: 共振门控强度 (0=关闭; 仅结构破碎池启用, §5.41)
+        resonance_ar3_window: AR3 吸收比率窗口 (默认60日)
+        resonance_enter: 入场 AR3 分位阈值 (默认0.70)
+        resonance_exit: 出场 AR3 分位阈值 (默认0.40)
+        resonance_vol_exit: 出场组合波动分位阈值 (默认0.50)
+        resonance_dd_floor: 入场回撤门槛 (默认-0.03; 已深亏不入场, 防锁底)
         bond_cols: 债券资产集合 (默认 fut_t/tf/ts; 可扩充, 用于合成债券+cap)
         financing_rate: 融资年利率 (0=关闭; 回购口径 ~2%)
         capital_base: "notional" (gross 口径) / "margin" (期货按保证金口径)
@@ -505,6 +614,15 @@ def run_d_sleeve(
             w_exec.iloc[i] = apply_correlation_overlay(
                 w_exec.iloc[i], corr_signals, asset_classes, date,
                 threshold=correlation_threshold, k=correlation_k)
+
+    # 共振门控 (§5.41): AR3 结构预警 → 事件式降杠杆 (仅结构破碎池适用)
+    if resonance_k > 0:
+        w_exec = apply_resonance_gate(
+            w_exec, returns, cash_ret,
+            window=resonance_ar3_window, enter=resonance_enter,
+            exit_th=resonance_exit, vol_exit=resonance_vol_exit,
+            dd_floor=resonance_dd_floor, k=resonance_k,
+            financing_rate=financing_rate)
 
     # 组合收益 (含交易成本, 与 run_backtest 同口径: futures 1bp / ETF 5bp)
     rate = {c: (0.0001 if c.startswith("fut_") else 0.0005)

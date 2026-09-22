@@ -369,3 +369,85 @@ def test_bond_cols_default_unchanged():
     a = run_d_sleeve(**common)
     b = run_d_sleeve(**common, bond_cols=None)
     pd.testing.assert_series_equal(a.nav, b.nav)
+
+
+# ── §5.41 共振门控 (AR3) ──
+
+def test_absorption_ratio_extremes():
+    """AR3: 完全相关 → 1.0; 独立资产 → ≈3/N."""
+    rng = np.random.default_rng(7)
+    n = 300
+    # 完全相关: 所有资产同一序列
+    base_ret = rng.normal(0, 0.01, n)
+    ident = pd.DataFrame({f"a{i}": base_ret for i in range(6)},
+                         index=pd.bdate_range("2024-01-01", periods=n))
+    from QuantNodes.strategy.allweather.d_pipeline import _absorption_ratio
+    ar_ident = _absorption_ratio(ident, window=60).dropna()
+    assert ar_ident.iloc[-1] > 0.99
+    # 独立资产: AR3 ≈ 3/8
+    indep = pd.DataFrame(rng.normal(0, 0.01, (n, 8)),
+                         columns=[f"b{i}" for i in range(8)],
+                         index=pd.bdate_range("2024-01-01", periods=n))
+    ar_indep = _absorption_ratio(indep, window=60).dropna()
+    assert ar_indep.iloc[-1] < 0.75
+
+
+def test_resonance_gate_off_by_default():
+    """k=0 → 门控关闭 (向后兼容, 与基线逐点一致)."""
+    prices, classes = _make_named_panel()
+    common = dict(panel=prices, max_leverage=1.5, target_vol=0.20,
+                  window=60, asset_classes=classes, cov_estimator="lw")
+    a = run_d_sleeve(**common)
+    b = run_d_sleeve(**common, resonance_k=0.0)
+    pd.testing.assert_series_equal(a.nav, b.nav)
+
+
+def test_resonance_gate_engages_and_reduces():
+    """共振期 (共同冲击) → 门控触发 (乘数<1); 平静期 → 乘数=1."""
+    from QuantNodes.strategy.allweather.d_pipeline import (
+        apply_resonance_gate)
+    rng = np.random.default_rng(11)
+    n = 700
+    idx = pd.bdate_range("2022-01-03", periods=n)
+    cols = [f"fut_{c}" for c in "abcdefgh"]
+    rets = rng.normal(0, 0.008, (n, len(cols)))
+    shock = rng.normal(0, 0.05, 60)
+    rets[400:460] = (np.tile(shock[:, None], (1, len(cols)))
+                     + rng.normal(0, 0.001, (60, len(cols))))
+    ret = pd.DataFrame(rets, columns=cols, index=idx)
+    w = pd.DataFrame(1.0, index=idx, columns=cols)
+    g = apply_resonance_gate(w, ret, None, window=60, enter=0.70,
+                             exit_th=0.40, vol_exit=0.50,
+                             dd_floor=None, k=0.7)
+    mult = g.iloc[:, 0]
+    assert (mult < 0.99).sum() > 0                     # 触发过
+    assert abs(mult.min() - 0.3) < 1e-9               # 触发时降至 1-k
+    shock = (mult.iloc[400:460] < 0.99).mean()         # 冲击窗口触发率
+    calm = (mult.iloc[150:340] < 0.99).mean()          # 平静窗口触发率
+    assert shock > calm                                # 冲击期更常触发
+
+
+def test_resonance_gate_dd_floor_blocks_late_entry():
+    """回撤门槛: 已深亏时不入场 (防锁底)."""
+    from QuantNodes.strategy.allweather.d_pipeline import (
+        apply_resonance_gate)
+    rng = np.random.default_rng(13)
+    n = 700
+    idx = pd.bdate_range("2022-01-03", periods=n)
+    cols = [f"fut_{c}" for c in "abcdefgh"]
+    rets = rng.normal(0, 0.008, (n, len(cols)))
+    # 先制造深回撤 (350-400 天全资产同跌), 再在 400-460 天共振
+    rets[350:400] = np.tile(rng.normal(-0.01, 0.004, 50)[:, None],
+                            (1, len(cols)))
+    shock = rng.normal(0, 0.05, 60)
+    rets[400:460] = (np.tile(shock[:, None], (1, len(cols)))
+                     + rng.normal(0, 0.001, (60, len(cols))))
+    ret = pd.DataFrame(rets, columns=cols, index=idx)
+    w = pd.DataFrame(1.0, index=idx, columns=cols)
+    common = dict(window=60, enter=0.70, exit_th=0.40, vol_exit=0.50, k=0.7)
+    g_no = apply_resonance_gate(w, ret, None, dd_floor=None, **common)
+    g_fl = apply_resonance_gate(w, ret, None, dd_floor=-0.03, **common)
+    # 深回撤后 (>=400 天), 有门槛版本不应在已深亏时继续入场
+    late_no = (g_no.iloc[400:, 0] < 0.99).sum()
+    late_fl = (g_fl.iloc[400:, 0] < 0.99).sum()
+    assert late_fl <= late_no
