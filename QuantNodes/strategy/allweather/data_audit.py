@@ -301,7 +301,12 @@ class DataAuditor:
                                   "path": str(ETF_OHLCV_ADJ_PATH),
                                   "status": "FAILED", "detail": str(e)})
             return pd.DataFrame()
-        available_codes = set(str(c) for c in ohlcv.index.get_level_values(0))
+        # 资产代码在列 MultiIndex (code, field) 的 level 0; 旧代码误用 index
+        # (DatetimeIndex) → 得到日期集合 → in_ohlcv 全部误报 False (§5.44 修复)
+        if isinstance(ohlcv.columns, pd.MultiIndex):
+            available_codes = {str(c) for c in ohlcv.columns.get_level_values(0)}
+        else:
+            available_codes = {str(c) for c in ohlcv.columns}
         records = []
         for col in etf_cols:
             code = col.replace("etf_", "")

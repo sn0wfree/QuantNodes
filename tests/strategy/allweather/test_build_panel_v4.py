@@ -139,3 +139,37 @@ def test_no_dates_beyond_v3_max_appear_before_inc(tmp_path):
     # 有 10 行被增量替换, 无重复)
     v3_pre = panel_v3.loc[panel_v3.index < pd.Timestamp("2026-07-08")]
     assert len(out) == len(v3_pre) + 42
+
+
+def test_splice_levels_removes_jump_preserves_returns():
+    """§5.44: 增量段按水平缩放 → 拼接日收益连续, 增量收益保留."""
+    import pandas as pd
+    from QuantNodes.strategy.allweather.data_etl.build_panel_v4 import (
+        _splice_levels)
+    idx_h = pd.bdate_range("2026-06-01", periods=3)
+    idx_i = pd.bdate_range("2026-06-04", periods=4)
+    hist = pd.DataFrame({"etf_x": [9.0, 9.5, 10.0]}, index=idx_h)
+    inc = pd.DataFrame({"etf_x": [2.0, 2.2, 2.09, 2.30]}, index=idx_i)
+    out = _splice_levels(hist, inc)
+    # 拼接首值 = 历史末值 (无断层)
+    assert abs(out["etf_x"].iloc[0] - 10.0) < 1e-12
+    # 增量收益保留
+    r_orig = inc["etf_x"].pct_change().dropna()
+    r_new = out["etf_x"].pct_change().dropna()
+    pd.testing.assert_series_equal(r_orig, r_new)
+    # 拼接日收益 = 0 (而非 -80%)
+    combined = pd.concat([hist["etf_x"], out["etf_x"]])
+    assert abs(combined.pct_change().loc[idx_i[0]]) < 1e-12
+
+
+def test_splice_levels_skips_missing_or_zero():
+    """无重叠列/零基值列不改动 (防御)."""
+    import pandas as pd
+    from QuantNodes.strategy.allweather.data_etl.build_panel_v4 import (
+        _splice_levels)
+    idx = pd.bdate_range("2026-06-01", periods=2)
+    hist = pd.DataFrame({"etf_x": [10.0, 11.0]}, index=idx)
+    inc = pd.DataFrame({"etf_y": [1.0, 1.1], "etf_z": [0.0, 0.0]}, index=idx)
+    out = _splice_levels(hist, inc)
+    assert out["etf_y"].iloc[0] == 1.0     # 无历史列 → 不动
+    assert out["etf_z"].iloc[0] == 0.0     # 零基值 → 不动

@@ -70,3 +70,28 @@ def test_run_all_executes_end_to_end(tmp_audit):
     assert "回测数据对齐审计报告" in report
     assert "panel:" in report
     assert (Path(tmp_audit.output_dir) / "audit_findings.csv").exists()
+
+
+def test_audit_ohlcv_detects_codes_in_columns(tmp_path, monkeypatch):
+    """§5.44: audit_ohlcv 从列 MultiIndex 取资产代码 (旧代码误用 index → 全误报)."""
+    import pandas as pd
+    import numpy as np
+    panel = pd.DataFrame(
+        {"etf_123456": np.linspace(1.0, 1.2, 30)},
+        index=pd.bdate_range("2026-06-01", periods=30))
+    p_panel = tmp_path / "panel.parquet"
+    panel.to_parquet(p_panel)
+    # OHLCV: 列 MultiIndex (code, field)
+    cols = pd.MultiIndex.from_product([["123456"], ["close", "volume"]])
+    ohlcv = pd.DataFrame(
+        np.random.default_rng(1).normal(1.0, 0.01, (30, 2)),
+        index=panel.index, columns=cols)
+    p_oh = tmp_path / "ohlcv.parquet"
+    ohlcv.to_parquet(p_oh)
+    import QuantNodes.strategy.allweather.data_audit as da
+    monkeypatch.setattr(da, "ETF_OHLCV_ADJ_PATH", p_oh)
+    from QuantNodes.strategy.allweather.data_audit import DataAuditor
+    a = DataAuditor(panel_path=str(p_panel), output_dir=str(tmp_path / "audit"))
+    df = a.audit_ohlcv()
+    assert len(df) == 1
+    assert bool(df["in_ohlcv"].iloc[0]) is True

@@ -17,7 +17,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+
+
+def _splice_levels(hist: pd.DataFrame, inc: pd.DataFrame) -> pd.DataFrame:
+    """增量段按列水平比例缩放至历史段末端水平 (消除拼接断层).
+
+    历史段 (复权价) 与增量段 (原始价) 水平基准不同; 常数缩放保留增量收益,
+    使拼接日收益连续 (避免 512690 -63.7% 类伪跳变).
+    """
+    out = inc.copy()
+    for col in out.columns:
+        if col not in hist.columns:
+            continue
+        h = hist[col].dropna()
+        i = out[col].dropna()
+        if len(h) and len(i):
+            base = i.iloc[0]
+            if np.isfinite(base) and abs(base) > 1e-12:
+                out[col] = out[col] * (h.iloc[-1] / base)
+    return out
 
 
 def _parse_inc_window(inc_dir: Path) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -58,6 +78,11 @@ def build_panel_v4(
 
     inc_all = pd.concat([etf_inc, fut_inc], axis=1).sort_index()
     print(f"合并后增量: {inc_all.shape}")
+
+    # 拼接水平对齐 (§5.44 修复): 历史段为复权价, akshare 增量为未复权原始价,
+    # 裸 concat 会产生伪跳变 (512690 -63.7%). 按列比例缩放增量段至历史末端水平
+    # (常数缩放保留增量收益, 消除拼接断层).
+    inc_all = _splice_levels(panel_v3_pre, inc_all)
 
     panel_v4 = pd.concat([panel_v3_pre, inc_all]).sort_index()
     panel_v4 = panel_v4[~panel_v4.index.duplicated(keep="last")]
