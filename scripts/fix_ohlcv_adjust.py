@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parent.parent
@@ -19,10 +18,10 @@ THRESHOLD = 0.50  # 日收益超过此阈值视为公司行为
 
 
 def detect_corp_actions(panel: pd.DataFrame) -> list[dict]:
-    """检测所有 >50% 价格跳变."""
+    """检测所有 >50% 价格跳变 (含跨 NaN 缺口的水平跳变)."""
     actions = []
     for code in panel.columns.levels[0]:
-        c = panel[code]["close"]
+        c = panel[code]["close"].dropna()   # 跨缺口相邻比较 (§5.45 修复)
         ret = c / c.shift(1) - 1
         spikes = ret[ret.abs() > THRESHOLD]
         for date in spikes.index:
@@ -35,6 +34,8 @@ def detect_corp_actions(panel: pd.DataFrame) -> list[dict]:
                 "prev_close": prev,
                 "curr_close": curr,
             })
+    if not actions:
+        return []
     return pd.DataFrame(actions).sort_values("date").to_dict("records")
 
 
@@ -52,7 +53,9 @@ def forward_adjust(panel: pd.DataFrame, actions: list[dict]) -> pd.DataFrame:
             col = adj[code][field]
             mask = col.index < cut_date
             adj.loc[mask, (code, field)] = col[mask] * ratio
-        print(f"  [adj] {code} @ {cut_date:%Y-%m-%d}: prev={act['prev_close']:.4f} → curr={act['curr_close']:.4f}  ratio={ratio:.4f}")
+        print(f"  [adj] {code} @ {cut_date:%Y-%m-%d}: "
+              f"prev={act['prev_close']:.4f} → curr={act['curr_close']:.4f} "
+              f"ratio={ratio:.4f}")
     return adj
 
 
@@ -65,7 +68,9 @@ def main():
     actions = detect_corp_actions(panel)
     print(f"  发现 {len(actions)} 个事件:")
     for a in actions:
-        print(f"    {a['code']} @ {a['date']:%Y-%m-%d}: {a['prev_close']:.4f} → {a['curr_close']:.4f} ({a['ratio']-1:.2%})")
+        print(f"    {a['code']} @ {a['date']:%Y-%m-%d}: "
+              f"{a['prev_close']:.4f} → {a['curr_close']:.4f} "
+              f"({a['ratio']-1:.2%})")
 
     print("[adjust] 前复权 ...")
     adj = forward_adjust(panel, actions)

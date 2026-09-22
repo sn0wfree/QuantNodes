@@ -2737,3 +2737,32 @@ P1 增量段是 akshare **未复权原始价** → 2026-07-08 拼接日产生伪
 
 **产出**: build_panel_v4 修复 + panel_v4/v5 重建 + audit 修复;
 单测 +3 (splice 断层消除/收益保留 + audit 代码识别); 233 全过.
+
+---
+
+#### 5.45 数据补全 — 512890 OHLCV 缺失 + 复权检测缺口盲区 (2026-09-06)
+
+**背景**: §5.44 确认 `etf_512890`(红利低波) 是唯一真缺 OHLCV 的 panel 资产。
+
+**修复 1 — 补全 512890** (`scripts/add_etf_ohlcv.py`):
+- 源约定核验: raw 文件 = `fund_etf_hist_sina` (收盘/成交量逐值一致;
+  em 接口成交量为"手"= raw×100)
+- 同源拉取 512890 (2019-01-18 起) → 对齐现有 index → 合并 raw → 重跑前复权
+- **外科式改动**: 44 个原有资产字段**零差异** (逐字段 max|Δ|=0), 仅新增 512890
+
+**修复 2 — 复权检测缺口盲区** (`scripts/fix_ohlcv_adjust.py`):
+`detect_corp_actions` 用未 dropna 的序列算收益 → **跨 NaN 缺口的水平跳变被漏检**
+(6 只: 512010/512120/512170/512760/513100 + 新 512890)。修复: dropna 后比较
+相邻有效值。事件数 9 → **15**, 复权后 **|跳变|>50% = 0** ✓
+
+**对回测的影响: 正交 (无需重验)**
+- 判定: panel 的 ETF 历史价来自 **NAV 源**, 非 OHLCV-adjusted
+  (核验: panel `etf_512010` @2021-06-25 = 0.8020 = NAV 0.802,
+  而 OHLCV-adj 为 3.206/0.836)
+- `build_panel_v4` 只合并 panel_v3 + akshare 增量, **不读 OHLCV 文件**
+  → OHLCV 修复不影响 panel/回测结果
+- OHLCV 修复的受益面: 审计交叉验证 + `volume_loader` 量价信号 (D.1 flow)
+
+**产出**: `scripts/add_etf_ohlcv.py` (补全工具) + `fix_ohlcv_adjust` 缺口修复 +
+OHLCV raw/adjusted 文件更新 (45 资产);
+审计复跑 **12/12 in_ohlcv=True**; 单测 +4; **237 全过**.
