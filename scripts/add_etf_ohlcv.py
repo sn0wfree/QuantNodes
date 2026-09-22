@@ -38,7 +38,7 @@ def main():
     raw = pd.read_parquet(SRC)
     raw.index = pd.to_datetime(raw.index)
     have = {str(c) for c in raw.columns.get_level_values(0)}
-    targets = [c for c in ("512890",) if c not in have]
+    targets = [c for c in ("512890", "512100") if c not in have]
     if not targets:
         print("512890 已存在, 无需补全")
         return

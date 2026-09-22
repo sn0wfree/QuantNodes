@@ -77,8 +77,18 @@ def build_panel_v5(
     if skipped:
         print(f"跳过: {skipped}")
 
+    # §5.46 工具化: 中证1000 可交易代理 512100 (来自 OHLCV 复权面板;
+    # 该文件已处理 2022-09-05 份额折算 +176%)
+    ohlcv = pd.read_parquet(
+        "data/real/etf_ohlcv_2018-01-01_2026-06-30_adjusted.parquet")
+    ohlcv.index = pd.to_datetime(ohlcv.index)
+    if "etf_512100" not in panel.columns and ("512100", "close") in ohlcv.columns:
+        panel["etf_512100"] = ohlcv[("512100", "close")].reindex(panel.index)
+        print("  + etf_512100(中证1000ETF, OHLCV复权源)")
+
     print(f"\npanel_v5: {panel.shape} "
           f"({panel.index[0].date()} → {panel.index[-1].date()})")
+
     nonnull = panel.notna().mean()
     low = nonnull[nonnull < 0.9].sort_values()
     print(f"非空率 <90% 的列 ({len(low)}):")
