@@ -50,12 +50,21 @@ def compute_surface(df: pd.DataFrame) -> pd.DataFrame:
         [x for x in parsed if x is not None],
         columns=["prod", "exp", "typ", "strike"], index=opt.index)], axis=1)
 
+    # 数据驱动到期日 (§5.54): 每个 (品种, 到期月) 的实际最后交易日
+    # 已到期 → 用数据里的 max TradeDate; 未到期 → day-15 近似
+    data_end = df["TradeDate"].max()
+    grp_last = opt.groupby(["prod", "exp"])["TradeDate"].max()
+    exp_actual = {k: (ltd if ltd < data_end - pd.Timedelta(days=3) else k[1])
+                  for k, ltd in grp_last.items()}
+    opt["exp_act"] = [exp_actual[(p, e)]
+                      for p, e in zip(opt["prod"], opt["exp"])]
+
     rows = {}
     for d, dag in opt.groupby("TradeDate", sort=True):
         exp_iv = {}
         for e, g in dag.groupby("exp"):
             F = fmap.get((d, e), np.nan)
-            T = (e - d).days / 365.0
+            T = (g["exp_act"].iloc[0] - d).days / 365.0
             if not np.isfinite(F) or F <= 0 or T <= MIN_T or T > 0.5:
                 continue
             pick = g.assign(dist=(g["strike"] - F).abs()).nsmallest(4, "dist")
@@ -71,7 +80,7 @@ def compute_surface(df: pd.DataFrame) -> pd.DataFrame:
         far = es[1] if len(es) > 1 else None
         put_iv = call_iv = np.nan
         F = fmap.get((d, near), np.nan)
-        T = (near - d).days / 365.0
+        T = (exp_actual[(dag["prod"].iloc[0], near)] - d).days / 365.0
         if np.isfinite(F) and F > 0 and T > MIN_T:
             g = dag[dag["exp"] == near]
             puts, calls = g[g["typ"] == "P"], g[g["typ"] == "C"]

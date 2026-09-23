@@ -10,41 +10,41 @@
 池:      REF41 (41 资产: 10 ETF + 31 期货, 商品占比 ~64%)
 引擎:    D v3 管线 (d_pipeline.py)
          └ cov=lw / **ME 月频** 调仓 / bond_cap=0.40 / window=252 / min_obs=60
-杠杆:    D 内部 vol_target=15% (max_leverage=2.5); **组合层 L=1.1**
+杠杆:    D 内部 vol_target=15% (max_leverage=2.5)
 叠加层:  ① D.1 负趋势 (trend, **aggressive** 0.7/0.4) + rapid
          ② D.2 动量倾斜 (β=0.20, lookback=60)
          ③ P1-B 相关性覆盖 (θ=0.60, k=1.0)      ← §5.37
          ④ 共振门控 AR3 (60日/进P70/出P40∧volP50/dd_floor **-5%**/k=**0.9**)  ← §5.41
-Alpha sleeves (美元中性多空, 月频):
+Alpha sleeve (美元中性多空, 月频):
          ⑤ **Carry 30%** (展期收益, 平滑 20d)                  ← §5.48/§5.51
-         ⑥ **IVTS 5%** (波动率期限结构斜率 iv_far−iv_near)     ← §5.53
+         (IVTS 5% 经 §5.54 修正到期日后 OOS 无增量 → **不纳入**)
 资本口径: 名义口径 + 融资 2% (回购)
 ```
 
 ## 2. 业绩 (样本内 2019-01 → 2026-06, 含成本与融资)
 
-| 指标 | v3 (ME+Carry+IVTS+L1.1) | v1 (W-FRI) | 目标 |
-|------|-------------------------|-----------|------|
-| CAGR | **10.45%** | 10.85% | ≥ 10% ✅ |
+| 指标 | v3 (ME+Carry30) | v1 (W-FRI) | 目标 |
+|------|-----------------|-----------|------|
+| CAGR | **10.10%** | 10.85% | ≥ 10% ✅ |
 | Sharpe | **2.02** | 1.35 | ≥ 2.0 ✅ |
-| Vol | 5.19% | 8.20% | — |
-| **MaxDD** | **-5.38%** | -10.30% | ≤ 10% ✅ |
+| Vol | 5.01% | 8.20% | — |
+| **MaxDD** | **-5.20%** | -10.30% | ≤ 10% ✅ |
 
 ## 3. Walk-forward 复验 (OOS 2022-2026)
 
-| 指标 | v3 (D+Carry+IVTS) | v2 (D+Carry) | v1 (D only) |
-|------|-------------------|-------------|-------------|
-| OOS 均值 Sharpe | **1.79** | 1.60 | 1.01 |
-| OOS 均值 MaxDD | **-2.99%** | -3.6% | -6.0% |
-| 参数稳定性 | carry 0.3 / ivts 0.05-0.1 / L 1.0-1.1 | — | — |
+| 指标 | v3 (D+Carry30) | v2 (D+Carry20) | v1 (D only) |
+|------|----------------|----------------|-------------|
+| OOS 均值 Sharpe | **1.69-1.72** | 1.60 | 1.01 |
+| OOS 均值 MaxDD | ~-3% | -3.6% | -6.0% |
+| 参数稳定性 | **5/5 折选 carry 0.3** | — | — |
 
 ## 4. 目标达成情况
 
 | 目标 | 要求 | 实际 (v3, IS) | 达成 |
 |------|------|--------------|------|
-| CAGR | ≥ 10% | 10.45% | ✅ |
-| MaxDD | ≤ 10% | -5.38% | ✅ |
-| Sharpe | ≥ 2.0 | 2.02 (IS) / 1.79 (OOS) | ✅ IS / ⚠️ OOS 差 0.21 |
+| CAGR | ≥ 10% | 10.10% | ✅ |
+| MaxDD | ≤ 10% | -5.20% | ✅ |
+| Sharpe | ≥ 2.0 | 2.02 (IS) / ~1.7 (OOS) | ✅ IS / ⚠️ OOS 差 0.3 |
 
 ## 5. 启用边界 (重要)
 
@@ -76,12 +76,10 @@ Alpha sleeves (美元中性多空, 月频):
 ## 8. 复现命令
 
 ```python
-# v3 (2026-09-23): 月频 + Carry 30% + IVTS 5% + 组合杠杆 L=1.1
+# v3 (2026-09-23): 月频 + Carry 30% (IVTS 经 §5.54 修正到期日后不纳入)
 from QuantNodes.strategy.allweather.d_pipeline import run_d_sleeve
 from QuantNodes.strategy.allweather.carry_sleeve import (
-    build_carry_sleeve, combine_sleeves)
-from QuantNodes.strategy.allweather.iv_sleeve import (
-    build_ivts_sleeve, load_ivts)
+    build_carry_sleeve, combine_with_d)
 
 res = run_d_sleeve(panel_ref41, bond_cap=0.40, window=252,
                    rebalance_freq='ME', cov_estimator='lw',
@@ -95,14 +93,11 @@ res = run_d_sleeve(panel_ref41, bond_cap=0.40, window=252,
                    resonance_enter=0.70, resonance_exit=0.40,
                    resonance_vol_exit=0.50, resonance_dd_floor=-0.05)
 carry_ret, _ = build_carry_sleeve(panel_ref41, carry, freq='ME')   # smooth=20
-ivts_ret, _ = build_ivts_sleeve(panel_ref41, load_ivts())
-nav = combine_sleeves(res.nav, {'carry': carry_ret, 'ivts': ivts_ret},
-                      {'carry': 0.3, 'ivts': 0.05}, leverage=1.1)
-# 2019 起口径: CAGR 10.45% / Sharpe 2.02 / MaxDD -5.38% (IS)
-# WF OOS: Sharpe 1.79 / MaxDD -3.0%
+nav = combine_with_d(res.nav, carry_ret, carry_weight=0.3, leverage=1.0)
+# 2019 起口径: CAGR 10.10% / Sharpe 2.02 / MaxDD -5.20% (IS)
+# WF OOS: Sharpe ~1.7 (carry 0.3, 5/5 折)
 ```
 
-**数据依赖**: `data/allweather/carry_daily.parquet` (extract_carry.py) +
-`data/allweather/iv_surface/` (extract_iv_surface.py)
+**数据依赖**: `data/allweather/carry_daily.parquet` (extract_carry.py)
 
 **验证脚本**: `model_ablation_test.py` / `wf_combo_overlay.py` / `production_validation.py`
