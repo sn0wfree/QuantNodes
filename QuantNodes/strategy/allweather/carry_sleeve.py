@@ -28,32 +28,24 @@ def month_end_mask(idx: pd.DatetimeIndex) -> pd.Series:
     return s.groupby([idx.year, idx.month]).transform("max") == s
 
 
-def build_carry_sleeve(
+def build_factor_sleeve(
     panel: pd.DataFrame,
-    carry: pd.DataFrame,
+    signal: pd.DataFrame,
     vol_win: int = 60,
     gross_cap: float = 1.0,
     freq: str = "ME",
     rate: float = 0.0001,
-    smooth: int = 20,
+    smooth: int = 1,
 ) -> tuple[pd.Series, pd.DataFrame]:
-    """构造 carry 多空 sleeve.
+    """通用横截面多空 sleeve: 信号 → 美元中性权重 → 净收益.
 
-    Args:
-        panel: 价格面板 (含期货列)
-        carry: 展期收益信号 (产品 × 日期, 由 extract_carry.py 生成)
-        vol_win: 风险调整波动窗口
-        gross_cap: 总敞口上限
-        freq: 调仓频率 ("ME" 月频 / "D" 日频)
-        rate: 期货单边成本 (默认 1bp)
-        smooth: 信号平滑窗口 (默认 20d, §5.51: IS +0.07 / OOS +0.03, 换手 −29%)
-
-    Returns:
-        (net_returns, weights)
+    1. signal = 信号 / vol_60d (风险调整)
+    2. 横截面 z-score (clip ±2) → 权重 ∝ z, 美元中性 (Σw=0), gross ≤ gross_cap
+    3. 调仓日重置, 中间持仓不变; 收益 = Σ w(t−1)·r(t) − Σ|Δw|·rate
     """
     ret = panel.pct_change(fill_method=None)
     vol = ret.rolling(vol_win, min_periods=20).std()
-    sig = carry.reindex(panel.index).ffill() / vol.replace(0, np.nan)
+    sig = signal.reindex(panel.index).ffill() / vol.replace(0, np.nan)
     if smooth > 1:
         sig = sig.rolling(smooth, min_periods=1).mean()
     cols = [c for c in sig.columns if c in panel.columns]
@@ -77,8 +69,53 @@ def build_carry_sleeve(
     r = pd.Series(rate, index=cols)
     port = (w.shift(1) * ret[cols]).sum(axis=1) \
         - (w.diff().abs() * r).sum(axis=1).fillna(0.0)
-    port.name = "carry_sleeve"
+    port.name = "factor_sleeve"
     return port.dropna(), w
+
+
+def build_carry_sleeve(
+    panel: pd.DataFrame,
+    carry: pd.DataFrame,
+    vol_win: int = 60,
+    gross_cap: float = 1.0,
+    freq: str = "ME",
+    rate: float = 0.0001,
+    smooth: int = 20,
+) -> tuple[pd.Series, pd.DataFrame]:
+    """构造 carry 多空 sleeve (见 build_factor_sleeve).
+
+    Args:
+        smooth: 信号平滑窗口 (默认 20d, §5.51: IS +0.07 / OOS +0.03, 换手 −29%)
+
+    Returns:
+        (net_returns, weights)
+    """
+    port, w = build_factor_sleeve(panel, carry, vol_win, gross_cap, freq,
+                                  rate, smooth)
+    port.name = "carry_sleeve"
+    return port, w
+
+
+def combine_sleeves(
+    nav_d: pd.Series,
+    sleeves: dict[str, pd.Series],
+    weights: dict[str, float],
+    leverage: float = 1.0,
+    financing_rate: float = 0.02,
+) -> pd.Series:
+    """D 组合 + 多个 sleeve 按权重合成 (含杠杆与融资).
+
+    combined = (1 − Σw)·r_D + Σ w_i·r_i,  再 × L − (L−1)·融资利率/252
+    """
+    idx = nav_d.index
+    r_d = nav_d.pct_change().fillna(0.0)
+    port = (1.0 - sum(weights.values())) * r_d
+    for name, w in weights.items():
+        port = port + w * sleeves[name].reindex(idx).fillna(0.0)
+    net = port * leverage - (leverage - 1.0) * financing_rate / ANN
+    nav = (1.0 + net).cumprod()
+    nav.name = "combined"
+    return nav
 
 
 def combine_with_d(
@@ -88,15 +125,8 @@ def combine_with_d(
     leverage: float = 1.0,
     financing_rate: float = 0.02,
 ) -> pd.Series:
-    """D 组合 × carry sleeve 按权重合成 (含杠杆与融资).
-
-    combined = (1−wc)·r_D + wc·r_carry,  再 × L − (L−1)·融资利率/252
-    """
-    idx = nav_d.index
-    r_d = nav_d.pct_change().fillna(0.0)
-    cs = carry_ret.reindex(idx).fillna(0.0)
-    base = (1.0 - carry_weight) * r_d + carry_weight * cs
-    net = base * leverage - (leverage - 1.0) * financing_rate / ANN
-    nav = (1.0 + net).cumprod()
+    """D 组合 × carry sleeve 按权重合成 (combine_sleeves 单 sleeve 特例)."""
+    nav = combine_sleeves(nav_d, {"carry": carry_ret}, {"carry": carry_weight},
+                          leverage, financing_rate)
     nav.name = "D_plus_carry"
     return nav
