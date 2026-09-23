@@ -71,3 +71,16 @@ def test_combine_with_d_weights_and_leverage():
     pd.testing.assert_series_equal(
         z.reset_index(drop=True), nav_d.reset_index(drop=True),
         check_names=False, rtol=1e-9)
+
+
+def test_carry_sleeve_smoothing_reduces_turnover():
+    """信号平滑 (§5.51) 降低换手, 且保持美元中性."""
+    panel, carry = _make_data(n_days=600)
+    _, w1 = build_carry_sleeve(panel, carry, freq="ME", smooth=1)
+    _, w20 = build_carry_sleeve(panel, carry, freq="ME", smooth=20)
+    to1 = w1.diff().abs().sum(axis=1).sum()
+    to20 = w20.diff().abs().sum(axis=1).sum()
+    assert to20 < to1
+    rb = month_end_mask(panel.index)
+    assert (w20[rb].sum(axis=1).abs() < 1e-9).all()
+    assert (w20[rb].abs().sum(axis=1) <= 1.0 + 1e-9).all()

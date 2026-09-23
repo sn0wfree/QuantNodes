@@ -35,6 +35,7 @@ def build_carry_sleeve(
     gross_cap: float = 1.0,
     freq: str = "ME",
     rate: float = 0.0001,
+    smooth: int = 20,
 ) -> tuple[pd.Series, pd.DataFrame]:
     """构造 carry 多空 sleeve.
 
@@ -45,6 +46,7 @@ def build_carry_sleeve(
         gross_cap: 总敞口上限
         freq: 调仓频率 ("ME" 月频 / "D" 日频)
         rate: 期货单边成本 (默认 1bp)
+        smooth: 信号平滑窗口 (默认 20d, §5.51: IS +0.07 / OOS +0.03, 换手 −29%)
 
     Returns:
         (net_returns, weights)
@@ -52,6 +54,8 @@ def build_carry_sleeve(
     ret = panel.pct_change(fill_method=None)
     vol = ret.rolling(vol_win, min_periods=20).std()
     sig = carry.reindex(panel.index).ffill() / vol.replace(0, np.nan)
+    if smooth > 1:
+        sig = sig.rolling(smooth, min_periods=1).mean()
     cols = [c for c in sig.columns if c in panel.columns]
     sig = sig[cols]
     rb = (month_end_mask(panel.index) if freq == "ME"
