@@ -2832,3 +2832,67 @@ OHLCV raw/adjusted 文件更新 (45 资产);
 **产出**: `scripts/extend_cash_proxy.py` + `v7_index_v2.parquet` 更新
 (cash_proxy 现至 2026-09-03); 单测 +2; **239 全过**.
 → **数据遗留清零** (OHLCV/NAV/拼接/audit/cash_proxy 全部处理完毕).
+
+---
+
+#### 5.48 Carry (展期收益) 真 alpha — 数据 + sleeve + WF 复验 (2026-09-23)
+
+**动机**: Sharpe 2.0 缺口需真 alpha. Carry (roll yield) 是商品/FI 文献最经典因子.
+
+**数据提取** (`scripts/extract_carry.py`):
+- 源: ClickHouse `daily_quote.v_<产品>_daily` (合约级: Symbol/TradeDate/Close/OpenInterest,
+  92 产品视图, 2018-01-02 → 2026-09-18)
+- 构造: 过滤纯期货合约 (正则排除期权) → 近月/次月按到期日排序 →
+  `carry = (P_near/P_far − 1) × 365/(到期日差)`
+- 输出: `data/allweather/carry_daily.parquet` (2116 × 29 产品)
+- 经济含义核验: 铁矿 +25.8% / 焦煤 +13.9% / 股指贴水 IF/IC/IH +2.3~7.7% /
+  贵金属 au/ag −2.4~2.7% (contango) — 全部符合理论
+
+**Sleeve 构造** (`QuantNodes/strategy/allweather/carry_sleeve.py`):
+signal = carry/vol_60d → 横截面 z-score (clip±2) → 美元中性多空 (Σw=0, gross≤1) →
+月频调仓 → 收益 Σw(t−1)r(t) − 成本.
+
+**sleeve 独立 + 组合**:
+| 配置 | CAGR | Sharpe | Vol | MaxDD |
+|------|------|--------|-----|-------|
+| Carry sleeve 独立 | 4.81% | 0.82 | 6.23% | -9.92% |
+| D 组合 (ME+调优) | 11.33% | 1.66 | 6.85% | -8.50% |
+| D 90% + Carry 10% | 10.70% | 1.74 | 6.19% | -7.19% |
+| **D 80% + Carry 20%** | 10.06% | **1.81** | 5.60% | -5.98% |
+| D 70% + Carry 30% | 9.43% | 1.86 | 5.12% | -4.83% |
+
+- **与 60 日动量横截面秩相关 +0.093** (近正交)
+- 组合后 vol 仅 5-6% → 有加杠杆空间 (Sharpe 尺度不变):
+  D 80%+Carry 20% × L=1.5 → 14.24%/1.69/-9.03%; × L=2.0 → 18.48%/1.63/-12.06%
+
+**Walk-forward 复验** (IS 选 (carry权重 wc, 杠杆 L) 满足 CAGR≥10% & DD≤10%, OOS 评估):
+| OOS年 | IS选出 | 组合 Sh/CAGR/DD | 基线D Sh/CAGR/DD |
+|------|--------|-----------------|-----------------|
+| 2022 | (0.3,1.0) | **1.17**/4.3%/-2.4% | 0.74/3.3%/-2.8% |
+| 2023 | (0.3,1.0) | **1.51**/5.3%/-2.7% | 1.33/6.6%/-3.7% |
+| 2024 | (0.2,1.0) | **1.46**/7.6%/-6.0% | 1.21/7.6%/-8.5% |
+| 2025 | (0.2,1.0) | **1.09**/6.1%/-4.0% | 0.98/6.2%/-4.5% |
+| 2026 | (0.4,1.25) | 2.41/14.4%/-3.2% | 2.59/21.4%/-4.1% |
+| **均值** | wc 0.2-0.4, L 1.0 | **1.53 / -3.6%** | 1.37 / -4.7% |
+
+→ **OOS Sharpe +0.16**, 4/5 折改善, 参数稳定. **Carry = 已确认的真 alpha 通道.**
+
+#### 5.49 其他 alpha 因子研究 — basis momentum / seasonality 均未通过 (2026-09-23)
+
+| 因子 | 定义 | 独立 Sharpe | 与 D 组合 | 结论 |
+|------|------|-------------|-----------|------|
+| **carry** | carry/vol 横截面 | **0.76** | **1.81** | ✅ 有效 (§5.48) |
+| basis_mom | Δcarry(20d)/vol (代理) | **-0.13** | 1.71 | ❌ 无效 |
+| seasonality | 同月历史均值 (PIT) | **-1.41** | 1.63 | ❌ 无效 (MaxDD -45%) |
+
+- carry 与 basis_mom 相关 0.616 (同族); seasonality 正交但无效
+- 三因子合成 (1.62) 反而不如 carry 单独 (1.81) → 只保留 carry
+
+**实现局限 (诚实)**:
+- basis momentum 用的是 **Δcarry 简化代理**; Boons-Prado 2019 原始定义为
+  近月/次近月合约 12 个月动量之差, 需逐合约价格序列 (数据可行, 工程中等)
+  → **代理失败 ≠ 因子失败**, 留作后续
+- seasonality 为简短实现, 未做品种特异的季节性建模 → 建议放弃
+
+**产出**: `scripts/extract_carry.py` + `carry_sleeve.py` + 单测 +4;
+`carry_sleeve_test.py` / `carry_tilt_test.py` / `alpha_factors_test.py`.

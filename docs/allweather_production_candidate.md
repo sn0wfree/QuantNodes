@@ -75,19 +75,26 @@
 ## 8. 复现命令
 
 ```python
+# v2 (2026-09-23 升级): 月频 + D.1 aggressive + 共振 k=0.9 + Carry sleeve 20%
 from QuantNodes.strategy.allweather.d_pipeline import run_d_sleeve
+from QuantNodes.strategy.allweather.carry_sleeve import (
+    build_carry_sleeve, combine_with_d)
+
 res = run_d_sleeve(panel_ref41, bond_cap=0.40, window=252,
-                   rebalance_freq='W-FRI', cov_estimator='lw',
-                   neg_trend_mode='trend', neg_trend_preset='balanced',
+                   rebalance_freq='ME', cov_estimator='lw',          # 月频
+                   neg_trend_mode='trend', neg_trend_preset='aggressive',
                    include_rapid=True, momentum_beta=0.20,
                    volume=vol, oi=oi, asset_classes=ASSET_CLASSES,
                    cash_ret=cash_ret, target_vol=0.15, max_leverage=2.5,
                    financing_rate=0.02,
                    correlation_k=1.0, correlation_threshold=0.60,
-                   resonance_k=0.7, resonance_ar3_window=60,
+                   resonance_k=0.9, resonance_ar3_window=60,
                    resonance_enter=0.70, resonance_exit=0.40,
-                   resonance_vol_exit=0.50, resonance_dd_floor=-0.03)
-# 2019 起口径: CAGR 10.85% / Sharpe 1.35 / MaxDD -10.30%
+                   resonance_vol_exit=0.50, resonance_dd_floor=-0.05)
+carry_ret, _ = build_carry_sleeve(panel_ref41, carry, freq='ME')
+nav = combine_with_d(res.nav, carry_ret, carry_weight=0.2, leverage=1.0)
+# 2019 起口径: CAGR 10.06% / Sharpe 1.81 / MaxDD -5.98% (IS)
+# WF OOS: Sharpe 1.53 / MaxDD -3.6%
 ```
 
 **验证脚本**: `model_ablation_test.py` / `wf_combo_overlay.py` / `production_validation.py`
