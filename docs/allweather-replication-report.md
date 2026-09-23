@@ -2882,17 +2882,35 @@ signal = carry/vol_60d → 横截面 z-score (clip±2) → 美元中性多空 (�
 | 因子 | 定义 | 独立 Sharpe | 与 D 组合 | 结论 |
 |------|------|-------------|-----------|------|
 | **carry** | carry/vol 横截面 | **0.76** | **1.81** | ✅ 有效 (§5.48) |
-| basis_mom | Δcarry(20d)/vol (代理) | **-0.13** | 1.71 | ❌ 无效 |
+| basis_mom | Δcarry(20d)/vol | **-0.13** | 1.71 | ❌ horizon 错误 |
 | seasonality | 同月历史均值 (PIT) | **-1.41** | 1.63 | ❌ 无效 (MaxDD -45%) |
 
-- carry 与 basis_mom 相关 0.616 (同族); seasonality 正交但无效
+- carry 与 basis_mom(20d) 相关 0.616; seasonality 正交但无效
 - 三因子合成 (1.62) 反而不如 carry 单独 (1.81) → 只保留 carry
 
-**实现局限 (诚实)**:
-- basis momentum 用的是 **Δcarry 简化代理**; Boons-Prado 2019 原始定义为
-  近月/次近月合约 12 个月动量之差, 需逐合约价格序列 (数据可行, 工程中等)
-  → **代理失败 ≠ 因子失败**, 留作后续
-- seasonality 为简短实现, 未做品种特异的季节性建模 → 建议放弃
+**5.49b basis momentum horizon 修正 (2026-09-23)**:
+
+20 日 horizon 是错误的 (Boons-Prado 原版为 12 个月). horizon 敏感性:
+
+| Δcarry horizon | 20d | 60d | 120d | **252d** | 378d | carry(level) |
+|----------------|-----|-----|------|----------|------|--------------|
+| Sharpe | -0.13 | 0.36 | 0.63 | **0.74** | 0.78 | 0.76 |
+
+→ 修正 horizon 后 basis momentum **有效** (Sharpe 0.74). 但:
+- 与 carry **相关 0.677** (同族); 与 Δcarry(252) 代理相关 0.574-0.677
+- 组合 `carry+bm252 @0.2` = 1.80, `@0.3` = 1.85 → **不加分** (carry 单独 1.81/1.86)
+- **冗余, 不纳入**
+
+**完整版 (逐合约 12 月动量) 不可行 — 数据硬约束**:
+- Boons-Prado 定义 `BM = r_near(12m) − r_far(12m)` 需近月合约 12 个月价格历史
+- 实测中国商品期货合约**上市提前期仅 ~12 个月** (CU/RB/I/M 中位跨度 361-364 天;
+  如 cu2705 于 2026-05-18 上市, 对应 2027-05 到期)
+- → t 时刻近月合约上市仅 ~11 个月, **不存在 12 个月前价格** → 逐合约 BM 无法构造
+- 经济等价的可行实现即 **Δcarry(12m)** (期限结构斜率变化), 已测: 有效但冗余
+- 验证脚本 `basis_momentum_test.py` (合成数据已复现该数据约束)
+
+- seasonality 为简短实现, 未做品种特异的季节性建模 → **建议放弃**
 
 **产出**: `scripts/extract_carry.py` + `carry_sleeve.py` + 单测 +4;
-`carry_sleeve_test.py` / `carry_tilt_test.py` / `alpha_factors_test.py`.
+`carry_sleeve_test.py` / `carry_tilt_test.py` / `alpha_factors_test.py` /
+`basis_momentum_test.py`.
