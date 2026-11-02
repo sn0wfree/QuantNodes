@@ -217,3 +217,12 @@ export/*.xz
 /20260904/
 *.bak-*
 QuantNodes/strategy.zip
+
+# 数据与模型产物不入库（2026-11-02）
+data/real/*.parquet
+data/high_freq_macro/*.npy
+data/high_freq_macro/*.parquet
+data/cmf/*.duckdb*
+scripts/combo/*.pkl
+reports/gold/overview_data.pkl
+reports/gold/gold_nav_curve.csv
