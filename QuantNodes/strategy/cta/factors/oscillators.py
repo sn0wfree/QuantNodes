@@ -6,6 +6,7 @@
     - StochasticFactor: 随机指标 KDJ
     - CCIFactor: 商品通道指数
     - WilliamsRFactor: 威廉 %R
+    - TSIFactor: 真实强度指数 (双 EMA 平滑动量)
 """
 from __future__ import annotations
 
@@ -176,4 +177,54 @@ class WilliamsRFactor(Factor):
         sig = pd.DataFrame(0.0, index=ohlc.index, columns=["williams_r"])
         sig.loc[wr < self.low, "williams_r"] = 1.0    # 超卖 → 多
         sig.loc[wr > self.high, "williams_r"] = -1.0  # 超买 → 空
+        return sig
+
+
+class TSIFactor(Factor):
+    """真实强度指数 (True Strength Index) 因子.
+
+    双 EMA 平滑动量, 输出 -100 ~ +100:
+        PC  = EMA(EMA(Δclose, r), s)
+        APC = EMA(EMA(|Δclose|, r), s)
+        TSI = 100 · PC / APC
+
+    信号:
+        TSI >  high_threshold → 多 (趋势向上)
+        TSI <  low_threshold  → 空 (趋势向下)
+        区间 [-high, high]     → 0 (中性)
+
+    研报: 华泰金工《时序CTA方法论综述》(2026-06-12), Levine & Pedersen (2016).
+    与 RSI 类似但先双 EMA 平滑, 对噪声更鲁棒; 用于构建 TSI 置信区间判别趋势可交易性.
+
+    参数:
+        r: 第一层 EMA 窗口 (默认 25)
+        s: 第二层 EMA 窗口 (默认 13)
+        high_threshold: 多头触发 (默认 25)
+        low_threshold: 空头触发 (默认 -25)
+    """
+
+    name = "tsi"
+
+    def __init__(self, r: int = 25, s: int = 13,
+                 high_threshold: float = 25.0, low_threshold: float = -25.0):
+        self.r = r
+        self.s = s
+        self.high = high_threshold
+        self.low = low_threshold
+
+    def raw_value(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        """连续值: TSI 值, 范围约 [-100, +100]."""
+        delta = prices.diff()
+        ema_r = lambda x: x.ewm(span=self.r, adjust=False).mean()
+        ema_s = lambda x: x.ewm(span=self.s, adjust=False).mean()
+        pc = ema_s(ema_r(delta))
+        apc = ema_s(ema_r(delta.abs()))
+        tsi = 100.0 * pc / apc.replace(0, np.nan)
+        return tsi
+
+    def compute(self, prices: pd.DataFrame, **kwargs) -> pd.DataFrame:
+        tsi = self.raw_value(prices)
+        sig = pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+        sig[tsi > self.high] = 1.0
+        sig[tsi < self.low] = -1.0
         return sig

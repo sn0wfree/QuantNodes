@@ -49,6 +49,7 @@ class CtaStrategy:
     """CTA 策略回调基类.
 
     策略子类实现 target_positions(), 返回每个交易日每个合约的目标持仓.
+    post_step(nav) 可选实现, 在每日 mark-to-market 后调用, 用于更新风控状态.
     """
 
     def target_positions(self, date, data: dict) -> dict[str, float]:
@@ -57,6 +58,13 @@ class CtaStrategy:
         data: 预加载的行情面板 (由调用方构造)
         """
         raise NotImplementedError
+
+    def post_step(self, nav: float) -> None:
+        """每日 mark-to-market 后的回调 (可选).
+
+        用于更新 DrawdownCircuitBreaker 等风控状态.
+        默认为空操作, 不影响现有策略.
+        """
 
 
 def run_cta_backtest(
@@ -150,6 +158,9 @@ def run_cta_backtest(
             pos_hist[s][i] = pos.qty if pos else 0.0
 
         nav[i] = equity_hist[-1] / config.initial_cash
+
+        # 5. 回调 (用于 DrawdownCircuitBreaker 等风控)
+        strategy.post_step(nav[i])
 
     nav_series = pd.Series(nav, index=pd.DatetimeIndex(dates), name="nav")
 

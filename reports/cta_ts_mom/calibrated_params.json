@@ -1,0 +1,548 @@
+{
+  "IF": {
+    "trend_up": {
+      "confirm_window": 10,
+      "ema_slow": 30,
+      "use_ema_slope": true,
+      "chandelier_mult": 5.0,
+      "target_vol": 0.2
+    },
+    "trend_down": {
+      "confirm_window": 10,
+      "ema_slow": 30,
+      "use_ema_slope": true,
+      "chandelier_mult": 5.0,
+      "target_vol": 0.2
+    },
+    "range": {
+      "rsi_window": 20,
+      "rsi_oversold": 30.0,
+      "rsi_overbought": 65.0
+    },
+    "global": {
+      "max_holding_days": 30,
+      "target_vol": 0.2
+    },
+    "best_val_calmar": 4.643847258290852
+  },
+  "IC": {
+    "trend_up": {
+      "confirm_window": 3,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.2
+    },
+    "trend_down": {
+      "confirm_window": 3,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.2
+    },
+    "range": {
+      "rsi_window": 14,
+      "rsi_oversold": 35.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 120,
+      "target_vol": 0.2
+    },
+    "best_val_calmar": -0.30030652288303417
+  },
+  "IH": {
+    "trend_up": {
+      "confirm_window": 5,
+      "ema_slow": 30,
+      "use_ema_slope": false,
+      "chandelier_mult": 2.0,
+      "target_vol": 0.1
+    },
+    "trend_down": {
+      "confirm_window": 5,
+      "ema_slow": 30,
+      "use_ema_slope": false,
+      "chandelier_mult": 2.0,
+      "target_vol": 0.1
+    },
+    "range": {
+      "rsi_window": 14,
+      "rsi_oversold": 25.0,
+      "rsi_overbought": 70.0
+    },
+    "global": {
+      "max_holding_days": 30,
+      "target_vol": 0.1
+    },
+    "best_val_calmar": -0.2152452994206404
+  },
+  "T": {
+    "trend_up": {
+      "confirm_window": 5,
+      "ema_slow": 60,
+      "use_ema_slope": false,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 5,
+      "ema_slow": 60,
+      "use_ema_slope": false,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 10,
+      "rsi_oversold": 25.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 120,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": 1.0748919586759473
+  },
+  "TF": {
+    "trend_up": {
+      "confirm_window": 15,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 15,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 14,
+      "rsi_oversold": 30.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 120,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": -0.6125664289176466
+  },
+  "TS": {
+    "trend_up": {
+      "confirm_window": 3,
+      "ema_slow": 60,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.1
+    },
+    "trend_down": {
+      "confirm_window": 3,
+      "ema_slow": 60,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.1
+    },
+    "range": {
+      "rsi_window": 20,
+      "rsi_oversold": 25.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 60,
+      "target_vol": 0.1
+    },
+    "best_val_calmar": 0.0
+  },
+  "AU": {
+    "trend_up": {
+      "confirm_window": 5,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 5,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 20,
+      "rsi_oversold": 35.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 60,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": 4.266192203574952
+  },
+  "AG": {
+    "trend_up": {
+      "confirm_window": 15,
+      "ema_slow": 30,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 15,
+      "ema_slow": 30,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 20,
+      "rsi_oversold": 30.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 60,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": -0.32030966729675897
+  },
+  "CU": {
+    "trend_up": {
+      "confirm_window": 10,
+      "ema_slow": 30,
+      "use_ema_slope": true,
+      "chandelier_mult": 2.0,
+      "target_vol": 0.2
+    },
+    "trend_down": {
+      "confirm_window": 10,
+      "ema_slow": 30,
+      "use_ema_slope": true,
+      "chandelier_mult": 2.0,
+      "target_vol": 0.2
+    },
+    "range": {
+      "rsi_window": 10,
+      "rsi_oversold": 35.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 30,
+      "target_vol": 0.2
+    },
+    "best_val_calmar": -0.3811531466043447
+  },
+  "AL": {
+    "trend_up": {
+      "confirm_window": 15,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 15,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 10,
+      "rsi_oversold": 30.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 60,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": 1.4180616841607439
+  },
+  "ZN": {
+    "trend_up": {
+      "confirm_window": 15,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 5.0,
+      "target_vol": 0.2
+    },
+    "trend_down": {
+      "confirm_window": 15,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 5.0,
+      "target_vol": 0.2
+    },
+    "range": {
+      "rsi_window": 14,
+      "rsi_oversold": 35.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 30,
+      "target_vol": 0.2
+    },
+    "best_val_calmar": 0.36102683016006815
+  },
+  "NI": {
+    "trend_up": {
+      "confirm_window": 3,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 3,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 20,
+      "rsi_oversold": 25.0,
+      "rsi_overbought": 65.0
+    },
+    "global": {
+      "max_holding_days": 60,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": 2.3644997031187875
+  },
+  "RB": {
+    "trend_up": {
+      "confirm_window": 15,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.2
+    },
+    "trend_down": {
+      "confirm_window": 15,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 3.0,
+      "target_vol": 0.2
+    },
+    "range": {
+      "rsi_window": 20,
+      "rsi_oversold": 25.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 30,
+      "target_vol": 0.2
+    },
+    "best_val_calmar": 0.0
+  },
+  "I": {
+    "trend_up": {
+      "confirm_window": 3,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.2
+    },
+    "trend_down": {
+      "confirm_window": 3,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.2
+    },
+    "range": {
+      "rsi_window": 14,
+      "rsi_oversold": 30.0,
+      "rsi_overbought": 70.0
+    },
+    "global": {
+      "max_holding_days": 120,
+      "target_vol": 0.2
+    },
+    "best_val_calmar": 0.38570812175263053
+  },
+  "SC": {
+    "trend_up": {
+      "confirm_window": 10,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 5.0,
+      "target_vol": 0.1
+    },
+    "trend_down": {
+      "confirm_window": 10,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 5.0,
+      "target_vol": 0.1
+    },
+    "range": {
+      "rsi_window": 10,
+      "rsi_oversold": 30.0,
+      "rsi_overbought": 65.0
+    },
+    "global": {
+      "max_holding_days": 60,
+      "target_vol": 0.1
+    },
+    "best_val_calmar": 1.124618085659279
+  },
+  "MA": {
+    "trend_up": {
+      "confirm_window": 10,
+      "ema_slow": 30,
+      "use_ema_slope": true,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 10,
+      "ema_slow": 30,
+      "use_ema_slope": true,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 20,
+      "rsi_oversold": 25.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 30,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": -0.16924415209628818
+  },
+  "TA": {
+    "trend_up": {
+      "confirm_window": 10,
+      "ema_slow": 30,
+      "use_ema_slope": true,
+      "chandelier_mult": 2.0,
+      "target_vol": 0.2
+    },
+    "trend_down": {
+      "confirm_window": 10,
+      "ema_slow": 30,
+      "use_ema_slope": true,
+      "chandelier_mult": 2.0,
+      "target_vol": 0.2
+    },
+    "range": {
+      "rsi_window": 10,
+      "rsi_oversold": 35.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 30,
+      "target_vol": 0.2
+    },
+    "best_val_calmar": 0.17176895963879177
+  },
+  "M": {
+    "trend_up": {
+      "confirm_window": 5,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 5,
+      "ema_slow": 120,
+      "use_ema_slope": false,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 14,
+      "rsi_oversold": 30.0,
+      "rsi_overbought": 65.0
+    },
+    "global": {
+      "max_holding_days": 120,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": 2.230386785387402
+  },
+  "Y": {
+    "trend_up": {
+      "confirm_window": 3,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 3,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 20,
+      "rsi_oversold": 25.0,
+      "rsi_overbought": 65.0
+    },
+    "global": {
+      "max_holding_days": 60,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": 0.1792984303594668
+  },
+  "P": {
+    "trend_up": {
+      "confirm_window": 15,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 5.0,
+      "target_vol": 0.15
+    },
+    "trend_down": {
+      "confirm_window": 15,
+      "ema_slow": 60,
+      "use_ema_slope": true,
+      "chandelier_mult": 5.0,
+      "target_vol": 0.15
+    },
+    "range": {
+      "rsi_window": 10,
+      "rsi_oversold": 35.0,
+      "rsi_overbought": 70.0
+    },
+    "global": {
+      "max_holding_days": 120,
+      "target_vol": 0.15
+    },
+    "best_val_calmar": 0.3377399252583579
+  },
+  "SR": {
+    "trend_up": {
+      "confirm_window": 5,
+      "ema_slow": 30,
+      "use_ema_slope": false,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.2
+    },
+    "trend_down": {
+      "confirm_window": 5,
+      "ema_slow": 30,
+      "use_ema_slope": false,
+      "chandelier_mult": 4.0,
+      "target_vol": 0.2
+    },
+    "range": {
+      "rsi_window": 14,
+      "rsi_oversold": 25.0,
+      "rsi_overbought": 75.0
+    },
+    "global": {
+      "max_holding_days": 60,
+      "target_vol": 0.2
+    },
+    "best_val_calmar": 0.1291418556705305
+  }
+}

@@ -210,3 +210,10 @@ old_quant/
 /20260825/
 export/*.gz
 export/*.xz
+
+# 本地快照/临时物（2026-11-02）
+/20260820/
+/20260825/
+/20260904/
+*.bak-*
+QuantNodes/strategy.zip

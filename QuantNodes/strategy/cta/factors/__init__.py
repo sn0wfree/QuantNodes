@@ -90,9 +90,12 @@ from .microstructure import (
     OvernightReturnFactor,
 )
 from .composite import (
+    CrossDimensionalResonanceFactor,
     MomentumCrashFilterFactor,
     MultiHorizonMomentumFactor,
+    MultiPeriodResonanceFactor,
     SharpeMomentumFactor,
+    VolatilityRegimeResonanceFactor,
 )
 from .industrial_chain import (
     CHAIN_FORMULAS,
@@ -185,6 +188,7 @@ from .oscillators import (
     CCIFactor,
     MACDFactor,
     StochasticFactor,
+    TSIFactor,
     WilliamsRFactor,
 )
 from .trend_advanced import (
@@ -198,6 +202,7 @@ from .mean_reversion import (
     HalfLifeFactor,
     SqueezeFactor,
 )
+from .statistical_ext import AR1Factor
 from .short_term_reversal import ShortTermReversalTrendFactor
 from .turn_point import (
     TurnPointBreakoutFactor,
@@ -268,9 +273,12 @@ __all__ = [
     "OvernightIntradayDivergenceFactor",
     "OvernightReturnFactor",
     # composite
+    "CrossDimensionalResonanceFactor",
     "MomentumCrashFilterFactor",
     "MultiHorizonMomentumFactor",
+    "MultiPeriodResonanceFactor",
     "SharpeMomentumFactor",
+    "VolatilityRegimeResonanceFactor",
     # industrial chain
     "CHAIN_FORMULAS",
     "ChainMarginFactor",
@@ -337,6 +345,7 @@ __all__ = [
     "BIASFactor",
     # statistical extras
     "FractalDimensionFactor",
+    "AR1Factor",
     # money flow
     "CMFFactor",
     "ForceIndexFactor",
@@ -351,6 +360,7 @@ __all__ = [
     "CCIFactor",
     "MACDFactor",
     "StochasticFactor",
+    "TSIFactor",
     "WilliamsRFactor",
     # trend advanced
     "AroonFactor",

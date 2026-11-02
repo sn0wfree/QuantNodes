@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>量化全天候模型2.0 - 核心生产版</title>
+    <style>
+        body { font-family: '微软雅黑', '宋体', sans-serif; max-width: 1000px; margin: 40px auto; padding: 20px; line-height: 1.7; }
+        h1 { text-align: center; font-size: 28px; border-bottom: 3px solid #2c3e50; padding-bottom: 10px; }
+        h2 { font-size: 22px; margin-top: 30px; border-left: 6px solid #3498db; padding-left: 12px; background: #f8f9fa; }
+        h3 { font-size: 18px; margin-top: 20px; color: #2c3e50; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
+        th { background-color: #e9ecef; font-weight: bold; }
+        .code-block { background: #f4f4f4; padding: 12px 16px; border-radius: 6px; font-family: 'Consolas', monospace; font-size: 14px; white-space: pre-wrap; border-left: 4px solid #2c3e50; }
+        .warning { background: #fff3cd; border-left: 6px solid #ffc107; padding: 10px 16px; margin: 15px 0; }
+        .footer { margin-top: 40px; border-top: 1px solid #ddd; padding-top: 20px; font-size: 14px; color: #555; }
+        .highlight { background: #eaf2f8; padding: 2px 6px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<h1>量化全天候模型 2.0 —— 核心生产版（精简三层架构）</h1>
+
+<h2>一、设计总纲</h2>
+
+<h3>1.1 核心哲学</h3>
+<ul>
+    <li><strong>少先先验，数据驱动</strong>：不预设资产类别的主观权重，让聚类和风险平价算法自主发现结构。</li>
+    <li><strong>分层兜底，危机退位</strong>：每一层都有明确的失效边界，危机时逐层退守现金，常态时逐层释放收益。</li>
+    <li><strong>不确定时不下注</strong>：信号模糊时保持中性，不赌反转。</li>
+</ul>
+
+<h3>1.2 架构取舍说明</h3>
+<p>相较于完整技术研讨版（含IPCA隐含因子），本<strong>生产核心版</strong>暂不纳入时变因子提取模块，原因如下：</p>
+<ol>
+    <li>前三层（负向趋势 + AVS去噪 + HRP）已构成<strong>完整闭环</strong>，足以应对常态配置与尾部危机。</li>
+    <li>IPCA解决的是“结构慢变增强”问题，属于锦上添花，而非生存必需。</li>
+    <li>剔除该模块可<strong>降低60%以上的计算复杂度</strong>，避免因子提取与资产配置之间的循环依赖，使归因分析更透明。</li>
+</ol>
+
+<hr>
+
+<h2>二、核心管线架构（五步流水线）</h2>
+<p>数据流严格按顺序执行，层层递进：</p>
+<div class="code-block">
+日线行情
+→ ① AVS分层去噪协方差（估计稳定相关性）
+→ ② HRP层次风险平价（每20个交易日慢速重平衡）
+→ ③ 自适应负向趋势因子（逐日快速扫描）→ 乘性惩罚约束
+→ ④ 债券权重硬上限处理（溢出资金重分配）
+→ ⑤ 目标波动率缩放 & 现金管理（杠杆上限2.3倍，余钱转短融ETF）
+→ 输出最终持仓与净值
+</div>
+
+<h2>三、核心模块技术规格</h2>
+
+<h3>3.1 模块一：AVS 分层去噪协方差（替代传统RMT）</h3>
+<ul>
+    <li><strong>功能</strong>：在样本协方差矩阵中剥离噪声，提取稳健的相关结构。</li>
+    <li><strong>技术方案</strong>：采用<strong>分层解析方差收缩（Hierarchical AVS）</strong>。
+        <ul>
+            <li>首先基于资产相关性进行Ward层次聚类。</li>
+            <li>构造<strong>分块目标矩阵</strong> F：同一簇内的相关系数保留，不同簇之间的相关系数强制归零。</li>
+            <li>最优收缩强度 δ* 由MSE最小化解析给出：<br>
+                <span class="highlight">δ* = min{ 1, (N+2)/(T+N+2) · ||F||²_F / ||S−F||²_F }</span><br>
+                （N为资产数，T为样本天数，S为样本协方差）
+            </li>
+            <li>最终协方差矩阵：C = (1−δ*)·S + δ*·F</li>
+        </ul>
+    </li>
+    <li><strong>优势</strong>：解决了传统RMT在小样本（q = T/N较大）下退化为对角矩阵的痛点，保证协方差始终带有经济结构。</li>
+</ul>
+
+<h3>3.2 模块二：HRP 层次风险平价（核心配置器）</h3>
+<ul>
+    <li><strong>功能</strong>：分配资产权重，使得组合对各个聚类簇的风险贡献尽量均衡。</li>
+    <li><strong>执行步骤</strong>：
+        <ol>
+            <li>基于去噪后的协方差矩阵 C 计算资产距离矩阵。</li>
+            <li>进行<strong>Ward层次聚类</strong>，生成树状图。</li>
+            <li>执行<strong>递归二分风险分配</strong>（Recursive Bisection），在树状图的每个节点处，依据簇内方差进行风险平价切分。</li>
+        </ol>
+    </li>
+    <li><strong>更新频率</strong>：每20个交易日重新计算一次完整的HRP权重（慢变量），避免高频换手。</li>
+</ul>
+
+<h3>3.3 模块三：自适应负向趋势因子（尾部止损）</h3>
+<ul>
+    <li><strong>功能</strong>：在极端下跌环境中，快速降低特定资产的暴露，资金转入短融。</li>
+    <li><strong>设计逻辑</strong>：不预测底部，只识别“危墙”。</li>
+    <li><strong>构造骨架（伪代码）</strong>：
+        <div class="code-block">
+# 1. 计算三路子信号
+sub_trend = 多周期斜率标准化(returns, windows=[5,10,20])
+sub_vol = 当前波动率 / 自身60日历史高分位(>60%)
+sub_flow = -收益率 * (1 + 波动率比率)   # 价跌量增叠加惩罚
+
+# 2. 合成综合因子
+neg_trend = w1*sub_trend + w2*sub_vol + w3*sub_flow
+
+# 3. 自适应阈值（高波动环境阈值自动下移，更易触发）
+threshold = base_threshold * (1 - 波动率偏离系数)
+
+# 4. 生成惩罚系数（0~1之间）
+penalty = clip((neg_trend - low) / (high - low), 0, 1)
+
+# 5. 乘性作用于HRP权重（非替代）
+w_final_asset = w_HRP * (1 - penalty)
+        </div>
+    </li>
+    <li><strong>异质权重说明</strong>：股票类资产更重 <code>sub_trend</code>，期货品种更重 <code>sub_flow</code>，黄金等避险资产更重 <code>sub_vol</code>。</li>
+</ul>
+
+<h3>3.4 模块四：债券倾斜修正（硬约束 + 重分配）</h3>
+<ul>
+    <li><strong>背景</strong>：标准风险平价天然会过度配置低波动债券（常达60%~90%）。</li>
+    <li><strong>解决方案</strong>（方法3+2组合）：
+        <ol>
+            <li><strong>现金踢出风险池</strong>：短融ETF不参与HRP的风险预算分配，仅作为承接溢出资金的容器。</li>
+            <li><strong>债券权重硬上限</strong>：设定 w_bond ≤ 40%。</li>
+            <li><strong>溢出重分配</strong>：若HRP输出的债券权重超过40%，将超出部分按<strong>风险贡献比例（RC Share）</strong>重新分配给股票、商品和黄金。</li>
+        </ol>
+    </li>
+    <li><strong>动态联动</strong>：若负向趋势因子触发债券类信号，债券的“风险预算”临时减半（强制重算一次HRP），加速减仓。</li>
+</ul>
+
+<h3>3.5 模块五：目标波动率与现金停泊</h3>
+<ul>
+    <li><strong>目标波动率</strong>：设定组合年化波动率目标为 <strong>10%</strong>。</li>
+    <li><strong>杠杆约束</strong>：允许的最大倍数不超过 <strong>2.3倍</strong>（基于国内ETF融资限制及流动性考量）。</li>
+    <li><strong>现金管理</strong>：未被占用的保证金/资金，自动投资于<strong>短融ETF</strong>，计入组合净值。</li>
+</ul>
+
+<hr>
+
+<h2>四、关键工程修复（Bug修复备忘）</h2>
+<table>
+    <thead>
+        <tr><th>问题描述</th><th>修复方案</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>计算当日收益时误用当日权重（未来函数）</td><td>强制约束：当日收益 = 昨日持仓权重 × 当日收益率</td></tr>
+        <tr><td>杠杆计算误用惩罚后权重</td><td>杠杆倍数计算必须基于原始HRP的波动率，而非砍仓后的波动率</td></tr>
+        <tr><td>HRP旧版使用波动率排序二分</td><td>修正为严格的 <strong>Ward树递归二分</strong>，避免权重塌缩至单一资产</td></tr>
+        <tr><td>RMT去噪在小样本下失效</td><td>升级为 <strong>分层AVS</strong>，保证低样本量下依然保留簇内结构</td></tr>
+    </tbody>
+</table>
+
+<hr>
+
+<h2>五、回测绩效参考（仅作框架验证）</h2>
+<p>基于模拟全资产组合（股/债/商/黄金 + ETF费率模拟），去噪升级后的核心框架表现如下：</p>
+<table>
+    <thead>
+        <tr><th>指标</th><th>数值</th><th>备注</th></tr>
+    </thead>
+    <tbody>
+        <tr><td>年化收益（模拟）</td><td>~26.6%</td><td>含构造性Drift，实盘预计打6-7折</td></tr>
+        <tr><td>年化波动率</td><td>~9.2%</td><td>精准命中10%目标控制</td></tr>
+        <tr><td>夏普比率</td><td>~2.6</td><td>样本内参考值</td></tr>
+        <tr><td>最大回撤</td><td>-7.4%</td><td>危机期间负向因子触发现金占比达峰值</td></tr>
+        <tr><td><strong>实盘预估（打折后）</strong></td><td><strong>年化~15-17%，最大回撤-11%</strong></td><td>需扣除真实费率、滑点与停牌影响</td></tr>
+    </tbody>
+</table>
+<div class="warning"><strong>郑重声明：</strong>以上为回测环境数据，含简化假设，不代表未来收益，不构成投资建议。</div>
+
+<hr>
+
+<h2>六、为什么暂不纳入“隐含因子（IPCA）”模块？</h2>
+<p>虽然IPCA在学术上可用于捕捉时变载荷，但在本生产框架中，我们将其降级为<strong>离线诊断工具</strong>：</p>
+<ol>
+    <li><strong>增量收益不明确</strong>：HRP慢速重平衡已能适应数月尺度的结构漂移；负向趋势因子已覆盖突变断裂。</li>
+    <li><strong>工程代价过高</strong>：IPCA涉及逐日交替最小二乘迭代，参数敏感，易引入过拟合噪声。</li>
+    <li><strong>归因困难</strong>：加入IPCA后，无法清晰区分收益来源是“因子结构变化”还是“风险预算分配”。</li>
+</ol>
+<p><strong>后续扩展计划</strong>：当核心三层架构稳定运行满1年实盘或3年样本外验证后，若发现<strong>常态市场下收益提升空间显著</strong>，再考虑将IPCA以“辅助增强”形式（固定α≤0.3）引入。</p>
+
+<hr>
+
+<h2>七、核心公式速查表</h2>
+<ul>
+    <li><strong>AVS收缩最优解</strong>：δ* = min{ 1, (N+2)/(T+N+2) · ||F||²_F / ||S−F||²_F }</li>
+    <li><strong>负向乘性约束</strong>：w_final = w_HRP · (1 − penalty)</li>
+    <li><strong>分层目标矩阵</strong>：F = BlockDiag(簇内相关系数, 簇间=0)</li>
+    <li><strong>最终合成权重</strong>：w = ScaleToTargetVol( Redistribute( w_final ) )</li>
+</ul>
+
+<hr>
+
+<h2>八、风险提示与免责声明</h2>
+<ul>
+    <li>本文档所有参数（如波动率目标10%、杠杆上限2.3倍、债券上限40%）均为框架参考值，需基于真实交易标的的日线数据进行校准，切勿直接挪用。</li>
+    <li>回测数据无法完全模拟实盘中的流动性枯竭、涨跌停板、期货移仓换月及冲击成本。</li>
+    <li>模型依赖统计规律，极端黑天鹅事件（如战争、流动性危机）可能导致各模块同步失效（相关性坍塌），负向趋势因子虽有防御，但无法完全消除亏损。</li>
+    <li>本文档仅为量化策略技术研讨与架构说明，<strong>不构成任何形式的投资建议或收益承诺</strong>。投资者应独立判断，风险自担。</li>
+</ul>
+
+<div class="footer">
+    <p>整理日期：2026-09-04 &nbsp;|&nbsp; 版本：核心生产版 v2.0（精简三层）</p>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,16 @@
+product,avg_val_calmar,rho_required,chandelier_mult,ema_slow,rsi_overbought,rsi_window,use_ema_slope,max_holding_days,target_vol,rsi_oversold
+AU,+2.290,False,,,,,,,,
+AG,+0.321,True,3.0,,,,,,,
+CU,+0.281,True,,120.0,,,,,,
+AL,+0.518,,,,75.0,,,,,
+ZN,-0.216,True,3.0,,,14.0,,,,
+NI,+1.058,False,,,,,True,,,
+RB,+0.440,,,,75.0,,False,60.0,0.15,
+I,+0.193,,4.0,,,,,,,
+SC,+0.317,,,,,,,60.0,,
+MA,-0.304,,,,,,,,,
+TA,+0.677,,,,70.0,,,60.0,,
+M,+0.500,,,,,10.0,True,,0.2,35.0
+Y,+0.363,False,4.0,,,20.0,True,,0.15,25.0
+P,-0.418,,,,,,,,,
+SR,-0.262,True,,120.0,,,,30.0,,
